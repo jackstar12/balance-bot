@@ -34,7 +34,6 @@ class BinanceClient(Client):
         request.params['signature'] = signature
         if self.subaccount:
             pass
-            #request.headers['FTX-SUBACCOUNT'] = urllib.parse.quote(self.subaccount)
 
     def _process_response(self, response: requests.Response) -> str:
         try:
