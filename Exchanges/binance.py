@@ -17,6 +17,7 @@ class BinanceClient(Client):
     ENDPOINT = 'https://fapi.binance.com/'
     exchange = 'binance'
 
+    # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     def getBalance(self):
         s = Session()
         request = Request('GET', self.ENDPOINT + 'fapi/v2/account')

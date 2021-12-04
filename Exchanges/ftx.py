@@ -1,10 +1,8 @@
-import urllib
+import urllib.parse
 import hmac
 import logging
 from logging import getLogger
-
 from fastapi import requests
-
 from client import Client
 import time
 import requests
