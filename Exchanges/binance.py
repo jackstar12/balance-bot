@@ -28,11 +28,13 @@ class BinanceClient(Client):
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
-        request.params['timestamp'] = ts
         request.headers['X-MBX-APIKEY'] = self.api_key
+        request.params['timestamp'] = ts
+
         query_string = urllib.parse.urlencode(request.params, True)
         signature = hmac.new(self.api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
         request.params['signature'] = signature
+
         if self.subaccount:
             pass
 
@@ -53,6 +55,8 @@ class BinanceClient(Client):
             # Return standard HTTP error message if status code isnt specified
             return e.args[0]
 
+        # OK
         if response.status_code == 200:
-            return str(response.json()['totalCrossWalletBalance']) + '$'
+            response_json = response.json()
+            return str(response_json['totalCrossWalletBalance']) + '$'
 

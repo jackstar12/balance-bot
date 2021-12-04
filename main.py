@@ -11,6 +11,7 @@ from discord.ext import commands
 from user import User
 from client import Client
 from key import key
+from datacollector import DataCollector
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -69,7 +70,8 @@ async def register(ctx,
                    exchange_name: str = None,
                    api_key: str = None,
                    api_secret: str = None,
-                   subaccount: typing.Optional[str] = None):
+                   subaccount: typing.Optional[str] = None,
+                   *args):
     if ctx.guild is not None:
         await ctx.send('This command can only be used via a DM.')
         return
@@ -83,6 +85,16 @@ async def register(ctx,
     if valid > 0:
         return
 
+    kwargs = {}
+    if len(args) > 0:
+        for arg in args:
+            try:
+                name, value = arg.split('=')
+                kwargs[name] = value
+            except ValueError:
+                logging.error(f'Invalid Keyword Arg {arg} passed in')
+
+
     try:
         exchange_name = exchange_name.lower()
         exchange_cls = exchanges[exchange_name]
@@ -90,7 +102,8 @@ async def register(ctx,
             exchange: Client = exchange_cls(
                 api_key=api_key,
                 api_secret=api_secret,
-                subaccount=subaccount
+                subaccount=subaccount,
+                extra_kwargs=kwargs
             )
             existing = False
             for user in users:
@@ -140,6 +153,19 @@ async def info(ctx):
     await ctx.send(f'You are not registered.')
 
 
+@client.command()
+async def leaderboard(ctx):
+    data = collector.get_user_data()
+
+
+
+
+@client.command()
+async def available_exchanges(ctx):
+    # TODO: List available exchanges
+    raise NotImplementedError()
+
+
 def setup_logger(debug: bool = False):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
@@ -163,13 +189,14 @@ def get_registered_users():
                     exchange: Client = exchange_cls(
                         api_key=user_json['api_key'],
                         api_secret=user_json['api_secret'],
-                        subaccount=user_json['subaccount']
+                        subaccount=user_json['subaccount'],
+                        extra_kwargs=user_json['extra']
                     )
                     users.append(
                         User(user_json['id'], exchange)
                     )
-            except KeyError:
-                logger.error(f'KeyError while parsing user data {user_json} from users.json')
+            except KeyError as e:
+                logger.error(f'{e} occurred while parsing user data {user_json} from users.json')
 
 
 def save_registered_users():
@@ -184,5 +211,8 @@ def save_registered_users():
 logger = setup_logger(debug=False)
 
 get_registered_users()
+
+collector = DataCollector(users)
+collector.fetch_data()
 
 client.run(key)
