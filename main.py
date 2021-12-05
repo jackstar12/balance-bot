@@ -4,7 +4,7 @@ import discord
 import typing
 import json
 
-from typing import List, Dict, Type
+from typing import List, Dict, Type, Tuple
 from discord.ext import commands
 from datetime import datetime, timedelta
 
@@ -73,7 +73,7 @@ def calc_gain(user: User, search: datetime):
                 if yesterday_balance > 0:
                     return (today_balance.amount / yesterday_balance - 1) * 100
                 else:
-                    return 0
+                    return 0.0
             except KeyError:
                 # User isn't included in data
                 break
@@ -245,11 +245,11 @@ async def info(ctx):
 
 @client.command()
 async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
-    user_scores = {}
+    user_scores: List[Tuple[int, float]] = []
 
     if mode == 'balance':
         date, data = collector.fetch_data()
-        user_scores = {data[user_id].amount: user_id for user_id in data}
+        user_scores = [(user_id, data[user_id].amount) for user_id in data]
         unit = '$'
     elif mode == 'gain':
         try:
@@ -268,23 +268,24 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         time = datetime.now()
         search = time - delta
 
-        user_scores = {}
         for user in USERS:
             user_gain = calc_gain(user, search)
             if user_gain is not None:
-                user_scores[user_gain] = user.id
+                user_scores.append((user.id, user_gain))
 
         unit = '%'
 
-    values = [value for value in user_scores.keys()]
-    values.sort(reverse=True)
+    user_scores.sort(key=lambda x: x[1], reverse=True)
 
     description = ''
     rank = 1
-    for value in values:
-        member = ctx.guild.get_member(user_scores[value])
-        description += f'{rank}. **{member.display_name}** {round(value, ndigits=3)}{unit}\n'
-        rank += 1
+    prev_score = None
+    for user_id, score in user_scores:
+        member = ctx.guild.get_member(user_id)
+        description += f'{rank}. **{member.display_name}** {round(score, ndigits=3)}{unit}\n'
+        if score < (prev_score if prev_score else score):
+            rank += 1
+        prev_score = score
     embed = discord.Embed(title='Leaderboard', description=description, color=0xEE8700)
     await ctx.send(embed=embed)
 
