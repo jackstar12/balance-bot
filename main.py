@@ -18,7 +18,9 @@ from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
 
-client = commands.Bot(command_prefix='c ')
+intents = discord.Intents.default()
+intents.members = True
+client = commands.Bot(command_prefix='c ', intents=intents)
 
 users: List[User] = []
 exchanges: Dict[str, Type[Client]] = {
@@ -154,8 +156,25 @@ async def info(ctx):
 
 
 @client.command()
-async def leaderboard(ctx):
-    data = collector.get_user_data()
+async def leaderboard(ctx: commands.Context):
+    user_data = collector.get_user_data()
+    # Last element of list is latest
+    date, data = user_data[len(user_data) - 1]
+
+    users_by_amount = {data[user].amount: user for user in data}
+    amounts = [key for key in users_by_amount.keys()]
+    amounts.sort(reverse=True)
+
+    embed = discord.Embed(title='Leaderboard')
+    guild: discord.Guild = ctx.guild
+    for amount in amounts:
+        id = users_by_amount[amount]
+        member = guild.get_member(id)
+        embed.add_field(name=member.display_name, value=f'{round(amount, ndigits=3)}$')
+    await ctx.send(embed=embed)
+
+
+
 
 
 

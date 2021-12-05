@@ -1,6 +1,6 @@
 from Exchanges import *
 from threading import Thread, Lock, Timer
-from typing import List
+from typing import List, Tuple, Dict
 from user import User
 from datetime import datetime, timedelta
 
@@ -13,7 +13,7 @@ class DataCollector:
         super().__init__()
         self.users = users
         self.user_lock = Lock()
-        self.user_data = {}
+        self.user_data: List[Tuple[datetime, dict]] = []
 
     def add_user(self, user: User):
         self.user_lock.acquire()
@@ -28,19 +28,20 @@ class DataCollector:
         self.user_lock.release()
 
     def get_user_data(self):
-        pass
+        return self.user_data
 
-    def fetch_data(self):
+    def fetch_data(self, interval_hours: int = 4):
 
         time = datetime.now()
 
         self.user_lock.acquire()
+
+        data = {}
         for user in self.users:
             balance = user.api.getBalance()
-            if user.id not in self.user_data:
-                self.user_data[user.id] = {}
-            self.user_data[user.id][str(time)] = balance
+            data[user.id] = balance
             logging.info(f'User {user} balance: {balance}')
+        self.user_data.append((time, data))
 
         time = datetime.now()
         if time.hour == 0:
@@ -48,8 +49,9 @@ class DataCollector:
 
         self.user_lock.release()
 
-        next = time.replace(hour=(time.hour-time.hour % 4), minute=0, second=0, microsecond=0) + timedelta(hours=4)
+        next = time.replace(hour=(time.hour-time.hour % interval_hours), minute=0, second=0, microsecond=0) + timedelta(hours=interval_hours)
         delay = next - time
+        delay = timedelta(minutes=1)
 
         timer = Timer(delay.total_seconds(), self.fetch_data)
         timer.start()
