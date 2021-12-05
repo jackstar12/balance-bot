@@ -18,11 +18,13 @@ from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
 
+
+PREFIX = 'c '
 intents = discord.Intents.default()
 intents.members = True
-client = commands.Bot(command_prefix='c ', intents=intents)
+client = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-users: List[User] = []
+USERS: List[User] = []
 exchanges: Dict[str, Type[Client]] = {
     'binance': BinanceClient,
     'bitmex': BitmexClient,
@@ -44,10 +46,13 @@ async def on_ready():
 async def balance(ctx, user: discord.Member = None):
     if user is not None:
         hasMatch = False
-        for cur_user in users:
+        for cur_user in USERS:
             if user.id == cur_user.id:
                 usr_balance = cur_user.api.getBalance()
-                await ctx.send(f'{user.display_name}\'s balance: {usr_balance}')
+                if usr_balance.error is None:
+                    await ctx.send(f'{user.display_name}\'s balance: {usr_balance.amount}$')
+                else:
+                    await ctx.send(f'Error while getting {user.display_name}\`s balance: {usr_balance.error}')
                 hasMatch = True
                 break
         if not hasMatch:
@@ -62,33 +67,73 @@ def calc_gain(user: User, search: datetime):
     # Reverse data since latest data is at the top
     for cur_time, data in reversed(user_data):
         if abs(cur_time - search) < abs(prev_timestamp - cur_time):
-            yesterday_balance = data[user.id].amount
-            today_balance = user.api.getBalance()
-            return (today_balance.amount / yesterday_balance - 1) * 100
+            try:
+                yesterday_balance = data[user.id].amount
+                today_balance = user.api.getBalance()
+                if yesterday_balance > 0:
+                    return (today_balance.amount / yesterday_balance - 1) * 100
+                else:
+                    return 0
+            except KeyError:
+                # User isn't included in data
+                break
         prev_timestamp = cur_time
     return None
 
 
+def calc_timedelta_from_time_args(*args) -> timedelta:
+    minute = 0
+    hour = 0
+    day = 0
+    week = 0
+    if len(args) > 0:
+        for arg in args:
+            try:
+                if 'h' in arg:
+                    hour = int(arg.rstrip('h'))
+                elif 'm' in arg:
+                    minute = int(arg.rstrip('m'))
+                elif 'w' in arg:
+                    week = int(arg.rstrip('w'))
+                elif 'd' in arg:
+                    day = int(arg.rstrip('d'))
+                else:
+                    raise ValueError
+            except ValueError:  # Make sure both cases are treated the same
+                raise ValueError(arg)
+
+    return timedelta(hours=hour, minutes=minute, days=day, weeks=week)
+
+
 @client.command()
-async def gain(ctx, user: discord.Member = None, timeframe: int = 24):
+async def gain(ctx, user: discord.Member = None, *args):
     if user is not None:
         hasMatch = False
-        for cur_user in users:
+        for cur_user in USERS:
             if user.id == cur_user.id:
                 hasMatch = True
 
-                if timeframe < 0:
-                    await ctx.send('Timeframe can not be negative')
+                try:
+                    if len(args) > 0:
+                        delta = calc_timedelta_from_time_args(*args)
+                    else:
+                        delta = timedelta(hours=24)
+                except ValueError as e:
+                    await ctx.send(f'Invalid argument {e.args[0]}')
+                    return
+
+                if delta.total_seconds() <= 0:
+                    await ctx.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
                     return
 
                 time = datetime.now()
-                search = time - timedelta(hours=timeframe)
+                search = time - delta
 
                 user_gain = calc_gain(cur_user, search)
                 if user_gain is None:
                     await ctx.send(f'Not enough data for calculating {user.display_name}\'s gain')
                 else:
-                    await ctx.send(f'{user.display_name}\'s 24h gain: {round(user_gain)}%')
+                    await ctx.send(f'{user.display_name}\'s  gain: {round(user_gain)}%')
                 break
         if not hasMatch:
             await ctx.send('User unknown! Please register via a DM first.')
@@ -105,12 +150,11 @@ async def check_arg(ctx, value, default, name: str) -> int:
 
 @client.command(
     brief="Registers user",
-    description="<prefix> register <exchange> <api_key> <api_secret> <subaccount> <args...>\n"
-                "Some exchanges might require additional args, for example:\n"
+    description="Some exchanges might require additional args, for example:\n"
                 "<prefix> register kucoin <api key> <api secret> <subaccount> passphrase=<passphrase>",
     aliases=["Register"]
 )
-async def register(ctx,
+async def register(ctx: commands.Context,
                    exchange_name: str = None,
                    api_key: str = None,
                    api_secret: str = None,
@@ -118,6 +162,7 @@ async def register(ctx,
                    *args):
     if ctx.guild is not None:
         await ctx.send('This command can only be used via a DM.')
+        await ctx.author.send(f'Type {PREFIX}help register.')
         return
 
     valid = 0
@@ -149,7 +194,7 @@ async def register(ctx,
                 extra_kwargs=kwargs
             )
             existing = False
-            for user in users:
+            for user in USERS:
                 if ctx.author.id == user.id:
                     user.api = exchange
                     await ctx.send(embed=user.get_discord_embed())
@@ -158,7 +203,7 @@ async def register(ctx,
             if not existing:
                 new_user = User(ctx.author.id, exchange)
                 await ctx.send(embed=new_user.get_discord_embed())
-                users.append(new_user)
+                USERS.append(new_user)
                 collector.add_user(new_user)
             save_registered_users()
         else:
@@ -173,9 +218,9 @@ async def unregister(ctx):
         await ctx.send(f'This command can only be used via a DM.')
         return
 
-    for user in users:
+    for user in USERS:
         if ctx.author.id == user.id:
-            users.remove(user)
+            USERS.remove(user)
             collector.remove_user(user)
             save_registered_users()
             await ctx.send(f'You were successfully unregistered!')
@@ -191,7 +236,7 @@ async def info(ctx):
         await ctx.send(f'This command can only be used via a DM.')
         return
 
-    for user in users:
+    for user in USERS:
         if ctx.author.id == user.id:
             await ctx.send(embed=user.get_discord_embed())
             return
@@ -199,30 +244,61 @@ async def info(ctx):
 
 
 @client.command()
-async def leaderboard(ctx: commands.Context, mode: str = 'balance'):
-    user_data = collector.get_user_data()
+async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
+    user_scores = {}
 
-    # Last element of list is latest
-    date, data = user_data[len(user_data) - 1]
+    if mode == 'balance':
+        date, data = collector.fetch_data()
+        user_scores = {data[user_id].amount: user_id for user_id in data}
+        unit = '$'
+    elif mode == 'gain':
+        try:
+            if len(args) > 0:
+                delta = calc_timedelta_from_time_args(*args)
+            else:
+                delta = timedelta(hours=24)
+        except ValueError as e:
+            await ctx.send(f'Invalid argument {e.args[0]}')
+            return
 
-    users_by_amount = {data[user_id].amount: user_id for user_id in data}
-    amounts = [key for key in users_by_amount.keys()]
-    amounts.sort(reverse=True)
+        if delta.total_seconds() <= 0:
+            await ctx.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
+            return
+
+        time = datetime.now()
+        search = time - delta
+
+        user_scores = {}
+        for user in USERS:
+            user_gain = calc_gain(user, search)
+            if user_gain is not None:
+                user_scores[user_gain] = user.id
+
+        unit = '%'
+
+    values = [value for value in user_scores.keys()]
+    values.sort(reverse=True)
 
     description = ''
     rank = 1
-    for amount in amounts:
-        member = ctx.guild.get_member(users_by_amount[amount])
-        description += f'{rank}. **{member.display_name}** {round(amount, ndigits=3)}$\n'
+    for value in values:
+        member = ctx.guild.get_member(user_scores[value])
+        description += f'{rank}. **{member.display_name}** {round(value, ndigits=3)}{unit}\n'
         rank += 1
     embed = discord.Embed(title='Leaderboard', description=description, color=0xEE8700)
     await ctx.send(embed=embed)
 
 
-@client.command()
+@client.command(
+    aliases=["exchanges", "available"]
+)
 async def available_exchanges(ctx):
-    # TODO: List available exchanges
-    raise NotImplementedError()
+    description = ''
+    for exchange in exchanges.keys():
+        description += f'{exchange}\n'
+
+    embed = discord.Embed(title="Available Exchanges", description=description)
+    await ctx.send(embed=embed)
 
 
 def setup_logger(debug: bool = False):
@@ -236,7 +312,7 @@ def setup_logger(debug: bool = False):
     return logger
 
 
-def get_registered_users():
+def load_registered_users():
     # TODO: Implement decryption for user data
     with open('users.json', 'r') as f:
         users_json = json.load(fp=f)
@@ -251,7 +327,7 @@ def get_registered_users():
                         subaccount=user_json['subaccount'],
                         extra_kwargs=user_json['extra']
                     )
-                    users.append(
+                    USERS.append(
                         User(user_json['id'], exchange)
                     )
             except KeyError as e:
@@ -261,15 +337,15 @@ def get_registered_users():
 def save_registered_users():
     # TODO: Implement encryption for user data
     with open('users.json', 'w') as f:
-        users_json = [user.to_json() for user in users]
+        users_json = [user.to_json() for user in USERS]
         json.dump(obj=users_json, fp=f, indent=3)
 
 
 logger = setup_logger(debug=False)
 
-get_registered_users()
+load_registered_users()
 
-collector = DataCollector(users, fetching_interval_hours=1)
+collector = DataCollector(USERS, fetching_interval_hours=1)
 collector.start_fetching()
 
 client.run(key)

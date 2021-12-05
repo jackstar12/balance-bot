@@ -53,11 +53,11 @@ class DataCollector:
 
         with open("user_data.json", "r") as f:
             raw_json = json.load(fp=f)
-
-            self.user_data = [
-                (datetime.fromtimestamp(ts),
-                 {int(user_id): Balance(data[user_id]['amount'], data[user_id]['currency'], None) for user_id in data}) for ts, data in raw_json
-            ]
+            if raw_json:
+                self.user_data = [
+                    (datetime.fromtimestamp(ts),
+                     {int(user_id): Balance(data[user_id]['amount'], data[user_id]['currency'], None) for user_id in data}) for ts, data in raw_json
+                ]
 
         self.data_lock.release()
 

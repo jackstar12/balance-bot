@@ -35,6 +35,7 @@ class BinanceClient(Client):
         signature = hmac.new(self.api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
         request.params['signature'] = signature
 
+        # TODO: Binance subaccounts?
         if self.subaccount:
             pass
 
