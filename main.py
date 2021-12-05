@@ -61,26 +61,6 @@ async def balance(ctx, user: discord.Member = None):
         await ctx.send('Please specify a user.')
 
 
-def calc_gain(user: User, search: datetime):
-    user_data = collector.get_user_data()
-    prev_timestamp = search
-    # Reverse data since latest data is at the top
-    for cur_time, data in reversed(user_data):
-        if abs(cur_time - search) < abs(prev_timestamp - cur_time):
-            try:
-                yesterday_balance = data[user.id].amount
-                today_balance = user.api.getBalance()
-                if yesterday_balance > 0:
-                    return (today_balance.amount / yesterday_balance - 1) * 100
-                else:
-                    return 0.0
-            except KeyError:
-                # User isn't included in data
-                break
-        prev_timestamp = cur_time
-    return None
-
-
 def calc_timedelta_from_time_args(*args) -> timedelta:
     minute = 0
     hour = 0
@@ -103,6 +83,26 @@ def calc_timedelta_from_time_args(*args) -> timedelta:
                 raise ValueError(arg)
 
     return timedelta(hours=hour, minutes=minute, days=day, weeks=week)
+
+
+def calc_gain(user: User, search: datetime):
+    user_data = collector.get_user_data()
+    prev_timestamp = search
+    # Reverse data since latest data is at the top
+    for cur_time, data in reversed(user_data):
+        if abs(cur_time - search) < abs(prev_timestamp - cur_time):
+            try:
+                balance_then = data[user.id].amount
+                balance_now = user.api.getBalance().amount
+                if balance_then > 0:
+                    return (balance_now / balance_then - 1) * 100
+                else:
+                    return 0.0
+            except KeyError:
+                # User isn't included in data
+                break
+        prev_timestamp = cur_time
+    return None
 
 
 @client.command()
