@@ -3,10 +3,10 @@ import sys
 import discord
 import typing
 import json
-import cryptography
 
 from typing import List, Dict, Type
 from discord.ext import commands
+from datetime import datetime, timedelta
 
 from user import User
 from client import Client
@@ -56,6 +56,46 @@ async def balance(ctx, user: discord.Member = None):
         await ctx.send('Please specify a user.')
 
 
+def calc_gain(user: User, search: datetime):
+    user_data = collector.get_user_data()
+    prev_timestamp = search
+    # Reverse data since latest data is at the top
+    for cur_time, data in reversed(user_data):
+        if abs(cur_time - search) < abs(prev_timestamp - cur_time):
+            yesterday_balance = data[user.id].amount
+            today_balance = user.api.getBalance()
+            return (today_balance.amount / yesterday_balance - 1) * 100
+        prev_timestamp = cur_time
+    return None
+
+
+@client.command()
+async def gain(ctx, user: discord.Member = None, timeframe: int = 24):
+    if user is not None:
+        hasMatch = False
+        for cur_user in users:
+            if user.id == cur_user.id:
+                hasMatch = True
+
+                if timeframe < 0:
+                    await ctx.send('Timeframe can not be negative')
+                    return
+
+                time = datetime.now()
+                search = time - timedelta(hours=timeframe)
+
+                user_gain = calc_gain(cur_user, search)
+                if user_gain is None:
+                    await ctx.send(f'Not enough data for calculating {user.display_name}\'s gain')
+                else:
+                    await ctx.send(f'{user.display_name}\'s 24h gain: {round(user_gain)}%')
+                break
+        if not hasMatch:
+            await ctx.send('User unknown! Please register via a DM first.')
+    else:
+        await ctx.send('Please specify a user.')
+
+
 async def check_arg(ctx, value, default, name: str) -> int:
     if value == default:
         await ctx.send(f'Argument {name} is required.')
@@ -65,7 +105,9 @@ async def check_arg(ctx, value, default, name: str) -> int:
 
 @client.command(
     brief="Registers user",
-    full="<prefix> register <exchange> <api_key> <api_secret> <subaccount>",
+    description="<prefix> register <exchange> <api_key> <api_secret> <subaccount> <args...>\n"
+                "Some exchanges might require additional args, for example:\n"
+                "<prefix> register kucoin <api key> <api secret> <subaccount> passphrase=<passphrase>",
     aliases=["Register"]
 )
 async def register(ctx,
@@ -96,7 +138,6 @@ async def register(ctx,
             except ValueError:
                 logging.error(f'Invalid Keyword Arg {arg} passed in')
 
-
     try:
         exchange_name = exchange_name.lower()
         exchange_cls = exchanges[exchange_name]
@@ -118,6 +159,7 @@ async def register(ctx,
                 new_user = User(ctx.author.id, exchange)
                 await ctx.send(embed=new_user.get_discord_embed())
                 users.append(new_user)
+                collector.add_user(new_user)
             save_registered_users()
         else:
             logger.error(f'Class {exchange_cls} is no subclass of Client!')
@@ -134,6 +176,7 @@ async def unregister(ctx):
     for user in users:
         if ctx.author.id == user.id:
             users.remove(user)
+            collector.remove_user(user)
             save_registered_users()
             await ctx.send(f'You were successfully unregistered!')
             return
@@ -156,27 +199,24 @@ async def info(ctx):
 
 
 @client.command()
-async def leaderboard(ctx: commands.Context):
+async def leaderboard(ctx: commands.Context, mode: str = 'balance'):
     user_data = collector.get_user_data()
+
     # Last element of list is latest
     date, data = user_data[len(user_data) - 1]
 
-    users_by_amount = {data[user].amount: user for user in data}
+    users_by_amount = {data[user_id].amount: user_id for user_id in data}
     amounts = [key for key in users_by_amount.keys()]
     amounts.sort(reverse=True)
 
-    embed = discord.Embed(title='Leaderboard')
-    guild: discord.Guild = ctx.guild
+    description = ''
+    rank = 1
     for amount in amounts:
-        id = users_by_amount[amount]
-        member = guild.get_member(id)
-        embed.add_field(name=member.display_name, value=f'{round(amount, ndigits=3)}$')
+        member = ctx.guild.get_member(users_by_amount[amount])
+        description += f'{rank}. **{member.display_name}** {round(amount, ndigits=3)}$\n'
+        rank += 1
+    embed = discord.Embed(title='Leaderboard', description=description, color=0xEE8700)
     await ctx.send(embed=embed)
-
-
-
-
-
 
 
 @client.command()
@@ -225,13 +265,11 @@ def save_registered_users():
         json.dump(obj=users_json, fp=f, indent=3)
 
 
-# TODO: Implement regular fetches for stats
-
 logger = setup_logger(debug=False)
 
 get_registered_users()
 
-collector = DataCollector(users)
-collector.fetch_data()
+collector = DataCollector(users, fetching_interval_hours=1)
+collector.start_fetching()
 
 client.run(key)

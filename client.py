@@ -9,6 +9,12 @@ class Client:
     subaccount: str
     exchange = ''
 
+    required_extra_args: List[str] = [
+        "api_key",
+        "api_secret",
+        ""
+    ]
+
     def __init__(self,
                  api_key: str,
                  api_secret: str,

@@ -4,13 +4,24 @@ Discord Bot for showing crypto balances
 # Commands
 - ## DM Only 
   - ### Register Command
-    Can only used in DMs. Registers the user with the given credentials <br>
-    `<prefix> register <exchange> <api secret> <api key> <subaccount>`
+    Registers the user with the given credentials. <br>
+    `<prefix> register <exchange> <api secret> <api key> <subaccount> <args...>` <br>
+    Some exchanges might require additional arguments, for example: <br>
+    `<prefix> register kucoin <api key> <api secret> <subaccount> passphrase=<passphrase>` <br>
+    If additional args are given, but there is no subaccount, specify subaccount as 'none'
   - ### Unregister Command  
-    Can only be used in DMs. Unregisters the user and deletes API access <br>
+    Unregisters the user and deletes API access <br>
     `<prefix> unregister`
+  - ### Info command
+    Shows stored information
+    `<prefix> info`
+    
 - ## Server Commands
   - ### Balance Command 
-    gives current balance of user, the user has to be registered.<br>
+    Gives current balance of user, the user has to be registered.<br>
     `<prefix> balance @<user>`
+  - ### Leaderboard command
+    Fetches data of currently registered users and shows the highest score <br>
+    `<prefix> leaderboard`
+  
   
