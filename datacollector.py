@@ -42,9 +42,9 @@ class DataCollector:
 
         with open("user_data.json", "w") as f:
             user_data_json = [
-                (date.timestamp(), {user_id: data[user_id].to_json() for user_id in data}) for date, data in self.user_data
+                (date.timestamp(), {user_id: data[user_id].to_json(currency=False) for user_id in data}) for date, data in self.user_data
             ]
-            json.dump(fp=f, obj=user_data_json, indent=3)
+            json.dump(fp=f, obj=user_data_json)
 
         self.data_lock.release()
 
@@ -56,7 +56,7 @@ class DataCollector:
             if raw_json:
                 self.user_data = [
                     (datetime.fromtimestamp(ts),
-                     {int(user_id): Balance(data[user_id]['amount'], data[user_id]['currency'], None) for user_id in data}) for ts, data in raw_json
+                     {int(user_id): Balance(data[user_id]['amount'], data[user_id].get('currency', '$'), None) for user_id in data}) for ts, data in raw_json
                 ]
 
         self.data_lock.release()
@@ -69,7 +69,7 @@ class DataCollector:
         time = datetime.now()
 
         self.data_lock.acquire()
-        self.user_data.append(self.fetch_data())
+        self.user_data.append(self._fetch_data())
         self.data_lock.release()
 
         self.save_user_data()
@@ -84,7 +84,7 @@ class DataCollector:
         timer = Timer(delay.total_seconds(), self.start_fetching)
         timer.start()
 
-    def fetch_data(self) -> Tuple[datetime, Dict[int, Balance]]:
+    def _fetch_data(self) -> Tuple[datetime, Dict[int, Balance]]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to Balance objects (non-errors only)
@@ -98,4 +98,15 @@ class DataCollector:
                 data[user.id] = balance
             logging.info(f'{user} balance: {balance}')
         self.user_lock.release()
+        return time, data
+
+    def fetch_data(self, time_tolerance: float = 60):
+        self.data_lock.acquire()
+        time, data = self.user_data[len(self.user_data) - 1]
+        now = datetime.now()
+        if now - time > timedelta(seconds=time_tolerance):
+            data = self._fetch_data()
+            time = now
+            self.user_data.append(data)
+        self.data_lock.release()
         return time, data

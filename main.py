@@ -1,11 +1,11 @@
 import logging
 import sys
 import discord
-import typing
 import json
+import typing
 
-from typing import List, Dict, Type, Tuple
 from discord.ext import commands
+from typing import List, Dict, Type, Tuple
 from datetime import datetime, timedelta
 
 from user import User
@@ -20,12 +20,13 @@ from Exchanges.kucoin import KuCoinClient
 
 
 PREFIX = 'c '
-intents = discord.Intents.default()
+intents = discord.Intents().default()
 intents.members = True
-client = commands.Bot(command_prefix=PREFIX, intents=intents)
+
+client = commands.Bot(intents=intents)
 
 USERS: List[User] = []
-exchanges: Dict[str, Type[Client]] = {
+EXCHANGES: Dict[str, Type[Client]] = {
     'binance': BinanceClient,
     'bitmex': BitmexClient,
     'ftx': FtxClient,
@@ -44,41 +45,57 @@ async def on_ready():
     full="Gives Balance of specified user"
 )
 async def balance(ctx, user: discord.Member = None):
-    if user is not None:
-        hasMatch = False
-        for cur_user in USERS:
-            if user.id == cur_user.id:
-                usr_balance = cur_user.api.getBalance()
-                if usr_balance.error is None:
-                    await ctx.send(f'{user.display_name}\'s balance: {usr_balance.amount}$')
-                else:
-                    await ctx.send(f'Error while getting {user.display_name}\`s balance: {usr_balance.error}')
-                hasMatch = True
-                break
-        if not hasMatch:
-            await ctx.send('User unknown! Please register via a DM first.')
-    else:
-        await ctx.send('Please specify a user.')
+    if user is None:
+        user = ctx.author
+    hasMatch = False
+    for cur_user in USERS:
+        if user.id == cur_user.id:
+            usr_balance = cur_user.api.getBalance()
+            if usr_balance.error is None:
+                await ctx.send(f'{user.display_name}\'s balance: {usr_balance.amount}$')
+            else:
+                await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
+            hasMatch = True
+            break
+    if not hasMatch:
+        await ctx.send('User unknown. Please register via a DM first.')
+
+
+@client.command()
+async def ping(ctx):
+    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
 
 
 def calc_timedelta_from_time_args(*args) -> timedelta:
+    """
+    Calculates timedelta from given time args.
+    Arg Format:
+      <n><f>
+      where <f> can be m (minutes), h (hours), d (days) or w (weeks)
+
+    :raise:
+      ValueError if invalid arg is given
+    :return:
+      Calculated timedelta
+    """
     minute = 0
     hour = 0
     day = 0
     week = 0
     if len(args) > 0:
         for arg in args:
+            if 'h' in arg:
+                hour += int(arg.rstrip('h'))
+            elif 'm' in arg:
+                minute += int(arg.rstrip('m'))
+            elif 'w' in arg:
+                week += int(arg.rstrip('w'))
+            elif 'd' in arg:
+                day += int(arg.rstrip('d'))
+            else:
+                raise ValueError
             try:
-                if 'h' in arg:
-                    hour = int(arg.rstrip('h'))
-                elif 'm' in arg:
-                    minute = int(arg.rstrip('m'))
-                elif 'w' in arg:
-                    week = int(arg.rstrip('w'))
-                elif 'd' in arg:
-                    day = int(arg.rstrip('d'))
-                else:
-                    raise ValueError
+                pass
             except ValueError:  # Make sure both cases are treated the same
                 raise ValueError(arg)
 
@@ -88,9 +105,13 @@ def calc_timedelta_from_time_args(*args) -> timedelta:
 def calc_gain(user: User, search: datetime):
     user_data = collector.get_user_data()
     prev_timestamp = search
+    prev_data = {}
     # Reverse data since latest data is at the top
     for cur_time, data in reversed(user_data):
-        if abs(cur_time - search) < abs(prev_timestamp - cur_time):
+        cur_diff = cur_time - search
+        if cur_diff.total_seconds() < 0:
+            if abs(cur_diff.total_seconds()) < abs((prev_timestamp - search).total_seconds()):
+                data = prev_data
             try:
                 balance_then = data[user.id].amount
                 balance_now = user.api.getBalance().amount
@@ -99,9 +120,10 @@ def calc_gain(user: User, search: datetime):
                 else:
                     return 0.0
             except KeyError:
-                # User isn't included in data
-                break
+                # User isn't included in data set
+                continue
         prev_timestamp = cur_time
+        prev_data = data
     return None
 
 
@@ -133,7 +155,7 @@ async def gain(ctx, user: discord.Member = None, *args):
                 if user_gain is None:
                     await ctx.send(f'Not enough data for calculating {user.display_name}\'s gain')
                 else:
-                    await ctx.send(f'{user.display_name}\'s  gain: {round(user_gain)}%')
+                    await ctx.send(f'{user.display_name}\'s  gain: {round(user_gain, ndigits=3)}%')
                 break
         if not hasMatch:
             await ctx.send('User unknown! Please register via a DM first.')
@@ -160,6 +182,7 @@ async def register(ctx: commands.Context,
                    api_secret: str = None,
                    subaccount: typing.Optional[str] = None,
                    *args):
+
     if ctx.guild is not None:
         await ctx.send('This command can only be used via a DM.')
         await ctx.author.send(f'Type {PREFIX}help register.')
@@ -185,7 +208,7 @@ async def register(ctx: commands.Context,
 
     try:
         exchange_name = exchange_name.lower()
-        exchange_cls = exchanges[exchange_name]
+        exchange_cls = EXCHANGES[exchange_name]
         if issubclass(exchange_cls, Client):
             exchange: Client = exchange_cls(
                 api_key=api_key,
@@ -246,10 +269,21 @@ async def info(ctx):
 @client.command()
 async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
     user_scores: List[Tuple[int, float]] = []
+    users_rekt: List[int] = []
+
+    footer = ''
 
     if mode == 'balance':
         date, data = collector.fetch_data()
-        user_scores = [(user_id, data[user_id].amount) for user_id in data]
+        for user_id in data:
+            amount = data[user_id].amount
+            if amount > 0:
+                user_scores.append((user_id, amount))
+            else:
+                users_rekt.append(user_id)
+
+        date = date.replace(microsecond=0)
+        footer += f'Data used from: {date}'
         unit = '$'
     elif mode == 'gain':
         try:
@@ -276,26 +310,38 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         unit = '%'
 
     user_scores.sort(key=lambda x: x[1], reverse=True)
-
     description = ''
     rank = 1
-    prev_score = None
+    prev_score = user_scores[0][1]
     for user_id, score in user_scores:
+        if score < prev_score:
+            rank += 1
         member = ctx.guild.get_member(user_id)
         description += f'{rank}. **{member.display_name}** {round(score, ndigits=3)}{unit}\n'
-        if score < (prev_score if prev_score else score):
-            rank += 1
         prev_score = score
-    embed = discord.Embed(title='Leaderboard', description=description, color=0xEE8700)
+
+    if len(users_rekt) > 0:
+        description += f'\n\u200B**Rekt**\u200B\n'
+        for user_id_rekt in users_rekt:
+            member = ctx.guild.get_member(user_id_rekt)
+            description += f'{member.display_name}\n'
+
+    description += f'\n{footer}'
+
+    embed = discord.Embed(
+        title='Leaderboard :medal:',
+        description=description,
+        footer=footer
+    )
     await ctx.send(embed=embed)
 
 
 @client.command(
-    aliases=["exchanges", "available"]
+    aliases=["available"]
 )
-async def available_exchanges(ctx):
+async def exchanges(ctx):
     description = ''
-    for exchange in exchanges.keys():
+    for exchange in EXCHANGES.keys():
         description += f'{exchange}\n'
 
     embed = discord.Embed(title="Available Exchanges", description=description)
@@ -320,7 +366,7 @@ def load_registered_users():
         for user_json in users_json:
             try:
                 exchange_name = user_json['exchange'].lower()
-                exchange_cls = exchanges[exchange_name]
+                exchange_cls = EXCHANGES[exchange_name]
                 if issubclass(exchange_cls, Client):
                     exchange: Client = exchange_cls(
                         api_key=user_json['api_key'],
