@@ -24,7 +24,7 @@ intents = discord.Intents().default()
 intents.members = True
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-slash = SlashCommand(client, sync_commands=True)
+slash = SlashCommand(client, sync_commands=False)
 
 USERS: List[User] = []
 EXCHANGES: Dict[str, Type[Client]] = {
@@ -84,18 +84,17 @@ def calc_timedelta_from_time_args(*args) -> timedelta:
     week = 0
     if len(args) > 0:
         for arg in args:
-            if 'h' in arg:
-                hour += int(arg.rstrip('h'))
-            elif 'm' in arg:
-                minute += int(arg.rstrip('m'))
-            elif 'w' in arg:
-                week += int(arg.rstrip('w'))
-            elif 'd' in arg:
-                day += int(arg.rstrip('d'))
-            else:
-                raise ValueError
             try:
-                pass
+                if 'h' in arg:
+                    hour += int(arg.rstrip('h'))
+                elif 'm' in arg:
+                    minute += int(arg.rstrip('m'))
+                elif 'w' in arg:
+                    week += int(arg.rstrip('w'))
+                elif 'd' in arg:
+                    day += int(arg.rstrip('d'))
+                else:
+                    raise ValueError(arg)
             except ValueError:  # Make sure both cases are treated the same
                 raise ValueError(arg)
 
@@ -128,7 +127,7 @@ def calc_gain(user: User, search: datetime):
 
 
 @client.command()
-async def gain(ctx: SlashContext, user: discord.Member, *args):
+async def gain(ctx, user: discord.Member = None, *args):
     if user is not None:
         hasMatch = False
         for cur_user in USERS:
@@ -137,7 +136,7 @@ async def gain(ctx: SlashContext, user: discord.Member, *args):
 
                 try:
                     if len(args) > 0:
-                        delta = calc_timedelta_from_time_args(args)
+                        delta = calc_timedelta_from_time_args(*args)
                     else:
                         delta = timedelta(hours=24)
                 except ValueError as e:
