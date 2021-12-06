@@ -4,6 +4,7 @@ import discord
 import json
 import typing
 
+from discord_slash import SlashCommand, SlashContext
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime, timedelta
@@ -18,12 +19,12 @@ from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
 
-
 PREFIX = 'c '
 intents = discord.Intents().default()
 intents.members = True
+client = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-client = commands.Bot(intents=intents)
+slash = SlashCommand(client, sync_commands=True)
 
 USERS: List[User] = []
 EXCHANGES: Dict[str, Type[Client]] = {
@@ -39,11 +40,15 @@ async def on_ready():
     logger.info('Bot Ready')
 
 
-@client.command(
-    aliases=['Balance'],
-    brief="Gives Balance of specified user",
-    full="Gives Balance of specified user"
+@slash.slash(
+    name="ping",
+    description="Ping"
 )
+async def ping(ctx):
+    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
+
+
+@client.command()
 async def balance(ctx, user: discord.Member = None):
     if user is None:
         user = ctx.author
@@ -59,11 +64,6 @@ async def balance(ctx, user: discord.Member = None):
             break
     if not hasMatch:
         await ctx.send('User unknown. Please register via a DM first.')
-
-
-@client.command()
-async def ping(ctx):
-    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
 
 
 def calc_timedelta_from_time_args(*args) -> timedelta:
@@ -109,7 +109,7 @@ def calc_gain(user: User, search: datetime):
     # Reverse data since latest data is at the top
     for cur_time, data in reversed(user_data):
         cur_diff = cur_time - search
-        if cur_diff.total_seconds() < 0:
+        if cur_diff.total_seconds() <= 0:
             if abs(cur_diff.total_seconds()) < abs((prev_timestamp - search).total_seconds()):
                 data = prev_data
             try:
@@ -128,7 +128,7 @@ def calc_gain(user: User, search: datetime):
 
 
 @client.command()
-async def gain(ctx, user: discord.Member = None, *args):
+async def gain(ctx: SlashContext, user: discord.Member, *args):
     if user is not None:
         hasMatch = False
         for cur_user in USERS:
@@ -137,7 +137,7 @@ async def gain(ctx, user: discord.Member = None, *args):
 
                 try:
                     if len(args) > 0:
-                        delta = calc_timedelta_from_time_args(*args)
+                        delta = calc_timedelta_from_time_args(args)
                     else:
                         delta = timedelta(hours=24)
                 except ValueError as e:
@@ -171,10 +171,8 @@ async def check_arg(ctx, value, default, name: str) -> int:
 
 
 @client.command(
-    brief="Registers user",
-    description="Some exchanges might require additional args, for example:\n"
-                "<prefix> register kucoin <api key> <api secret> <subaccount> passphrase=<passphrase>",
-    aliases=["Register"]
+    name="register",
+    description="Register you for tracking"
 )
 async def register(ctx: commands.Context,
                    exchange_name: str = None,
@@ -182,7 +180,6 @@ async def register(ctx: commands.Context,
                    api_secret: str = None,
                    subaccount: typing.Optional[str] = None,
                    *args):
-
     if ctx.guild is not None:
         await ctx.send('This command can only be used via a DM.')
         await ctx.author.send(f'Type {PREFIX}help register.')
@@ -308,6 +305,9 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
                 user_scores.append((user.id, user_gain))
 
         unit = '%'
+    else:
+        await ctx.send(f'Unknown mode {mode}')
+        return
 
     user_scores.sort(key=lambda x: x[1], reverse=True)
     description = ''
@@ -330,8 +330,7 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
 
     embed = discord.Embed(
         title='Leaderboard :medal:',
-        description=description,
-        footer=footer
+        description=description
     )
     await ctx.send(embed=embed)
 
