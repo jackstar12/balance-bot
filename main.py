@@ -19,7 +19,7 @@ import matplotlib.image as mpimg
 from user import User
 from client import Client
 from datacollector import DataCollector
-from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES
+from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -434,7 +434,8 @@ def setup_logger(debug: bool = False):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    handler = logging.StreamHandler(sys.stdout)
+    log_stream = open(LOG_OUTPUT, "w")
+    handler = logging.StreamHandler(log_stream)
     handler.setFormatter(formatter)
 
     logger.addHandler(handler)
