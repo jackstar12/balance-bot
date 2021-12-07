@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import os
 import sys
 import discord
 import json
@@ -9,24 +11,27 @@ from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime, timedelta
 
+
 from user import User
 from client import Client
-from key import key
 from datacollector import DataCollector
+from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
 
-PREFIX = 'c '
-intents = discord.Intents().default()
+
+intents = discord.Intents().all()
 intents.members = True
+intents.guilds = True
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 slash = SlashCommand(client, sync_commands=False)
 
 USERS: List[User] = []
+USERS_BY_ID: Dict[int, User] = {}
 EXCHANGES: Dict[str, Type[Client]] = {
     'binance': BinanceClient,
     'bitmex': BitmexClient,
@@ -38,6 +43,7 @@ EXCHANGES: Dict[str, Type[Client]] = {
 @client.event
 async def on_ready():
     logger.info('Bot Ready')
+    collector.start_fetching()
 
 
 @slash.slash(
@@ -57,7 +63,7 @@ async def balance(ctx, user: discord.Member = None):
         if user.id == cur_user.id:
             usr_balance = cur_user.api.getBalance()
             if usr_balance.error is None:
-                await ctx.send(f'{user.display_name}\'s balance: {usr_balance.amount}$')
+                await ctx.send(f'{user.display_name}\'s balance: {round(usr_balance.amount, ndigits=3)}$')
             else:
                 await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
             hasMatch = True
@@ -102,15 +108,18 @@ def calc_timedelta_from_time_args(*args) -> timedelta:
 
 
 def calc_gain(user: User, search: datetime):
-    user_data = collector.get_user_data()
+    user_data = collector.get_single_user_data()
     prev_timestamp = search
     prev_data = {}
     # Reverse data since latest data is at the top
     for cur_time, data in reversed(user_data):
         cur_diff = cur_time - search
         if cur_diff.total_seconds() <= 0:
-            if abs(cur_diff.total_seconds()) < abs((prev_timestamp - search).total_seconds()):
-                data = prev_data
+            diff_seconds = cur_diff.total_seconds()
+            prev_diff_seconds = (prev_timestamp - search).total_seconds()
+            #if abs(prev_diff_seconds) < abs(diff_seconds):
+            #    data = prev_data
+            #    cur_time = prev_timestamp
             try:
                 balance_then = data[user.id].amount
                 balance_now = user.api.getBalance().amount
@@ -169,9 +178,16 @@ async def check_arg(ctx, value, default, name: str) -> int:
     return 0
 
 
+def get_available_exchanges() -> str:
+    exchange_list = ''
+    for exchange in EXCHANGES.keys():
+        exchange_list += f'{exchange}\n'
+    return exchange_list
+
+
 @client.command(
     name="register",
-    description="Register you for tracking"
+    description=f"Register you for tracking. \nAvailable exchanges:\n{get_available_exchanges()}"
 )
 async def register(ctx: commands.Context,
                    exchange_name: str = None,
@@ -223,6 +239,7 @@ async def register(ctx: commands.Context,
                 new_user = User(ctx.author.id, exchange)
                 await ctx.send(embed=new_user.get_discord_embed())
                 USERS.append(new_user)
+                USERS_BY_ID[new_user.id] = new_user
                 collector.add_user(new_user)
             save_registered_users()
         else:
@@ -239,6 +256,7 @@ async def unregister(ctx):
 
     for user in USERS:
         if ctx.author.id == user.id:
+            USERS_BY_ID.pop(user.id)
             USERS.remove(user)
             collector.remove_user(user)
             save_registered_users()
@@ -264,19 +282,34 @@ async def info(ctx):
 
 @client.command()
 async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
-    user_scores: List[Tuple[int, float]] = []
-    users_rekt: List[int] = []
+    user_scores: List[Tuple[User, float]] = []
+    users_rekt: List[User] = []
+    users_missing: List[User] = []
 
     footer = ''
 
     if mode == 'balance':
         date, data = collector.fetch_data()
-        for user_id in data:
-            amount = data[user_id].amount
-            if amount > 0:
-                user_scores.append((user_id, amount))
+        for user in USERS:
+            if user.rekt_on is not None:
+                users_rekt.append(user)
             else:
-                users_rekt.append(user_id)
+                if user.id not in data:
+                    amount = collector.get_latest_user_balance(user.id).amount
+                    if amount is None:
+                        users_missing.append(user)
+                    elif amount > 0:
+                        user_scores.append((user, amount))
+                    else:
+                        users_rekt.append(user)
+                try:
+                    amount = data[user.id].amount
+                    if amount > 0:
+                        user_scores.append((user, amount))
+                    else:
+                        users_rekt.append(user)
+                except KeyError:
+                    pass
 
         date = date.replace(microsecond=0)
         footer += f'Data used from: {date}'
@@ -301,7 +334,11 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         for user in USERS:
             user_gain = calc_gain(user, search)
             if user_gain is not None:
-                user_scores.append((user.id, user_gain))
+                user_scores.append((user, user_gain))
+            else:
+                users_missing.append(user)
+
+        footer += f'Gain since {search} was calculated'
 
         unit = '%'
     else:
@@ -311,18 +348,26 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
     user_scores.sort(key=lambda x: x[1], reverse=True)
     description = ''
     rank = 1
-    prev_score = user_scores[0][1]
-    for user_id, score in user_scores:
-        if score < prev_score:
-            rank += 1
-        member = ctx.guild.get_member(user_id)
-        description += f'{rank}. **{member.display_name}** {round(score, ndigits=3)}{unit}\n'
-        prev_score = score
+
+    if len(user_scores) > 0:
+        prev_score = user_scores[0][1]
+        for user, score in user_scores:
+            if score < prev_score:
+                rank += 1
+            member = ctx.guild.get_member(user.id)
+            description += f'{rank}. **{member.display_name}** {round(score, ndigits=3)}{unit}\n'
+            prev_score = score
 
     if len(users_rekt) > 0:
         description += f'\n\u200B**Rekt**\u200B\n'
-        for user_id_rekt in users_rekt:
-            member = ctx.guild.get_member(user_id_rekt)
+        for user_rekt in users_rekt:
+            member = ctx.guild.get_member(user_rekt.id)
+            description += f'{member.display_name}\n'
+
+    if len(users_missing) > 0:
+        description += f'\n**Missing**\n'
+        for user_missing in users_missing:
+            member = ctx.guild.get_member(user_missing.id)
             description += f'{member.display_name}\n'
 
     description += f'\n{footer}'
@@ -338,9 +383,7 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
     aliases=["available"]
 )
 async def exchanges(ctx):
-    description = ''
-    for exchange in EXCHANGES.keys():
-        description += f'{exchange}\n'
+    description = get_available_exchanges()
 
     embed = discord.Embed(title="Available Exchanges", description=description)
     await ctx.send(embed=embed)
@@ -359,38 +402,57 @@ def setup_logger(debug: bool = False):
 
 def load_registered_users():
     # TODO: Implement decryption for user data
-    with open('users.json', 'r') as f:
-        users_json = json.load(fp=f)
-        for user_json in users_json:
-            try:
-                exchange_name = user_json['exchange'].lower()
-                exchange_cls = EXCHANGES[exchange_name]
-                if issubclass(exchange_cls, Client):
-                    exchange: Client = exchange_cls(
-                        api_key=user_json['api_key'],
-                        api_secret=user_json['api_secret'],
-                        subaccount=user_json['subaccount'],
-                        extra_kwargs=user_json['extra']
-                    )
-                    USERS.append(
-                        User(user_json['id'], exchange)
-                    )
-            except KeyError as e:
-                logger.error(f'{e} occurred while parsing user data {user_json} from users.json')
+    try:
+        with open(DATA_PATH + 'users.json', 'r') as f:
+            users_json = json.load(fp=f)
+            for user_json in users_json:
+                try:
+                    exchange_name = user_json['exchange'].lower()
+                    exchange_cls = EXCHANGES[exchange_name]
+                    if issubclass(exchange_cls, Client):
+                        exchange: Client = exchange_cls(
+                            api_key=user_json['api_key'],
+                            api_secret=user_json['api_secret'],
+                            subaccount=user_json['subaccount'],
+                            extra_kwargs=user_json['extra']
+                        )
+                        user = User(id=user_json['id'], api=exchange)
+                        USERS.append(user)
+                        USERS_BY_ID[user.id] = user
+                except KeyError as e:
+                    logger.error(f'{e} occurred while parsing user data {user_json} from users.json')
+    except FileNotFoundError:
+        logger.info(f'No user information found')
 
 
 def save_registered_users():
     # TODO: Implement encryption for user data
-    with open('users.json', 'w') as f:
+    with open(DATA_PATH + 'users.json', 'w') as f:
         users_json = [user.to_json() for user in USERS]
         json.dump(obj=users_json, fp=f, indent=3)
 
 
+async def on_rekt_async(user: User):
+    guild: discord.guild.Guild = client.get_guild(916370614598651934)
+    channel = guild.get_channel(917146534372601886)
+    member = guild.get_member(user.id)
+    await channel.send(f'{member.display_name} gone REKT')
+
+
+def on_rekt(user: User):
+    asyncio.create_task(on_rekt_async(user))
+
+
 logger = setup_logger(debug=False)
 
-load_registered_users()
+if os.path.exists(DATA_PATH):
+    load_registered_users()
+else:
+    os.mkdir(DATA_PATH)
 
-collector = DataCollector(USERS, fetching_interval_hours=1)
-collector.start_fetching()
+collector = DataCollector(USERS,
+                          fetching_interval_hours=FETCHING_INTERVAL_HOURS,
+                          data_path=DATA_PATH,
+                          on_rekt_callback=on_rekt)
 
-client.run(key)
+client.run(KEY)

@@ -1,12 +1,14 @@
 import dataclasses
 import discord
 from client import Client
+from datetime import datetime
 
 
 @dataclasses.dataclass
 class User:
     id: int
     api: Client
+    rekt_on: datetime = None
 
     def __hash__(self):
         return self.id.__hash__()
@@ -25,7 +27,7 @@ class User:
         return embed
 
     def to_json(self):
-        return {
+        json = {
             'id': self.id,
             'exchange': self.api.exchange,
             'api_key': self.api.api_key,
@@ -33,4 +35,8 @@ class User:
             'subaccount': self.api.subaccount,
             'extra': self.api.extra_kwargs
         }
+        if self.rekt_on:
+            json['rekt_on'] = self.rekt_on.timestamp()
+        return json
+
 
