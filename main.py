@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 import sys
 import discord
 import json
@@ -10,12 +11,15 @@ from discord_slash import SlashCommand, SlashContext
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime, timedelta
+from random import Random
 
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 
 from user import User
 from client import Client
 from datacollector import DataCollector
-from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY
+from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -72,6 +76,39 @@ async def balance(ctx, user: discord.Member = None):
         await ctx.send('User unknown. Please register via a DM first.')
 
 
+@client.command(
+    name="history",
+    brief="Draws balance history of a user"
+)
+async def history(ctx, user: discord.Member = None, *args):
+    if user is None:
+        user = ctx.author
+    if user.id in USERS_BY_ID:
+        user_data = collector.get_single_user_data(user.id)
+
+        xs = []
+        ys = []
+        for time, balance in user_data:
+            xs.append(time)
+            ys.append(balance.amount)
+
+        plt.plot(xs, ys, scalex=True)
+        plt.gcf().autofmt_xdate()
+        plt.title(f'History for {ctx.guild.get_member(user.id).display_name}')
+        plt.ylabel('$')
+        plt.xlabel('Time')
+        plt.savefig(DATA_PATH + "tmp.png")
+        plt.close()
+
+        file = discord.File(DATA_PATH + "tmp.png", "history.png")
+        embed = discord.Embed()
+        embed.set_image(url="attachment://history.png")
+
+        await ctx.send(file=file, embed=embed)
+    else:
+        await ctx.send('User unknown. Please register via a DM first.')
+
+
 def calc_timedelta_from_time_args(*args) -> timedelta:
     """
     Calculates timedelta from given time args.
@@ -108,7 +145,7 @@ def calc_timedelta_from_time_args(*args) -> timedelta:
 
 
 def calc_gain(user: User, search: datetime):
-    user_data = collector.get_single_user_data()
+    user_data = collector.get_user_data()
     prev_timestamp = search
     prev_data = {}
     # Reverse data since latest data is at the top
@@ -288,6 +325,9 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
 
     footer = ''
 
+    emoji = '✅'
+    await ctx.message.add_reaction(emoji)
+
     if mode == 'balance':
         date, data = collector.fetch_data()
         for user in USERS:
@@ -338,7 +378,7 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
             else:
                 users_missing.append(user)
 
-        footer += f'Gain since {search} was calculated'
+        footer += f'Gain since {search.replace(microsecond=0)} was calculated'
 
         unit = '%'
     else:
@@ -362,7 +402,7 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         description += f'\n\u200B**Rekt**\u200B\n'
         for user_rekt in users_rekt:
             member = ctx.guild.get_member(user_rekt.id)
-            description += f'{member.display_name}\n'
+            description += f'{member.display_name} since {user_rekt.rekt_on.replace(microsecond=0)}\n'
 
     if len(users_missing) > 0:
         description += f'\n**Missing**\n'
@@ -377,6 +417,7 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         description=description
     )
     await ctx.send(embed=embed)
+    await ctx.message.remove_reaction(member=client.user, emoji=emoji)
 
 
 @client.command(
@@ -416,7 +457,14 @@ def load_registered_users():
                             subaccount=user_json['subaccount'],
                             extra_kwargs=user_json['extra']
                         )
-                        user = User(id=user_json['id'], api=exchange)
+                        rekt_on = user_json.get('rekt_on', None)
+                        if rekt_on:
+                            rekt_on = datetime.fromtimestamp(rekt_on)
+                        user = User(
+                            id=user_json['id'],
+                            api=exchange,
+                            rekt_on=rekt_on
+                        )
                         USERS.append(user)
                         USERS_BY_ID[user.id] = user
                 except KeyError as e:
@@ -436,7 +484,12 @@ async def on_rekt_async(user: User):
     guild: discord.guild.Guild = client.get_guild(916370614598651934)
     channel = guild.get_channel(917146534372601886)
     member = guild.get_member(user.id)
-    await channel.send(f'{member.display_name} gone REKT')
+
+    message = random.Random().choice(seq=REKT_MESSAGES)
+    message = message.replace("{name}", member.display_name.upper())
+    embed = discord.Embed(description=message)
+    await channel.send(embed=embed)
+    save_registered_users()
 
 
 def on_rekt(user: User):

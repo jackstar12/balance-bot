@@ -54,9 +54,20 @@ class DataCollector:
         self.data_lock.acquire()
 
         with open(self.data_path + "user_data.json", "w") as f:
-            user_data_json = [
-                (date.timestamp(), {user_id: data[user_id].to_json() for user_id in data}) for date, data in self.user_data
-            ]
+            #user_data_json = [
+            #    (date.timestamp(), {user_id: data[user_id].to_json() for user_id in data}) for date, data in self.user_data
+            #]
+            #
+            user_data_json = []
+            prev_date, prev_data = datetime.fromtimestamp(0), {}
+            for date, data in self.user_data:
+                if data != prev_data or (date - prev_date) > timedelta(minutes=5):
+                    user_data_json.append(
+                        (round(date.timestamp()), {user_id: data[user_id].to_json() for user_id in data})
+                    )
+                prev_date = date
+                prev_data = data
+
             json.dump(fp=f, obj=user_data_json)
 
         self.data_lock.release()
@@ -108,16 +119,18 @@ class DataCollector:
         time = datetime.now()
         data = {}
         for user in self.users:
-            if user.rekt_on is None:
+            if user.rekt_on:
+                balance = Balance(0.0, '$', None)
+            else:
                 balance = user.api.getBalance()
-                if balance.error is None or balance.error == '':
-                    if balance.amount > 0:
-                        data[user.id] = balance
-                    else:
-                        user.rekt_on = time
-                        if self.on_rekt_callback:
-                            self.on_rekt_callback(user)
-                logging.info(f'{user} balance: {balance}')
+
+            if balance.error is None or balance.error == '':
+                data[user.id] = balance
+                if balance == 0.0 and not user.rekt_on:
+                    user.rekt_on = time
+                    if callable(self.on_rekt_callback):
+                        self.on_rekt_callback(user)
+            logging.info(f'{user} balance: {balance}')
         self.user_lock.release()
         return time, data
 
@@ -141,11 +154,12 @@ class DataCollector:
         return result
 
     def get_single_user_data(self, user_id: int) -> List[Tuple[datetime, Balance]]:
-        self.data_lock.acquire()
         single_user_data = []
+        self.data_lock.acquire()
         for time, data in self.user_data:
             if user_id in data:
                 single_user_data.append((time, data[user_id]))
+        self.data_lock.release()
         return single_user_data
 
 
