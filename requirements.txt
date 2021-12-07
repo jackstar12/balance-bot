@@ -1,3 +1,5 @@
 matplotlib~=3.5.0
 requests~=2.22.0
 fastapi~=0.68.1
+discord-py-slash-command
+discord~=1.6.0

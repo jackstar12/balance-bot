@@ -7,7 +7,7 @@ import discord
 import json
 import typing
 
-from discord_slash import SlashCommand, SlashContext
+#from discord_slash import SlashCommand, SlashContext
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime, timedelta
@@ -32,7 +32,7 @@ intents.members = True
 intents.guilds = True
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-slash = SlashCommand(client, sync_commands=False)
+#slash = SlashCommand(client, sync_commands=False)
 
 USERS: List[User] = []
 USERS_BY_ID: Dict[int, User] = {}
@@ -50,12 +50,12 @@ async def on_ready():
     collector.start_fetching()
 
 
-@slash.slash(
-    name="ping",
-    description="Ping"
-)
-async def ping(ctx):
-    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
+#@slash.slash(
+#    name="ping",
+#    description="Ping"
+#)
+#async def ping(ctx):
+#    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
 
 
 @client.command()
