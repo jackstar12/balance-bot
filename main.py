@@ -407,7 +407,6 @@ async def register(ctx,
     name="unregister",
     description="Unregisters you from tracking"
 )
-#@client.command()
 async def unregister(ctx):
     if ctx.guild is not None:
         await ctx.send(f'This command can only be used via a DM.')
@@ -428,8 +427,9 @@ async def unregister(ctx):
     await ctx.send(f'You are not registered.')
 
 
-@client.command(
-    aliases=['information']
+@slash.slash(
+    name="info",
+    description="Shows your stored information"
 )
 async def info(ctx):
     if ctx.guild is not None:
