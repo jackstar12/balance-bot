@@ -20,8 +20,24 @@ Discord Bot for showing crypto balances
   - ### Balance Command 
     Gives current balance of user, the user has to be registered.<br>
     `<prefix> balance @<user>`
+  - ### Gain Command  
+    Calculates gain of user since given time. Time is passed in through args, for example <br>
+    `<prefix> gain <user> 1d 12h` <br>
+    If no arguments are passed in, 24h gain will be calculated. <br>
+    Supported time arguments:
+      - m for minutes
+      - h for hours
+      - d for days
+      - w for weeks
   - ### Leaderboard command
     Fetches data of currently registered users and shows the highest score <br>
-    `<prefix> leaderboard`
+    There are 2 modes:
+      - balance: Sorts users after their current balance  
+      - gain: Sorts users after their gain specified through time args (see gain command).
+    
+    `<prefix> leaderboard <mode> <args...>`
+  - ### History Command
+    Graphs user data and sends iamage <br>
+    `<prefix> history <user>`
   
   
