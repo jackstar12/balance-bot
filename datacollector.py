@@ -59,16 +59,15 @@ class DataCollector:
             for date, data in self.user_data:
                 if (date - prev_date) < timedelta(minutes=10) and all(data[key] == prev_data[key] for key in data.keys() & prev_data.keys()):
                     # If all common users have the same balances why bother keeping the one with fewer users?
-                    if all(data[key] == prev_data[key] for key in data.keys() & prev_data.keys()):
-                        if len(data.keys()) < len(prev_data.keys()):
-                            self.user_data.remove((date, data))
-                            date = prev_date,
-                            data = prev_data
-                        else:
-                            try:
-                                self.user_data.remove((prev_date, prev_data))
-                            except ValueError:
-                                pass  # Not in list
+                    if len(data.keys()) < len(prev_data.keys()):
+                        self.user_data.remove((date, data))
+                        date = prev_date
+                        data = prev_data
+                    else:
+                        try:
+                            self.user_data.remove((prev_date, prev_data))
+                        except ValueError:
+                            pass  # Not in list
                 else:
                     user_data_json.append(
                         (round(date.timestamp()), {user_id: data[user_id].to_json() for user_id in data})
