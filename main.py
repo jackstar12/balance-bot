@@ -6,6 +6,7 @@ import sys
 import discord
 import json
 import typing
+import time
 
 from discord_slash import SlashCommand, SlashContext
 from discord_slash.utils.manage_commands import create_choice, create_option
@@ -17,10 +18,11 @@ from random import Random
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
+from balance import Balance
 from user import User
 from client import Client
 from datacollector import DataCollector
-from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, SLASH_GUILD_IDS
+from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, GUILD_IDS, INITIAL_BALANCE
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -32,7 +34,7 @@ intents.members = True
 intents.guilds = True
 
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
-slash = SlashCommand(client, sync_commands=True, debug_guild=SLASH_GUILD_IDS[0])
+slash = SlashCommand(client, sync_commands=True, debug_guild=GUILD_IDS[0])
 
 USERS: List[User] = []
 USERS_BY_ID: Dict[int, User] = {}
@@ -52,10 +54,17 @@ async def on_ready():
 
 @slash.slash(
     name="ping",
-    description="Ping"
+    description="Ping",
+    guild_ids=GUILD_IDS
 )
-async def ping(ctx):
-    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
+async def ping(ctx: SlashContext):
+    """Get the bot's current websocket and API latency."""
+    start_time = time.time()
+    message = await ctx.send("Testing Ping...")
+    end_time = time.time()
+
+    await message.edit(
+        content=f"Pong! {round(client.latency, ndigits=3)}ms\nAPI: {round((end_time - start_time), ndigits=3)}ms")
 
 
 @slash.slash(
@@ -68,7 +77,8 @@ async def ping(ctx):
             required=False,
             option_type=6
         )
-    ]
+    ],
+    guild_ids=GUILD_IDS
 )
 async def balance(ctx, user: discord.Member = None):
     if user is None:
@@ -76,7 +86,7 @@ async def balance(ctx, user: discord.Member = None):
     hasMatch = False
     for cur_user in USERS:
         if user.id == cur_user.id:
-            usr_balance = cur_user.api.getBalance()
+            usr_balance = collector.get_user_balance(cur_user)
             if usr_balance.error is None:
                 await ctx.send(f'{user.display_name}\'s balance: {round(usr_balance.amount, ndigits=3)}$')
             else:
@@ -109,7 +119,8 @@ async def balance(ctx, user: discord.Member = None):
             required=False,
             option_type=3
         )
-    ]
+    ],
+    guild_ids=GUILD_IDS
 )
 async def history(ctx, user: discord.Member = None, compare: discord.Member = None, since: str = None):
     if user is None:
@@ -249,7 +260,8 @@ def calc_gains(users: List[User], search: datetime) -> List[Tuple[User, float]]:
             required=False,
             option_type=3
         )
-    ]
+    ],
+    guild_ids=GUILD_IDS
 )
 async def gain(ctx, user: discord.Member = None, time: str = '24h'):
 
@@ -306,7 +318,7 @@ def get_available_exchanges() -> str:
 
 @slash.slash(
     name="register",
-    description=f"Register you for tracking. \nAvailable exchanges:\n{get_available_exchanges()}",
+    description=f"Register you for tracking.",
     options=[
         create_option(
             name="exchange_name",
@@ -368,6 +380,7 @@ async def register(ctx,
                     name, value = arg.split('=')
                     kwargs[name] = value
                 except ValueError:
+                    ctx.send(f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...')
                     logging.error(f'Invalid Keyword Arg {arg} passed in')
 
     try:
@@ -389,7 +402,21 @@ async def register(ctx,
                     logger.info(f'Updated user')
                     break
             if not existing:
-                new_user = User(ctx.author.id, exchange)
+
+                initial_balance = None
+                try:
+                    initial_time = datetime.strptime(INITIAL_BALANCE['date'], "%d/%m/%Y %H:%M:%S")
+                    initial_balance = (initial_time, Balance(INITIAL_BALANCE['amount'], currency='$', error=None))
+                except ValueError as e:
+                    logger.error(f'{e}: Invalid time string for Initial Balance: {INITIAL_BALANCE["date"]}')
+                except KeyError as e:
+                    logger.error(f'{e}: Invalid INITIAL_BALANCE dict. Consider looking into config.example')
+
+                new_user = User(
+                    ctx.author.id,
+                    exchange,
+                    initial_balance=initial_balance
+                )
                 await ctx.send(embed=new_user.get_discord_embed())
                 USERS.append(new_user)
                 USERS_BY_ID[new_user.id] = new_user
@@ -443,7 +470,7 @@ async def info(ctx):
     await ctx.send(f'You are not registered.')
 
 
-async def calc_leaderboard(channel, guild: discord.Guild, mode: str, time: str):
+async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
     user_scores: List[Tuple[User, float]] = []
     users_rekt: List[User] = []
     users_missing: List[User] = []
@@ -480,12 +507,12 @@ async def calc_leaderboard(channel, guild: discord.Guild, mode: str, time: str):
                 delta = timedelta(hours=24)
         except ValueError as e:
             logging.error(f'Invalid argument {e.args[0]} was passed in')
-            await channel.send(f'Invalid argument {e.args[0]}')
+            await message.edit(f'Invalid argument {e.args[0]}')
             return
 
         if delta.total_seconds() <= 0:
             logging.error(f'Time was negative or zero.')
-            await channel.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
+            await message.edit(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
             return
 
         time = datetime.now()
@@ -504,7 +531,7 @@ async def calc_leaderboard(channel, guild: discord.Guild, mode: str, time: str):
         unit = '%'
     else:
         logging.error(f'Unknown mode {mode} was passed in')
-        await channel.send(f'Unknown mode {mode}')
+        await message.edit(f'Unknown mode {mode}')
         return
 
     user_scores.sort(key=lambda x: x[1], reverse=True)
@@ -541,7 +568,7 @@ async def calc_leaderboard(channel, guild: discord.Guild, mode: str, time: str):
         title='Leaderboard :medal:',
         description=description
     )
-    await channel.send(embed=embed)
+    await message.edit(content='', embed=embed)
 
 
 @slash.slash(
@@ -570,31 +597,24 @@ async def calc_leaderboard(channel, guild: discord.Guild, mode: str, time: str):
             required=False,
             option_type=3
         )
-    ]
+    ],
+    guild_ids=GUILD_IDS
 )
 async def leaderboard(ctx: SlashContext, mode: str = 'balance', time: str = None):
     logger.info(f'New Interaction: Creating leaderboard, requested by user {ctx.author.display_name}: {mode=} {time=}')
 
-    if collector.has_data_ready():
-        asyncio.create_task(calc_leaderboard(
-            channel=ctx, guild=ctx.guild, mode=mode, time=time
-        ))
-    else:
-        await ctx.send(f':white_check_mark:')
+    message = await ctx.send('...')
 
-        asyncio.create_task(calc_leaderboard(
-            channel=ctx.channel, guild=ctx.guild, mode=mode, time=time
-        ))
-
+    asyncio.create_task(calc_leaderboard(
+        message=message, guild=ctx.guild, mode=mode, time=time
+    ))
 
 
 @slash.slash(
     name="exchanges",
-    description="Shows available exchanges"
+    description="Shows available exchanges",
+    guild_ids=GUILD_IDS
 )
-#@client.command(
-#    aliases=["available"]
-#)
 async def exchanges(ctx):
     logger.info(f'New Interaction: Listing available exchanges for user {ctx.author.display_name}')
     description = get_available_exchanges()
@@ -635,10 +655,18 @@ def load_registered_users():
                         rekt_on = user_json.get('rekt_on', None)
                         if rekt_on:
                             rekt_on = datetime.fromtimestamp(rekt_on)
+                        initial_balance = user_json.get('initial_balance', None)
+                        if initial_balance:
+                            initial_balance = (
+                                datetime.fromtimestamp(initial_balance['date']),
+                                Balance(amount=initial_balance['amount'], currency='$', error=None)
+                            )
+
                         user = User(
                             id=user_json['id'],
                             api=exchange,
-                            rekt_on=rekt_on
+                            rekt_on=rekt_on,
+                            initial_balance=initial_balance
                         )
                         USERS.append(user)
                         USERS_BY_ID[user.id] = user
@@ -668,7 +696,7 @@ async def on_rekt_async(user: User):
             member = guild.get_member(user.id)
             if member:
                 message_replaced = message.replace("{name}", member.display_name.upper())
-                embed = discord.Embed(description=message)
+                embed = discord.Embed(description=message_replaced)
                 await channel.send(embed=embed)
         except KeyError:
             logger.error(f'Invalid guild {guild_data}')
@@ -686,6 +714,7 @@ logger = setup_logger(debug=False)
 
 if os.path.exists(DATA_PATH):
     load_registered_users()
+    save_registered_users()
 else:
     os.mkdir(DATA_PATH)
 
