@@ -57,7 +57,7 @@ class DataCollector:
             user_data_json = []
             prev_date, prev_data = datetime.fromtimestamp(0), {}
             for date, data in self.user_data:
-                if data != prev_data or (date - prev_date) > timedelta(minutes=5):
+                if data != prev_data or (prev_date - date) > timedelta(minutes=5):
                     user_data_json.append(
                         (round(date.timestamp()), {user_id: data[user_id].to_json() for user_id in data})
                     )
@@ -148,7 +148,7 @@ class DataCollector:
         self.data_lock.release()
         return result
 
-    def get_single_user_data(self, user_id: int) -> List[Tuple[datetime, Balance]]:
+    def get_single_user_data(self, user_id: int, start: datetime = None, end: datetime = None) -> List[Tuple[datetime, Balance]]:
         single_user_data = []
         self.data_lock.acquire()
         for time, data in self.user_data:
@@ -157,3 +157,8 @@ class DataCollector:
         self.data_lock.release()
         return single_user_data
 
+    def has_data_ready(self, time_tolerance_seconds: int = 60) -> bool:
+        self.data_lock.acquire()
+        result = datetime.now() - self.user_data[len(self.user_data) - 1][0] < timedelta(seconds=time_tolerance_seconds)
+        self.data_lock.release()
+        return result

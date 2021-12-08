@@ -14,8 +14,11 @@ REKT_MESSAGES = [
 ]
 REKT_GUILDS = [
     {
-        "guild_id": ,
-        "guild_channel":
+        "guild_id": 916370614598651934,
+        "guild_channel": 917146534372601886
     }
 ]
-LOG_OUTPUT = "log.txt"
+SLASH_GUILD_IDS = [
+    916370614598651934
+]
+LOG_OUTPUT_DIR = "LOGS/"
