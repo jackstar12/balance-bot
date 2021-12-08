@@ -8,7 +8,7 @@ import json
 import typing
 
 
-from discord_slash import SlashCommand, SlashContext
+#from discord_slash import SlashCommand, SlashContext
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime, timedelta
@@ -33,7 +33,7 @@ intents.members = True
 intents.guilds = True
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-slash = SlashCommand(client, sync_commands=True)
+#slash = SlashCommand(client, sync_commands=False)
 
 USERS: List[User] = []
 USERS_BY_ID: Dict[int, User] = {}
@@ -51,19 +51,15 @@ async def on_ready():
     collector.start_fetching()
 
 
-@slash.slash(
-    name="ping",
-    description="Ping"
-)
-async def ping(ctx):
-    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
+#@slash.slash(
+#    name="ping",
+#    description="Ping"
+#)
+#async def ping(ctx):
+#    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
 
 
-@slash.slash(
-    name="balance",
-    description="Gets Balance of user"
-)
-#@client.command()
+@client.command()
 async def balance(ctx, user: discord.Member = None):
     if user is None:
         user = ctx.author
@@ -81,14 +77,10 @@ async def balance(ctx, user: discord.Member = None):
         await ctx.send('User unknown. Please register via a DM first.')
 
 
-@slash.slash(
+@client.command(
     name="history",
-    description="Graphs user data"
+    brief="Draws balance history of a user"
 )
-#@client.command(
-#    name="history",
-#    brief="Draws balance history of a user"
-#)
 async def history(ctx, user: discord.Member = None, *args):
     if user is None:
         user = ctx.author
