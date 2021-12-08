@@ -34,7 +34,7 @@ intents.members = True
 intents.guilds = True
 
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
-slash = SlashCommand(client, sync_commands=True, debug_guild=SLASH_GUILD_IDS[0])
+slash = SlashCommand(client, sync_commands=True)
 
 USERS: List[User] = []
 USERS_BY_ID: Dict[int, User] = {}
