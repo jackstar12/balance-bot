@@ -42,7 +42,7 @@ class User:
             json['rekt_on'] = self.rekt_on.timestamp()
         if self.initial_balance:
             json['initial_balance'] = {
-                'time': self.initial_balance[0].timestamp(),
+                'date': self.initial_balance[0].timestamp(),
                 'amount': self.initial_balance[1].amount
             }
         return json
