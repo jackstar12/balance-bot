@@ -12,4 +12,10 @@ REKT_MESSAGES = [
     "{name} gone **REKT**!",
     "{name} hat den SL vergessen..."
 ]
+REKT_GUILDS = [
+    {
+        "guild_id": ,
+        "guild_channel":
+    }
+]
 LOG_OUTPUT = "log.txt"

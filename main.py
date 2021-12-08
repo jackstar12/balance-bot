@@ -7,6 +7,7 @@ import discord
 import json
 import typing
 
+
 #from discord_slash import SlashCommand, SlashContext
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
@@ -19,7 +20,7 @@ import matplotlib.image as mpimg
 from user import User
 from client import Client
 from datacollector import DataCollector
-from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT
+from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT, REKT_GUILDS
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -83,6 +84,9 @@ async def balance(ctx, user: discord.Member = None):
 async def history(ctx, user: discord.Member = None, *args):
     if user is None:
         user = ctx.author
+
+    logger.info(f'New interaction with {user.display_name}: Show history')
+
     if user.id in USERS_BY_ID:
         user_data = collector.get_single_user_data(user.id)
 
@@ -106,6 +110,7 @@ async def history(ctx, user: discord.Member = None, *args):
 
         await ctx.send(file=file, embed=embed)
     else:
+        logger.error(f'User unknown.')
         await ctx.send('User unknown. Please register via a DM first.')
 
 
@@ -174,18 +179,21 @@ def calc_gain(user: User, search: datetime):
 
 @client.command()
 async def gain(ctx, user: discord.Member = None, *args):
+
+    logger.info(f'New Interaction with {ctx.author.display_name}: Calculate gain for {user.display_name} {args=}')
+
     if user is not None:
         hasMatch = False
         for cur_user in USERS:
             if user.id == cur_user.id:
                 hasMatch = True
-
                 try:
                     if len(args) > 0:
                         delta = calc_timedelta_from_time_args(*args)
                     else:
                         delta = timedelta(hours=24)
                 except ValueError as e:
+                    logger.error(f'Invalid argument {e.args[0]} was passed in')
                     await ctx.send(f'Invalid argument {e.args[0]}')
                     return
 
@@ -198,11 +206,13 @@ async def gain(ctx, user: discord.Member = None, *args):
 
                 user_gain = calc_gain(cur_user, search)
                 if user_gain is None:
+                    logger.info(f'Not enough data for calculating {user.display_name}\'s gain')
                     await ctx.send(f'Not enough data for calculating {user.display_name}\'s gain')
                 else:
                     await ctx.send(f'{user.display_name}\'s  gain: {round(user_gain, ndigits=3)}%')
                 break
         if not hasMatch:
+            logger.error(f'User unknown!')
             await ctx.send('User unknown! Please register via a DM first.')
     else:
         await ctx.send('Please specify a user.')
@@ -210,6 +220,7 @@ async def gain(ctx, user: discord.Member = None, *args):
 
 async def check_arg(ctx, value, default, name: str) -> int:
     if value == default:
+        logger.error(f'Argument {name} was not given')
         await ctx.send(f'Argument {name} is required.')
         return 1
     return 0
@@ -236,6 +247,8 @@ async def register(ctx: commands.Context,
         await ctx.send('This command can only be used via a DM.')
         await ctx.author.send(f'Type {PREFIX}help register.')
         return
+
+    logger.info(f'New Interaction with {ctx.author.display_name}: Trying to register user')
 
     valid = 0
     valid += await check_arg(ctx, exchange_name, None, 'Exchange Name')
@@ -271,6 +284,7 @@ async def register(ctx: commands.Context,
                     user.api = exchange
                     await ctx.send(embed=user.get_discord_embed())
                     existing = True
+                    logger.info(f'Updated user')
                     break
             if not existing:
                 new_user = User(ctx.author.id, exchange)
@@ -278,10 +292,12 @@ async def register(ctx: commands.Context,
                 USERS.append(new_user)
                 USERS_BY_ID[new_user.id] = new_user
                 collector.add_user(new_user)
+                logger.info(f'Registered new user')
             save_registered_users()
         else:
             logger.error(f'Class {exchange_cls} is no subclass of Client!')
     except KeyError:
+        logger.error(f'Exchange {exchange_name} unknown')
         await ctx.send(f'Exchange {exchange_name} unknown')
 
 
@@ -291,14 +307,18 @@ async def unregister(ctx):
         await ctx.send(f'This command can only be used via a DM.')
         return
 
+    logger.error(f'New Interaction with {ctx.author.display_name}: Trying to unregister user {ctx.author.display_name}')
+
     for user in USERS:
         if ctx.author.id == user.id:
             USERS_BY_ID.pop(user.id)
             USERS.remove(user)
             collector.remove_user(user)
             save_registered_users()
+            logger.error(f'Successfully unregistered user {ctx.author.display_name}')
             await ctx.send(f'You were successfully unregistered!')
             return
+    logger.error(f'User is not registered')
     await ctx.send(f'You are not registered.')
 
 
@@ -328,28 +348,24 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
     emoji = '✅'
     await ctx.message.add_reaction(emoji)
 
+    logger.info(f'New Interaction: Creating leaderboard, requested by user {ctx.author.display_name}: {mode=} {args=}')
+
     if mode == 'balance':
         date, data = collector.fetch_data()
         for user in USERS:
-            if user.rekt_on is not None:
+            if user.rekt_on:
                 users_rekt.append(user)
             else:
                 if user.id not in data:
                     amount = collector.get_latest_user_balance(user.id).amount
-                    if amount is None:
-                        users_missing.append(user)
-                    elif amount > 0:
-                        user_scores.append((user, amount))
-                    else:
-                        users_rekt.append(user)
-                try:
+                else:
                     amount = data[user.id].amount
-                    if amount > 0:
-                        user_scores.append((user, amount))
-                    else:
-                        users_rekt.append(user)
-                except KeyError:
-                    pass
+                if amount is None:
+                    users_missing.append(user)
+                elif amount > 0:
+                    user_scores.append((user, amount))
+                else:
+                    users_rekt.append(user)
 
         date = date.replace(microsecond=0)
         footer += f'Data used from: {date}'
@@ -361,10 +377,12 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
             else:
                 delta = timedelta(hours=24)
         except ValueError as e:
+            logging.error(f'Invalid argument {e.args[0]} was passed in')
             await ctx.send(f'Invalid argument {e.args[0]}')
             return
 
         if delta.total_seconds() <= 0:
+            logging.error(f'Time was negative or zero.')
             await ctx.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
             return
 
@@ -382,6 +400,7 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
 
         unit = '%'
     else:
+        logging.error(f'Unknown mode {mode} was passed in')
         await ctx.send(f'Unknown mode {mode}')
         return
 
@@ -399,7 +418,7 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
             prev_score = score
 
     if len(users_rekt) > 0:
-        description += f'\n\u200B**Rekt**\u200B\n'
+        description += f'\n**Rekt**\n'
         for user_rekt in users_rekt:
             member = ctx.guild.get_member(user_rekt.id)
             description += f'{member.display_name} since {user_rekt.rekt_on.replace(microsecond=0)}\n'
@@ -424,8 +443,8 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
     aliases=["available"]
 )
 async def exchanges(ctx):
+    logger.info(f'New Interaction: Listing available exchanges for user {ctx.author.display_name}')
     description = get_available_exchanges()
-
     embed = discord.Embed(title="Available Exchanges", description=description)
     await ctx.send(embed=embed)
 
@@ -482,14 +501,25 @@ def save_registered_users():
 
 
 async def on_rekt_async(user: User):
-    guild: discord.guild.Guild = client.get_guild(916370614598651934)
-    channel = guild.get_channel(917146534372601886)
-    member = guild.get_member(user.id)
+
+    logger.info(f'User {user} is rekt')
 
     message = random.Random().choice(seq=REKT_MESSAGES)
-    message = message.replace("{name}", member.display_name.upper())
-    embed = discord.Embed(description=message)
-    await channel.send(embed=embed)
+
+    for guild_data in REKT_GUILDS:
+        try:
+            guild: discord.guild.Guild = client.get_guild(guild_data['guild_id'])
+            channel = guild.get_channel(guild_data['guild_channel'])
+            member = guild.get_member(user.id)
+            if member:
+                message_replaced = message.replace("{name}", member.display_name.upper())
+                embed = discord.Embed(description=message)
+                await channel.send(embed=embed)
+        except KeyError:
+            logger.error(f'Invalid guild {guild_data}')
+        except AttributeError as e:
+            logger.error(f'Error while sending message to guild {e}')
+
     save_registered_users()
 
 

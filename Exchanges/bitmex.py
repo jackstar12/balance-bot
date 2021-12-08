@@ -71,7 +71,7 @@ class BitmexClient(Client):
         try:
             response.raise_for_status()
         except HTTPError as e:
-            logging.error(e)
+            logging.error(f'{e}+\n{e.response}')
 
             error = ''
             if response.status_code == 400:

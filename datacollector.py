@@ -54,10 +54,6 @@ class DataCollector:
         self.data_lock.acquire()
 
         with open(self.data_path + "user_data.json", "w") as f:
-            #user_data_json = [
-            #    (date.timestamp(), {user_id: data[user_id].to_json() for user_id in data}) for date, data in self.user_data
-            #]
-            #
             user_data_json = []
             prev_date, prev_data = datetime.fromtimestamp(0), {}
             for date, data in self.user_data:
@@ -124,7 +120,6 @@ class DataCollector:
                 balance = Balance(0.0, '$', None)
             else:
                 balance = user.api.getBalance()
-
             if balance.error is None or balance.error == '':
                 data[user.id] = balance
                 if balance == 0.0 and not user.rekt_on:
@@ -161,6 +156,4 @@ class DataCollector:
                 single_user_data.append((time, data[user_id]))
         self.data_lock.release()
         return single_user_data
-
-
 
