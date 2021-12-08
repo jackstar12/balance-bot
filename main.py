@@ -22,7 +22,7 @@ from balance import Balance
 from user import User
 from client import Client
 from datacollector import DataCollector
-from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, GUILD_IDS, INITIAL_BALANCE
+from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, SLASH_GUILD_IDS, INITIAL_BALANCE
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -34,7 +34,7 @@ intents.members = True
 intents.guilds = True
 
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
-slash = SlashCommand(client, sync_commands=True, debug_guild=GUILD_IDS[0])
+slash = SlashCommand(client, sync_commands=True, debug_guild=SLASH_GUILD_IDS[0])
 
 USERS: List[User] = []
 USERS_BY_ID: Dict[int, User] = {}
@@ -55,7 +55,7 @@ async def on_ready():
 @slash.slash(
     name="ping",
     description="Ping",
-    guild_ids=GUILD_IDS
+    guild_ids=SLASH_GUILD_IDS
 )
 async def ping(ctx: SlashContext):
     """Get the bot's current websocket and API latency."""
@@ -78,7 +78,7 @@ async def ping(ctx: SlashContext):
             option_type=6
         )
     ],
-    guild_ids=GUILD_IDS
+    guild_ids=SLASH_GUILD_IDS
 )
 async def balance(ctx, user: discord.Member = None):
     if user is None:
@@ -120,7 +120,7 @@ async def balance(ctx, user: discord.Member = None):
             option_type=3
         )
     ],
-    guild_ids=GUILD_IDS
+    guild_ids=SLASH_GUILD_IDS
 )
 async def history(ctx, user: discord.Member = None, compare: discord.Member = None, since: str = None):
     if user is None:
@@ -261,7 +261,7 @@ def calc_gains(users: List[User], search: datetime) -> List[Tuple[User, float]]:
             option_type=3
         )
     ],
-    guild_ids=GUILD_IDS
+    guild_ids=SLASH_GUILD_IDS
 )
 async def gain(ctx, user: discord.Member = None, time: str = '24h'):
 
@@ -598,7 +598,7 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
             option_type=3
         )
     ],
-    guild_ids=GUILD_IDS
+    guild_ids=SLASH_GUILD_IDS
 )
 async def leaderboard(ctx: SlashContext, mode: str = 'balance', time: str = None):
     logger.info(f'New Interaction: Creating leaderboard, requested by user {ctx.author.display_name}: {mode=} {time=}')
@@ -613,7 +613,7 @@ async def leaderboard(ctx: SlashContext, mode: str = 'balance', time: str = None
 @slash.slash(
     name="exchanges",
     description="Shows available exchanges",
-    guild_ids=GUILD_IDS
+    guild_ids=SLASH_GUILD_IDS
 )
 async def exchanges(ctx):
     logger.info(f'New Interaction: Listing available exchanges for user {ctx.author.display_name}')
