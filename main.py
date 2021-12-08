@@ -7,8 +7,8 @@ import discord
 import json
 import typing
 
-
-#from discord_slash import SlashCommand, SlashContext
+from discord_slash import SlashCommand, SlashContext
+from discord_slash.utils.manage_commands import create_choice, create_option
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime, timedelta
@@ -20,20 +20,19 @@ import matplotlib.image as mpimg
 from user import User
 from client import Client
 from datacollector import DataCollector
-from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT, REKT_GUILDS
+from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, SLASH_GUILD_IDS
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
 
-
-intents = discord.Intents().all()
+intents = discord.Intents().default()
 intents.members = True
 intents.guilds = True
-client = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-#slash = SlashCommand(client, sync_commands=False)
+client = commands.Bot(command_prefix=PREFIX, intents=intents)
+slash = SlashCommand(client, sync_commands=True, debug_guild=SLASH_GUILD_IDS[0])
 
 USERS: List[User] = []
 USERS_BY_ID: Dict[int, User] = {}
@@ -51,15 +50,26 @@ async def on_ready():
     collector.start_fetching()
 
 
-#@slash.slash(
-#    name="ping",
-#    description="Ping"
-#)
-#async def ping(ctx):
-#    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
+@slash.slash(
+    name="ping",
+    description="Ping"
+)
+async def ping(ctx):
+    await ctx.reply(f'Ping beträgt {round(client.latency * 1000)} ms')
 
 
-@client.command()
+@slash.slash(
+    name="balance",
+    description="Gives balance of user",
+    options=[
+        create_option(
+            name="user",
+            description="User to get balance for",
+            required=False,
+            option_type=6
+        )
+    ]
+)
 async def balance(ctx, user: discord.Member = None):
     if user is None:
         user = ctx.author
@@ -77,17 +87,38 @@ async def balance(ctx, user: discord.Member = None):
         await ctx.send('User unknown. Please register via a DM first.')
 
 
-@client.command(
+@slash.slash(
     name="history",
-    brief="Draws balance history of a user"
+    description="Draws balance history of a user",
+    options=[
+        create_option(
+            name="user",
+            description="User to draw history for",
+            required=False,
+            option_type=6
+        ),
+        create_option(
+            name="compare",
+            description="User to compare with",
+            required=False,
+            option_type=6
+        ),
+        create_option(
+            name="since",
+            description="Start time for graph",
+            required=False,
+            option_type=3
+        )
+    ]
 )
-async def history(ctx, user: discord.Member = None, *args):
+async def history(ctx, user: discord.Member = None, compare: discord.Member = None, since: str = None):
     if user is None:
         user = ctx.author
 
     logger.info(f'New interaction with {user.display_name}: Show history')
 
     if user.id in USERS_BY_ID:
+
         user_data = collector.get_single_user_data(user.id)
 
         xs = []
@@ -96,11 +127,33 @@ async def history(ctx, user: discord.Member = None, *args):
             xs.append(time)
             ys.append(balance.amount)
 
-        plt.plot(xs, ys, scalex=True)
+        compare_data = []
+        if compare:
+            if compare.id in USERS_BY_ID:
+                compare_data = collector.get_single_user_data(compare.id)
+            else:
+                logger.error(f'User {compare} cant be compared with because he isn\'t registered')
+                await ctx.send(f'Compare user unknown. Please register first.')
+                return
+
+        compare_xs = []
+        compare_ys = []
+        for time, balance in compare_data:
+            compare_xs.append(time)
+            compare_ys.append(balance.amount)
+
+        name = ctx.guild.get_member(user.id).display_name
+        title = f'History for {ctx.guild.get_member(user.id).display_name}'
+        plt.plot(xs, ys, label=f"{name}'s Balance")
+        if compare:
+            compare_name = ctx.guild.get_member(compare.id).display_name
+            plt.plot(compare_xs, compare_ys, label=f"{compare_name}'s Balance")
+            title += f' vs. {compare_name}'
         plt.gcf().autofmt_xdate()
-        plt.title(f'History for {ctx.guild.get_member(user.id).display_name}')
+        plt.title(title)
         plt.ylabel('$')
         plt.xlabel('Time')
+        plt.legend(loc="best")
         plt.savefig(DATA_PATH + "tmp.png")
         plt.close()
 
@@ -149,38 +202,63 @@ def calc_timedelta_from_time_args(*args) -> timedelta:
     return timedelta(hours=hour, minutes=minute, days=day, weeks=week)
 
 
-def calc_gain(user: User, search: datetime):
+def calc_gains(users: List[User], search: datetime) -> List[Tuple[User, float]]:
     user_data = collector.get_user_data()
-    prev_timestamp = search
-    prev_data = {}
+    users_done = []
+    results = []
     # Reverse data since latest data is at the top
     for cur_time, data in reversed(user_data):
         cur_diff = cur_time - search
         if cur_diff.total_seconds() <= 0:
-            diff_seconds = cur_diff.total_seconds()
-            prev_diff_seconds = (prev_timestamp - search).total_seconds()
-            #if abs(prev_diff_seconds) < abs(diff_seconds):
-            #    data = prev_data
-            #    cur_time = prev_timestamp
-            try:
-                balance_then = data[user.id].amount
-                balance_now = user.api.getBalance().amount
-                if balance_then > 0:
-                    return (balance_now / balance_then - 1) * 100
-                else:
-                    return 0.0
-            except KeyError:
-                # User isn't included in data set
-                continue
-        prev_timestamp = cur_time
-        prev_data = data
-    return None
+            for user in users:
+                if user.id not in users_done:
+                    try:
+                        balance_then = data[user.id].amount
+                        balance_now = collector.get_latest_user_balance(user.id).amount
+                        users_done.append(user.id)
+                        if balance_then > 0:
+                            results.append((user, (balance_now / balance_then - 1) * 100))
+                        else:
+                            results.append((user, 0.0))
+                    except KeyError:
+                        # User isn't included in data set
+                        continue
+            if len(users) == len(users_done):
+                break
+
+    for user in users:
+        if user.id not in users_done:
+            results.append((user, None))
+
+    return results
 
 
-@client.command()
-async def gain(ctx, user: discord.Member = None, *args):
+@slash.slash(
+    name="gain",
+    description="Calculate gain",
+    options=[
+        create_option(
+            name="user",
+            description="User to calculate gain for",
+            required=False,
+            option_type=6
+        ),
+        create_option(
+            name="time",
+            description="Time frame for gain. Default 24h",
+            required=False,
+            option_type=3
+        )
+    ]
+)
+async def gain(ctx, user: discord.Member = None, time: str = '24h'):
 
-    logger.info(f'New Interaction with {ctx.author.display_name}: Calculate gain for {user.display_name} {args=}')
+    if user is None:
+        user = ctx.author
+
+    time_str = time
+
+    logger.info(f'New Interaction with {ctx.author}: Calculate gain for {user.display_name} {time=}')
 
     if user is not None:
         hasMatch = False
@@ -188,8 +266,9 @@ async def gain(ctx, user: discord.Member = None, *args):
             if user.id == cur_user.id:
                 hasMatch = True
                 try:
-                    if len(args) > 0:
-                        delta = calc_timedelta_from_time_args(*args)
+                    if time_str:
+                        time_args = time_str.split()
+                        delta = calc_timedelta_from_time_args(*time_args)
                     else:
                         delta = timedelta(hours=24)
                 except ValueError as e:
@@ -204,26 +283,18 @@ async def gain(ctx, user: discord.Member = None, *args):
                 time = datetime.now()
                 search = time - delta
 
-                user_gain = calc_gain(cur_user, search)
+                user_gain = calc_gains([cur_user], search)[0][1]
                 if user_gain is None:
-                    logger.info(f'Not enough data for calculating {user.display_name}\'s gain')
-                    await ctx.send(f'Not enough data for calculating {user.display_name}\'s gain')
+                    logger.info(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
+                    await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
                 else:
-                    await ctx.send(f'{user.display_name}\'s  gain: {round(user_gain, ndigits=3)}%')
+                    await ctx.send(f'{user.display_name}\'s {time_str} gain: {round(user_gain, ndigits=3)}%')
                 break
         if not hasMatch:
             logger.error(f'User unknown!')
             await ctx.send('User unknown! Please register via a DM first.')
     else:
         await ctx.send('Please specify a user.')
-
-
-async def check_arg(ctx, value, default, name: str) -> int:
-    if value == default:
-        logger.error(f'Argument {name} was not given')
-        await ctx.send(f'Argument {name} is required.')
-        return 1
-    return 0
 
 
 def get_available_exchanges() -> str:
@@ -233,16 +304,54 @@ def get_available_exchanges() -> str:
     return exchange_list
 
 
-@client.command(
+@slash.slash(
     name="register",
-    description=f"Register you for tracking. \nAvailable exchanges:\n{get_available_exchanges()}"
+    description=f"Register you for tracking. \nAvailable exchanges:\n{get_available_exchanges()}",
+    options=[
+        create_option(
+            name="exchange_name",
+            description="Name of exchange you are using",
+            required=True,
+            option_type=3,
+            choices=[
+                create_choice(
+                    name=key,
+                    value=key
+                ) for key in EXCHANGES.keys()
+            ]
+        ),
+        create_option(
+            name="api_key",
+            description="Your API Key",
+            required=True,
+            option_type=3
+        ),
+        create_option(
+            name="api_secret",
+            description="Your API Secret",
+            required=True,
+            option_type=3
+        ),
+        create_option(
+            name="subaccount",
+            description="Subaccount for API Access",
+            required=False,
+            option_type=3
+        ),
+        create_option(
+            name="args",
+            description="Additional arguments",
+            required=False,
+            option_type=3
+        )
+    ]
 )
-async def register(ctx: commands.Context,
-                   exchange_name: str = None,
-                   api_key: str = None,
-                   api_secret: str = None,
+async def register(ctx,
+                   exchange_name: str,
+                   api_key: str,
+                   api_secret: str,
                    subaccount: typing.Optional[str] = None,
-                   *args):
+                   args: str = None):
     if ctx.guild is not None:
         await ctx.send('This command can only be used via a DM.')
         await ctx.author.send(f'Type {PREFIX}help register.')
@@ -250,23 +359,16 @@ async def register(ctx: commands.Context,
 
     logger.info(f'New Interaction with {ctx.author.display_name}: Trying to register user')
 
-    valid = 0
-    valid += await check_arg(ctx, exchange_name, None, 'Exchange Name')
-    valid += await check_arg(ctx, api_key, None, 'API Key')
-    valid += await check_arg(ctx, api_secret, None, 'API Secret')
-
-    # Some arg wasn't given
-    if valid > 0:
-        return
-
     kwargs = {}
-    if len(args) > 0:
-        for arg in args:
-            try:
-                name, value = arg.split('=')
-                kwargs[name] = value
-            except ValueError:
-                logging.error(f'Invalid Keyword Arg {arg} passed in')
+    if args:
+        args = args.split(' ')
+        if len(args) > 0:
+            for arg in args:
+                try:
+                    name, value = arg.split('=')
+                    kwargs[name] = value
+                except ValueError:
+                    logging.error(f'Invalid Keyword Arg {arg} passed in')
 
     try:
         exchange_name = exchange_name.lower()
@@ -301,7 +403,11 @@ async def register(ctx: commands.Context,
         await ctx.send(f'Exchange {exchange_name} unknown')
 
 
-@client.command()
+@slash.slash(
+    name="unregister",
+    description="Unregisters you from tracking"
+)
+#@client.command()
 async def unregister(ctx):
     if ctx.guild is not None:
         await ctx.send(f'This command can only be used via a DM.')
@@ -337,21 +443,13 @@ async def info(ctx):
     await ctx.send(f'You are not registered.')
 
 
-@client.command()
-async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
+async def calc_leaderboard(channel, guild: discord.Guild, mode: str, time: str):
     user_scores: List[Tuple[User, float]] = []
     users_rekt: List[User] = []
     users_missing: List[User] = []
-
     footer = ''
-
-    emoji = '✅'
-    await ctx.message.add_reaction(emoji)
-
-    logger.info(f'New Interaction: Creating leaderboard, requested by user {ctx.author.display_name}: {mode=} {args=}')
-
+    date, data = collector.fetch_data()
     if mode == 'balance':
-        date, data = collector.fetch_data()
         for user in USERS:
             if user.rekt_on:
                 users_rekt.append(user)
@@ -372,25 +470,30 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         unit = '$'
     elif mode == 'gain':
         try:
-            if len(args) > 0:
-                delta = calc_timedelta_from_time_args(*args)
+            if time:
+                args = time.split(' ')
+                if len(args) > 0:
+                    delta = calc_timedelta_from_time_args(*args)
+                else:
+                    delta = timedelta(hours=24)
             else:
                 delta = timedelta(hours=24)
         except ValueError as e:
             logging.error(f'Invalid argument {e.args[0]} was passed in')
-            await ctx.send(f'Invalid argument {e.args[0]}')
+            await channel.send(f'Invalid argument {e.args[0]}')
             return
 
         if delta.total_seconds() <= 0:
             logging.error(f'Time was negative or zero.')
-            await ctx.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
+            await channel.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
             return
 
         time = datetime.now()
         search = time - delta
 
-        for user in USERS:
-            user_gain = calc_gain(user, search)
+        user_gains = calc_gains(USERS, search)
+
+        for user, user_gain in user_gains:
             if user_gain is not None:
                 user_scores.append((user, user_gain))
             else:
@@ -401,7 +504,7 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         unit = '%'
     else:
         logging.error(f'Unknown mode {mode} was passed in')
-        await ctx.send(f'Unknown mode {mode}')
+        await channel.send(f'Unknown mode {mode}')
         return
 
     user_scores.sort(key=lambda x: x[1], reverse=True)
@@ -413,20 +516,23 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         for user, score in user_scores:
             if score < prev_score:
                 rank += 1
-            member = ctx.guild.get_member(user.id)
+            member = guild.get_member(user.id)
             description += f'{rank}. **{member.display_name}** {round(score, ndigits=3)}{unit}\n'
             prev_score = score
 
     if len(users_rekt) > 0:
         description += f'\n**Rekt**\n'
         for user_rekt in users_rekt:
-            member = ctx.guild.get_member(user_rekt.id)
-            description += f'{member.display_name} since {user_rekt.rekt_on.replace(microsecond=0)}\n'
+            member = guild.get_member(user_rekt.id)
+            description += f'{member.display_name}'
+            if user_rekt.rekt_on:
+                description += f' since {user_rekt.rekt_on.replace(microsecond=0)}'
+            description += '\n'
 
     if len(users_missing) > 0:
         description += f'\n**Missing**\n'
         for user_missing in users_missing:
-            member = ctx.guild.get_member(user_missing.id)
+            member = guild.get_member(user_missing.id)
             description += f'{member.display_name}\n'
 
     description += f'\n{footer}'
@@ -435,13 +541,60 @@ async def leaderboard(ctx: commands.Context, mode: str = 'balance', *args):
         title='Leaderboard :medal:',
         description=description
     )
-    await ctx.send(embed=embed)
-    await ctx.message.remove_reaction(member=client.user, emoji=emoji)
+    await channel.send(embed=embed)
 
 
-@client.command(
-    aliases=["available"]
+@slash.slash(
+    name="leaderboard",
+    description="Shows you the highest ranked users",
+    options=[
+        create_option(
+            name="mode",
+            description="Mode for sorting. Default: balance",
+            required=False,
+            option_type=3,
+            choices=[
+                create_choice(
+                    name="balance",
+                    value="balance"
+                ),
+                create_choice(
+                    name="gain",
+                    value="gain"
+                )
+            ]
+        ),
+        create_option(
+            name="time",
+            description="Only used for gain. Timefame for gain",
+            required=False,
+            option_type=3
+        )
+    ]
 )
+async def leaderboard(ctx: SlashContext, mode: str = 'balance', time: str = None):
+    logger.info(f'New Interaction: Creating leaderboard, requested by user {ctx.author.display_name}: {mode=} {time=}')
+
+    if collector.has_data_ready():
+        asyncio.create_task(calc_leaderboard(
+            channel=ctx, guild=ctx.guild, mode=mode, time=time
+        ))
+    else:
+        await ctx.send(f':white_check_mark:')
+
+        asyncio.create_task(calc_leaderboard(
+            channel=ctx.channel, guild=ctx.guild, mode=mode, time=time
+        ))
+
+
+
+@slash.slash(
+    name="exchanges",
+    description="Shows available exchanges"
+)
+#@client.command(
+#    aliases=["available"]
+#)
 async def exchanges(ctx):
     logger.info(f'New Interaction: Listing available exchanges for user {ctx.author.display_name}')
     description = get_available_exchanges()
@@ -453,7 +606,9 @@ def setup_logger(debug: bool = False):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    log_stream = open(LOG_OUTPUT, "w")
+    if not os.path.exists(LOG_OUTPUT_DIR):
+        os.mkdir(LOG_OUTPUT_DIR)
+    log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
     handler = logging.StreamHandler(log_stream)
     handler.setFormatter(formatter)
 
