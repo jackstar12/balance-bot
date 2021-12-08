@@ -2,6 +2,8 @@ import dataclasses
 import discord
 from client import Client
 from datetime import datetime
+from balance import Balance
+from typing import Tuple
 
 
 @dataclasses.dataclass
@@ -9,6 +11,7 @@ class User:
     id: int
     api: Client
     rekt_on: datetime = None
+    initial_balance: Tuple[datetime, Balance] = None
 
     def __hash__(self):
         return self.id.__hash__()
@@ -37,6 +40,11 @@ class User:
         }
         if self.rekt_on:
             json['rekt_on'] = self.rekt_on.timestamp()
+        if self.initial_balance:
+            json['initial_balance'] = {
+                'time': self.initial_balance[0].timestamp(),
+                'amount': self.initial_balance[1].amount
+            }
         return json
 
 
