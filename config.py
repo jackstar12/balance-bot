@@ -1,7 +1,7 @@
 PREFIX = "c "
 DATA_PATH = "data/"
 FETCHING_INTERVAL_HOURS = 1
-KEY = ''
+KEY = 'OTE2MzY5ODQzNDQ2NTA5NTg4.YapJ7A.G94NkDtlGi2jO-bSy4Pr9upvMXM'
 INITIAL_BALANCE = {
     "date": "2021-12-01 00:00:00",
     "amount": 100,
@@ -12,3 +12,10 @@ REKT_MESSAGES = [
     "{name} gone **REKT**!",
     "{name} hat den SL vergessen..."
 ]
+REKT_GUILDS = [
+    {
+        "guild_id": 916370614598651934,
+        "guild_channel": 917146534372601886
+    }
+]
+LOG_OUTPUT = "log.txt"
