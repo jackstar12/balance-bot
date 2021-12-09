@@ -14,7 +14,7 @@ class FtxClient(Client):
     exchange = 'ftx'
     ENDPOINT = 'https://ftx.com/api/'
 
-    def getBalance(self):
+    def get_balance(self):
         s = Session()
         request = Request('GET', self.ENDPOINT + 'account')
         self._sign_request(request)
@@ -44,7 +44,7 @@ class FtxClient(Client):
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
-            logging.error(f'{e}+\n{e.response}')
+            logging.error(f'{e}\n{response_json}')
 
             error = ''
             if response.status_code == 400:

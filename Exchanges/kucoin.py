@@ -13,12 +13,16 @@ class KuCoinClient(Client):
     exchange = 'kucoin'
     ENDPOINT = 'https://api-futures.kucoin.com/'
 
+    required_extra_args = [
+        'passphrase'
+    ]
+
     def __init__(self, *args, **kwargs):
         super(KuCoinClient, self).__init__(*args, **kwargs)
         self.s = Session()
 
     # https://docs.kucoin.com/#get-account-balance-of-a-sub-account
-    def getBalance(self):
+    def get_balance(self):
         request = Request('GET', self.ENDPOINT + 'api/v1/account-overview', params={'currency': 'USDT'})
         response = self._request(request)
         if response['code'] != '200000':
@@ -59,7 +63,7 @@ class KuCoinClient(Client):
         try:
             response.raise_for_status()
         except HTTPError as e:
-            logging.error(f'{e}+\n{e.response}')
+            logging.error(f'{e}\n{response_json}')
 
             error = ''
             if response.status_code == 400:

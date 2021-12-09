@@ -18,7 +18,7 @@ class BinanceClient(Client):
     exchange = 'binance'
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
-    def getBalance(self):
+    def get_balance(self):
         s = Session()
         request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
         self._sign_request(request)
@@ -45,7 +45,7 @@ class BinanceClient(Client):
         try:
             response.raise_for_status()
         except HTTPError as e:
-            logging.error(f'{e}+\n{e.response}')
+            logging.error(f'{e}\n{response_json}')
 
             error = ''
             if response.status_code == 400:

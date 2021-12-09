@@ -1,5 +1,6 @@
 import abc
 import discord
+import logging
 from typing import Optional, List, Optional, Dict, Any
 
 
@@ -8,8 +9,7 @@ class Client:
     api_secret: str
     subaccount: str
     exchange = ''
-
-    required_extra_args: List[str]
+    required_extra_args: List[str] = []
 
     def __init__(self,
                  api_key: str,
@@ -22,9 +22,8 @@ class Client:
         self.extra_kwargs = extra_kwargs
 
     @abc.abstractmethod
-    def getBalance(self):
-        # Has to be implemented for specific exchange
-        raise NotImplementedError()
+    def get_balance(self):
+        logging.error(f'Exchange {self.exchange} does not implement get_balance!')
 
     def repr(self):
         r = f'Exchange: {self.exchange}\n' \

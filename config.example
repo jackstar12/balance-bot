@@ -3,7 +3,7 @@ DATA_PATH = "data/"
 FETCHING_INTERVAL_HOURS = 1
 KEY = ''
 INITIAL_BALANCE = {
-    "date": "2021-12-01 00:00:00",
+    "date": "01/12/2021 00:00:00",
     "amount": 100,
     "currency": "$"
 }
@@ -16,9 +16,13 @@ REKT_GUILDS = [
     {
         "guild_id": 916370614598651934,
         "guild_channel": 917146534372601886
+    },
+    {
+        "guild_id": 443583326507499520,
+        "guild_channel": 704403630375305317
     }
 ]
 SLASH_GUILD_IDS = [
-    916370614598651934
+    916370614598651934, 443583326507499520
 ]
 LOG_OUTPUT_DIR = "LOGS/"

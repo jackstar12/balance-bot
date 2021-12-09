@@ -12,7 +12,7 @@ class BitmexClient(Client):
     ENDPOINT = 'https://www.bitmex.com/api/v1/'
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
-    def getBalance(self):
+    def get_balance(self):
         request = Request(
             'GET',
             self.ENDPOINT + 'user/wallet',
@@ -71,7 +71,7 @@ class BitmexClient(Client):
         try:
             response.raise_for_status()
         except HTTPError as e:
-            logging.error(f'{e}+\n{e.response}')
+            logging.error(f'{e}\n{response_json}')
 
             error = ''
             if response.status_code == 400:
