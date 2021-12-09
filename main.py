@@ -594,11 +594,11 @@ async def clear(ctx, since: str = None, to: str = None):
             message += f' since {start}'
         if end:
             message += f' till {end}'
-        ctx.send(message)
+        await ctx.send(message)
         collector.clear_user_data(ctx.author.id, start, end)
     else:
         logger.error(f'User not registered.')
-        ctx.send(f'You are not registered.')
+        await ctx.send(f'You are not registered.')
 
 
 async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
@@ -818,9 +818,9 @@ async def donate(ctx: SlashContext):
     embed = discord.Embed(
         description="**Do you like this bot?**\n"
                     "If so, maybe consider helping out a poor student :cry:\n\n"
-                    "BTC: 1NQuRagfTziZ1k4ijc38cuCmCncWQFthSQ\n"
-                    "USDT (TRX): TPf47q7143stBkWicj4SidJ1DDeYSvtWBf\n"
-                    "USDT (BSC): 0x694cf86962f84d281d322887569b16935b48d9dd\n\n"
+                    "**BTC**: 1NQuRagfTziZ1k4ijc38cuCmCncWQFthSQ\n"
+                    "**USDT (TRX)**: TPf47q7143stBkWicj4SidJ1DDeYSvtWBf\n"
+                    "**USDT (BSC)**: 0x694cf86962f84d281d322887569b16935b48d9dd\n\n"
                     "jacksn#9149."
     )
     await ctx.send(embed=embed)
