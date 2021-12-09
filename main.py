@@ -366,7 +366,7 @@ async def gain(ctx, user: discord.Member = None, time: str = '24h'):
                     await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
                 else:
                     user_gain_rel, user_gain_abs = user_gain
-                    await ctx.send(f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$')
+                    await ctx.send(f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)})$')
                 break
         if not hasMatch:
             logger.error(f'User unknown!')
@@ -643,8 +643,9 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
 
         user_gains = calc_gains(USERS, search)
 
-        for user, (user_gain_rel, user_gain_abs) in user_gains:
-            if user_gain_rel is not None:
+        for user, user_gain in user_gains:
+            if user_gain is not None:
+                user_gain_rel, user_gain_abs = user_gain
                 user_scores.append((user, user_gain_rel))
                 custom_user_strings[user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
             else:
