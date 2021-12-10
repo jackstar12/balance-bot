@@ -184,6 +184,11 @@ async def history(ctx,
 
         user_data = collector.get_single_user_data(user.id, start=start, end=end, currency=currency)
 
+        if len(user_data) == 0:
+            logger.error(f'No data for this user!')
+            await ctx.send(f'Got no data for {ctx.author.display_name}')
+            return
+
         xs = []
         ys = []
         for time, balance in user_data:
