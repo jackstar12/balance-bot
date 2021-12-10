@@ -251,17 +251,19 @@ class DataCollector:
                         index_merge = 0
                         normal_len = len(raw_json)
                         merge_len = len(raw_json_merge)
-                        while index < normal_len and index_merge < merge_len:
-                            ts_normal, data_normal = raw_json[index]
-                            ts_merge, data_merge = raw_json_merge[index_merge]
-                            if ts_normal < ts_merge:
+                        while index_merge < merge_len or index < normal_len:
+                            if index < normal_len:
+                                ts_normal, data_normal = raw_json[index]
+                            if index_merge < merge_len:
+                                ts_merge, data_merge = raw_json_merge[index_merge]
+                            if ts_normal < ts_merge or index_merge == merge_len:
                                 self.user_data.append(
                                     (datetime.fromtimestamp(ts_normal),
                                      {int(user_id): balance_from_json(data_normal[user_id]) for user_id in data_normal})
                                 )
                                 if index < normal_len:
                                     index += 1
-                            elif ts_merge < ts_normal:
+                            elif ts_merge < ts_normal or index == normal_len:
                                 self.user_data.append(
                                     (datetime.fromtimestamp(ts_merge),
                                      {int(user_id): balance_from_json(data_merge[user_id]) for user_id in data_merge})
