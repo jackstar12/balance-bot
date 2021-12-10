@@ -4,12 +4,13 @@ import typing
 import asyncio
 import sys
 
+import balance
 from Exchanges import *
 from threading import Lock, Timer
 from typing import List, Tuple, Dict, Callable, Optional
 from user import User
 from datetime import datetime, timedelta
-from balance import Balance
+from balance import Balance, balance_from_json
 from subprocess import call
 
 import logging
@@ -84,36 +85,61 @@ class DataCollector:
         self.data_lock.release()
         return time, data
 
-    def get_user_balance(self, user: User) -> Balance:
+    def get_user_balance(self, user: User, currency: str = None) -> Balance:
+
+        if currency is None:
+            currency = '$'
+
         time, data = self._fetch_data(users=[user], keep_errors=True)
 
-        if data[user.id].error is None or data[user.id].error == '':
+        result = data[user.id]
+
+        if result.error is None or result.error == '':
             self.data_lock.acquire()
             self.user_data.append((time, data))
             self.data_lock.release()
+            matched_balance = self.match_balance_currency(result, currency)
+            if matched_balance:
+                result = matched_balance
+            else:
+                result.error = f'User balance does not contain currency {currency}'
 
-        return data[user.id]
+        return result
 
-    def get_latest_user_balance(self, user_id: int) -> Optional[Balance]:
+    def get_latest_user_balance(self, user_id: int, currency: str = None) -> Optional[Balance]:
         result = None
+
+        if currency is None:
+            currency = '$'
+
         self.data_lock.acquire()
         for time, data in reversed(self.user_data):
             if user_id in data:
-                result = data[user_id]
-                break
+                user_balance = self.match_balance_currency(data[user_id], currency)
+                if user_balance:
+                    result = user_balance
+                    break
         self.data_lock.release()
         return result
 
-    def get_single_user_data(self, user_id: int, start: datetime = None, end: datetime = None) -> List[Tuple[datetime, Balance]]:
+    def get_single_user_data(self, user_id: int, start: datetime = None, end: datetime = None, currency: str = None) -> List[
+        Tuple[datetime, Balance]]:
         single_user_data = []
         self.data_lock.acquire()
+
+        # Defaults.
         if start is None:
             start = datetime.fromtimestamp(0)
         if end is None:
             end = datetime.now()
+        if currency is None:
+            currency = '$'
+
         for time, data in self.user_data:
             if user_id in data and start < time < end:
-                single_user_data.append((time, data[user_id]))
+                user_balance = self.match_balance_currency(data[user_id], currency)
+                if user_balance:
+                    single_user_data.append((time, user_balance))
         self.data_lock.release()
         return single_user_data
 
@@ -123,7 +149,7 @@ class DataCollector:
         self.data_lock.release()
         return result
 
-    def clear_user_data(self, user_id: int, start: datetime, end: datetime):
+    def clear_user_data(self, user_id: int, start: datetime = None, end: datetime = None):
         self.data_lock.acquire()
         if start is None:
             start = datetime.fromtimestamp(0)
@@ -181,7 +207,8 @@ class DataCollector:
             prev_date, prev_data = datetime.fromtimestamp(0), {}
             for date, data in self.user_data:
                 if len(data.keys()) == 0 or ((date - prev_date) < timedelta(minutes=10)
-                                             and all(data[key] == prev_data[key] for key in data.keys() & prev_data.keys())):
+                                             and all(
+                            data[key] == prev_data[key] for key in data.keys() & prev_data.keys())):
                     # If all common users have the same balances why bother keeping the one with fewer users?
                     if len(data.keys()) < len(prev_data.keys()):
                         self.user_data.remove((date, data))
@@ -206,17 +233,72 @@ class DataCollector:
     def _load_user_data(self):
         self.data_lock.acquire()
 
+        raw_json_merge = None
+        try:
+            with open(self.data_path + "user_data_merge.json", "r") as f:
+                raw_json_merge = json.load(fp=f)
+        except FileNotFoundError:
+            logging.info('No user data for merging found')
+        except json.JSONDecodeError as e:
+            logging.error(f'{e}: Error while parsing merge user data.')
+
         try:
             with open(self.data_path + "user_data.json", "r") as f:
                 raw_json = json.load(fp=f)
                 if raw_json:
-                    self.user_data += [
-                        (datetime.fromtimestamp(ts),
-                         {int(user_id): Balance(round(data[user_id].get('amount', 0), ndigits=3), data[user_id].get('currency', '$'), None) for user_id in data}) for ts, data in raw_json
-                    ]
+                    if raw_json_merge:
+                        index = 0
+                        index_merge = 0
+                        normal_len = len(raw_json)
+                        merge_len = len(raw_json_merge)
+                        while index < normal_len and index_merge < merge_len:
+                            ts_normal, data_normal = raw_json[index]
+                            ts_merge, data_merge = raw_json_merge[index_merge]
+                            if ts_normal < ts_merge:
+                                self.user_data.append(
+                                    (datetime.fromtimestamp(ts_normal),
+                                     {int(user_id): balance_from_json(data_normal[user_id]) for user_id in data_normal})
+                                )
+                                index += 1
+                            elif ts_merge < ts_normal:
+                                self.user_data.append(
+                                    (datetime.fromtimestamp(ts_merge),
+                                     {int(user_id): balance_from_json(data_merge[user_id]) for user_id in data_merge})
+                                )
+                                index_merge += 1
+                            else:
+                                for merge in data_merge:
+                                    if merge not in data_normal:
+                                        data_normal[merge] = data_merge[merge]
+                                self.user_data.append(
+                                    (datetime.fromtimestamp(ts_normal),
+                                     {int(user_id): balance_from_json(data_normal[user_id]) for user_id in data_normal})
+                                )
+                                index += 1
+                                index_merge += 1
+                    else:
+                        self.user_data += [
+                            (
+                                datetime.fromtimestamp(ts),
+                                {int(user_id): balance_from_json(data[user_id]) for user_id in data}
+                            )
+                            for ts, data in raw_json
+                        ]
         except FileNotFoundError:
             logging.info('No user data found')
         except json.JSONDecodeError as e:
             logging.error(f'{e}: Error while parsing user data.')
 
         self.data_lock.release()
+
+
+    def match_balance_currency(self, balance: Balance, currency: str):
+        if balance.currency != currency:
+            if balance.extra_currencies:
+                if currency in balance.extra_currencies:
+                    balance.amount = balance.extra_currencies[currency]
+                    balance.currency = currency
+            else:
+                return None
+
+        return balance

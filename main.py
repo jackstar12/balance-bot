@@ -23,12 +23,13 @@ from user import User
 from client import Client
 from datacollector import DataCollector
 from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
-    SLASH_GUILD_IDS, INITIAL_BALANCE
+    SLASH_GUILD_IDS, INITIAL_BALANCE, CURRENCY_PRECISION
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
+from Exchanges.bybit import BybitClient
 
 intents = discord.Intents().default()
 intents.members = True
@@ -38,12 +39,15 @@ client = commands.Bot(command_prefix=PREFIX, intents=intents)
 slash = SlashCommand(client, sync_commands=True)
 
 USERS: List[User] = []
+
 USERS_BY_ID: Dict[int, User] = {}
+
 EXCHANGES: Dict[str, Type[Client]] = {
     'binance': BinanceClient,
     'bitmex': BitmexClient,
     'ftx': FtxClient,
-    'kucoin': KuCoinClient
+    'kucoin': KuCoinClient,
+    'bybit': BybitClient
 }
 
 
@@ -76,18 +80,27 @@ async def ping(ctx: SlashContext):
             description="User to get balance for",
             required=False,
             option_type=6
+        ),
+        create_option(
+            name="currency",
+            description="Currency to show. Not supported for all exchanges",
+            required=False,
+            option_type=3
         )
     ]
 )
-async def balance(ctx, user: discord.Member = None):
+async def balance(ctx, user: discord.Member = None, currency: str = None):
     if user is None:
         user = ctx.author
+    if currency is None:
+        currency = '$'
+    currency = currency.upper()
     hasMatch = False
     for cur_user in USERS:
         if user.id == cur_user.id:
-            usr_balance = collector.get_user_balance(cur_user)
+            usr_balance = collector.get_user_balance(cur_user, currency)
             if usr_balance.error is None:
-                await ctx.send(f'{user.display_name}\'s balance: {round(usr_balance.amount, ndigits=3)}$')
+                await ctx.send(f'{user.display_name}\'s balance: {round(usr_balance.amount, ndigits=CURRENCY_PRECISION.get(currency, 3))}{usr_balance.currency}')
             else:
                 await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
             hasMatch = True
@@ -123,13 +136,27 @@ async def balance(ctx, user: discord.Member = None):
             description="End time for graph",
             required=False,
             option_type=3
+        ),
+        create_option(
+            name="currency",
+            description="Currency to display history for (only available for some exchanges)",
+            required=False,
+            option_type=3
         )
     ],
     guild_ids=SLASH_GUILD_IDS
 )
-async def history(ctx, user: discord.Member = None, compare: discord.Member = None, since: str = None, to: str = None):
+async def history(ctx,
+                  user: discord.Member = None,
+                  compare: discord.Member = None,
+                  since: str = None, to: str = None,
+                  currency: str = None):
     if user is None:
         user = ctx.author
+
+    if currency is None:
+        currency = '$'
+    currency = currency.upper()
 
     logger.info(f'New interaction with {user.display_name}: Show history')
 
@@ -155,7 +182,7 @@ async def history(ctx, user: discord.Member = None, compare: discord.Member = No
             await ctx.send(e.args[0])
             return
 
-        user_data = collector.get_single_user_data(user.id, start=start, end=end)
+        user_data = collector.get_single_user_data(user.id, start=start, end=end, currency=currency)
 
         xs = []
         ys = []
@@ -166,7 +193,7 @@ async def history(ctx, user: discord.Member = None, compare: discord.Member = No
         compare_data = []
         if compare:
             if compare.id in USERS_BY_ID:
-                compare_data = collector.get_single_user_data(compare.id, start=start, end=end)
+                compare_data = collector.get_single_user_data(compare.id, start=start, end=end, currency=currency)
             else:
                 logger.error(f'User {compare} cant be compared with because he isn\'t registered')
                 await ctx.send(f'Compare user unknown. Please register first.')
@@ -178,17 +205,31 @@ async def history(ctx, user: discord.Member = None, compare: discord.Member = No
             compare_xs.append(time)
             compare_ys.append(balance.amount)
 
+        diff = ys[len(ys) - 1] - ys[0]
+        if ys[0] > 0:
+            total_gain = f'{round(100 * (diff / ys[0]), ndigits=3)}'
+        else:
+            total_gain = 'inf'
+
         name = ctx.guild.get_member(user.id).display_name
-        title = f'History for {ctx.guild.get_member(user.id).display_name}'
+        title = f'History for {name} (Total gain: {total_gain}%)'
+
+        plt.plot(xs, ys, label=f"{name}'s {currency} Balance")
         if compare:
             compare_name = ctx.guild.get_member(compare.id).display_name
-            plt.plot(compare_xs, compare_ys, label=f"{compare_name}'s Balance")
-            title += f' vs. {compare_name}'
 
-        plt.plot(xs, ys, label=f"{name}'s Balance")
+            diff = compare_ys[len(ys) - 1] - compare_ys[0]
+            if compare_ys[0] > 0:
+                total_gain = f'{round(100 * (diff / compare_ys[0]), ndigits=3)}'
+            else:
+                total_gain = 'inf'
+
+            plt.plot(compare_xs, compare_ys, label=f"{compare_name}'s {currency} Balance")
+            title += f' vs. {compare_name} (Total gain: {total_gain}%)'
         plt.gcf().autofmt_xdate()
+        plt.gcf().set_dpi(100)
         plt.title(title)
-        plt.ylabel('$')
+        plt.ylabel(currency)
         plt.xlabel('Time')
         plt.grid()
         plt.legend(loc="best")
@@ -275,13 +316,16 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
     return delta
 
 
-def calc_gains(users: List[User], search: datetime) -> List[Tuple[User, Tuple[float, float]]]:
+def calc_gains(users: List[User], search: datetime, currency: str = None) -> List[Tuple[User, Tuple[float, float]]]:
     """
     :param users:
     :param search:
     :return:
     Gain for each user is stored in a list as a tuple containing user object and tuple containing relative gain and absolute gain
     """
+
+    if currency is None:
+        currency = '$'
 
     user_data = collector.get_user_data()
     users_done = []
@@ -293,14 +337,16 @@ def calc_gains(users: List[User], search: datetime) -> List[Tuple[User, Tuple[fl
             for user in users:
                 if user.id not in users_done:
                     try:
-                        balance_then = data[user.id].amount
-                        balance_now = collector.get_latest_user_balance(user.id).amount
-                        users_done.append(user.id)
-                        diff = balance_now - balance_then
-                        if balance_then > 0:
-                            results.append((user, (100 * (diff / balance_then), diff)))
-                        else:
-                            results.append((user, (0.0, diff)))
+                        balance_then = data[user.id]
+                        balance_then = collector.match_balance_currency(balance_then, currency)
+                        if balance_then:
+                            balance_now = collector.get_latest_user_balance(user.id, currency)
+                            users_done.append(user.id)
+                            diff = balance_now.amount - balance_then.amount
+                            if balance_then.amount > 0:
+                                results.append((user, (100 * (diff / balance_then.amount), diff)))
+                            else:
+                                results.append((user, (0.0, diff)))
                     except KeyError:
                         # User isn't included in data set
                         continue
@@ -329,46 +375,55 @@ def calc_gains(users: List[User], search: datetime) -> List[Tuple[User, Tuple[fl
             description="Time frame for gain. Default 24h",
             required=False,
             option_type=3
+        ),
+        create_option(
+            name="currency",
+            description="Currency to calculate gain for",
+            required=False,
+            option_type=3
         )
     ],
     guild_ids=SLASH_GUILD_IDS
 )
-async def gain(ctx, user: discord.Member = None, time: str = '24h'):
+async def gain(ctx, user: discord.Member = None, time: str = None, currency: str = None):
+
     if user is None:
         user = ctx.author
+
+    if time is None:
+        time = '24h'
+
+    if currency is None:
+        currency = '$'
+    currency = currency.upper()
 
     time_str = time
 
     logger.info(f'New Interaction with {ctx.author}: Calculate gain for {user.display_name} {time=}')
 
     if user is not None:
-        hasMatch = False
-        for cur_user in USERS:
-            if user.id == cur_user.id:
-                hasMatch = True
-                try:
-                    delta = calc_timedelta_from_time_args(time)
-                except ValueError as e:
-                    logger.error(e.args[0])
-                    await ctx.send({e.args[0]})
-                    return
+        if user.id in USERS_BY_ID:
+            try:
+                delta = calc_timedelta_from_time_args(time)
+            except ValueError as e:
+                logger.error(e.args[0])
+                await ctx.send({e.args[0]})
+                return
+            if delta.total_seconds() <= 0:
+                await ctx.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
+                return
 
-                if delta.total_seconds() <= 0:
-                    await ctx.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
-                    return
+            time = datetime.now()
+            search = time - delta
+            user_gain = calc_gains([USERS_BY_ID[user.id]], search, currency)[0][1]
 
-                time = datetime.now()
-                search = time - delta
-
-                user_gain = calc_gains([cur_user], search)[0][1]
-                if user_gain is None:
-                    logger.info(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
-                    await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
-                else:
-                    user_gain_rel, user_gain_abs = user_gain
-                    await ctx.send(f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)})$')
-                break
-        if not hasMatch:
+            if user_gain is None:
+                logger.info(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
+                await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
+            else:
+                user_gain_rel, user_gain_abs = user_gain
+                await ctx.send(f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
+        else:
             logger.error(f'User unknown!')
             await ctx.send('User unknown! Please register via a DM first.')
     else:
@@ -557,7 +612,7 @@ async def info(ctx):
         ),
         create_option(
             name="to",
-            description="Since when the history should be deleted",
+            description="Until when the history should be deleted",
             required=False,
             option_type=3,
         )
@@ -617,13 +672,13 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
                 users_rekt.append(user)
             else:
                 if user.id not in data:
-                    amount = collector.get_latest_user_balance(user.id).amount
+                    balance = collector.get_latest_user_balance(user.id)
                 else:
-                    amount = data[user.id].amount
-                if amount is None:
+                    balance = data[user.id]
+                if balance is None:
                     users_missing.append(user)
-                elif amount > 0:
-                    user_scores.append((user, amount))
+                elif balance.amount > 0:
+                    user_scores.append((user, balance.amount))
                 else:
                     users_rekt.append(user)
 

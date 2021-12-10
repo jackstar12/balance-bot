@@ -1,59 +1,57 @@
-import hmac
-from client import Client
-from requests import Request, Response, Session, HTTPError
-from balance import Balance
 import urllib.parse
 import time
 import logging
+import hmac
+
+from client import Client
+from requests import Request, Response, Session, HTTPError
+from balance import Balance
+from typing import List, Tuple, Dict
 
 
-class BitmexClient(Client):
-    exchange = 'bitmex'
-    ENDPOINT = 'https://www.bitmex.com/api/v1/'
+class BybitClient(Client):
+    exchange = 'bybit'
+    ENDPOINT = 'https://api.bybit.com/v2/'
 
-    # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
+    amount = float
+    type = str
+
+    # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     def get_balance(self):
+
         request = Request(
             'GET',
-            self.ENDPOINT + 'user/wallet',
-            params={'currency': 'all'}
+            self.ENDPOINT + 'private/wallet/balance'
         )
         response = self._request(request)
+
         total_balance = 0
-        extra_currencies = {}
+        extra_currencies: Dict[str, float] = {}
         err_msg = None
-        if 'error' not in response:
-            for currency in response:
-                symbol = currency['currency'].upper()
-                amount = currency['amount']
+        if response['ret_code'] == 0:
+            data = response['result']
+            for currency in data:
+                amount = float(data[currency]['wallet_balance'])
                 price = 0
-                if symbol == 'USDT':
+                if currency == 'USDT':
                     price = 1
                 elif amount > 0:
                     request = Request(
                         'GET',
-                        self.ENDPOINT + 'trade',
+                        self.ENDPOINT + 'public/tickers',
                         params = {
-                            'symbol': symbol.upper(),
-                            'count': 1,
-                            'reverse': True
+                            'symbol': f'{currency}USD'
                         }
                     )
                     response_price = self._request(request)
-                    if len(response_price) > 0:
-                        price = response_price[0]['price']
-                        if 'XBT' in symbol:
-                            # XBT amount is given in Sats (100 Million Sats = 1BTC)
-                            amount *= 10**-8
-                        extra_currencies[symbol] = amount
+                    if response_price['ret_code'] == 0:
+                        price = float(response_price['result'][0]['last_price'])
+                        extra_currencies[currency] = amount
                 total_balance += amount * price
         else:
             err_msg = response['error']
 
-        return Balance(amount=total_balance,
-                       currency='$',
-                       extra_currencies=extra_currencies,
-                       error=err_msg)
+        return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
 
     def _request(self, request: Request):
         s = Session()
@@ -62,19 +60,14 @@ class BitmexClient(Client):
         response = s.send(prepared)
         return self._process_response(response)
 
-    # https://www.bitmex.com/app/apiKeysUsage
-    def _sign_request(self, request: Request):
+    # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
+    def _sign_request(self, request):
         ts = int(time.time() * 1000)
-        prepared = request.prepare()
-        request_signature = f'{prepared.method}{prepared.path_url}{ts}'
-        if prepared.body is not None:
-            request_signature += prepared.body
-
-        signature = hmac.new(self.api_secret.encode(), request_signature.encode(), 'sha256').hexdigest()
-
-        request.headers['api-expires'] = str(ts)
-        request.headers['api-key'] = self.api_key
-        request.headers['api-signature'] = signature
+        request.params['api_key'] = self.api_key
+        request.params['timestamp'] = str(ts)
+        query_string = urllib.parse.urlencode(request.params)
+        sign = hmac.new(self.api_secret.encode('utf-8'), query_string.encode('utf-8'), 'sha256').hexdigest()
+        request.params['sign'] = sign
 
     def _process_response(self, response: Response):
         response_json = response.json()
