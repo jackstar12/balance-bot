@@ -259,13 +259,15 @@ class DataCollector:
                                     (datetime.fromtimestamp(ts_normal),
                                      {int(user_id): balance_from_json(data_normal[user_id]) for user_id in data_normal})
                                 )
-                                index += 1
+                                if index < normal_len:
+                                    index += 1
                             elif ts_merge < ts_normal:
                                 self.user_data.append(
                                     (datetime.fromtimestamp(ts_merge),
                                      {int(user_id): balance_from_json(data_merge[user_id]) for user_id in data_merge})
                                 )
-                                index_merge += 1
+                                if index_merge < merge_len:
+                                    index_merge += 1
                             else:
                                 for merge in data_merge:
                                     if merge not in data_normal:
@@ -274,8 +276,10 @@ class DataCollector:
                                     (datetime.fromtimestamp(ts_normal),
                                      {int(user_id): balance_from_json(data_normal[user_id]) for user_id in data_normal})
                                 )
-                                index += 1
-                                index_merge += 1
+                                if index < normal_len:
+                                    index += 1
+                                if index_merge < merge_len:
+                                    index_merge += 1
                     else:
                         self.user_data += [
                             (
