@@ -297,13 +297,12 @@ class DataCollector:
         self.data_lock.release()
 
     def match_balance_currency(self, balance: Balance, currency: str):
-        result = balance
-        if result.currency != currency:
-            if result.extra_currencies:
-                if currency in result.extra_currencies:
-                    result.amount = result.extra_currencies[currency]
-                    result.currency = currency
-            else:
-                return None
+        result = None
+        if balance.currency != currency:
+            if balance.extra_currencies:
+                if currency in balance.extra_currencies:
+                    result = Balance(amount=balance.extra_currencies[currency], currency=currency)
+        else:
+            result = balance
 
         return result

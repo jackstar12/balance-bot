@@ -22,7 +22,8 @@ from balance import Balance
 from user import User
 from client import Client
 from datacollector import DataCollector
-from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, KEY, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
+from key import KEY
+from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
     SLASH_GUILD_IDS, INITIAL_BALANCE, CURRENCY_PRECISION
 
 from Exchanges.binance import BinanceClient
@@ -53,6 +54,7 @@ EXCHANGES: Dict[str, Type[Client]] = {
 
 @client.event
 async def on_ready():
+    print('Bot Ready.')
     logger.info('Bot Ready')
     collector.start_fetching()
 
@@ -182,7 +184,7 @@ async def history(ctx,
             await ctx.send(e.args[0])
             return
 
-        user_data = collector.get_single_user_data(user.id, start=start, end=end, currency=currency)
+        user_data = collector.get_single_user_data(270663468921782282, start=start, end=end, currency=currency)
 
         if len(user_data) == 0:
             logger.error(f'No data for this user!')
@@ -321,8 +323,12 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
     return delta
 
 
-def calc_gains(users: List[User], search: datetime, currency: str = None) -> List[Tuple[User, Tuple[float, float]]]:
+def calc_gains(users: List[User],
+               search: datetime,
+               currency: str = None,
+               since_start = False) -> List[Tuple[User, Tuple[float, float]]]:
     """
+    :param currency:
     :param users:
     :param search:
     :return:
@@ -335,10 +341,34 @@ def calc_gains(users: List[User], search: datetime, currency: str = None) -> Lis
     user_data = collector.get_user_data()
     users_done = []
     results = []
+    oldest, oldest_data = user_data[0]
+
+    if since_start:
+        for user in users:
+            try:
+                date_then, balance_then = user.initial_balance
+                balance_then = collector.match_balance_currency(balance_then, currency)
+                if balance_then:
+                    balance_now = collector.get_latest_user_balance(user.id, currency)
+                    users_done.append(user.id)
+                    diff = balance_now.amount - balance_then.amount
+                    if balance_then.amount > 0:
+                        results.append((user, (100 * (diff / balance_then.amount), diff)))
+                    else:
+                        results.append((user, (0.0, diff)))
+            except KeyError:
+                # User isn't included in data set
+                continue
+            if len(users) == len(users_done):
+                break
     # Reverse data since latest data is at the top
-    for cur_time, data in reversed(user_data):
+    if search <= oldest:
+        iterator = user_data
+    else:
+        iterator = reversed(user_data)
+    for cur_time, data in iterator:
         cur_diff = cur_time - search
-        if cur_diff.total_seconds() <= 0:
+        if cur_diff.total_seconds() <= 0 or search <= oldest:
             for user in users:
                 if user.id not in users_done:
                     try:
