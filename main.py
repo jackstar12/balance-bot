@@ -284,7 +284,7 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
             date = datetime.strptime(time_str, time_format)
             now = datetime.now()
             if not includes_date:
-                date = date.replace(year=now.year, month=now.month, day=now.day)
+                date = date.replace(year=now.year, month=now.month, day=now.day, microsecond=0)
             delta = datetime.now() - date
             break
         except ValueError:
