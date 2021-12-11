@@ -699,7 +699,9 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
             return
 
         time = datetime.now()
-        search = time - delta
+        search = (time - delta).replace(microsecond=0)
+
+        description += f'Gain since {search}\n'
 
         user_gains = calc_gains(USERS, search)
 
@@ -710,8 +712,6 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
                 custom_user_strings[user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
             else:
                 users_missing.append(user)
-
-        footer += f'Gain since {search.replace(microsecond=0)} was calculated'
 
         unit = '%'
     else:
