@@ -184,7 +184,7 @@ async def history(ctx,
             await ctx.send(e.args[0])
             return
 
-        user_data = collector.get_single_user_data(270663468921782282, start=start, end=end, currency=currency)
+        user_data = collector.get_single_user_data(user.id, start=start, end=end, currency=currency)
 
         if len(user_data) == 0:
             logger.error(f'No data for this user!')
