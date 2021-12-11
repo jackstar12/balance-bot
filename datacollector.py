@@ -3,6 +3,7 @@ import os
 import typing
 import asyncio
 import sys
+import shutil
 
 import balance
 from Exchanges import *
@@ -32,7 +33,7 @@ class DataCollector:
 
         self.interval_hours = fetching_interval_hours
         self.data_path = data_path
-        self.backup_path = self.data_path + '/backup'
+        self.backup_path = self.data_path + 'backup/'
         self.on_rekt_callback = on_rekt_callback
 
         self._saves_since_backup = 0
@@ -137,7 +138,8 @@ class DataCollector:
 
         for time, data in self.user_data:
             if user_id in data and start < time < end:
-                user_balance = self.match_balance_currency(data[user_id], currency)
+                user_balance = data[user_id]
+                user_balance = self.match_balance_currency(user_balance, currency)
                 if user_balance:
                     single_user_data.append((time, user_balance))
         self.data_lock.release()
@@ -194,10 +196,7 @@ class DataCollector:
         self.data_lock.acquire()
 
         if self._saves_since_backup >= self.interval_hours * 24:
-            if sys.platform == 'win32':
-                call(["copy", self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json"])
-            elif sys.platform == 'linux':
-                call(["cp", self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json"])
+            shutil.copy(self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json")
             self._saves_since_backup = 0
         else:
             self._saves_since_backup += 1
@@ -210,7 +209,7 @@ class DataCollector:
                                              and all(
                             data[key] == prev_data[key] for key in data.keys() & prev_data.keys())):
                     # If all common users have the same balances why bother keeping the one with fewer users?
-                    if len(data.keys()) < len(prev_data.keys()):
+                    if len(data.keys()) < len(prev_data.keys()) or len(data.keys()) == 0:
                         self.user_data.remove((date, data))
                         date = prev_date
                         data = prev_data
@@ -297,14 +296,14 @@ class DataCollector:
 
         self.data_lock.release()
 
-
     def match_balance_currency(self, balance: Balance, currency: str):
-        if balance.currency != currency:
-            if balance.extra_currencies:
-                if currency in balance.extra_currencies:
-                    balance.amount = balance.extra_currencies[currency]
-                    balance.currency = currency
+        result = balance
+        if result.currency != currency:
+            if result.extra_currencies:
+                if currency in result.extra_currencies:
+                    result.amount = result.extra_currencies[currency]
+                    result.currency = currency
             else:
                 return None
 
-        return balance
+        return result
