@@ -701,7 +701,7 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
         time = datetime.now()
         search = (time - delta).replace(microsecond=0)
 
-        description += f'Gain since {search}\n'
+        description += f'Gain since {search}\n\n'
 
         user_gains = calc_gains(USERS, search)
 
