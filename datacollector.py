@@ -184,7 +184,7 @@ class DataCollector:
                 balance = user.api.get_balance()
             if balance.error is None or balance.error == '' or keep_errors:
                 data[user.id] = balance
-                if balance <= self.rekt_threshold and not user.rekt_on:
+                if balance.amount <= self.rekt_threshold and not user.rekt_on:
                     user.rekt_on = time
                     if callable(self.on_rekt_callback):
                         self.on_rekt_callback(user)

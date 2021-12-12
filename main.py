@@ -22,7 +22,7 @@ from balance import Balance
 from user import User
 from client import Client
 from datacollector import DataCollector
-from dialogue import Dialogue
+from dialogue import Dialogue, YesNoDialogue
 from key import KEY
 from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
     SLASH_GUILD_IDS, INITIAL_BALANCE, CURRENCY_PRECISION, REKT_THRESHOLD
@@ -81,8 +81,11 @@ async def on_message(message: discord.Message):
                 await message.channel.send(open_dialogue.invalid_choice_message)
                 return
 
-        await message.channel.send(open_dialogue.success_message)
-        open_dialogue.choice_callback(message.content)
+        if open_dialogue.success_message:
+            await message.channel.send(open_dialogue.success_message)
+
+        await open_dialogue.choice_callback(message.channel, message.content)
+
         OPEN_DIALOGUES.pop(message.author.id)
 
 
@@ -301,11 +304,15 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
     # Different time formats: True or False indicates whether the date is included.
     formats = [
         (False, "%H:%M:%S"),
+        (False, "%H:%M"),
+        (False, "%H"),
         (True,  "%Y-%m-%d %H:%M:%S"),
+        (True,  "%Y-%m-%d %H:%M"),
+        (True,  "%Y-%m-%d %H"),
         (True,  "%Y-%m-%d"),
-        (True,  "%Y/%m/%d %H:%M:%S"),
-        (True,  "%Y/%m/%d"),
         (True,  "%d.%m.%Y %H:%M:%S"),
+        (True,  "%d.%m.%Y %H:%M"),
+        (True,  "%d.%m.%Y %H:"),
         (True,  "%d.%m.%Y")
     ]
 
@@ -694,13 +701,19 @@ async def clear(ctx, since: str = None, to: str = None):
             await ctx.send(e.args[0])
             return
 
-        message = f'Deleting your history'
+        from_to = ''
         if start:
-            message += f' since {start}'
+            from_to += f' since **{start}**'
         if end:
-            message += f' till {end}'
-        await ctx.send(message)
-        collector.clear_user_data(ctx.author.id, start, end)
+            from_to += f' till **{end}**'
+
+        await ctx.send(f'Do you really want to **delete** your history{from_to}? (y/n)')
+
+        OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
+            yes_callback=lambda: collector.clear_user_data(user_id=ctx.author.id, start=start, end=end),
+            yes_message=f'Deleted your history{from_to}',
+            no_message=f'Clear cancelled.',
+        )
     else:
         logger.error(f'User not registered.')
         await ctx.send(f'You are not registered.')
