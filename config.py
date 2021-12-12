@@ -6,6 +6,7 @@ INITIAL_BALANCE = {
     "amount": 100,
     "currency": "$"
 }
+REKT_THRESHOLD = 2.5
 REKT_MESSAGES = [
     "{name} hat sich mit der Leverage vergriffen :cry:",
     "{name} gone **REKT**!",

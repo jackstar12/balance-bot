@@ -22,9 +22,10 @@ from balance import Balance
 from user import User
 from client import Client
 from datacollector import DataCollector
+from dialogue import Dialogue
 from key import KEY
 from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
-    SLASH_GUILD_IDS, INITIAL_BALANCE, CURRENCY_PRECISION
+    SLASH_GUILD_IDS, INITIAL_BALANCE, CURRENCY_PRECISION, REKT_THRESHOLD
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -51,12 +52,38 @@ EXCHANGES: Dict[str, Type[Client]] = {
     'bybit': BybitClient
 }
 
+OPEN_DIALOGUES: Dict[int, Dialogue] = {}
+
 
 @client.event
 async def on_ready():
     print('Bot Ready.')
     logger.info('Bot Ready')
     collector.start_fetching()
+
+
+@client.event
+async def on_message(message: discord.Message):
+    # TODO: Implement Dialogue like feature for guild selecition and confirmation of tasks
+    # Which guild? Select choice:
+    #  Avbl. guilds
+    # 1
+    # OK!
+    # or
+    # you are about to delete your history (from too, ...). Are you sure you want to do that? (y/n)
+    # OK!
+    if message.author.id in OPEN_DIALOGUES and message.guild is None:
+
+        open_dialogue = OPEN_DIALOGUES[message.author.id]
+
+        if open_dialogue.possible_inputs:
+            if message.content not in open_dialogue.possible_inputs:
+                await message.channel.send(open_dialogue.invalid_choice_message)
+                return
+
+        await message.channel.send(open_dialogue.success_message)
+        open_dialogue.choice_callback(message.content)
+        OPEN_DIALOGUES.pop(message.author.id)
 
 
 @slash.slash(
@@ -188,7 +215,7 @@ async def history(ctx,
 
         if len(user_data) == 0:
             logger.error(f'No data for this user!')
-            await ctx.send(f'Got no data for {ctx.author.display_name}')
+            await ctx.send(f'Got no data for this user')
             return
 
         xs = []
@@ -233,8 +260,10 @@ async def history(ctx,
 
             plt.plot(compare_xs, compare_ys, label=f"{compare_name}'s {currency} Balance")
             title += f' vs. {compare_name} (Total gain: {total_gain}%)'
+
         plt.gcf().autofmt_xdate()
         plt.gcf().set_dpi(100)
+        plt.gcf().set_size_inches(7, 5)
         plt.title(title)
         plt.ylabel(currency)
         plt.xlabel('Time')
@@ -343,36 +372,22 @@ def calc_gains(users: List[User],
     results = []
     oldest, oldest_data = user_data[0]
 
-    if since_start:
-        for user in users:
-            try:
-                date_then, balance_then = user.initial_balance
-                balance_then = collector.match_balance_currency(balance_then, currency)
-                if balance_then:
-                    balance_now = collector.get_latest_user_balance(user.id, currency)
-                    users_done.append(user.id)
-                    diff = balance_now.amount - balance_then.amount
-                    if balance_then.amount > 0:
-                        results.append((user, (100 * (diff / balance_then.amount), diff)))
-                    else:
-                        results.append((user, (0.0, diff)))
-            except KeyError:
-                # User isn't included in data set
-                continue
-            if len(users) == len(users_done):
-                break
     # Reverse data since latest data is at the top
     if search <= oldest:
         iterator = user_data
     else:
         iterator = reversed(user_data)
+
     for cur_time, data in iterator:
         cur_diff = cur_time - search
-        if cur_diff.total_seconds() <= 0 or search <= oldest:
+        if cur_diff.total_seconds() <= 0 or search <= oldest or since_start:
             for user in users:
                 if user.id not in users_done:
                     try:
-                        balance_then = data[user.id]
+                        if since_start:
+                            then, balance_then = user.initial_balance
+                        else:
+                            balance_then = data[user.id]
                         balance_then = collector.match_balance_currency(balance_then, currency)
                         if balance_then:
                             balance_now = collector.get_latest_user_balance(user.id, currency)
@@ -693,7 +708,7 @@ async def clear(ctx, since: str = None, to: str = None):
 
 async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
     user_scores: List[Tuple[User, float]] = []
-    custom_user_strings: Dict[User, str] = {}
+    custom_value_strings: Dict[User, str] = {}
     users_rekt: List[User] = []
     users_missing: List[User] = []
 
@@ -710,12 +725,12 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
                     balance = collector.get_latest_user_balance(user.id)
                 else:
                     balance = data[user.id]
-                if balance is None:
-                    users_missing.append(user)
-                elif balance.amount > 0:
-                    user_scores.append((user, balance.amount))
-                else:
-                    users_rekt.append(user)
+                    if balance is None:
+                        users_missing.append(user)
+                    elif balance.amount > REKT_THRESHOLD:
+                        user_scores.append((user, balance.amount))
+                    else:
+                        users_rekt.append(user)
 
         date = date.replace(microsecond=0)
         footer += f'Data used from: {date}'
@@ -739,7 +754,7 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
             if user_gain is not None:
                 user_gain_rel, user_gain_abs = user_gain
                 user_scores.append((user, user_gain_rel))
-                custom_user_strings[user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
+                custom_value_strings[user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
             else:
                 users_missing.append(user)
 
@@ -755,12 +770,12 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
     if len(user_scores) > 0:
         prev_score = user_scores[0][1]
         for user, score in user_scores:
-            if score < prev_score:
-                rank += 1
             member = guild.get_member(user.id)
             if member:
-                if user in custom_user_strings:
-                    value = custom_user_strings[user]
+                if score < prev_score:
+                    rank += 1
+                if user in custom_value_strings:
+                    value = custom_value_strings[user]
                 else:
                     value = f'{round(score, ndigits=3)}{unit}'
                 description += f'{rank}. **{member.display_name}** {value}\n'
@@ -828,6 +843,8 @@ async def leaderboard(ctx: SlashContext, mode: str = 'balance', time: str = None
     if time is None:
         time = '24h'
 
+    # file = discord.File(DATA_PATH + 'loading.gif', "loading.gif")
+    # embed = discord.Embed().set_image(url='attachment://loading.gif')
     message = await ctx.send('...')
 
     asyncio.create_task(calc_leaderboard(
@@ -937,8 +954,8 @@ async def on_rekt_async(user: User):
                 message_replaced = message.replace("{name}", member.display_name.upper())
                 embed = discord.Embed(description=message_replaced)
                 await channel.send(embed=embed)
-        except KeyError:
-            logger.error(f'Invalid guild {guild_data}')
+        except KeyError as e:
+            logger.error(f'Invalid guild {guild_data} {e}')
         except AttributeError as e:
             logger.error(f'Error while sending message to guild {e}')
 
@@ -959,6 +976,7 @@ else:
 collector = DataCollector(USERS,
                           fetching_interval_hours=FETCHING_INTERVAL_HOURS,
                           data_path=DATA_PATH,
+                          rekt_threshold=REKT_THRESHOLD,
                           on_rekt_callback=on_rekt)
 
 client.run(KEY)

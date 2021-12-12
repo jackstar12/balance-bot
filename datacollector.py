@@ -22,6 +22,7 @@ class DataCollector:
     def __init__(self,
                  users: List[User],
                  fetching_interval_hours: int = 4,
+                 rekt_threshold: float = 2.5,
                  data_path: str = '',
                  on_rekt_callback: Callable = None):
         super().__init__()
@@ -32,6 +33,7 @@ class DataCollector:
         self.data_lock = Lock()
 
         self.interval_hours = fetching_interval_hours
+        self.rekt_threshold = rekt_threshold
         self.data_path = data_path
         self.backup_path = self.data_path + 'backup/'
         self.on_rekt_callback = on_rekt_callback
@@ -182,7 +184,7 @@ class DataCollector:
                 balance = user.api.get_balance()
             if balance.error is None or balance.error == '' or keep_errors:
                 data[user.id] = balance
-                if balance == 0.0 and not user.rekt_on:
+                if balance <= self.rekt_threshold and not user.rekt_on:
                     user.rekt_on = time
                     if callable(self.on_rekt_callback):
                         self.on_rekt_callback(user)
