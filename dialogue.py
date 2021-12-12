@@ -48,7 +48,3 @@ class YesNoDialogue(Dialogue):
             await channel.send(self.no_message)
             if callable(self.no_callback):
                 self.no_callback()
-
-
-
-

@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
 from balance import Balance
-from user import User
+from user import User, user_from_json
 from client import Client
 from datacollector import DataCollector
 from dialogue import Dialogue, YesNoDialogue
@@ -132,7 +132,8 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         if user.id == cur_user.id:
             usr_balance = collector.get_user_balance(cur_user, currency)
             if usr_balance.error is None:
-                await ctx.send(f'{user.display_name}\'s balance: {round(usr_balance.amount, ndigits=CURRENCY_PRECISION.get(currency, 3))}{usr_balance.currency}')
+                await ctx.send(
+                    f'{user.display_name}\'s balance: {round(usr_balance.amount, ndigits=CURRENCY_PRECISION.get(currency, 3))}{usr_balance.currency}')
             else:
                 await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
             hasMatch = True
@@ -306,14 +307,14 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
         (False, "%H:%M:%S"),
         (False, "%H:%M"),
         (False, "%H"),
-        (True,  "%Y-%m-%d %H:%M:%S"),
-        (True,  "%Y-%m-%d %H:%M"),
-        (True,  "%Y-%m-%d %H"),
-        (True,  "%Y-%m-%d"),
-        (True,  "%d.%m.%Y %H:%M:%S"),
-        (True,  "%d.%m.%Y %H:%M"),
-        (True,  "%d.%m.%Y %H:"),
-        (True,  "%d.%m.%Y")
+        (True, "%Y-%m-%d %H:%M:%S"),
+        (True, "%Y-%m-%d %H:%M"),
+        (True, "%Y-%m-%d %H"),
+        (True, "%Y-%m-%d"),
+        (True, "%d.%m.%Y %H:%M:%S"),
+        (True, "%d.%m.%Y %H:%M"),
+        (True, "%d.%m.%Y %H:"),
+        (True, "%d.%m.%Y")
     ]
 
     delta = None
@@ -362,8 +363,9 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
 def calc_gains(users: List[User],
                search: datetime,
                currency: str = None,
-               since_start = False) -> List[Tuple[User, Tuple[float, float]]]:
+               since_start=False) -> List[Tuple[User, Tuple[float, float]]]:
     """
+    :param since_start:
     :param currency:
     :param users:
     :param search:
@@ -377,17 +379,10 @@ def calc_gains(users: List[User],
     user_data = collector.get_user_data()
     users_done = []
     results = []
-    oldest, oldest_data = user_data[0]
 
-    # Reverse data since latest data is at the top
-    if search <= oldest:
-        iterator = user_data
-    else:
-        iterator = reversed(user_data)
-
-    for cur_time, data in iterator:
+    for cur_time, data in reversed(user_data):
         cur_diff = cur_time - search
-        if cur_diff.total_seconds() <= 0 or search <= oldest or since_start:
+        if cur_diff.total_seconds() <= 0 or since_start:
             for user in users:
                 if user.id not in users_done:
                     try:
@@ -407,7 +402,7 @@ def calc_gains(users: List[User],
                     except KeyError:
                         # User isn't included in data set
                         continue
-            if len(users) == len(users_done):
+            if len(users) == len(users_done) or since_start:
                 break
 
     for user in users:
@@ -443,7 +438,6 @@ def calc_gains(users: List[User],
     guild_ids=SLASH_GUILD_IDS
 )
 async def gain(ctx, user: discord.Member = None, time: str = None, currency: str = None):
-
     if user is None:
         user = ctx.author
 
@@ -460,26 +454,29 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
 
     if user is not None:
         if user.id in USERS_BY_ID:
-            try:
-                delta = calc_timedelta_from_time_args(time)
-            except ValueError as e:
-                logger.error(e.args[0])
-                await ctx.send({e.args[0]})
-                return
-            if delta.total_seconds() <= 0:
-                await ctx.send(f'Time can not be negative or zero. For more information type {PREFIX}help gain')
-                return
+            since_start = time == 'start' or time == 'all'
+
+            if since_start:
+                delta = timedelta(0)
+            else:
+                try:
+                    delta = calc_timedelta_from_time_args(time)
+                except ValueError as e:
+                    logger.error(e.args[0])
+                    await ctx.send({e.args[0]})
+                    return
 
             time = datetime.now()
             search = time - delta
-            user_gain = calc_gains([USERS_BY_ID[user.id]], search, currency)[0][1]
+            user_gain = calc_gains([USERS_BY_ID[user.id]], search, currency, since_start=since_start)[0][1]
 
             if user_gain is None:
                 logger.info(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
                 await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
             else:
                 user_gain_rel, user_gain_abs = user_gain
-                await ctx.send(f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
+                await ctx.send(
+                    f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
         else:
             logger.error(f'User unknown!')
             await ctx.send('User unknown! Please register via a DM first.')
@@ -533,6 +530,12 @@ def get_available_exchanges() -> str:
             description="Additional arguments",
             required=False,
             option_type=3
+        ),
+        create_option(
+            name="guild_specific",
+            description="Only register for a specific guild",
+            option_type=5,
+            required=True
         )
     ]
 )
@@ -541,6 +544,7 @@ async def register(ctx,
                    api_key: str,
                    api_secret: str,
                    subaccount: typing.Optional[str] = None,
+                   guild_specific: bool = False,
                    args: str = None):
     if ctx.guild is not None:
         await ctx.send('This command can only be used via a DM.')
@@ -567,7 +571,8 @@ async def register(ctx,
         exchange_cls = EXCHANGES[exchange_name]
         if issubclass(exchange_cls, Client):
             # Check if required keyword args are given
-            if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
+            if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and all(
+                    required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
                 existing = False
                 exchange: Client = exchange_cls(
                     api_key=api_key,
@@ -583,7 +588,6 @@ async def register(ctx,
                         logger.info(f'Updated user')
                         break
                 if not existing:
-
                     initial_balance = None
                     try:
                         initial_time = datetime.strptime(INITIAL_BALANCE['date'], "%d/%m/%Y %H:%M:%S")
@@ -676,7 +680,6 @@ async def info(ctx):
     ]
 )
 async def clear(ctx, since: str = None, to: str = None):
-
     logging.info(f'New interaction with {ctx.author.display_name}: clear history {since=} {to=}')
 
     if ctx.author.id in USERS_BY_ID:
@@ -749,19 +752,28 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
         footer += f'Data used from: {date}'
         unit = '$'
     elif mode == 'gain':
-        try:
-            delta = calc_timedelta_from_time_args(time)
-        except ValueError as e:
-            logging.error(e.args[0])
-            await message.edit(e.args[0])
-            return
+
+        since_start = time == 'all' or time == 'start'
+
+        if not since_start:
+            try:
+                delta = calc_timedelta_from_time_args(time)
+            except ValueError as e:
+                logging.error(e.args[0])
+                await message.edit(e.args[0])
+                return
+        else:
+            delta = timedelta(0)
 
         time = datetime.now()
         search = (time - delta).replace(microsecond=0)
 
-        description += f'Gain since {search}\n\n'
+        if since_start:
+            description += f'Gain since start\n\n'
+        else:
+            description += f'Gain since {search}\n\n'
 
-        user_gains = calc_gains(USERS, search)
+        user_gains = calc_gains(USERS, search, since_start=since_start)
 
         for user, user_gain in user_gains:
             if user_gain is not None:
@@ -897,33 +909,9 @@ def load_registered_users():
             users_json = json.load(fp=f)
             for user_json in users_json:
                 try:
-                    exchange_name = user_json['exchange'].lower()
-                    exchange_cls = EXCHANGES[exchange_name]
-                    if issubclass(exchange_cls, Client):
-                        exchange: Client = exchange_cls(
-                            api_key=user_json['api_key'],
-                            api_secret=user_json['api_secret'],
-                            subaccount=user_json['subaccount'],
-                            extra_kwargs=user_json['extra']
-                        )
-                        rekt_on = user_json.get('rekt_on', None)
-                        if rekt_on:
-                            rekt_on = datetime.fromtimestamp(rekt_on)
-                        initial_balance = user_json.get('initial_balance', None)
-                        if initial_balance:
-                            initial_balance = (
-                                datetime.fromtimestamp(initial_balance['date']),
-                                Balance(amount=initial_balance['amount'], currency='$', error=None)
-                            )
-
-                        user = User(
-                            id=user_json['id'],
-                            api=exchange,
-                            rekt_on=rekt_on,
-                            initial_balance=initial_balance
-                        )
-                        USERS.append(user)
-                        USERS_BY_ID[user.id] = user
+                    user = user_from_json(user_json, EXCHANGES)
+                    USERS.append(user)
+                    USERS_BY_ID[user.id] = user
                 except KeyError as e:
                     logger.error(f'{e} occurred while parsing user data {user_json} from users.json')
     except FileNotFoundError:
@@ -964,7 +952,7 @@ async def on_rekt_async(user: User):
             channel = guild.get_channel(guild_data['guild_channel'])
             member = guild.get_member(user.id)
             if member:
-                message_replaced = message.replace("{name}", member.display_name.upper())
+                message_replaced = message.replace("{name}", member.display_name)
                 embed = discord.Embed(description=message_replaced)
                 await channel.send(embed=embed)
         except KeyError as e:

@@ -1,9 +1,10 @@
 import dataclasses
 import discord
+import logging
 from client import Client
 from datetime import datetime
 from balance import Balance
-from typing import Tuple
+from typing import Tuple, Dict, List, Type
 
 
 @dataclasses.dataclass
@@ -48,3 +49,31 @@ class User:
         return json
 
 
+def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]]) -> User:
+    exchange_name = user_json['exchange'].lower()
+    exchange_cls = exchange_classes[exchange_name]
+    if issubclass(exchange_cls, Client):
+        exchange: Client = exchange_cls(
+            api_key=user_json['api_key'],
+            api_secret=user_json['api_secret'],
+            subaccount=user_json['subaccount'],
+            extra_kwargs=user_json['extra']
+        )
+        rekt_on = user_json.get('rekt_on', None)
+        if rekt_on:
+            rekt_on = datetime.fromtimestamp(rekt_on)
+        initial_balance = user_json.get('initial_balance', None)
+        if initial_balance:
+            initial_balance = (
+                datetime.fromtimestamp(initial_balance['date']),
+                Balance(amount=initial_balance['amount'], currency='$', error=None)
+            )
+        user = User(
+            id=user_json['id'],
+            api=exchange,
+            rekt_on=rekt_on,
+            initial_balance=initial_balance
+        )
+        return user
+    else:
+        logging.error(f'{exchange_cls} is no subclass of client!')

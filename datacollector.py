@@ -125,8 +125,11 @@ class DataCollector:
         self.data_lock.release()
         return result
 
-    def get_single_user_data(self, user_id: int, start: datetime = None, end: datetime = None, currency: str = None) -> List[
-        Tuple[datetime, Balance]]:
+    def get_single_user_data(self,
+                             user_id: int,
+                             start: datetime = None,
+                             end: datetime = None,
+                             currency: str = None) -> List[Tuple[datetime, Balance]]:
         single_user_data = []
         self.data_lock.acquire()
 
@@ -184,7 +187,7 @@ class DataCollector:
                 balance = user.api.get_balance()
             if balance.error is None or balance.error == '' or keep_errors:
                 data[user.id] = balance
-                if balance.amount <= self.rekt_threshold and not user.rekt_on:
+                if balance.amount <= self.rekt_threshold and not user.rekt_on and not keep_errors:
                     user.rekt_on = time
                     if callable(self.on_rekt_callback):
                         self.on_rekt_callback(user)
