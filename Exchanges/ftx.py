@@ -48,17 +48,17 @@ class FtxClient(Client):
 
             error = ''
             if response.status_code == 400:
-                error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
+                error = f"400 Bad Request. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 401:
-                error = "401 Unauthorized. You might want to check your API access with <prefix> info"
+                error = f"401 Unauthorized ({response_json['error']}).\nIs your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
             elif response.status_code == 403:
-                error = "403 Access Denied. You might want to check your API access with <prefix> info"
+                error = f"403 Access Denied ({response_json['error']}).\nIs your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
             elif response.status_code == 404:
-                error = "404 Not Found. This is probably a bug in the bot, please contact dev"
+                error = f"404 Not Found. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 429:
-                error = "429 Rate Limit violated. Try again later"
+                error = f"429 Rate Limit violated. Try again later"
             elif 500 <= response.status_code < 600:
-                error = f"{response.status_code} Problem or Maintenance on {self.exchange} servers."
+                error = f"{response.status_code} ({response_json['error']}).\nProblem or Maintenance on {self.exchange} servers."
 
             response_json['error'] = error
             return response_json

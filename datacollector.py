@@ -185,14 +185,16 @@ class DataCollector:
                 balance = Balance(0.0, '$', None)
             else:
                 balance = user.api.get_balance()
-            if balance.error is None or balance.error == '' or keep_errors:
+            if balance.error:
+                logging.error(f'Error while fetching user {user} balance: {balance.error}')
+                if keep_errors:
+                    data[user.id] = balance
+            else:
                 data[user.id] = balance
-                if balance.amount <= self.rekt_threshold and not user.rekt_on and not keep_errors:
+                if balance.amount <= self.rekt_threshold and not user.rekt_on:
                     user.rekt_on = time
                     if callable(self.on_rekt_callback):
                         self.on_rekt_callback(user)
-            else:
-                logging.error(f'Error while fetching user {user} balance: {balance.error}')
         self.user_lock.release()
         return time, data
 

@@ -99,8 +99,7 @@ async def ping(ctx: SlashContext):
     message = await ctx.send("Testing Ping...")
     end_time = time.time()
 
-    await message.edit(
-        content=f"Pong! {round(client.latency, ndigits=3)}ms\nAPI: {round((end_time - start_time), ndigits=3)}ms")
+    await message.edit(content=f"Pong! {round(client.latency, ndigits=3)}ms\nAPI: {round((end_time - start_time), ndigits=3)}ms")
 
 
 @slash.slash(
@@ -128,6 +127,9 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         currency = '$'
     currency = currency.upper()
     hasMatch = False
+
+    logger.info(f'New interaction with {ctx.author.display_name}: Get balance for {user.display_name} ({currency=})')
+
     for cur_user in USERS:
         if user.id == cur_user.id:
             usr_balance = collector.get_user_balance(cur_user, currency)
@@ -139,6 +141,7 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
             hasMatch = True
             break
     if not hasMatch:
+        logger.error(f'User unknown.')
         await ctx.send('User unknown. Please register via a DM first.')
 
 
@@ -307,14 +310,14 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
         (False, "%H:%M:%S"),
         (False, "%H:%M"),
         (False, "%H"),
-        (True, "%Y-%m-%d %H:%M:%S"),
-        (True, "%Y-%m-%d %H:%M"),
-        (True, "%Y-%m-%d %H"),
-        (True, "%Y-%m-%d"),
-        (True, "%d.%m.%Y %H:%M:%S"),
-        (True, "%d.%m.%Y %H:%M"),
-        (True, "%d.%m.%Y %H:"),
-        (True, "%d.%m.%Y")
+        (True,  "%Y-%m-%d %H:%M:%S"),
+        (True,  "%Y-%m-%d %H:%M"),
+        (True,  "%Y-%m-%d %H"),
+        (True,  "%Y-%m-%d"),
+        (True,  "%d.%m.%Y %H:%M:%S"),
+        (True,  "%d.%m.%Y %H:%M"),
+        (True,  "%d.%m.%Y %H:"),
+        (True,  "%d.%m.%Y")
     ]
 
     delta = None
@@ -741,12 +744,12 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
                     balance = collector.get_latest_user_balance(user.id)
                 else:
                     balance = data[user.id]
-                    if balance is None:
-                        users_missing.append(user)
-                    elif balance.amount > REKT_THRESHOLD:
-                        user_scores.append((user, balance.amount))
-                    else:
-                        users_rekt.append(user)
+                if balance is None:
+                    users_missing.append(user)
+                elif balance.amount > REKT_THRESHOLD:
+                    user_scores.append((user, balance.amount))
+                else:
+                    users_rekt.append(user)
 
         date = date.replace(microsecond=0)
         footer += f'Data used from: {date}'
