@@ -683,6 +683,7 @@ async def info(ctx):
     ]
 )
 async def clear(ctx, since: str = None, to: str = None):
+
     logging.info(f'New interaction with {ctx.author.display_name}: clear history {since=} {to=}')
 
     if ctx.author.id in USERS_BY_ID:
