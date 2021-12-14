@@ -68,9 +68,6 @@ class DataCollector:
 
         self._save_user_data()
 
-        if time.hour == 0:
-            pass
-
         next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
                             microsecond=0) + timedelta(hours=self.interval_hours)
         delay = next - time

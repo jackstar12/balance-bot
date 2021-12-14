@@ -49,7 +49,7 @@ class BybitClient(Client):
                         extra_currencies[currency] = amount
                 total_balance += amount * price
         else:
-            err_msg = response['error']
+            err_msg = response['ret_msg']
 
         return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
 
@@ -70,19 +70,18 @@ class BybitClient(Client):
         request.params['sign'] = sign
 
     def _process_response(self, response: Response):
-        response_json = response.json()
         try:
             response.raise_for_status()
         except HTTPError as e:
-            logging.error(f'{e}\n{response_json}')
+            logging.error(f'{e}\n{response.reason}')
 
             error = ''
             if response.status_code == 400:
-                error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
+                error = f"400 Bad Request ({response.reason}). This is probably a bug in the bot, please contact dev"
             elif response.status_code == 401:
-                error = "401 Unauthorized. Is your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
+                error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
             elif response.status_code == 403:
-                error = "403 Access Denied. Is your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
+                error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
             elif response.status_code == 404:
                 error = "404 Not Found. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 429:
@@ -94,9 +93,9 @@ class BybitClient(Client):
             if error == '':
                 error = e.args[0]
 
-            response_json['error'] = error
+            response_json = {'ret_msg': error, 'ret_code': 1}
             return response_json
 
         # OK
         if response.status_code == 200:
-            return response_json
+            return response.json()

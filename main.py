@@ -145,6 +145,104 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         await ctx.send('User unknown. Please register via a DM first.')
 
 
+async def calc_history(message: discord.Message,
+                       user: discord.Member,
+                       currency: str,
+                       compare: discord.Member = None,
+                       since: str = None,
+                       to: str = None):
+
+    logger.info(f'New interaction with {user.display_name}: Show history')
+
+    if user.id in USERS_BY_ID:
+
+        start = None
+        try:
+            delta = calc_timedelta_from_time_args(since)
+            if delta:
+                start = datetime.now() - delta
+        except ValueError as e:
+            logger.error(e.args[0])
+            await message.edit(content=e.args[0])
+            return
+
+        end = None
+        try:
+            delta = calc_timedelta_from_time_args(to)
+            if delta:
+                end = datetime.now() - delta
+        except ValueError as e:
+            logger.error(e.args[0])
+            await message.edit(content=e.args[0])
+            return
+
+        user_data = collector.get_single_user_data(user.id, start=start, end=end, currency=currency)
+
+        if len(user_data) == 0:
+            logger.error(f'No data for this user!')
+            await message.edit(content=f'Got no data for this user')
+            return
+
+        xs = []
+        ys = []
+        for time, balance in user_data:
+            xs.append(time.replace(microsecond=0))
+            ys.append(balance.amount)
+
+        compare_data = []
+        if compare:
+            if compare.id in USERS_BY_ID:
+                compare_data = collector.get_single_user_data(compare.id, start=start, end=end, currency=currency)
+            else:
+                logger.error(f'User {compare} cant be compared with because he isn\'t registered')
+                await message.edit(content=f'Compare user unknown. Please register first.')
+                return
+
+        compare_xs = []
+        compare_ys = []
+        for time, balance in compare_data:
+            compare_xs.append(time.replace(microsecond=0))
+            compare_ys.append(balance.amount)
+
+        diff = ys[len(ys) - 1] - ys[0]
+        if ys[0] > 0:
+            total_gain = f'{round(100 * (diff / ys[0]), ndigits=3)}'
+        else:
+            total_gain = 'inf'
+
+        title = f'History for {user.display_name} (Total gain: {total_gain}%)'
+
+        plt.close()
+        plt.plot(xs, ys, label=f"{user.display_name}'s {currency} Balance")
+        if compare:
+            diff = compare_ys[len(compare_ys) - 1] - compare_ys[0]
+            if compare_ys[0] > 0:
+                total_gain = f'{round(100 * (diff / compare_ys[0]), ndigits=3)}'
+            else:
+                total_gain = 'inf'
+
+            plt.plot(compare_xs, compare_ys, label=f"{compare.display_name}'s {currency} Balance")
+            title += f' vs. {compare.display_name} (Total gain: {total_gain}%)'
+
+        plt.gcf().autofmt_xdate()
+        plt.gcf().set_dpi(100)
+        plt.gcf().set_size_inches(8, 5.5)
+        plt.title(title)
+        plt.ylabel(currency)
+        plt.xlabel('Time')
+        plt.grid()
+        plt.legend(loc="best")
+        plt.savefig(DATA_PATH + "tmp.png")
+        plt.close()
+
+        file = discord.File(DATA_PATH + "tmp.png", "history.png")
+
+        await message.edit(content='', file=file)
+    else:
+        logger.error(f'User unknown.')
+        await message.edit(content='User unknown. Please register via a DM first.')
+
+
 @slash.slash(
     name="history",
     description="Draws balance history of a user",
@@ -189,104 +287,15 @@ async def history(ctx,
                   currency: str = None):
     if user is None:
         user = ctx.author
-
     if currency is None:
         currency = '$'
     currency = currency.upper()
 
-    logger.info(f'New interaction with {user.display_name}: Show history')
+    message = await ctx.send(f'...')
 
-    if user.id in USERS_BY_ID:
-
-        start = None
-        try:
-            delta = calc_timedelta_from_time_args(since)
-            if delta:
-                start = datetime.now() - delta
-        except ValueError as e:
-            logger.error(e.args[0])
-            await ctx.send(e.args[0])
-            return
-
-        end = None
-        try:
-            delta = calc_timedelta_from_time_args(to)
-            if delta:
-                end = datetime.now() - delta
-        except ValueError as e:
-            logger.error(e.args[0])
-            await ctx.send(e.args[0])
-            return
-
-        user_data = collector.get_single_user_data(user.id, start=start, end=end, currency=currency)
-
-        if len(user_data) == 0:
-            logger.error(f'No data for this user!')
-            await ctx.send(f'Got no data for this user')
-            return
-
-        xs = []
-        ys = []
-        for time, balance in user_data:
-            xs.append(time.replace(microsecond=0))
-            ys.append(balance.amount)
-
-        compare_data = []
-        if compare:
-            if compare.id in USERS_BY_ID:
-                compare_data = collector.get_single_user_data(compare.id, start=start, end=end, currency=currency)
-            else:
-                logger.error(f'User {compare} cant be compared with because he isn\'t registered')
-                await ctx.send(f'Compare user unknown. Please register first.')
-                return
-
-        compare_xs = []
-        compare_ys = []
-        for time, balance in compare_data:
-            compare_xs.append(time)
-            compare_ys.append(balance.amount)
-
-        diff = ys[len(ys) - 1] - ys[0]
-        if ys[0] > 0:
-            total_gain = f'{round(100 * (diff / ys[0]), ndigits=3)}'
-        else:
-            total_gain = 'inf'
-
-        name = ctx.guild.get_member(user.id).display_name
-        title = f'History for {name} (Total gain: {total_gain}%)'
-
-        plt.plot(xs, ys, label=f"{name}'s {currency} Balance")
-        if compare:
-            compare_name = ctx.guild.get_member(compare.id).display_name
-
-            diff = compare_ys[len(ys) - 1] - compare_ys[0]
-            if compare_ys[0] > 0:
-                total_gain = f'{round(100 * (diff / compare_ys[0]), ndigits=3)}'
-            else:
-                total_gain = 'inf'
-
-            plt.plot(compare_xs, compare_ys, label=f"{compare_name}'s {currency} Balance")
-            title += f' vs. {compare_name} (Total gain: {total_gain}%)'
-
-        plt.gcf().autofmt_xdate()
-        plt.gcf().set_dpi(100)
-        plt.gcf().set_size_inches(7, 5)
-        plt.title(title)
-        plt.ylabel(currency)
-        plt.xlabel('Time')
-        plt.grid()
-        plt.legend(loc="best")
-        plt.savefig(DATA_PATH + "tmp.png")
-        plt.close()
-
-        file = discord.File(DATA_PATH + "tmp.png", "history.png")
-        embed = discord.Embed()
-        embed.set_image(url="attachment://history.png")
-
-        await ctx.send(file=file, embed=embed)
-    else:
-        logger.error(f'User unknown.')
-        await ctx.send('User unknown. Please register via a DM first.')
+    asyncio.create_task(
+        calc_history(message, user, currency, compare=compare, since=since, to=to)
+    )
 
 
 def calc_timedelta_from_time_args(time_str: str) -> timedelta:
@@ -296,10 +305,12 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
       <n><f>
       where <f> can be m (minutes), h (hours), d (days) or w (weeks)
 
+      or valid time string
+
     :raise:
       ValueError if invalid arg is given
     :return:
-      Calculated timedelta
+      Calculated timedelta or None if None was passed in
     """
 
     if not time_str:
@@ -533,13 +544,14 @@ def get_available_exchanges() -> str:
             description="Additional arguments",
             required=False,
             option_type=3
-        ),
-        create_option(
-            name="guild_specific",
-            description="Only register for a specific guild",
-            option_type=5,
-            required=True
         )
+        # TODO: Guild specific registration
+        # create_option(
+        #     name="guild_specific",
+        #     description="Only register for a specific guild",
+        #     option_type=5,
+        #     required=False
+        # )
     ]
 )
 async def register(ctx,
@@ -547,7 +559,7 @@ async def register(ctx,
                    api_key: str,
                    api_secret: str,
                    subaccount: typing.Optional[str] = None,
-                   guild_specific: bool = False,
+                   # guild_specific: bool = False,
                    args: str = None):
     if ctx.guild is not None:
         await ctx.send('This command can only be used via a DM.')
@@ -781,9 +793,12 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
 
         for user, user_gain in user_gains:
             if user_gain is not None:
-                user_gain_rel, user_gain_abs = user_gain
-                user_scores.append((user, user_gain_rel))
-                custom_value_strings[user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
+                if user.rekt_on:
+                    users_rekt.append(user)
+                else:
+                    user_gain_rel, user_gain_abs = user_gain
+                    user_scores.append((user, user_gain_rel))
+                    custom_value_strings[user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
             else:
                 users_missing.append(user)
 
@@ -797,18 +812,18 @@ async def calc_leaderboard(message, guild: discord.Guild, mode: str, time: str):
     rank = 1
 
     if len(user_scores) > 0:
-        prev_score = user_scores[0][1]
+        prev_score = None
         for user, score in user_scores:
             member = guild.get_member(user.id)
             if member:
-                if score < prev_score:
+                if prev_score and score < prev_score:
                     rank += 1
                 if user in custom_value_strings:
                     value = custom_value_strings[user]
                 else:
                     value = f'{round(score, ndigits=3)}{unit}'
                 description += f'{rank}. **{member.display_name}** {value}\n'
-            prev_score = score
+                prev_score = score
 
     if len(users_rekt) > 0:
         description += f'\n**Rekt**\n'

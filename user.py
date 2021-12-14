@@ -13,6 +13,7 @@ class User:
     api: Client
     rekt_on: datetime = None
     initial_balance: Tuple[datetime, Balance] = None
+    guild_id: int = None
 
     def __hash__(self):
         return self.id.__hash__()
