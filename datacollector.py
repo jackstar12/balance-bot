@@ -176,7 +176,7 @@ class DataCollector:
 
         time = datetime.now()
         data = {}
-        logging.info(f'Fetching data')
+        logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
         for user in users:
             if user.rekt_on:
                 balance = Balance(0.0, '$', None)
@@ -192,6 +192,7 @@ class DataCollector:
                     user.rekt_on = time
                     if callable(self.on_rekt_callback):
                         self.on_rekt_callback(user)
+        logging.info(f'Done Fetching')
         self.user_lock.release()
         return time, data
 

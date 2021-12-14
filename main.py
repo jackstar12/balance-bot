@@ -11,7 +11,7 @@ import time
 from discord_slash import SlashCommand, SlashContext
 from discord_slash.utils.manage_commands import create_choice, create_option
 from discord.ext import commands
-from typing import List, Dict, Type, Tuple
+from typing import List, Dict, Type, Tuple, Union, Optional
 from datetime import datetime, timedelta
 from random import Random
 
@@ -42,7 +42,8 @@ slash = SlashCommand(client, sync_commands=True)
 
 USERS: List[User] = []
 
-USERS_BY_ID: Dict[int, User] = {}
+USERS_BY_ID: Dict[int, Union[User, Dict[int, User]]] = {}
+
 
 EXCHANGES: Dict[str, Type[Client]] = {
     'binance': BinanceClient,
@@ -53,6 +54,24 @@ EXCHANGES: Dict[str, Type[Client]] = {
 }
 
 OPEN_DIALOGUES: Dict[int, Dialogue] = {}
+
+
+def get_user_by_id(user_id: int, guild_id: int = None) -> Optional[User]:
+    result = None
+
+    if user_id in USERS_BY_ID:
+        result = USERS_BY_ID[user_id]
+        if guild_id:
+            if isinstance(result, dict):
+                if guild_id in result:
+                    result = result[guild_id]
+            else:
+                logger.error(
+                    f'USERS_BY_ID contains invalid entry! Associated data with {user_id=}: {result} ({guild_id=}=')
+    else:
+        logger.error(f'Dont know user {user_id=}')
+
+    return result
 
 
 @client.event
