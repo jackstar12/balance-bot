@@ -205,7 +205,9 @@ async def calc_history(message: discord.Message,
             compare_ys.append(balance.amount)
 
         diff = ys[len(ys) - 1] - ys[0]
-        if ys[0] > 0:
+        if diff == 0.0:
+            total_gain = f'0'
+        elif ys[0] > 0:
             total_gain = f'{round(100 * (diff / ys[0]), ndigits=3)}'
         else:
             total_gain = 'inf'
@@ -216,7 +218,9 @@ async def calc_history(message: discord.Message,
         plt.plot(xs, ys, label=f"{user.display_name}'s {currency} Balance")
         if compare:
             diff = compare_ys[len(compare_ys) - 1] - compare_ys[0]
-            if compare_ys[0] > 0:
+            if diff == 0.0:
+                total_gain = '0'
+            elif compare_ys[0] > 0:
                 total_gain = f'{round(100 * (diff / compare_ys[0]), ndigits=3)}'
             else:
                 total_gain = 'inf'
