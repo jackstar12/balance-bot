@@ -42,7 +42,7 @@ client = commands.Bot(command_prefix=PREFIX, intents=intents)
 slash = SlashCommand(client, sync_commands=True)
 USERS: List[User] = []
 
-USERS_BY_ID: Dict[int, Union[User, Dict[int, User]]] = {}
+USERS_BY_ID: Dict[int, Dict[int, User]] = {}
 
 EXCHANGES: Dict[str, Type[Client]] = {
     'binance': BinanceClient,
