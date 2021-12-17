@@ -12,14 +12,6 @@ def balance_from_json(data: dict):
         extra_currencies=data.get('extra_currencies', None)
     )
 
-def balance_from_json(data: dict):
-    currency = data.get('currency', '$')
-    return Balance(
-        amount=round(data.get('amount', 0), ndigits=CURRENCY_PRECISION.get(currency, 3)),
-        currency=currency,
-        extra_currencies=data.get('extra_currencies', None)
-    )
-
 
 @dataclass
 class Balance:
