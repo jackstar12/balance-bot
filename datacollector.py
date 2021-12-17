@@ -8,7 +8,7 @@ import shutil
 import balance
 from Exchanges import *
 from threading import Lock, Timer
-from typing import List, Tuple, Dict, Callable, Optional
+from typing import List, Tuple, Dict, Callable, Optional, Any
 from user import User
 from datetime import datetime, timedelta
 from balance import Balance, balance_from_json
@@ -24,7 +24,7 @@ class DataCollector:
                  fetching_interval_hours: int = 4,
                  rekt_threshold: float = 2.5,
                  data_path: str = '',
-                 on_rekt_callback: Callable = None):
+                 on_rekt_callback: Callable[[User], Any] = None):
         super().__init__()
         self.users = users
         self.user_data: List[Tuple[datetime, Dict[int, Balance]]] = []

@@ -1080,5 +1080,5 @@ collector = DataCollector(USERS,
                           data_path=DATA_PATH,
                           rekt_threshold=REKT_THRESHOLD,
                           on_rekt_callback=on_rekt)
-commands = slash.commands
+
 client.run(KEY)

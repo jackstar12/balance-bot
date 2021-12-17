@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Callable, List, Iterable
+import discord
 import asyncio
 
 
@@ -7,7 +8,7 @@ import asyncio
 class Dialogue:
 
     def __init__(self,
-                 valid_choice_callback: Callable,
+                 valid_choice_callback: Callable[[discord.TextChannel, str], ...],
                  success_message: str = None,
                  invalid_choice_message: str = None,
                  possible_choices: Iterable = None,
