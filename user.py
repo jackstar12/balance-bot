@@ -28,6 +28,10 @@ class User:
             embed.add_field(name='Subaccount', value=self.api.subaccount)
         for extra in self.api.extra_kwargs:
             embed.add_field(name=extra, value=self.api.extra_kwargs[extra])
+        if self.guild_id:
+            embed.add_field(name='Guild', value=str(self.guild_id))
+        else:
+            embed.add_field(name='Guild', value='Global')
 
         return embed
 
@@ -47,6 +51,8 @@ class User:
                 'date': self.initial_balance[0].timestamp(),
                 'amount': self.initial_balance[1].amount
             }
+        if self.guild_id:
+            json['guild_id'] = self.guild_id
         return json
 
 
@@ -73,7 +79,8 @@ def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]]) -> User
             id=user_json['id'],
             api=exchange,
             rekt_on=rekt_on,
-            initial_balance=initial_balance
+            initial_balance=initial_balance,
+            guild_id=user_json.get('guild_id', None)
         )
         return user
     else:

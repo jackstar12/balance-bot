@@ -75,12 +75,12 @@ class DataCollector:
         timer = Timer(delay.total_seconds(), self.start_fetching)
         timer.start()
 
-    def fetch_data(self, time_tolerance_seconds: float = 60):
+    def fetch_data(self, guild_id: int = None, time_tolerance_seconds: float = 60):
         self.data_lock.acquire()
         time, data = self.user_data[len(self.user_data) - 1]
         now = datetime.now()
         if now - time > timedelta(seconds=time_tolerance_seconds):
-            time, data = self._fetch_data()
+            time, data = self._fetch_data(guild_id=guild_id)
             self.user_data.append((time, data))
         self.data_lock.release()
         return time, data
@@ -106,7 +106,7 @@ class DataCollector:
 
         return result
 
-    def get_latest_user_balance(self, user_id: int, currency: str = None) -> Optional[Balance]:
+    def get_latest_user_balance(self, user_id: int,  guild_id: int = None, currency: str = None) -> Optional[Balance]:
         result = None
 
         if currency is None:
@@ -165,7 +165,7 @@ class DataCollector:
         self.data_lock.release()
         self._save_user_data()
 
-    def _fetch_data(self, users: List[User] = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Balance]]:
+    def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Balance]]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to Balance objects (non-errors only)
@@ -178,20 +178,21 @@ class DataCollector:
         data = {}
         logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
         for user in users:
-            if user.rekt_on:
-                balance = Balance(0.0, '$', None)
-            else:
-                balance = user.api.get_balance()
-            if balance.error:
-                logging.error(f'Error while fetching user {user} balance: {balance.error}')
-                if keep_errors:
+            if not user.guild_id or not guild_id or guild_id == user.guild_id:
+                if user.rekt_on:
+                    balance = Balance(0.0, '$', None)
+                else:
+                    balance = user.api.get_balance()
+                if balance.error:
+                    logging.error(f'Error while fetching user {user} balance: {balance.error}')
+                    if keep_errors:
+                        data[user.id] = balance
+                else:
                     data[user.id] = balance
-            else:
-                data[user.id] = balance
-                if balance.amount <= self.rekt_threshold and not user.rekt_on:
-                    user.rekt_on = time
-                    if callable(self.on_rekt_callback):
-                        self.on_rekt_callback(user)
+                    if balance.amount <= self.rekt_threshold and not user.rekt_on:
+                        user.rekt_on = time
+                        if callable(self.on_rekt_callback):
+                            self.on_rekt_callback(user)
         logging.info(f'Done Fetching')
         self.user_lock.release()
         return time, data
@@ -200,11 +201,11 @@ class DataCollector:
     def _save_user_data(self):
         self.data_lock.acquire()
 
-        # if self._saves_since_backup >= self.interval_hours * 24:
-        #     shutil.copy(self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json")
-        #     self._saves_since_backup = 0
-        # else:
-        #     self._saves_since_backup += 1
+        if self._saves_since_backup >= self.interval_hours * 24:
+            shutil.copy(self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json")
+            self._saves_since_backup = 0
+        else:
+            self._saves_since_backup += 1
 
         with open(self.data_path + "user_data.json", "w") as f:
             user_data_json = []
