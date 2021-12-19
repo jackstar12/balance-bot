@@ -266,7 +266,7 @@ async def create_history(message: discord.Message,
         except ValueError as e:
             await message.edit(content=e.args[0].replace('{name}', compare.display_name))
             return
-        compare_data = collector.get_single_user_data(compare.id, compare_user.guild_id, start=start, end=end, currency=currency)
+        compare_data = collector.get_single_user_data(compare_user.id, compare_user.guild_id, start=start, end=end, currency=currency)
 
     compare_xs = []
     compare_ys = []
