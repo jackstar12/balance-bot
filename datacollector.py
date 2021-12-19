@@ -36,6 +36,10 @@ class DataCollector:
         self.rekt_threshold = rekt_threshold
         self.data_path = data_path
         self.backup_path = self.data_path + 'backup/'
+
+        if not os.path.exists(self.backup_path):
+            os.mkdir(self.backup_path)
+
         self.on_rekt_callback = on_rekt_callback
 
         self._saves_since_backup = 0
@@ -216,13 +220,17 @@ class DataCollector:
 
     # TODO: Encryption for user data
     def _save_user_data(self):
-        self.data_lock.acquire()
 
-        # if self._saves_since_backup >= self.interval_hours * 24:
-        #     shutil.copy(self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json")
-        #     self._saves_since_backup = 0
-        # else:
-        #     self._saves_since_backup += 1
+        try:
+            if self._saves_since_backup >= self.interval_hours * 24:
+                shutil.copy(self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json")
+                self._saves_since_backup = 0
+            else:
+                self._saves_since_backup += 1
+        except FileNotFoundError as e:
+            logging.error(f'{e} occurred while backing up user data.')
+
+        self.data_lock.acquire()
 
         with open(self.data_path + "user_data.json", "w") as f:
             user_data_json = []
