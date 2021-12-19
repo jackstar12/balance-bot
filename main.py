@@ -55,13 +55,18 @@ EXCHANGES: Dict[str, Type[Client]] = {
 OPEN_DIALOGUES: Dict[int, Dialogue] = {}
 
 
-def get_user_by_id(user_id: int, guild_id: int = None) -> User:
+def get_user_by_id(user_id: int,
+                   guild_id: int = None,
+                   exact: bool = False,
+                   throw_exceptions = True) -> User:
     """
     Tries to find a matching entry for the user and guild id.
+    :param throw_exceptions:
+    :param exact:
     :param user_id:
     :param guild_id:
     :return:
-    The found user. It will never return None, since an ValueError exception will be thrown instead.
+    The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
     """
     result = None
 
@@ -69,14 +74,15 @@ def get_user_by_id(user_id: int, guild_id: int = None) -> User:
         endpoints = USERS_BY_ID[user_id]
         if isinstance(endpoints, dict):
             result = endpoints.get(guild_id, None)
-            if not result:
+            if not result and not exact:
                 result = endpoints.get(None, None)  # None entry is global
-            if not result:
+            if not result and throw_exceptions:
                 raise ValueError("User {name} not registered for this guild")
         else:
             logger.error(f'USERS_BY_ID contains invalid entry! Associated data with {user_id=}: {result} ({guild_id=}')
-            raise ValueError("This is caused due to a bug in the bot. Please contact dev.")
-    else:
+            if throw_exceptions:
+                raise ValueError("This is caused due to a bug in the bot. Please contact dev.")
+    elif throw_exceptions:
         logger.error(f'Dont know user {user_id=}')
         raise ValueError("Unknown user {name}. Please register first.")
 
@@ -110,34 +116,29 @@ async def on_ready():
     add_guild_option(register_command, 'Guild to register this access for. If not given, it will be global.')
     add_guild_option(unregister_command, 'Which guild access to unregister. If not given, it will be global.')
 
-    await slash.sync_all_commands()
     collector.start_fetching()
+    await slash.sync_all_commands()
 
 
 @client.event
 async def on_guild_join(guild: discord.Guild):
-    register_command: BaseCommandObject = slash.commands['register']
-    for option in register_command.options:
-        if option.name == 'guild':
-            option.choices.append(
-                create_choice(
-                    name=guild.name,
-                    value=guild.id
+    commands = [slash.commands['register'], slash.commands['unregister']]
+
+    for command in commands:
+        for option in command.options:
+            if option['name'] == 'guild':
+                option.choices.append(
+                    create_choice(
+                        name=guild.name,
+                        value=guild.id
+                    )
                 )
-            )
     await slash.sync_all_commands()
 
 
 @client.event
 async def on_message(message: discord.Message):
-    # TODO: Implement Dialogue like feature for guild selecition and confirmation of tasks
-    # Which guild? Select choice:
-    #  Avbl. guilds
-    # 1
-    # OK!
-    # or
-    # you are about to delete your history (from too, ...). Are you sure you want to do that? (y/n)
-    # OK!
+
     if message.author.id in OPEN_DIALOGUES and message.guild is None:
 
         open_dialogue = OPEN_DIALOGUES[message.author.id]
@@ -210,13 +211,13 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
 
 
-async def calc_history(message: discord.Message,
-                       user: discord.Member,
-                       guild_id: int,
-                       currency: str,
-                       compare: discord.Member = None,
-                       since: str = None,
-                       to: str = None):
+async def create_history(message: discord.Message,
+                         user: discord.Member,
+                         guild_id: int,
+                         currency: str,
+                         compare: discord.Member = None,
+                         since: str = None,
+                         to: str = None):
     logger.info(f'New interaction with {user.display_name}: Show history')
 
     try:
@@ -244,7 +245,9 @@ async def calc_history(message: discord.Message,
         logger.error(e.args[0])
         await message.edit(content=e.args[0])
         return
-    user_data = collector.get_single_user_data(registered_user.id, start=start, end=end, currency=currency)
+
+    user_data = collector.get_single_user_data(registered_user.id, guild_id=guild_id, start=start, end=end, currency=currency)
+
     if len(user_data) == 0:
         logger.error(f'No data for this user!')
         await message.edit(content=f'Got no data for this user')
@@ -263,7 +266,7 @@ async def calc_history(message: discord.Message,
         except ValueError as e:
             await message.edit(content=e.args[0].replace('{name}', compare.display_name))
             return
-        compare_data = collector.get_single_user_data(compare.id, start=start, end=end, currency=currency)
+        compare_data = collector.get_single_user_data(compare.id, guild_id=guild_id, start=start, end=end, currency=currency)
 
     compare_xs = []
     compare_ys = []
@@ -361,7 +364,7 @@ async def history(ctx,
     message = await ctx.send(f'...')
 
     asyncio.create_task(
-        calc_history(message, user, guild_id=ctx.guild.id, currency=currency, compare=compare, since=since, to=to)
+        create_history(message, user, guild_id=ctx.guild.id, currency=currency, compare=compare, since=since, to=to)
     )
 
 
@@ -470,10 +473,10 @@ def calc_gains(users: List[User],
                         if since_start:
                             then, balance_then = user.initial_balance
                         else:
-                            balance_then = data[user.id]
+                            balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
                         balance_then = collector.match_balance_currency(balance_then, currency)
                         if balance_then:
-                            balance_now = collector.get_latest_user_balance(user.id, currency)
+                            balance_now = collector.get_latest_user_balance(user.id, guild_id=user.guild_id, currency=currency)
                             users_done.append(user.id)
                             diff = balance_now.amount - balance_then.amount
                             if balance_then.amount > 0:
@@ -656,12 +659,12 @@ async def register(ctx,
                     subaccount=subaccount,
                     extra_kwargs=kwargs
                 )
-                try:
-                    user = get_user_by_id(ctx.author.id, guild_id=guild)
-                    user.api = exchange
+                existing_user = get_user_by_id(ctx.author.id, guild, exact=True, throw_exceptions=False)
+                if existing_user:
+                    existing_user.api = exchange
                     logger.info(f'Updated user')
-                    await ctx.send(embed=user.get_discord_embed())
-                except ValueError:
+                    await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)))
+                else:
                     initial_balance = None
                     try:
                         initial_time = datetime.strptime(INITIAL_BALANCE['date'], "%d/%m/%Y %H:%M:%S")
@@ -677,9 +680,11 @@ async def register(ctx,
                         guild_id=guild,
                         initial_balance=initial_balance
                     )
-                    await ctx.send(embed=new_user.get_discord_embed())
+                    await ctx.send(embed=new_user.get_discord_embed(client.get_guild(guild)))
                     USERS.append(new_user)
-                    USERS_BY_ID[new_user.id] = {guild: new_user}
+                    if new_user.id not in USERS_BY_ID:
+                        USERS_BY_ID[new_user.id] = {}
+                    USERS_BY_ID[new_user.id][guild] = new_user
                     collector.add_user(new_user)
                     logger.info(f'Registered new user')
                 save_registered_users()
@@ -713,7 +718,7 @@ async def unregister(ctx, guild: str = None):
     logger.error(f'New Interaction with {ctx.author.display_name}: Trying to unregister user {ctx.author.display_name}')
 
     try:
-        registered_user = get_user_by_id(ctx.author.id, guild)
+        registered_user = get_user_by_id(ctx.author.id, guild, exact=True)
     except ValueError as e:
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name))
         return
@@ -724,9 +729,6 @@ async def unregister(ctx, guild: str = None):
     save_registered_users()
     logger.error(f'Successfully unregistered user {ctx.author.display_name}')
     await ctx.send(f'You were successfully unregistered!')
-
-    logger.error(f'User is not registered')
-    await ctx.send(f'You are not registered.')
 
 
 @slash.slash(
@@ -740,12 +742,11 @@ async def info(ctx):
 
     if ctx.author.id in USERS_BY_ID:
         registrations = USERS_BY_ID[ctx.author.id]
-        embed = discord.Embed()
-        for registration in registrations:
-            embed += registration.get_discord_embed()
-        await ctx.send(embed=embed)
-        return
-    await ctx.send(f'You are not registered.')
+        for registration in registrations.values():
+            guild_name = client.get_guild(registration.guild_id)
+            await ctx.send(embed=registration.get_discord_embed(guild_name))
+    else:
+        await ctx.send(f'You are not registered.')
 
 
 @slash.slash(
@@ -824,15 +825,15 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
 
     date, data = collector.fetch_data(guild_id=guild.id)
     if mode == 'balance':
-        for user in USERS:
-            if not user.guild_id or user.guild_id == guild.id:
+        for user_id in USERS_BY_ID:
+            user = get_user_by_id(user_id, guild.id)
+            if user and guild.get_member(user_id):
                 if user.rekt_on:
                     users_rekt.append(user)
                 else:
-                    if user.id not in data:
+                    balance = collector.get_balance_from_data(data, user.id, user.guild_id)
+                    if not balance:
                         balance = collector.get_latest_user_balance(user.id)
-                    else:
-                        balance = data[user.id]
                     if balance is None:
                         users_missing.append(user)
                     elif balance.amount > REKT_THRESHOLD:
@@ -866,8 +867,9 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
             description += f'Gain since {search}\n\n'
 
         users = []
-        for user in USERS:
-            if not user.guild_id or user.guild_id == guild.id:
+        for user_id in USERS_BY_ID:
+            user = get_user_by_id(user_id, guild.id)
+            if user and guild.get_member(user.id):
                 users.append(user)
         user_gains = calc_gains(users, search, since_start=since_start)
 

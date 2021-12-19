@@ -8,7 +8,7 @@ import asyncio
 class Dialogue:
 
     def __init__(self,
-                 valid_choice_callback: Callable[[discord.TextChannel, str], ...],
+                 valid_choice_callback: Callable,
                  success_message: str = None,
                  invalid_choice_message: str = None,
                  possible_choices: Iterable = None,

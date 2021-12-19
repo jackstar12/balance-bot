@@ -18,20 +18,18 @@ class User:
     def __hash__(self):
         return self.id.__hash__()
 
-    def get_discord_embed(self):
+    def get_discord_embed(self, guild_name: str = None):
         embed = discord.Embed(title="User Information")
 
+        embed.add_field(name='Guild', value=guild_name if guild_name else 'Global', inline=False)
         embed.add_field(name='Exchange', value=self.api.exchange)
         embed.add_field(name='API Key', value=self.api.api_key)
         embed.add_field(name='API Secret', value=self.api.api_secret)
+
         if self.api.subaccount:
             embed.add_field(name='Subaccount', value=self.api.subaccount)
         for extra in self.api.extra_kwargs:
             embed.add_field(name=extra, value=self.api.extra_kwargs[extra])
-        if self.guild_id:
-            embed.add_field(name='Guild', value=str(self.guild_id))
-        else:
-            embed.add_field(name='Guild', value='Global')
 
         return embed
 

@@ -27,7 +27,7 @@ class DataCollector:
                  on_rekt_callback: Callable[[User], Any] = None):
         super().__init__()
         self.users = users
-        self.user_data: List[Tuple[datetime, Dict[int, Balance]]] = []
+        self.user_data: List[Tuple[datetime, Dict[int, Dict[int, Balance]]]] = []
 
         self.user_lock = Lock()
         self.data_lock = Lock()
@@ -92,7 +92,7 @@ class DataCollector:
 
         time, data = self._fetch_data(users=[user], keep_errors=True)
 
-        result = data[user.id]
+        result = data[user.id][user.guild_id]
 
         if result.error is None or result.error == '':
             self.data_lock.acquire()
@@ -106,7 +106,7 @@ class DataCollector:
 
         return result
 
-    def get_latest_user_balance(self, user_id: int,  guild_id: int = None, currency: str = None) -> Optional[Balance]:
+    def get_latest_user_balance(self, user_id: int, guild_id: int = None, currency: str = None) -> Optional[Balance]:
         result = None
 
         if currency is None:
@@ -114,16 +114,28 @@ class DataCollector:
 
         self.data_lock.acquire()
         for time, data in reversed(self.user_data):
-            if user_id in data:
-                user_balance = self.match_balance_currency(data[user_id], currency)
+            user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
+            if user_balance:
+                user_balance = self.match_balance_currency(user_balance, currency)
                 if user_balance:
                     result = user_balance
                     break
         self.data_lock.release()
         return result
 
+    def get_balance_from_data(self, data, user_id: int, guild_id: int = None, exact=False) -> Optional[Balance]:
+        balance = None
+
+        if user_id in data:
+            balance = data[user_id].get(guild_id, None)
+            if not balance and not exact:
+                balance = data[user_id].get(None, None)
+
+        return balance
+
     def get_single_user_data(self,
                              user_id: int,
+                             guild_id: int = None,
                              start: datetime = None,
                              end: datetime = None,
                              currency: str = None) -> List[Tuple[datetime, Balance]]:
@@ -139,11 +151,12 @@ class DataCollector:
             currency = '$'
 
         for time, data in self.user_data:
-            if user_id in data and start < time < end:
-                user_balance = data[user_id]
-                user_balance = self.match_balance_currency(user_balance, currency)
+            if start < time < end:
+                user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
                 if user_balance:
-                    single_user_data.append((time, user_balance))
+                    user_balance = self.match_balance_currency(user_balance, currency)
+                    if user_balance:
+                        single_user_data.append((time, user_balance))
         self.data_lock.release()
         return single_user_data
 
@@ -165,7 +178,7 @@ class DataCollector:
         self.data_lock.release()
         self._save_user_data()
 
-    def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Balance]]:
+    def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to Balance objects (non-errors only)
@@ -178,7 +191,7 @@ class DataCollector:
         data = {}
         logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
         for user in users:
-            if not user.guild_id or not guild_id or guild_id == user.guild_id:
+            if not guild_id or guild_id == user.guild_id:
                 if user.rekt_on:
                     balance = Balance(0.0, '$', None)
                 else:
@@ -186,9 +199,13 @@ class DataCollector:
                 if balance.error:
                     logging.error(f'Error while fetching user {user} balance: {balance.error}')
                     if keep_errors:
-                        data[user.id] = balance
+                        if user.id not in data:
+                            data[user.id] = {}
+                        data[user.id][user.guild_id] = balance
                 else:
-                    data[user.id] = balance
+                    if user.id not in data:
+                        data[user.id] = {}
+                    data[user.id][user.guild_id] = balance
                     if balance.amount <= self.rekt_threshold and not user.rekt_on:
                         user.rekt_on = time
                         if callable(self.on_rekt_callback):
@@ -226,7 +243,7 @@ class DataCollector:
                             pass  # Not in list
                 else:
                     user_data_json.append(
-                        (round(date.timestamp()), {user_id: data[user_id].to_json() for user_id in data})
+                        (round(date.timestamp()), {user_id: {guild_id: data[user_id][guild_id].to_json() for guild_id in data[user_id]} for user_id in data})
                     )
                 prev_date = date
                 prev_data = data
@@ -262,39 +279,26 @@ class DataCollector:
                             if index_merge < merge_len:
                                 ts_merge, data_merge = raw_json_merge[index_merge]
                             if ts_normal < ts_merge or index_merge == merge_len:
-                                self.user_data.append(
-                                    (datetime.fromtimestamp(ts_normal),
-                                     {int(user_id): balance_from_json(data_normal[user_id]) for user_id in data_normal})
-                                )
+                                self._append_from_json(ts_normal, data_normal)
                                 if index < normal_len:
                                     index += 1
                             elif ts_merge < ts_normal or index == normal_len:
-                                self.user_data.append(
-                                    (datetime.fromtimestamp(ts_merge),
-                                     {int(user_id): balance_from_json(data_merge[user_id]) for user_id in data_merge})
-                                )
+                                self._append_from_json(ts_merge, data_merge)
                                 if index_merge < merge_len:
                                     index_merge += 1
                             else:
                                 for merge in data_merge:
                                     if merge not in data_normal:
                                         data_normal[merge] = data_merge[merge]
-                                self.user_data.append(
-                                    (datetime.fromtimestamp(ts_normal),
-                                     {int(user_id): balance_from_json(data_normal[user_id]) for user_id in data_normal})
-                                )
+                                self._append_from_json(ts_normal, data_normal)
                                 if index < normal_len:
                                     index += 1
                                 if index_merge < merge_len:
                                     index_merge += 1
                     else:
-                        self.user_data += [
-                            (
-                                datetime.fromtimestamp(ts),
-                                {int(user_id): balance_from_json(data[user_id]) for user_id in data}
-                            )
-                            for ts, data in raw_json
-                        ]
+                        for ts, data in raw_json:
+                            self._append_from_json(ts, data)
+                        pass
         except FileNotFoundError:
             logging.info('No user data found')
         except json.JSONDecodeError as e:
@@ -302,8 +306,24 @@ class DataCollector:
 
         self.data_lock.release()
 
+    def _append_from_json(self, ts: int, user_json: dict):
+        user_data = {}
+        for user_id in user_json:
+            user_balances = {}
+            for key in user_json[user_id].keys():
+                if key != 'extra_currencies' and isinstance(user_json[user_id][key], dict):
+                    user_balances[None if key == 'null' else key] = balance_from_json(user_json[user_id][key])
+            if len(user_balances) == 0:
+                user_balances[None] = balance_from_json(user_json[user_id])
+            user_data[int(user_id)] = user_balances
+        self.user_data.append((datetime.fromtimestamp(ts), user_data))
+
     def match_balance_currency(self, balance: Balance, currency: str):
         result = None
+
+        if balance is None:
+            return None
+
         if balance.currency != currency:
             if balance.extra_currencies:
                 if currency in balance.extra_currencies:
