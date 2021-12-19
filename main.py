@@ -246,7 +246,7 @@ async def create_history(message: discord.Message,
         await message.edit(content=e.args[0])
         return
 
-    user_data = collector.get_single_user_data(registered_user.id, guild_id=guild_id, start=start, end=end, currency=currency)
+    user_data = collector.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id, start=start, end=end, currency=currency)
 
     if len(user_data) == 0:
         logger.error(f'No data for this user!')
