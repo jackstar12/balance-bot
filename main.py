@@ -108,16 +108,16 @@ def add_guild_option(command: BaseCommandObject, description: str):
 
 @client.event
 async def on_ready():
-    print('Bot Ready.')
     logger.info('Bot Ready')
-
     register_command: BaseCommandObject = slash.commands['register']
     unregister_command: BaseCommandObject = slash.commands['unregister']
     add_guild_option(register_command, 'Guild to register this access for. If not given, it will be global.')
     add_guild_option(unregister_command, 'Which guild access to unregister. If not given, it will be global.')
 
-    collector.start_fetching()
     await slash.sync_all_commands()
+
+    print('Bot Ready.')
+    collector.start_fetching()
 
 
 @client.event
