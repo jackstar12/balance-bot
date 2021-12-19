@@ -470,8 +470,10 @@ def calc_gains(users: List[User],
             for user in users:
                 if user.id not in users_done:
                     try:
+                        balance_then = None
                         if since_start:
-                            then, balance_then = user.initial_balance
+                            if user.initial_balance:
+                                then, balance_then = user.initial_balance
                         else:
                             balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
                         balance_then = collector.match_balance_currency(balance_then, currency)
