@@ -218,11 +218,11 @@ class DataCollector:
     def _save_user_data(self):
         self.data_lock.acquire()
 
-        if self._saves_since_backup >= self.interval_hours * 24:
-            shutil.copy(self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json")
-            self._saves_since_backup = 0
-        else:
-            self._saves_since_backup += 1
+        # if self._saves_since_backup >= self.interval_hours * 24:
+        #     shutil.copy(self.data_path + 'user_data.json', self.backup_path + "backup_user_data.json")
+        #     self._saves_since_backup = 0
+        # else:
+        #     self._saves_since_backup += 1
 
         with open(self.data_path + "user_data.json", "w") as f:
             user_data_json = []
