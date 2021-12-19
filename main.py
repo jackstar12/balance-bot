@@ -1011,7 +1011,17 @@ def load_registered_users():
             users_json = json.load(fp=f)
             for user_json in users_json:
                 try:
-                    user = user_from_json(user_json, EXCHANGES)
+
+                    initial_balance = None
+                    try:
+                        initial_time = datetime.strptime(INITIAL_BALANCE['date'], "%d/%m/%Y %H:%M:%S")
+                        initial_balance = (initial_time, Balance(INITIAL_BALANCE['amount'], currency='$', error=None))
+                    except ValueError as e:
+                        logger.error(f'{e}: Invalid time string for Initial Balance: {INITIAL_BALANCE["date"]}')
+                    except KeyError as e:
+                        logger.error(f'{e}: Invalid INITIAL_BALANCE dict. Consider looking into config.example')
+
+                    user = user_from_json(user_json, EXCHANGES, initial_balance)
                     if user.id not in USERS_BY_ID:
                         USERS_BY_ID[user.id] = {}
                     USERS_BY_ID[user.id][user.guild_id] = user

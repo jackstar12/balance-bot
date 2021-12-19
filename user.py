@@ -54,7 +54,7 @@ class User:
         return json
 
 
-def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]]) -> User:
+def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]], initial_balance_default: Tuple[datetime, Balance] = None) -> User:
     exchange_name = user_json['exchange'].lower()
     exchange_cls = exchange_classes[exchange_name]
     if issubclass(exchange_cls, Client):
@@ -73,6 +73,9 @@ def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]]) -> User
                 datetime.fromtimestamp(initial_balance['date']),
                 Balance(amount=initial_balance['amount'], currency='$', error=None)
             )
+        elif initial_balance_default:
+            initial_balance = initial_balance_default
+
         user = User(
             id=user_json['id'],
             api=exchange,
