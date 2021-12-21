@@ -170,15 +170,21 @@ class DataCollector:
         self.data_lock.release()
         return result
 
-    def clear_user_data(self, user_id: int, start: datetime = None, end: datetime = None):
-        self.data_lock.acquire()
+    def clear_user_data(self, user_id: int, guild_id: int = None, start: datetime = None, end: datetime = None, remove_all_guilds = False):
+
         if start is None:
             start = datetime.fromtimestamp(0)
         if end is None:
             end = datetime.now()
+
+        self.data_lock.acquire()
+
         for time, data in self.user_data:
             if user_id in data and start < time < end:
-                data.pop(user_id)
+                if remove_all_guilds:
+                    data.pop(user_id)
+                elif guild_id in data[user_id]:
+                    data[user_id].pop(guild_id)
         self.data_lock.release()
         self._save_user_data()
 

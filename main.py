@@ -114,10 +114,11 @@ async def on_ready():
     add_guild_option(register_command, 'Guild to register this access for. If not given, it will be global.')
     add_guild_option(unregister_command, 'Which guild access to unregister. If not given, it will be global.')
 
+    collector.start_fetching()
+
     await slash.sync_all_commands()
 
     print('Bot Ready.')
-    collector.start_fetching()
 
 
 @client.event
@@ -664,8 +665,9 @@ async def register(ctx,
                 existing_user = get_user_by_id(ctx.author.id, guild, exact=True, throw_exceptions=False)
                 if existing_user:
                     existing_user.api = exchange
-                    logger.info(f'Updated user')
                     await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)))
+                    logger.info(f'Updated user')
+                    save_registered_users()
                 else:
                     initial_balance = None
                     try:
@@ -682,14 +684,35 @@ async def register(ctx,
                         guild_id=guild,
                         initial_balance=initial_balance
                     )
-                    await ctx.send(embed=new_user.get_discord_embed(client.get_guild(guild)))
-                    USERS.append(new_user)
-                    if new_user.id not in USERS_BY_ID:
-                        USERS_BY_ID[new_user.id] = {}
-                    USERS_BY_ID[new_user.id][guild] = new_user
-                    collector.add_user(new_user)
-                    logger.info(f'Registered new user')
-                save_registered_users()
+
+                    init_balance = new_user.api.get_balance()
+                    if init_balance.error is None:
+                        message = f'Your balance: {init_balance.to_string()}. Is this correct? Yes will register you, no will cancel the process. (y/n)'
+                    else:
+                        message = f'An error occured while getting your balance: {init_balance.error}.'
+
+                    await ctx.send(
+                        content=message,
+                        embed=new_user.get_discord_embed(client.get_guild(guild))
+                    )
+
+                    def register_user():
+                        new_user.initial_balance = (datetime.now(), init_balance)
+
+                        USERS.append(new_user)
+                        if new_user.id not in USERS_BY_ID:
+                            USERS_BY_ID[new_user.id] = {}
+                        USERS_BY_ID[new_user.id][guild] = new_user
+
+                        collector.add_user(new_user)
+                        logger.info(f'Registered new user')
+                        save_registered_users()
+
+                    OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
+                        yes_callback=register_user,
+                        yes_message='You were successfully registered!',
+                        no_message='Registration canceled.'
+                    )
             else:
                 logger.error(
                     f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
@@ -725,12 +748,26 @@ async def unregister(ctx, guild: str = None):
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name))
         return
 
-    USERS_BY_ID[registered_user.id].pop(guild)
-    USERS.remove(registered_user)
-    collector.remove_user(registered_user)
-    save_registered_users()
-    logger.error(f'Successfully unregistered user {ctx.author.display_name}')
-    await ctx.send(f'You were successfully unregistered!')
+    def unregister_user():
+        collector.clear_user_data(registered_user.id)
+
+        USERS_BY_ID[registered_user.id].pop(guild)
+
+        if len(USERS_BY_ID[registered_user.id]) == 0:
+            USERS_BY_ID.pop(registered_user.id)
+
+        USERS.remove(registered_user)
+        collector.remove_user(registered_user)
+        save_registered_users()
+        logger.info(f'Successfully unregistered user {ctx.author.display_name}')
+
+    await ctx.send(f'Do you really want to unregister? This will **delete all your data**. (y/n)')
+
+    OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
+        yes_callback=unregister_user,
+        yes_message='You were successfully unregistered!',
+        no_message='Unregistration cancelled.'
+    )
 
 
 @slash.slash(
@@ -947,8 +984,8 @@ async def leaderboard_balance(ctx: SlashContext):
 
     message = await ctx.send('...')
 
-    asyncio.create_task(create_leaderboard(
-        message=message, guild=ctx.guild, mode='balance', time='24h'
+    asyncio.create_task(
+        create_leaderboard(message=message, guild=ctx.guild, mode='balance', time='24h'
     ))
 
 

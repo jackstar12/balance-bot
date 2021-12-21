@@ -12,6 +12,7 @@ REKT_MESSAGES = [
     "{name} gone **REKT**!",
     "{name} hat den SL vergessen..."
 ]
+# Channels where the Rekt Messages are sent
 REKT_GUILDS = [
     {
         "guild_id": 916370614598651934,
@@ -23,7 +24,7 @@ REKT_GUILDS = [
     }
 ]
 SLASH_GUILD_IDS = [
-    916370614598651934, 443583326507499520
+    916370614598651934
 ]
 CURRENCY_PRECISION = {
     '$': 3,

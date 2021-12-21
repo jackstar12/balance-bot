@@ -32,5 +32,8 @@ class Balance:
             json['extra_currencies'] = self.extra_currencies
         return json
 
+    def to_string(self):
+        return f'{round(self.amount, ndigits=CURRENCY_PRECISION.get(self.currency, 3))}{self.currency}'
+
 
 
