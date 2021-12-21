@@ -865,7 +865,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
     date, data = collector.fetch_data(guild_id=guild.id)
     if mode == 'balance':
         for user_id in USERS_BY_ID:
-            user = get_user_by_id(user_id, guild.id)
+            user = get_user_by_id(user_id, guild.id, throw_exceptions=False)
             if user and guild.get_member(user_id):
                 if user.rekt_on:
                     users_rekt.append(user)
