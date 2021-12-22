@@ -387,6 +387,8 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
     if not time_str:
         return None
 
+    time_str = time_str.lower()
+
     # Different time formats: True or False indicates whether the date is included.
     formats = [
         (False, "%H:%M:%S"),
@@ -398,8 +400,12 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
         (True, "%Y-%m-%d"),
         (True, "%d.%m.%Y %H:%M:%S"),
         (True, "%d.%m.%Y %H:%M"),
-        (True, "%d.%m.%Y %H:"),
-        (True, "%d.%m.%Y")
+        (True, "%d.%m.%Y %H"),
+        (True, "%d.%m.%Y"),
+        (True, "%d.%m. %H:%M:%S"),
+        (True, "%d.%m. %H:%M"),
+        (True, "%d.%m. %H"),
+        (True, "%d.%m.")
     ]
 
     delta = None
@@ -409,6 +415,8 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
             now = datetime.now()
             if not includes_date:
                 date = date.replace(year=now.year, month=now.month, day=now.day, microsecond=0)
+            elif date.year == 1900:
+                date = date.replace(year=now.year)
             delta = datetime.now() - date
             break
         except ValueError:
@@ -892,7 +900,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
                 delta = calc_timedelta_from_time_args(time)
             except ValueError as e:
                 logging.error(e.args[0])
-                await message.edit(e.args[0])
+                await message.edit(content=e.args[0])
                 return
         else:
             delta = timedelta(0)
@@ -907,7 +915,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
 
         users = []
         for user_id in USERS_BY_ID:
-            user = get_user_by_id(user_id, guild.id)
+            user = get_user_by_id(user_id, guild.id, throw_exceptions=False)
             if user and guild.get_member(user.id):
                 users.append(user)
         user_gains = calc_gains(users, search, since_start=since_start)

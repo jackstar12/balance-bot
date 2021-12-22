@@ -25,7 +25,7 @@ class BinanceClient(Client):
         prepared = request.prepare()
         response = self._process_response(s.send(prepared))
 
-        return Balance(amount=float(response.get('totalWalletBalance', 0)), currency='$', error=response.get('msg', None))
+        return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', error=response.get('msg', None))
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
