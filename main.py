@@ -106,8 +106,10 @@ def add_guild_option(command: BaseCommandObject, description: str):
 async def on_ready():
     register_command: BaseCommandObject = slash.commands['register']
     unregister_command: BaseCommandObject = slash.commands['unregister']
+    clear_command: BaseCommandObject = slash.commands['clear']
     add_guild_option(register_command, 'Guild to register this access for. If not given, it will be global.')
     add_guild_option(unregister_command, 'Which guild access to unregister. If not given, it will be global.')
+    add_guild_option(clear_command, 'Which guild to clear your data for. If not given, it will be global.')
 
     collector.start_fetching()
 
@@ -118,7 +120,7 @@ async def on_ready():
 
 @client.event
 async def on_guild_join(guild: discord.Guild):
-    commands = [slash.commands['register'], slash.commands['unregister']]
+    commands = [slash.commands['register'], slash.commands['unregister'], slash.commands['clear']]
 
     for command in commands:
         for option in command.options:
@@ -463,18 +465,23 @@ def calc_gains(users: List[User],
     users_done = []
     results = []
 
-    for cur_time, data in reversed(user_data):
+    if since_start:
+        iterator = user_data
+    else:
+        iterator = reversed(user_data)
+
+    for cur_time, data in iterator:
         cur_diff = cur_time - search
         if cur_diff.total_seconds() <= 0 or since_start:
             for user in users:
                 if user.id not in users_done:
                     try:
-                        balance_then = None
-                        if since_start:
-                            if user.initial_balance:
-                                then, balance_then = user.initial_balance
-                        else:
-                            balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
+                        #balance_then = None
+                        #if since_start:
+                        #    if user.initial_balance:
+                        #        then, balance_then = user.initial_balance
+                        #else:
+                        balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
                         balance_then = collector.match_balance_currency(balance_then, currency)
                         if balance_then:
                             balance_now = collector.get_latest_user_balance(user.id, guild_id=user.guild_id, currency=currency)
@@ -487,7 +494,7 @@ def calc_gains(users: List[User],
                     except KeyError:
                         # User isn't included in data set
                         continue
-            if len(users) == len(users_done) or since_start:
+            if len(users) == len(users_done):
                 break
 
     for user in users:
@@ -731,23 +738,23 @@ async def register(ctx,
     options=[]
 )
 async def unregister(ctx, guild: str = None):
+
     if ctx.guild is not None:
         await ctx.send(f'This command can only be used via a DM.')
         return
     if guild:
         guild = int(guild)
 
-    logger.error(f'New Interaction with {ctx.author.display_name}: Trying to unregister user {ctx.author.display_name}')
+    logger.info(f'New Interaction with {ctx.author.display_name}: Trying to unregister user {ctx.author.display_name}')
 
     try:
-        registered_user = get_user_by_id(ctx.author.id, guild, exact=True)
+        registered_user = get_user_by_id(ctx.author.id, guild, exact=False)
     except ValueError as e:
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name))
         return
 
     def unregister_user():
-        collector.clear_user_data(registered_user.id)
-
+        collector.clear_user_data(registered_user, remove_all_guilds=True)
         USERS_BY_ID[registered_user.id].pop(guild)
 
         if len(USERS_BY_ID[registered_user.id]) == 0:
@@ -758,7 +765,10 @@ async def unregister(ctx, guild: str = None):
         save_registered_users()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
 
-    await ctx.send(f'Do you really want to unregister? This will **delete all your data**. (y/n)')
+    guild_name = ""
+    if guild:
+        guild_name = f' {client.get_guild(guild).name}'
+    await ctx.send(f'Do you really want to unregister{guild_name}? This will **delete all your data**. (y/n)')
 
     OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
         yes_callback=unregister_user,
@@ -844,7 +854,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
     await ctx.send(f'Do you really want to **delete** your history{from_to}? (y/n)')
 
     OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
-        yes_callback=lambda: collector.clear_user_data(user_id=ctx.author.id, start=start, end=end),
+        yes_callback=lambda: collector.clear_user_data(registered_user, start=start, end=end, remove_all_guilds=True, update_initial_balance=True),
         yes_message=f'Deleted your history{from_to}',
         no_message=f'Clear cancelled.',
     )

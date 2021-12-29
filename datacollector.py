@@ -170,7 +170,12 @@ class DataCollector:
         self.data_lock.release()
         return result
 
-    def clear_user_data(self, user_id: int, guild_id: int = None, start: datetime = None, end: datetime = None, remove_all_guilds = False):
+    def clear_user_data(self,
+                        user: User,
+                        start: datetime = None,
+                        end: datetime = None,
+                        remove_all_guilds = False,
+                        update_initial_balance = False):
 
         if start is None:
             start = datetime.fromtimestamp(0)
@@ -179,13 +184,26 @@ class DataCollector:
 
         self.data_lock.acquire()
 
+        new_initial = None
+
         for time, data in self.user_data:
-            if user_id in data and start < time < end:
-                if remove_all_guilds:
-                    data.pop(user_id)
-                elif guild_id in data[user_id]:
-                    data[user_id].pop(guild_id)
+            if user.id in data:
+                if start < time < end:
+                    if remove_all_guilds:
+                        data.pop(user.id)
+                    elif user.guild_id in data[user.id]:
+                        data[user.id].pop(user.guild_id)
+                elif time > start and update_initial_balance:
+                    new_initial = self.get_balance_from_data(data, user.id, user.guild_id, exact=True)
+                    if new_initial:
+                        user.initial_balance = time, new_initial
+                        break
+
         self.data_lock.release()
+
+        if not new_initial and update_initial_balance:
+            user.initial_balance = self.get_user_balance(user)
+
         self._save_user_data()
 
     def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
