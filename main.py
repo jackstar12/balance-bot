@@ -1112,6 +1112,7 @@ async def on_rekt_async(user: User):
 
 def on_rekt(user: User):
     try:
+        # First time this might be called is after start, in which case there's already an event loop running
         asyncio.create_task(on_rekt_async(user))
     except RuntimeError:
         asyncio.run(on_rekt_async(user))
