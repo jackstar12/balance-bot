@@ -13,6 +13,7 @@ from user import User
 from datetime import datetime, timedelta
 from balance import Balance, balance_from_json
 from subprocess import call
+from config import CURRENCY_ALIASES
 
 import logging
 
@@ -182,9 +183,8 @@ class DataCollector:
         if end is None:
             end = datetime.now()
 
-        self.data_lock.acquire()
-
         new_initial = None
+        self.data_lock.acquire()
 
         for time, data in self.user_data:
             if user.id in data:
@@ -197,7 +197,7 @@ class DataCollector:
                     new_initial = self.get_balance_from_data(data, user.id, user.guild_id, exact=True)
                     if new_initial:
                         user.initial_balance = time, new_initial
-                        break
+                        break  # Once we are done with collecting data and updated initial balance
 
         self.data_lock.release()
 
@@ -286,7 +286,6 @@ class DataCollector:
         self.data_lock.release()
 
     def _load_user_data(self):
-        self.data_lock.acquire()
 
         raw_json_merge = None
         try:
@@ -302,6 +301,7 @@ class DataCollector:
                 raw_json = json.load(fp=f)
                 if raw_json:
                     if raw_json_merge:
+                        # This is a mess and kind of unnecessary...
                         index_normal = 0
                         index_merge = 0
                         len_normal = len(raw_json)
@@ -332,8 +332,6 @@ class DataCollector:
         except json.JSONDecodeError as e:
             logging.error(f'{e}: Error while parsing user data.')
 
-        self.data_lock.release()
-
     def _append_from_json(self, ts: int, user_json: dict):
         user_data = {}
 
@@ -346,7 +344,9 @@ class DataCollector:
                 user_balances[None] = balance_from_json(user_json[user_id])
             user_data[int(user_id)] = user_balances
 
+        self.data_lock.acquire()
         self.user_data.append((datetime.fromtimestamp(ts), user_data))
+        self.data_lock.release()
 
     def match_balance_currency(self, balance: Balance, currency: str):
         result = None
@@ -356,7 +356,7 @@ class DataCollector:
 
         if balance.currency != currency:
             if balance.extra_currencies:
-                if currency in balance.extra_currencies:
+                if currency in balance.extra_currencies or CURRENCY_ALIASES.get(currency) in balance.extra_currencies:
                     result = Balance(amount=balance.extra_currencies[currency], currency=currency)
         else:
             result = balance

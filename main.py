@@ -476,12 +476,10 @@ def calc_gains(users: List[User],
             for user in users:
                 if user.id not in users_done:
                     try:
-                        #balance_then = None
-                        #if since_start:
-                        #    if user.initial_balance:
-                        #        then, balance_then = user.initial_balance
-                        #else:
-                        balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
+                        if since_start and user.initial_balance:
+                            then, balance_then = user.initial_balance
+                        else:
+                            balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
                         balance_then = collector.match_balance_currency(balance_then, currency)
                         if balance_then:
                             balance_now = collector.get_latest_user_balance(user.id, guild_id=user.guild_id, currency=currency)
@@ -550,30 +548,29 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
         await ctx.send(e.args[0].replace('{name}', user.display_name))
         return
 
-    if registered_user:
-        since_start = time == 'start' or time == 'all'
+    since_start = time == 'start' or time == 'all'
 
-        if since_start:
-            delta = timedelta(0)
-        else:
-            try:
-                delta = calc_timedelta_from_time_args(time)
-            except ValueError as e:
-                logger.error(e.args[0])
-                await ctx.send({e.args[0]})
-                return
+    if since_start:
+        delta = timedelta(0)
+    else:
+        try:
+            delta = calc_timedelta_from_time_args(time)
+        except ValueError as e:
+            logger.error(e.args[0])
+            await ctx.send({e.args[0]})
+            return
 
-        time = datetime.now()
-        search = time - delta
-        user_gain = calc_gains([registered_user], search, currency, since_start=since_start)[0][1]
+    time = datetime.now()
+    search = time - delta
+    user_gain = calc_gains([registered_user], search, currency, since_start=since_start)[0][1]
 
-        if user_gain is None:
-            logger.info(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
-            await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
-        else:
-            user_gain_rel, user_gain_abs = user_gain
-            await ctx.send(
-                f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
+    if user_gain is None:
+        logger.info(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
+        await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
+    else:
+        user_gain_rel, user_gain_abs = user_gain
+        await ctx.send(
+            f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
 
 
 def get_available_exchanges() -> str:
@@ -754,8 +751,8 @@ async def unregister(ctx, guild: str = None):
         return
 
     def unregister_user():
-        collector.clear_user_data(registered_user, remove_all_guilds=True)
-        USERS_BY_ID[registered_user.id].pop(guild)
+        collector.clear_user_data(registered_user)
+        USERS_BY_ID[registered_user.id].pop(registered_user.guild_id)
 
         if len(USERS_BY_ID[registered_user.id]) == 0:
             USERS_BY_ID.pop(registered_user.id)
@@ -767,7 +764,7 @@ async def unregister(ctx, guild: str = None):
 
     guild_name = ""
     if guild:
-        guild_name = f' {client.get_guild(guild).name}'
+        guild_name = f' from {client.get_guild(guild).name}'
     await ctx.send(f'Do you really want to unregister{guild_name}? This will **delete all your data**. (y/n)')
 
     OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
