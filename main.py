@@ -388,10 +388,6 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
         (False, "%H:%M:%S"),
         (False, "%H:%M"),
         (False, "%H"),
-        (True,  "%Y-%m-%d %H:%M:%S"),
-        (True,  "%Y-%m-%d %H:%M"),
-        (True,  "%Y-%m-%d %H"),
-        (True,  "%Y-%m-%d"),
         (True,  "%d.%m.%Y %H:%M:%S"),
         (True,  "%d.%m.%Y %H:%M"),
         (True,  "%d.%m.%Y %H"),
@@ -1082,6 +1078,7 @@ async def donate(ctx: SlashContext):
                     "**BTC**: 1NQuRagfTziZ1k4ijc38cuCmCncWQFthSQ\n"
                     "**USDT (TRX)**: TPf47q7143stBkWicj4SidJ1DDeYSvtWBf\n"
                     "**USDT (BSC)**: 0x694cf86962f84d281d322887569b16935b48d9dd\n\n"
+                    "**ZBD**: jackstar12@zbd.gg\n\n"
                     "jacksn#9149."
     )
     await ctx.send(embed=embed)
