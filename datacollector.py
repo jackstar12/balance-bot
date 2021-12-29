@@ -64,7 +64,6 @@ class DataCollector:
         """
         Start fetching data at specified interval
         """
-        time = datetime.now()
 
         self.data_lock.acquire()
         self.user_data.append(self._fetch_data())
@@ -72,6 +71,7 @@ class DataCollector:
 
         self._save_user_data()
 
+        time = datetime.now()
         next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
                             microsecond=0) + timedelta(hours=self.interval_hours)
         delay = next - time
@@ -191,7 +191,7 @@ class DataCollector:
     def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
         """
         :return:
-        Tuple with timestamp and Dictionary mapping user ids to Balance objects (non-errors only)
+        Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
         """
         self.user_lock.acquire()
         if users is None:
@@ -242,10 +242,11 @@ class DataCollector:
             user_data_json = []
             prev_date, prev_data = datetime.fromtimestamp(0), {}
             for date, data in self.user_data:
+                # Data is removed if
+                # - it doesn't contain anything
+                # - it isn't further than 10 minutes apart from the last timestamp and all common users have the same entries
                 if len(data.keys()) == 0 or ((date - prev_date) < timedelta(minutes=10)
-                                             and all(
-                            data[key] == prev_data[key] for key in data.keys() & prev_data.keys())):
-                    # If all common users have the same balances why bother keeping the one with fewer users?
+                                             and all(data[key] == prev_data[key] for key in data.keys() & prev_data.keys())):
                     if len(data.keys()) < len(prev_data.keys()) or len(data.keys()) == 0:
                         self.user_data.remove((date, data))
                         date = prev_date
@@ -283,36 +284,31 @@ class DataCollector:
                 raw_json = json.load(fp=f)
                 if raw_json:
                     if raw_json_merge:
-                        index = 0
+                        index_normal = 0
                         index_merge = 0
-                        normal_len = len(raw_json)
-                        merge_len = len(raw_json_merge)
-                        while index_merge < merge_len or index < normal_len:
-                            if index < normal_len:
-                                ts_normal, data_normal = raw_json[index]
-                            if index_merge < merge_len:
+                        len_normal = len(raw_json)
+                        len_merge = len(raw_json_merge)
+                        while index_merge < len_merge or index_normal < len_normal:
+                            if index_normal < len_normal:
+                                ts_normal, data_normal = raw_json[index_normal]
+                            if index_merge < len_merge:
                                 ts_merge, data_merge = raw_json_merge[index_merge]
-                            if ts_normal < ts_merge or index_merge == merge_len:
+                            if ts_normal < ts_merge or index_merge == len_merge:
                                 self._append_from_json(ts_normal, data_normal)
-                                if index < normal_len:
-                                    index += 1
-                            elif ts_merge < ts_normal or index == normal_len:
+                                index_normal += 1 if index_normal < len_normal else 0
+                            elif ts_merge < ts_normal or index_normal == len_normal:
                                 self._append_from_json(ts_merge, data_merge)
-                                if index_merge < merge_len:
-                                    index_merge += 1
+                                index_merge += 1 if index_merge < len_merge else 0
                             else:
                                 for merge in data_merge:
                                     if merge not in data_normal:
                                         data_normal[merge] = data_merge[merge]
                                 self._append_from_json(ts_normal, data_normal)
-                                if index < normal_len:
-                                    index += 1
-                                if index_merge < merge_len:
-                                    index_merge += 1
+                                index_normal += 1 if index_normal < len_normal else 0
+                                index_merge += 1 if index_merge < len_merge else 0
                     else:
                         for ts, data in raw_json:
                             self._append_from_json(ts, data)
-                        pass
         except FileNotFoundError:
             logging.info('No user data found')
         except json.JSONDecodeError as e:
@@ -322,14 +318,16 @@ class DataCollector:
 
     def _append_from_json(self, ts: int, user_json: dict):
         user_data = {}
+
         for user_id in user_json:
             user_balances = {}
             for key in user_json[user_id].keys():
-                if key != 'extra_currencies' and isinstance(user_json[user_id][key], dict):
+                if key != 'extra_currencies' and isinstance(user_json[user_id][key], dict):  # Backwards compatibility
                     user_balances[None if key == 'null' else key] = balance_from_json(user_json[user_id][key])
             if len(user_balances) == 0:
                 user_balances[None] = balance_from_json(user_json[user_id])
             user_data[int(user_id)] = user_balances
+
         self.user_data.append((datetime.fromtimestamp(ts), user_data))
 
     def match_balance_currency(self, balance: Balance, currency: str):

@@ -17,7 +17,6 @@ from datetime import datetime, timedelta
 from random import Random
 
 import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 
 from balance import Balance
 from user import User, user_from_json
@@ -61,10 +60,7 @@ def get_user_by_id(user_id: int,
                    throw_exceptions = True) -> User:
     """
     Tries to find a matching entry for the user and guild id.
-    :param throw_exceptions:
-    :param exact:
-    :param user_id:
-    :param guild_id:
+    :param exact: whether the global entry should be used if the guild isn't registered
     :return:
     The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
     """
@@ -79,7 +75,7 @@ def get_user_by_id(user_id: int,
             if not result and throw_exceptions:
                 raise ValueError("User {name} not registered for this guild")
         else:
-            logger.error(f'USERS_BY_ID contains invalid entry! Associated data with {user_id=}: {result} ({guild_id=}')
+            logger.error(f'USERS_BY_ID contains invalid entry! Associated data with {user_id=}: {result=} {endpoints=} ({guild_id=})')
             if throw_exceptions:
                 raise ValueError("This is caused due to a bug in the bot. Please contact dev.")
     elif throw_exceptions:
@@ -108,7 +104,6 @@ def add_guild_option(command: BaseCommandObject, description: str):
 
 @client.event
 async def on_ready():
-    logger.info('Bot Ready')
     register_command: BaseCommandObject = slash.commands['register']
     unregister_command: BaseCommandObject = slash.commands['unregister']
     add_guild_option(register_command, 'Guild to register this access for. If not given, it will be global.')
@@ -116,9 +111,9 @@ async def on_ready():
 
     collector.start_fetching()
 
-    await slash.sync_all_commands()
-
+    logger.info('Bot Ready')
     print('Bot Ready.')
+    await slash.sync_all_commands()
 
 
 @client.event
@@ -206,8 +201,7 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
 
     usr_balance = collector.get_user_balance(registered_user, currency)
     if usr_balance.error is None:
-        await ctx.send(
-            f'{user.display_name}\'s balance: {round(usr_balance.amount, ndigits=CURRENCY_PRECISION.get(currency, 3))}{usr_balance.currency}')
+        await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
     else:
         await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
 
@@ -236,8 +230,8 @@ async def create_history(message: discord.Message,
         logger.error(e.args[0])
         await message.edit(content=e.args[0])
         return
-    end = None
 
+    end = None
     try:
         delta = calc_timedelta_from_time_args(to)
         if delta:
@@ -394,18 +388,18 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
         (False, "%H:%M:%S"),
         (False, "%H:%M"),
         (False, "%H"),
-        (True, "%Y-%m-%d %H:%M:%S"),
-        (True, "%Y-%m-%d %H:%M"),
-        (True, "%Y-%m-%d %H"),
-        (True, "%Y-%m-%d"),
-        (True, "%d.%m.%Y %H:%M:%S"),
-        (True, "%d.%m.%Y %H:%M"),
-        (True, "%d.%m.%Y %H"),
-        (True, "%d.%m.%Y"),
-        (True, "%d.%m. %H:%M:%S"),
-        (True, "%d.%m. %H:%M"),
-        (True, "%d.%m. %H"),
-        (True, "%d.%m.")
+        (True,  "%Y-%m-%d %H:%M:%S"),
+        (True,  "%Y-%m-%d %H:%M"),
+        (True,  "%Y-%m-%d %H"),
+        (True,  "%Y-%m-%d"),
+        (True,  "%d.%m.%Y %H:%M:%S"),
+        (True,  "%d.%m.%Y %H:%M"),
+        (True,  "%d.%m.%Y %H"),
+        (True,  "%d.%m.%Y"),
+        (True,  "%d.%m. %H:%M:%S"),
+        (True,  "%d.%m. %H:%M"),
+        (True,  "%d.%m. %H"),
+        (True,  "%d.%m.")
     ]
 
     delta = None
@@ -415,7 +409,7 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
             now = datetime.now()
             if not includes_date:
                 date = date.replace(year=now.year, month=now.month, day=now.day, microsecond=0)
-            elif date.year == 1900:
+            elif date.year == 1900:  # %d.%m. not setting year to 1970 but to 1900?
                 date = date.replace(year=now.year)
             delta = datetime.now() - date
             break
@@ -695,7 +689,7 @@ async def register(ctx,
 
                     init_balance = new_user.api.get_balance()
                     if init_balance.error is None:
-                        message = f'Your balance: {init_balance.to_string()}. Is this correct? Yes will register you, no will cancel the process. (y/n)'
+                        message = f'Your balance: {init_balance.to_string()}. Is this correct? This will be used as your initial balance.\n Yes will register you, no will cancel the process. (y/n)'
                     else:
                         message = f'An error occured while getting your balance: {init_balance.error}.'
 
@@ -722,8 +716,7 @@ async def register(ctx,
                         no_message='Registration canceled.'
                     )
             else:
-                logger.error(
-                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
+                logger.error(f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
                 args_readable = ''
                 for arg in exchange_cls.required_extra_args:
                     args_readable += f'{arg}\n'
