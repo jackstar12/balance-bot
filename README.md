@@ -47,7 +47,8 @@ Discord Bot for showing crypto balances
       - h for hours
       - d for days
       - w for weeks
-    <br> e.g., `/gain time: 1d 12h` calculates the gain from 1 day and 24 hours ago till now.
+    
+    e.g., `/gain time: 1d 12h` calculates the gain from 1 day and 24 hours ago till now.
   - Absolute time as one of the following date strings:
     - `%H:%M:%S`
     - `%H:%M`
@@ -60,5 +61,6 @@ Discord Bot for showing crypto balances
     - `%d.%m. %H:%M`
     - `%d.%m. %H`
     - `%d.%m.`
-    <br> If the format does not specify the date, the current will be used
+    
+    If the format does not specify the date, the current will be used
     
