@@ -671,25 +671,15 @@ async def register(ctx,
                     logger.info(f'Updated user')
                     save_registered_users()
                 else:
-                    initial_balance = None
-                    try:
-                        initial_time = datetime.strptime(INITIAL_BALANCE['date'], "%d/%m/%Y %H:%M:%S")
-                        initial_balance = (initial_time, Balance(INITIAL_BALANCE['amount'], currency='$', error=None))
-                    except ValueError as e:
-                        logger.error(f'{e}: Invalid time string for Initial Balance: {INITIAL_BALANCE["date"]}')
-                    except KeyError as e:
-                        logger.error(f'{e}: Invalid INITIAL_BALANCE dict. Consider looking into config.example')
-
                     new_user = User(
                         ctx.author.id,
                         exchange,
-                        guild_id=guild,
-                        initial_balance=initial_balance
+                        guild_id=guild
                     )
 
                     init_balance = new_user.api.get_balance()
                     if init_balance.error is None:
-                        message = f'Your balance: {init_balance.to_string()}. Is this correct? This will be used as your initial balance.\n Yes will register you, no will cancel the process. (y/n)'
+                        message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process. (y/n)'
                     else:
                         message = f'An error occured while getting your balance: {init_balance.error}.'
 
@@ -721,7 +711,7 @@ async def register(ctx,
                 for arg in exchange_cls.required_extra_args:
                     args_readable += f'{arg}\n'
                 await ctx.send(
-                    f'Need more keyword arguments for exchange {exchange_cls.exchange}. \nRequirements:\n {args_readable}')
+                    f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}')
         else:
             logger.error(f'Class {exchange_cls} is no subclass of Client!')
     except KeyError:
@@ -1121,7 +1111,10 @@ async def on_rekt_async(user: User):
 
 
 def on_rekt(user: User):
-    asyncio.create_task(on_rekt_async(user))
+    try:
+        asyncio.create_task(on_rekt_async(user))
+    except RuntimeError:
+        asyncio.run(on_rekt_async(user))
 
 
 logger = setup_logger(debug=False)
