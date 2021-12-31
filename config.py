@@ -23,11 +23,8 @@ REKT_GUILDS = [
         "guild_channel": 704403630375305317
     }
 ]
-SLASH_GUILD_IDS = [
-    916370614598651934, 443583326507499520
-]
 CURRENCY_PRECISION = {
-    '$': 3,
+    '$': 2,
     'BTC': 5,
     'XBT': 5
 }
