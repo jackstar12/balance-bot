@@ -249,7 +249,6 @@ class DataCollector:
         self.user_lock.release()
         return time, data
 
-    # TODO: Encryption for user data
     def _save_user_data(self):
 
         try:

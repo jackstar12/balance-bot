@@ -25,7 +25,7 @@ from datacollector import DataCollector
 from dialogue import Dialogue, YesNoDialogue
 from key import KEY
 from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
-    SLASH_GUILD_IDS, INITIAL_BALANCE, CURRENCY_PRECISION, REKT_THRESHOLD
+    INITIAL_BALANCE, CURRENCY_PRECISION, REKT_THRESHOLD
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -38,7 +38,7 @@ intents.members = True
 intents.guilds = True
 
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
-slash = SlashCommand(client, sync_commands=True)
+slash = SlashCommand(client)
 USERS: List[User] = []
 
 USERS_BY_ID: Dict[int, Dict[int, User]] = {}
@@ -274,7 +274,7 @@ async def create_history(message: discord.Message,
     ys = []
     for time, balance in user_data:
         xs.append(time.replace(microsecond=0))
-        ys.append(balance.amount)
+        ys.append(round(balance.amount, ndigits=CURRENCY_PRECISION.get(balance.currency, 3)))
 
     compare_data = []
     if compare:
@@ -301,7 +301,6 @@ async def create_history(message: discord.Message,
         total_gain = 'inf'
 
     title = f'History for {user.display_name} (Total gain: {total_gain}%)'
-    plt.close()
     plt.plot(xs, ys, label=f"{user.display_name}'s {currency} Balance")
 
     if compare:
@@ -536,7 +535,7 @@ def calc_gains(users: List[User],
         ),
         create_option(
             name="time",
-            description="Time frame for gain. Default 24h",
+            description="Time frame for gain. Default is start",
             required=False,
             option_type=3
         ),
@@ -553,16 +552,15 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
     if user is None:
         user = ctx.author
 
-    if time is None:
-        time = '24h'
+    time_str = time
+    if time_str is None:
+        time_str = 'start'
 
     if currency is None:
         currency = '$'
     currency = currency.upper()
 
-    time_str = time
-
-    logger.info(f'New Interaction with {ctx.author}: Calculate gain for {user.display_name} {time=}')
+    logger.info(f'New Interaction with {ctx.author}: Calculate gain for {user.display_name} {time_str=}')
 
     try:
         registered_user = get_user_by_id(user.id, None if not ctx.guild else ctx.guild.id)
@@ -570,7 +568,7 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
         await ctx.send(content=e.args[0].replace('{name}', user.display_name))
         return
 
-    since_start = time == 'start' or time == 'all'
+    since_start = time_str == 'start' or time_str == 'all' or time_str == 'total'
 
     if since_start:
         delta = timedelta(0)
@@ -997,7 +995,8 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
 @slash.subcommand(
     base="leaderboard",
     name="balance",
-    description="Shows you the highest ranked users by $ balance"
+    description="Shows you the highest ranked users by $ balance",
+    options=[]
 )
 @server_only
 async def leaderboard_balance(ctx: SlashContext):
