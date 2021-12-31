@@ -362,8 +362,11 @@ class DataCollector:
 
         if balance.currency != currency:
             if balance.extra_currencies:
-                if currency in balance.extra_currencies or CURRENCY_ALIASES.get(currency) in balance.extra_currencies:
-                    result = Balance(amount=balance.extra_currencies[currency], currency=currency)
+                result_currency = balance.extra_currencies.get(currency)
+                if not result_currency:
+                    result_currency = balance.extra_currencies.get(CURRENCY_ALIASES.get(currency))
+                if result_currency:
+                    result = Balance(amount=result_currency, currency=currency)
         else:
             result = balance
 

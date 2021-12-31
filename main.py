@@ -7,6 +7,7 @@ import discord
 import json
 import typing
 import time
+import re
 
 from discord_slash.model import BaseCommandObject
 from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
@@ -60,6 +61,7 @@ def dm_only(coro):
             await ctx.send('This command can only be used via a Private Message.')
             return
         return await coro(ctx, *args, **kwargs)
+
     return wrapper
 
 
@@ -69,7 +71,33 @@ def server_only(coro):
             await ctx.send('This command can only be used in a server.')
             return
         return await coro(ctx, *args, **kwargs)
+
     return wrapper
+
+
+# Thanks Stackoverflow
+def de_emojify(text):
+    regrex_pattern = re.compile("["
+                                u"\U0001F600-\U0001F64F"  # emoticons
+                                u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                                u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                                u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                                u"\U00002500-\U00002BEF"  # chinese char
+                                u"\U00002702-\U000027B0"
+                                u"\U00002702-\U000027B0"
+                                u"\U000024C2-\U0001F251"
+                                u"\U0001f926-\U0001f937"
+                                u"\U00010000-\U0010ffff"
+                                u"\u2640-\u2642"
+                                u"\u2600-\u2B55"
+                                u"\u200d"
+                                u"\u23cf"
+                                u"\u23e9"
+                                u"\u231a"
+                                u"\ufe0f"  # dingbats
+                                u"\u3030"
+                                "]+", re.UNICODE)
+    return regrex_pattern.sub(r'', text)
 
 
 def get_user_by_id(user_id: int,
@@ -212,7 +240,8 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         currency = '$'
     currency = currency.upper()
 
-    logger.info(f'New interaction with {ctx.author.display_name}: Get balance for {user.display_name} ({currency=})')
+    logger.info(
+        f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
 
     try:
         registered_user = get_user_by_id(user.id, None if not ctx.guild else ctx.guild.id)
@@ -234,7 +263,7 @@ async def create_history(message: discord.Message,
                          compare: discord.Member = None,
                          since: str = None,
                          to: str = None):
-    logger.info(f'New interaction with {user.display_name}: Show history')
+    logger.info(f'New interaction with {de_emojify(user.display_name)}: Show history')
 
     try:
         registered_user = get_user_by_id(user.id, guild_id)
@@ -338,31 +367,31 @@ async def create_history(message: discord.Message,
             name="user",
             description="User to graph",
             required=False,
-            option_type=6
+            option_type=SlashCommandOptionType.USER
         ),
         create_option(
             name="compare",
             description="User to compare with",
             required=False,
-            option_type=6
+            option_type=SlashCommandOptionType.USER
         ),
         create_option(
             name="since",
             description="Start time for graph",
             required=False,
-            option_type=3
+            option_type=SlashCommandOptionType.STRING
         ),
         create_option(
             name="to",
             description="End time for graph",
             required=False,
-            option_type=3
+            option_type=SlashCommandOptionType.STRING
         ),
         create_option(
             name="currency",
             description="Currency to display history for (only available for some exchanges)",
             required=False,
-            option_type=3
+            option_type=SlashCommandOptionType.STRING
         )
     ]
 )
@@ -504,12 +533,13 @@ def calc_gains(users: List[User],
                         if balance_then:
                             balance_now = collector.get_latest_user_balance(user.id, guild_id=user.guild_id,
                                                                             currency=currency)
-                            users_done.append(user.id)
-                            diff = balance_now.amount - balance_then.amount
-                            if balance_then.amount > 0:
-                                results.append((user, (100 * (diff / balance_then.amount), diff)))
-                            else:
-                                results.append((user, (0.0, diff)))
+                            if balance_now:
+                                users_done.append(user.id)
+                                diff = balance_now.amount - balance_then.amount
+                                if balance_then.amount > 0:
+                                    results.append((user, (100 * (diff / balance_then.amount), diff)))
+                                else:
+                                    results.append((user, (0.0, diff)))
                     except KeyError:
                         # User isn't included in data set
                         continue
@@ -560,7 +590,7 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
         currency = '$'
     currency = currency.upper()
 
-    logger.info(f'New Interaction with {ctx.author}: Calculate gain for {user.display_name} {time_str=}')
+    logger.info(f'New Interaction with {ctx.author}: Calculate gain for {de_emojify(user.display_name)} {time_str=}')
 
     try:
         registered_user = get_user_by_id(user.id, None if not ctx.guild else ctx.guild.id)
@@ -585,7 +615,7 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
     user_gain = calc_gains([registered_user], search, currency, since_start=since_start)[0][1]
 
     if user_gain is None:
-        logger.info(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
+        logger.info(f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain')
         await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
     else:
         user_gain_rel, user_gain_abs = user_gain
@@ -650,7 +680,6 @@ async def register(ctx: SlashContext,
                    subaccount: typing.Optional[str] = None,
                    guild: str = None,
                    args: str = None):
-
     if guild:
         guild = int(guild)
 
@@ -745,7 +774,6 @@ async def register(ctx: SlashContext,
 )
 @dm_only
 async def unregister(ctx, guild: str = None):
-
     if guild:
         guild = int(guild)
 
@@ -817,7 +845,7 @@ async def info(ctx):
 )
 @dm_only
 async def clear(ctx, since: str = None, to: str = None, guild: str = None):
-    logging.info(f'New interaction with {ctx.author.display_name}: clear history {since=} {to=}')
+    logging.info(f'New interaction with {de_emojify(ctx.author.display_name)}: clear history {since=} {to=}')
 
     if guild:
         guild = int(guild)
@@ -988,7 +1016,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
         title='Leaderboard :medal:',
         description=description
     )
-    logger.info(f"Done creating leaderboard.\nDescription:\n{description}")
+    logger.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
     await message.edit(content='', embed=embed)
 
 
@@ -1000,7 +1028,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
 )
 @server_only
 async def leaderboard_balance(ctx: SlashContext):
-    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {ctx.author.display_name}')
+    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
 
     message = await ctx.send('...')
 
@@ -1024,7 +1052,7 @@ async def leaderboard_balance(ctx: SlashContext):
 )
 @server_only
 async def leaderboard_gain(ctx: SlashContext, time: str = None):
-    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {ctx.author.display_name}')
+    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
 
     if not time:
         time = 'start'
@@ -1041,7 +1069,7 @@ async def leaderboard_gain(ctx: SlashContext, time: str = None):
     description="Shows available exchanges"
 )
 async def exchanges(ctx):
-    logger.info(f'New Interaction: Listing available exchanges for user {ctx.author.display_name}')
+    logger.info(f'New Interaction: Listing available exchanges for user {de_emojify(ctx.author.display_name)}')
     description = get_available_exchanges()
     embed = discord.Embed(title="Available Exchanges", description=description)
     await ctx.send(embed=embed)
