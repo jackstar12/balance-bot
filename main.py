@@ -54,10 +54,28 @@ EXCHANGES: Dict[str, Type[Client]] = {
 OPEN_DIALOGUES: Dict[int, Dialogue] = {}
 
 
+def dm_only(coro):
+    async def wrapper(ctx, *args, **kwargs):
+        if ctx.guild:
+            await ctx.send('This command can only be used via a Private Message.')
+            return
+        return await coro(ctx, *args, **kwargs)
+    return wrapper
+
+
+def server_only(coro):
+    async def wrapper(ctx: SlashContext, *args, **kwargs):
+        if not ctx.guild:
+            await ctx.send('This command can only be used in a server.')
+            return
+        return await coro(ctx, *args, **kwargs)
+    return wrapper
+
+
 def get_user_by_id(user_id: int,
                    guild_id: int = None,
                    exact: bool = False,
-                   throw_exceptions = True) -> User:
+                   throw_exceptions=True) -> User:
     """
     Tries to find a matching entry for the user and guild id.
     :param exact: whether the global entry should be used if the guild isn't registered
@@ -75,7 +93,8 @@ def get_user_by_id(user_id: int,
             if not result and throw_exceptions:
                 raise ValueError("User {name} not registered for this guild")
         else:
-            logger.error(f'USERS_BY_ID contains invalid entry! Associated data with {user_id=}: {result=} {endpoints=} ({guild_id=})')
+            logger.error(
+                f'USERS_BY_ID contains invalid entry! Associated data with {user_id=}: {result=} {endpoints=} ({guild_id=})')
             if throw_exceptions:
                 raise ValueError("This is caused due to a bug in the bot. Please contact dev.")
     elif throw_exceptions:
@@ -136,7 +155,6 @@ async def on_guild_join(guild: discord.Guild):
 
 @client.event
 async def on_message(message: discord.Message):
-
     if message.author.id in OPEN_DIALOGUES and message.guild is None:
 
         open_dialogue = OPEN_DIALOGUES[message.author.id]
@@ -186,6 +204,7 @@ async def ping(ctx: SlashContext):
         )
     ]
 )
+@server_only
 async def balance(ctx, user: discord.Member = None, currency: str = None):
     if user is None:
         user = ctx.author
@@ -243,7 +262,8 @@ async def create_history(message: discord.Message,
         await message.edit(content=e.args[0])
         return
 
-    user_data = collector.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id, start=start, end=end, currency=currency)
+    user_data = collector.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id, start=start,
+                                               end=end, currency=currency)
 
     if len(user_data) == 0:
         logger.error(f'No data for this user!')
@@ -263,7 +283,8 @@ async def create_history(message: discord.Message,
         except ValueError as e:
             await message.edit(content=e.args[0].replace('{name}', compare.display_name))
             return
-        compare_data = collector.get_single_user_data(compare_user.id, compare_user.guild_id, start=start, end=end, currency=currency)
+        compare_data = collector.get_single_user_data(compare_user.id, compare_user.guild_id, start=start, end=end,
+                                                      currency=currency)
 
     compare_xs = []
     compare_ys = []
@@ -344,9 +365,9 @@ async def create_history(message: discord.Message,
             required=False,
             option_type=3
         )
-    ],
-    guild_ids=SLASH_GUILD_IDS
+    ]
 )
+@server_only
 async def history(ctx,
                   user: discord.Member = None,
                   compare: discord.Member = None,
@@ -390,14 +411,14 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
         (False, "%H:%M:%S"),
         (False, "%H:%M"),
         (False, "%H"),
-        (True,  "%d.%m.%Y %H:%M:%S"),
-        (True,  "%d.%m.%Y %H:%M"),
-        (True,  "%d.%m.%Y %H"),
-        (True,  "%d.%m.%Y"),
-        (True,  "%d.%m. %H:%M:%S"),
-        (True,  "%d.%m. %H:%M"),
-        (True,  "%d.%m. %H"),
-        (True,  "%d.%m.")
+        (True, "%d.%m.%Y %H:%M:%S"),
+        (True, "%d.%m.%Y %H:%M"),
+        (True, "%d.%m.%Y %H"),
+        (True, "%d.%m.%Y"),
+        (True, "%d.%m. %H:%M:%S"),
+        (True, "%d.%m. %H:%M"),
+        (True, "%d.%m. %H"),
+        (True, "%d.%m.")
     ]
 
     delta = None
@@ -482,7 +503,8 @@ def calc_gains(users: List[User],
                             balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
                         balance_then = collector.match_balance_currency(balance_then, currency)
                         if balance_then:
-                            balance_now = collector.get_latest_user_balance(user.id, guild_id=user.guild_id, currency=currency)
+                            balance_now = collector.get_latest_user_balance(user.id, guild_id=user.guild_id,
+                                                                            currency=currency)
                             users_done.append(user.id)
                             diff = balance_now.amount - balance_then.amount
                             if balance_then.amount > 0:
@@ -524,9 +546,9 @@ def calc_gains(users: List[User],
             required=False,
             option_type=3
         )
-    ],
-    guild_ids=SLASH_GUILD_IDS
+    ]
 )
+@server_only
 async def gain(ctx, user: discord.Member = None, time: str = None, currency: str = None):
     if user is None:
         user = ctx.author
@@ -545,7 +567,7 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
     try:
         registered_user = get_user_by_id(user.id, None if not ctx.guild else ctx.guild.id)
     except ValueError as e:
-        await ctx.send(e.args[0].replace('{name}', user.display_name))
+        await ctx.send(content=e.args[0].replace('{name}', user.display_name))
         return
 
     since_start = time == 'start' or time == 'all'
@@ -557,7 +579,7 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
             delta = calc_timedelta_from_time_args(time)
         except ValueError as e:
             logger.error(e.args[0])
-            await ctx.send({e.args[0]})
+            await ctx.send(content=e.args[0].replace('{name}', user.display_name))
             return
 
     time = datetime.now()
@@ -622,16 +644,14 @@ def get_available_exchanges() -> str:
         )
     ]
 )
-async def register(ctx,
+@dm_only
+async def register(ctx: SlashContext,
                    exchange_name: str,
                    api_key: str,
                    api_secret: str,
                    subaccount: typing.Optional[str] = None,
                    guild: str = None,
                    args: str = None):
-    if ctx.guild is not None:
-        await ctx.send('This command can only be used via a DM.')
-        return
 
     if guild:
         guild = int(guild)
@@ -647,7 +667,7 @@ async def register(ctx,
                     name, value = arg.split('=')
                     kwargs[name] = value
                 except ValueError:
-                    ctx.send(
+                    await ctx.send(
                         f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...')
                     logging.error(f'Invalid Keyword Arg {arg} passed in')
 
@@ -706,7 +726,8 @@ async def register(ctx,
                         no_message='Registration canceled.'
                     )
             else:
-                logger.error(f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
+                logger.error(
+                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
                 args_readable = ''
                 for arg in exchange_cls.required_extra_args:
                     args_readable += f'{arg}\n'
@@ -724,11 +745,9 @@ async def register(ctx,
     description="Unregisters you from tracking",
     options=[]
 )
+@dm_only
 async def unregister(ctx, guild: str = None):
 
-    if ctx.guild is not None:
-        await ctx.send(f'This command can only be used via a DM.')
-        return
     if guild:
         guild = int(guild)
 
@@ -766,13 +785,11 @@ async def unregister(ctx, guild: str = None):
 
 @slash.slash(
     name="info",
-    description="Shows your stored information"
+    description="Shows your stored information",
+    options=[]
 )
+@dm_only
 async def info(ctx):
-    if ctx.guild is not None:
-        await ctx.send(f'This command can only be used via a DM.')
-        return
-
     if ctx.author.id in USERS_BY_ID:
         registrations = USERS_BY_ID[ctx.author.id]
         for registration in registrations.values():
@@ -800,6 +817,7 @@ async def info(ctx):
         )
     ]
 )
+@dm_only
 async def clear(ctx, since: str = None, to: str = None, guild: str = None):
     logging.info(f'New interaction with {ctx.author.display_name}: clear history {since=} {to=}')
 
@@ -840,8 +858,16 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
 
     await ctx.send(f'Do you really want to **delete** your history{from_to}? (y/n)')
 
+    def clear_user():
+        collector.clear_user_data(registered_user,
+                                  start=start,
+                                  end=end,
+                                  remove_all_guilds=True,
+                                  update_initial_balance=True)
+        save_registered_users()
+
     OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
-        yes_callback=lambda: collector.clear_user_data(registered_user, start=start, end=end, remove_all_guilds=True, update_initial_balance=True),
+        yes_callback=clear_user,
         yes_message=f'Deleted your history{from_to}',
         no_message=f'Clear cancelled.',
     )
@@ -913,7 +939,8 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
                 else:
                     user_gain_rel, user_gain_abs = user_gain
                     user_scores.append((user, user_gain_rel))
-                    custom_value_strings[user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
+                    custom_value_strings[
+                        user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
             else:
                 users_missing.append(user)
 
@@ -970,17 +997,17 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
 @slash.subcommand(
     base="leaderboard",
     name="balance",
-    description="Shows you the highest ranked users by $ balance",
-    guild_ids=SLASH_GUILD_IDS
+    description="Shows you the highest ranked users by $ balance"
 )
+@server_only
 async def leaderboard_balance(ctx: SlashContext):
     logger.info(f'New Interaction: Creating balance leaderboard, requested by user {ctx.author.display_name}')
 
     message = await ctx.send('...')
 
     asyncio.create_task(
-        create_leaderboard(message=message, guild=ctx.guild, mode='balance', time='24h'
-    ))
+        create_leaderboard(message=message, guild=ctx.guild, mode='balance', time='24h')
+    )
 
 
 @slash.subcommand(
@@ -994,9 +1021,9 @@ async def leaderboard_balance(ctx: SlashContext):
             required=False,
             option_type=SlashCommandOptionType.STRING
         )
-    ],
-    guild_ids=SLASH_GUILD_IDS
+    ]
 )
+@server_only
 async def leaderboard_gain(ctx: SlashContext, time: str = None):
     logger.info(f'New Interaction: Creating balance leaderboard, requested by user {ctx.author.display_name}')
 
@@ -1005,9 +1032,9 @@ async def leaderboard_gain(ctx: SlashContext, time: str = None):
 
     message = await ctx.send('...')
 
-    asyncio.create_task(create_leaderboard(
-        message=message, guild=ctx.guild, mode='gain', time=time
-    ))
+    asyncio.create_task(
+        create_leaderboard(message=message, guild=ctx.guild, mode='gain', time=time)
+    )
 
 
 @slash.slash(
@@ -1036,7 +1063,6 @@ def setup_logger(debug: bool = False):
 
 
 def load_registered_users():
-    # TODO: Implement decryption for user data
     try:
         with open(DATA_PATH + 'users.json', 'r') as f:
             users_json = json.load(fp=f)
@@ -1073,16 +1099,15 @@ async def donate(ctx: SlashContext):
         description="**Do you like this bot?**\n"
                     "If so, maybe consider helping out a poor student :cry:\n\n"
                     "**BTC**: 1NQuRagfTziZ1k4ijc38cuCmCncWQFthSQ\n"
+                    "**ZBD**: jackstar12@zbd.gg\n"
                     "**USDT (TRX)**: TPf47q7143stBkWicj4SidJ1DDeYSvtWBf\n"
                     "**USDT (BSC)**: 0x694cf86962f84d281d322887569b16935b48d9dd\n\n"
-                    "**ZBD**: jackstar12@zbd.gg\n\n"
                     "jacksn#9149."
     )
     await ctx.send(embed=embed)
 
 
 def save_registered_users():
-    # TODO: Implement encryption for user data
     with open(DATA_PATH + 'users.json', 'w') as f:
         users_json = [user.to_json() for user in USERS]
         json.dump(obj=users_json, fp=f, indent=3)

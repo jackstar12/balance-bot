@@ -25,35 +25,31 @@ class BinanceClient(Client):
         prepared = request.prepare()
         response = self._process_response(s.send(prepared))
 
-        return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', error=response.get('msg', None))
+        return Balance(amount=float(response.get('totalWalletBalance', 0)), currency='$', error=response.get('msg', None))
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
+
         request.headers['X-MBX-APIKEY'] = self.api_key
         request.params['timestamp'] = ts
-
         query_string = urllib.parse.urlencode(request.params, True)
         signature = hmac.new(self.api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
         request.params['signature'] = signature
-
-        # TODO: Binance subaccounts?
-        if self.subaccount:
-            pass
 
     def _process_response(self, response: requests.Response) -> dict:
         response_json = response.json()
         try:
             response.raise_for_status()
         except HTTPError as e:
-            logging.error(f'{e}\n{response_json}')
+            logging.error(f'{e}\n{response_json=}\n{response.reason=}')
 
             error = ''
             if response.status_code == 400:
                 error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 401:
-                error = "401 Unauthorized. You might want to check your API access with /info"
+                error = "401 Unauthorized. You might want to check your API access"
             elif response.status_code == 403:
-                error = "403 Access Denied. You might want to check your API access with /info"
+                error = "403 Access Denied. You might want to check your API access"
             elif response.status_code == 404:
                 error = "404 Not Found. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 429:

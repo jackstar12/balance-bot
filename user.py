@@ -31,6 +31,9 @@ class User:
         for extra in self.api.extra_kwargs:
             embed.add_field(name=extra, value=self.api.extra_kwargs[extra])
 
+        if self.initial_balance:
+            embed.add_field(name='Initial Balance', value=self.initial_balance[1].to_string())
+
         return embed
 
     def to_json(self):
@@ -51,6 +54,7 @@ class User:
             }
         if self.guild_id:
             json['guild_id'] = self.guild_id
+
         return json
 
 

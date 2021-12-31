@@ -186,23 +186,30 @@ class DataCollector:
         new_initial = None
         self.data_lock.acquire()
 
+        if start > self.user_data[0][0]:
+            update_initial_balance = False
+
         for time, data in self.user_data:
             if user.id in data:
-                if start < time < end:
+                if start <= time <= end:
                     if remove_all_guilds:
                         data.pop(user.id)
                     elif user.guild_id in data[user.id]:
                         data[user.id].pop(user.guild_id)
-                elif time > start and update_initial_balance:
-                    new_initial = self.get_balance_from_data(data, user.id, user.guild_id, exact=True)
-                    if new_initial:
-                        user.initial_balance = time, new_initial
-                        break  # Once we are done with collecting data and updated initial balance
 
         self.data_lock.release()
 
-        if not new_initial and update_initial_balance:
-            user.initial_balance = self.get_user_balance(user)
+        if update_initial_balance:
+            new_initial = None
+            self.data_lock.acquire()
+            for time, data in self.user_data:
+                new_initial = self.get_balance_from_data(data, user.id, user.guild_id, exact=True)
+                if new_initial:
+                    user.initial_balance = time, new_initial
+                    break
+            self.data_lock.release()
+            if not new_initial:
+                user.initial_balance = datetime.now(), self.get_user_balance(user)
 
         self._save_user_data()
 
