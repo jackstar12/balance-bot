@@ -47,9 +47,9 @@ class BinanceClient(Client):
             if response.status_code == 400:
                 error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 401:
-                error = "401 Unauthorized. You might want to check your API access"
+                error = f"401 Unauthorized ({response.reason}). You might want to check your API access"
             elif response.status_code == 403:
-                error = "403 Access Denied. You might want to check your API access"
+                error = f"403 Access Denied ({response.reason}). You might want to check your API access"
             elif response.status_code == 404:
                 error = "404 Not Found. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 429:

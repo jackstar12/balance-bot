@@ -50,9 +50,9 @@ class FtxClient(Client):
             if response.status_code == 400:
                 error = f"400 Bad Request. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 401:
-                error = f"401 Unauthorized ({response_json['error']}).\nIs your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
+                error = f"401 Unauthorized ({response_json['error']}).\nIs your api key valid? Did you specify the right subaccount? You might want to check your API access"
             elif response.status_code == 403:
-                error = f"403 Access Denied ({response_json['error']}).\nIs your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
+                error = f"403 Access Denied ({response_json['error']}).\nIs your api key valid? Did you specify the right subaccount? You might want to check your API access"
             elif response.status_code == 404:
                 error = f"404 Not Found. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 429:

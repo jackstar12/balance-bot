@@ -79,9 +79,9 @@ class BybitClient(Client):
             if response.status_code == 400:
                 error = f"400 Bad Request ({response.reason}). This is probably a bug in the bot, please contact dev"
             elif response.status_code == 401:
-                error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
+                error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
             elif response.status_code == 403:
-                error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access with /info"
+                error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
             elif response.status_code == 404:
                 error = "404 Not Found. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 429:
