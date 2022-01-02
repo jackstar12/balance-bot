@@ -43,6 +43,7 @@ class DataCollector:
 
         self.on_rekt_callback = on_rekt_callback
 
+        self._last_full_fetch = datetime.fromtimestamp(0)
         self._saves_since_backup = 0
         self._load_user_data()
 
@@ -76,6 +77,7 @@ class DataCollector:
         next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
                             microsecond=0) + timedelta(hours=self.interval_hours)
         delay = next - time
+        self._last_full_fetch = time
 
         timer = Timer(delay.total_seconds(), self.start_fetching)
         timer.start()
@@ -83,8 +85,7 @@ class DataCollector:
     def fetch_data(self, guild_id: int = None, time_tolerance_seconds: float = 60):
         self.data_lock.acquire()
         time, data = self.user_data[len(self.user_data) - 1]
-        now = datetime.now()
-        if now - time > timedelta(seconds=time_tolerance_seconds):
+        if datetime.now() - self._last_full_fetch > timedelta(seconds=time_tolerance_seconds):
             time, data = self._fetch_data(guild_id=guild_id)
             self.user_data.append((time, data))
         self.data_lock.release()
@@ -167,7 +168,7 @@ class DataCollector:
 
     def has_fetched_recently(self, time_tolerance_seconds: int = 60) -> bool:
         self.data_lock.acquire()
-        result = datetime.now() - self.user_data[len(self.user_data) - 1][0] < timedelta(seconds=time_tolerance_seconds)
+        result = datetime.now() - self._last_full_fetch < timedelta(seconds=time_tolerance_seconds)
         self.data_lock.release()
         return result
 
