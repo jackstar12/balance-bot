@@ -1,10 +1,13 @@
 import dataclasses
 import discord
 import logging
+
+from balance import balance_from_json
 from client import Client
 from datetime import datetime
 from balance import Balance
 from typing import Tuple, Dict, List, Type
+
 
 
 @dataclasses.dataclass
@@ -48,17 +51,15 @@ class User:
         if self.rekt_on:
             json['rekt_on'] = self.rekt_on.timestamp()
         if self.initial_balance:
-            json['initial_balance'] = {
-                'date': self.initial_balance[0].timestamp(),
-                'amount': self.initial_balance[1].amount
-            }
+            json['initial_balance'] = self.initial_balance[1].to_json()
+            json['initial_balance']['date'] = self.initial_balance[0].timestamp()
         if self.guild_id:
             json['guild_id'] = self.guild_id
 
         return json
 
 
-def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]], initial_balance_default: Tuple[datetime, Balance] = None) -> User:
+def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]]) -> User:
     exchange_name = user_json['exchange'].lower()
     exchange_cls = exchange_classes[exchange_name]
     if issubclass(exchange_cls, Client):
@@ -68,17 +69,17 @@ def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]], initial
             subaccount=user_json['subaccount'],
             extra_kwargs=user_json['extra']
         )
+
         rekt_on = user_json.get('rekt_on', None)
         if rekt_on:
             rekt_on = datetime.fromtimestamp(rekt_on)
+
         initial_balance = user_json.get('initial_balance', None)
         if initial_balance:
             initial_balance = (
                 datetime.fromtimestamp(initial_balance['date']),
-                Balance(amount=initial_balance['amount'], currency='$', error=None)
+                balance_from_json(initial_balance)
             )
-        elif initial_balance_default:
-            initial_balance = initial_balance_default
 
         user = User(
             id=user_json['id'],

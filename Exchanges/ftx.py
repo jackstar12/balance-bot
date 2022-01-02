@@ -14,6 +14,7 @@ class FtxClient(Client):
     exchange = 'ftx'
     ENDPOINT = 'https://ftx.com/api/'
 
+    # https://docs.ftx.com/#account
     def get_balance(self):
         s = Session()
         request = Request('GET', self.ENDPOINT + 'account')
