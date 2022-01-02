@@ -527,10 +527,12 @@ def calc_gains(users: List[User],
                     balance_then = None
                     if since_start and user.initial_balance:
                         then, balance_then = user.initial_balance
+                        balance_then = collector.match_balance_currency(balance_then, currency)
+
                     if not balance_then:
                         balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
+                        balance_then = collector.match_balance_currency(balance_then, currency)
 
-                    balance_then = collector.match_balance_currency(balance_then, currency)
                     if balance_then:
                         balance_now = collector.get_latest_user_balance(user.id,
                                                                         guild_id=user.guild_id,
@@ -545,7 +547,7 @@ def calc_gains(users: List[User],
                 except KeyError:
                     # User isn't included in data set
                     continue
-            if len(users) == len(users_left):
+            if len(users_left) == 0:
                 break
 
     for user in users_left:
@@ -585,7 +587,7 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
 
     time_str = time
     if time_str is None:
-        time_str = 'start'
+        time_str = 'total'
 
     if currency is None:
         currency = '$'
@@ -931,7 +933,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
         footer += f'Data used from: {date}'
     elif mode == 'gain':
 
-        since_start = time == 'all' or time == 'start'
+        since_start = time == 'all' or time == 'start' or time == 'total'
 
         if not since_start:
             try:
