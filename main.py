@@ -19,14 +19,14 @@ from random import Random
 
 import matplotlib.pyplot as plt
 
-from balance import Balance
+from balance import Balance, balance_from_json
 from user import User, user_from_json
 from client import Client
 from datacollector import DataCollector
 from dialogue import Dialogue, YesNoDialogue
 from key import KEY
 from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
-    INITIAL_BALANCE, CURRENCY_PRECISION, REKT_THRESHOLD
+    CURRENCY_PRECISION, REKT_THRESHOLD
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -499,10 +499,10 @@ def calc_gains(users: List[User],
                currency: str = None,
                since_start=False) -> List[Tuple[User, Tuple[float, float]]]:
     """
-    :param since_start:
+    :param users: users to calculate gain for
+    :param search: date since when gain should be calculated
     :param currency:
-    :param users:
-    :param search:
+    :param since_start: should the gain since the start be calculated?
     :return:
     Gain for each user is stored in a list as a tuple containing user object and tuple containing relative gain and absolute gain
     """
@@ -511,7 +511,7 @@ def calc_gains(users: List[User],
         currency = '$'
 
     user_data = collector.get_user_data()
-    users_done = []
+    users_left = users.copy()
     results = []
 
     if since_start:
@@ -522,33 +522,34 @@ def calc_gains(users: List[User],
     for cur_time, data in iterator:
         cur_diff = cur_time - search
         if cur_diff.total_seconds() <= 0 or since_start:
-            for user in users:
-                if user.id not in users_done:
-                    try:
-                        if since_start and user.initial_balance:
-                            then, balance_then = user.initial_balance
-                        else:
-                            balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
-                        balance_then = collector.match_balance_currency(balance_then, currency)
-                        if balance_then:
-                            balance_now = collector.get_latest_user_balance(user.id, guild_id=user.guild_id,
-                                                                            currency=currency)
-                            if balance_now:
-                                users_done.append(user.id)
-                                diff = balance_now.amount - balance_then.amount
-                                if balance_then.amount > 0:
-                                    results.append((user, (100 * (diff / balance_then.amount), diff)))
-                                else:
-                                    results.append((user, (0.0, diff)))
-                    except KeyError:
-                        # User isn't included in data set
-                        continue
-            if len(users) == len(users_done):
+            for user in users_left:
+                try:
+                    balance_then = None
+                    if since_start and user.initial_balance:
+                        then, balance_then = user.initial_balance
+                    if not balance_then:
+                        balance_then = collector.get_balance_from_data(data, user.id, user.guild_id, exact=True)
+
+                    balance_then = collector.match_balance_currency(balance_then, currency)
+                    if balance_then:
+                        balance_now = collector.get_latest_user_balance(user.id,
+                                                                        guild_id=user.guild_id,
+                                                                        currency=currency)
+                        if balance_now:
+                            users_left.remove(user)
+                            diff = balance_now.amount - balance_then.amount
+                            if balance_then.amount > 0:
+                                results.append((user, (100 * (diff / balance_then.amount), diff)))
+                            else:
+                                results.append((user, (0.0, diff)))
+                except KeyError:
+                    # User isn't included in data set
+                    continue
+            if len(users) == len(users_left):
                 break
 
-    for user in users:
-        if user.id not in users_done:
-            results.append((user, None))
+    for user in users_left:
+        results.append((user, None))
 
     return results
 
@@ -742,7 +743,6 @@ async def register(ctx: SlashContext,
                         if new_user.id not in USERS_BY_ID:
                             USERS_BY_ID[new_user.id] = {}
                         USERS_BY_ID[new_user.id][guild] = new_user
-
                         collector.add_user(new_user)
                         logger.info(f'Registered new user')
                         save_registered_users()
@@ -901,7 +901,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
 
 async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str):
     user_scores: List[Tuple[User, float]] = []
-    custom_value_strings: Dict[User, str] = {}
+    value_strings: Dict[User, str] = {}
     users_rekt: List[User] = []
     users_missing: List[User] = []
 
@@ -923,12 +923,12 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
                         users_missing.append(user)
                     elif balance.amount > REKT_THRESHOLD:
                         user_scores.append((user, balance.amount))
+                        value_strings[user] = balance.to_string()
                     else:
                         users_rekt.append(user)
 
         date = date.replace(microsecond=0)
         footer += f'Data used from: {date}'
-        unit = '$'
     elif mode == 'gain':
 
         since_start = time == 'all' or time == 'start'
@@ -965,12 +965,9 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
                 else:
                     user_gain_rel, user_gain_abs = user_gain
                     user_scores.append((user, user_gain_rel))
-                    custom_value_strings[
-                        user] = f'{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=3)}$)'
+                    value_strings[user] = f'{round(user_gain_rel, ndigits=1)}% ({round(user_gain_abs, ndigits=2)}$)'
             else:
                 users_missing.append(user)
-
-        unit = '%'
     else:
         logging.error(f'Unknown mode {mode} was passed in')
         await message.edit(f'Unknown mode {mode}')
@@ -984,13 +981,13 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
         for user, score in user_scores:
             member = guild.get_member(user.id)
             if member:
-                if prev_score and score < prev_score:
+                if prev_score is not None and score < prev_score:
                     rank += 1
-                if user in custom_value_strings:
-                    value = custom_value_strings[user]
+                if user in value_strings:
+                    value = value_strings[user]
+                    description += f'{rank}. **{member.display_name}** {value}\n'
                 else:
-                    value = f'{round(score, ndigits=3)}{unit}'
-                description += f'{rank}. **{member.display_name}** {value}\n'
+                    logger.error(f'Missing value string for {user=} even though hes in user_scores')
                 prev_score = score
 
     if len(users_rekt) > 0:
@@ -1095,17 +1092,7 @@ def load_registered_users():
             users_json = json.load(fp=f)
             for user_json in users_json:
                 try:
-
-                    initial_balance = None
-                    try:
-                        initial_time = datetime.strptime(INITIAL_BALANCE['date'], "%d/%m/%Y %H:%M:%S")
-                        initial_balance = (initial_time, Balance(INITIAL_BALANCE['amount'], currency='$', error=None))
-                    except ValueError as e:
-                        logger.error(f'{e}: Invalid time string for Initial Balance: {INITIAL_BALANCE["date"]}')
-                    except KeyError as e:
-                        logger.error(f'{e}: Invalid INITIAL_BALANCE dict. Consider looking into config.example')
-
-                    user = user_from_json(user_json, EXCHANGES, initial_balance)
+                    user = user_from_json(user_json, EXCHANGES)
                     if user.id not in USERS_BY_ID:
                         USERS_BY_ID[user.id] = {}
                     USERS_BY_ID[user.id][user.guild_id] = user
@@ -1114,7 +1101,6 @@ def load_registered_users():
                     logger.error(f'{e} occurred while parsing user data {user_json} from users.json')
     except FileNotFoundError:
         logger.info(f'No user information found')
-    pass
 
 
 @slash.slash(
@@ -1131,6 +1117,28 @@ async def donate(ctx: SlashContext):
                     "**USDT (BSC)**: 0x694cf86962f84d281d322887569b16935b48d9dd\n\n"
                     "jacksn#9149."
     )
+    await ctx.send(embed=embed)
+
+
+@slash.slash(
+    name="help",
+    description="Help!"
+)
+async def help(ctx: SlashContext):
+    embed = discord.Embed(
+        title="**Usage**"
+    )
+    embed.add_field(
+        name="How do I register?",
+        value="You can register using the **/register** command in the private message of the bot.\n"
+              "You have to pass in which exchange you are using and an api access (key, secret). This access can and should be **read only**.\n"
+              "Also make sure to pass in the name of your subaccount (optional parameter), if you use one.\n\n"
+              "The bot will try to read your balance and ask if it is correct. To confirm, send a message \"y\" for yes or \"n\" if the result is not correct.",
+        inline=False
+    )
+    # embed.add_field(
+    #     name=""
+    # )
     await ctx.send(embed=embed)
 
 
