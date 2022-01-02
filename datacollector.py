@@ -43,7 +43,7 @@ class DataCollector:
 
         self.on_rekt_callback = on_rekt_callback
 
-        self._last_full_fetch = datetime.fromtimestamp(0)
+        self._last_full_fetch = {}
         self._saves_since_backup = 0
         self._load_user_data()
 
@@ -77,7 +77,6 @@ class DataCollector:
         next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
                             microsecond=0) + timedelta(hours=self.interval_hours)
         delay = next - time
-        self._last_full_fetch = time
 
         timer = Timer(delay.total_seconds(), self.start_fetching)
         timer.start()
@@ -85,7 +84,7 @@ class DataCollector:
     def fetch_data(self, guild_id: int = None, time_tolerance_seconds: float = 60):
         self.data_lock.acquire()
         time, data = self.user_data[len(self.user_data) - 1]
-        if datetime.now() - self._last_full_fetch > timedelta(seconds=time_tolerance_seconds):
+        if not self._fetched_recently(guild_id, time_tolerance_seconds):
             time, data = self._fetch_data(guild_id=guild_id)
             self.user_data.append((time, data))
         self.data_lock.release()
@@ -166,12 +165,6 @@ class DataCollector:
         self.data_lock.release()
         return single_user_data
 
-    def has_fetched_recently(self, time_tolerance_seconds: int = 60) -> bool:
-        self.data_lock.acquire()
-        result = datetime.now() - self._last_full_fetch < timedelta(seconds=time_tolerance_seconds)
-        self.data_lock.release()
-        return result
-
     def clear_user_data(self,
                         user: User,
                         start: datetime = None,
@@ -214,16 +207,24 @@ class DataCollector:
 
         self._save_user_data()
 
+    def _fetched_recently(self, guild_id: int = None, time_tolerance_seconds: float = 60):
+        exact = self._last_full_fetch.get(guild_id)
+        if not exact:
+            exact = self._last_full_fetch.get(None)
+        return datetime.now() - exact < timedelta(seconds=time_tolerance_seconds)
+
     def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
         """
         self.user_lock.acquire()
+        time = datetime.now()
+
         if users is None:
             users = self.users
+            self._last_full_fetch[guild_id] = time
 
-        time = datetime.now()
         data = {}
         logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
         for user in users:

@@ -504,7 +504,8 @@ def calc_gains(users: List[User],
     :param currency:
     :param since_start: should the gain since the start be calculated?
     :return:
-    Gain for each user is stored in a list as a tuple containing user object and tuple containing relative gain and absolute gain
+    Gain for each user is stored in a list of tuples following this structure: (User, (user gain rel, user gain abs)) success
+                                                                               (User, None) missing
     """
 
     if currency is None:
