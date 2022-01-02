@@ -277,11 +277,8 @@ class DataCollector:
                         self.user_data.remove((date, data))
                         date = prev_date
                         data = prev_data
-                    else:
-                        try:
-                            self.user_data.remove((prev_date, prev_data))
-                        except ValueError:
-                            pass  # Not in list
+                    elif (prev_date, prev_data) in self.user_data:
+                        self.user_data.remove((prev_date, prev_data))
                 else:
                     user_data_json.append(
                         (round(date.timestamp()), {user_id: {guild_id: data[user_id][guild_id].to_json() for guild_id in data[user_id]} for user_id in data})
