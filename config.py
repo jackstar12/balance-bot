@@ -1,11 +1,6 @@
 PREFIX = "c "
 DATA_PATH = "data/"
 FETCHING_INTERVAL_HOURS = 1
-INITIAL_BALANCE = {
-    "date": "01/12/2021 00:00:00",
-    "amount": 100,
-    "currency": "$"
-}
 REKT_THRESHOLD = 2.5
 REKT_MESSAGES = [
     "{name} hat sich mit der Leverage vergriffen :cry:",
