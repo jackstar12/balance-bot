@@ -967,7 +967,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
                 else:
                     user_gain_rel, user_gain_abs = user_gain
                     user_scores.append((user, user_gain_rel))
-                    value_strings[user] = f'{round(user_gain_rel, ndigits=1)}% ({round(user_gain_abs, ndigits=2)}$)'
+                    value_strings[user] = f'{round(user_gain_rel, ndigits=2)}% ({round(user_gain_abs, ndigits=2)}$)'
             else:
                 users_missing.append(user)
     else:
