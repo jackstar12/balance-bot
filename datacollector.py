@@ -81,11 +81,11 @@ class DataCollector:
         timer = Timer(delay.total_seconds(), self.start_fetching)
         timer.start()
 
-    def fetch_data(self, guild_id: int = None, time_tolerance_seconds: float = 60):
+    def fetch_data(self, users: List[User] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
         self.data_lock.acquire()
         time, data = self.user_data[len(self.user_data) - 1]
         if not self._fetched_recently(guild_id, time_tolerance_seconds):
-            time, data = self._fetch_data(guild_id=guild_id)
+            time, data = self._fetch_data(users=users, guild_id=guild_id)
             self.user_data.append((time, data))
         self.data_lock.release()
         return time, data

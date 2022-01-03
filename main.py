@@ -232,7 +232,6 @@ async def ping(ctx: SlashContext):
         )
     ]
 )
-@server_only
 async def balance(ctx, user: discord.Member = None, currency: str = None):
     if user is None:
         user = ctx.author
@@ -243,17 +242,29 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
     logger.info(
         f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
 
-    try:
-        registered_user = get_user_by_id(user.id, None if not ctx.guild else ctx.guild.id)
-    except ValueError as e:
-        await ctx.send(e.args[0].replace('{name}', user.display_name))
-        return
+    if ctx.guild is not None:
+        try:
+            registered_user = get_user_by_id(user.id, ctx.guild.id)
+        except ValueError as e:
+            await ctx.send(e.args[0].replace('{name}', user.display_name))
+            return
 
-    usr_balance = collector.get_user_balance(registered_user, currency)
-    if usr_balance.error is None:
-        await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
+        usr_balance = collector.get_user_balance(registered_user, currency)
+        if usr_balance.error is None:
+            await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
+        else:
+            await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
     else:
-        await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
+        if user.id in USERS_BY_ID:
+            registered_guilds = USERS_BY_ID[user.id]
+            for guild_id in registered_guilds:
+                usr_balance = collector.get_user_balance(registered_guilds[guild_id], currency)
+                guild_name = client.get_guild(guild_id)
+                balance_message = f'Your balance on {guild_name}: ' if guild_name else 'Your balance: '
+                if usr_balance.error is None:
+                    await ctx.send(f'{balance_message}{usr_balance.to_string()}')
+                else:
+                    await ctx.send(f'Error while getting your balance on {guild_name}: {usr_balance.error}')
 
 
 def calc_percentage(then: float, now: float) -> str:
@@ -581,7 +592,6 @@ def calc_gains(users: List[User],
         )
     ]
 )
-@server_only
 async def gain(ctx, user: discord.Member = None, time: str = None, currency: str = None):
     if user is None:
         user = ctx.author
@@ -596,12 +606,18 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
 
     logger.info(f'New Interaction with {ctx.author}: Calculate gain for {de_emojify(user.display_name)} {time_str=}')
 
-    try:
-        registered_user = get_user_by_id(user.id, None if not ctx.guild else ctx.guild.id)
-    except ValueError as e:
-        await ctx.send(content=e.args[0].replace('{name}', user.display_name))
-        return
-
+    users = []
+    if ctx.guild:
+        try:
+            registered_user = get_user_by_id(user.id, None if not ctx.guild else ctx.guild.id)
+            users = [registered_user]
+        except ValueError as e:
+            await ctx.send(content=e.args[0].replace('{name}', user.display_name))
+            return
+    elif user.id in USERS_BY_ID:
+        users = list(USERS_BY_ID[user.id].values())
+    else:
+        await ctx.send(f'You are not registered.')
     since_start = time_str == 'start' or time_str == 'all' or time_str == 'total'
 
     if since_start:
@@ -616,15 +632,21 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
 
     time = datetime.now()
     search = time - delta
-    user_gain = calc_gains([registered_user], search, currency, since_start=since_start)[0][1]
+    collector.fetch_data(users=users)
+    user_gains = calc_gains(users, search, currency, since_start=since_start)
 
-    if user_gain is None:
-        logger.info(f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain')
-        await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str}  gain')
-    else:
-        user_gain_rel, user_gain_abs = user_gain
-        await ctx.send(
-            f'{user.display_name}\'s {time_str} gain: {round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
+    for cur_user, user_gain in user_gains:
+        guild_name = client.get_guild(cur_user.guild_id)
+        gain_message = "Your gain: " if not guild_name else f"Your gain on {guild_name}: "
+        if user_gain is None:
+            logger.info(f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild_name}')
+            if ctx.guild:
+                await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
+            else:
+                await ctx.send(f'Not enough data for calculating your {time_str} gain on {guild_name}')
+        else:
+            user_gain_rel, user_gain_abs = user_gain
+            await ctx.send(f'{gain_message}{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
 
 
 def get_available_exchanges() -> str:

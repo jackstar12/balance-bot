@@ -5,6 +5,7 @@ from balance import Balance
 import urllib.parse
 import time
 import logging
+from datetime import datetime
 
 
 class BitmexClient(Client):
@@ -13,6 +14,14 @@ class BitmexClient(Client):
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
     def get_balance(self):
+        request = Request(
+            'GET',
+            self.ENDPOINT + 'execution/tradeHistory',
+            params={
+                'startTime': str(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+            }
+        )
+        res = self._request(request)
         request = Request(
             'GET',
             self.ENDPOINT + 'user/wallet',
