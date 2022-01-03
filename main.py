@@ -162,7 +162,7 @@ async def on_ready():
 
     logger.info('Bot Ready')
     print('Bot Ready.')
-    await slash.sync_all_commands()
+    await slash.sync_all_commands(delete_from_unused_guilds=True)
 
 
 @client.event
@@ -178,7 +178,7 @@ async def on_guild_join(guild: discord.Guild):
                         value=guild.id
                     )
                 )
-    await slash.sync_all_commands()
+    await slash.sync_all_commands(delete_from_unused_guilds=True)
 
 
 @client.event
@@ -256,6 +256,17 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
 
 
+def calc_percentage(then: float, now: float) -> str:
+    diff = now - then
+    if diff == 0.0:
+        result = '0'
+    elif then > 0:
+        result = f'{round(100 * (diff / then), ndigits=3)}'
+    else:
+        result = 'nan'
+    return result
+
+
 async def create_history(message: discord.Message,
                          user: discord.Member,
                          guild_id: int,
@@ -291,6 +302,7 @@ async def create_history(message: discord.Message,
         await message.edit(content=e.args[0])
         return
 
+    collector.get_user_balance(registered_user, currency=currency)
     user_data = collector.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id, start=start,
                                                end=end, currency=currency)
 
@@ -319,27 +331,15 @@ async def create_history(message: discord.Message,
     compare_ys = []
     for time, balance in compare_data:
         compare_xs.append(time.replace(microsecond=0))
-        compare_ys.append(balance.amount)
+        compare_ys.append(round(balance.amount, ndigits=CURRENCY_PRECISION.get(balance.currency, 3)))
 
-    diff = ys[len(ys) - 1] - ys[0]
-    if diff == 0.0:
-        total_gain = f'0'
-    elif ys[0] > 0:
-        total_gain = f'{round(100 * (diff / ys[0]), ndigits=3)}'
-    else:
-        total_gain = 'inf'
+    total_gain = calc_percentage(ys[0], ys[len(ys) - 1])
 
     title = f'History for {user.display_name} (Total gain: {total_gain}%)'
     plt.plot(xs, ys, label=f"{user.display_name}'s {currency} Balance")
 
     if compare:
-        diff = compare_ys[len(compare_ys) - 1] - compare_ys[0]
-        if diff == 0.0:
-            total_gain = '0'
-        elif compare_ys[0] > 0:
-            total_gain = f'{round(100 * (diff / compare_ys[0]), ndigits=3)}'
-        else:
-            total_gain = 'inf'
+        total_gain = calc_percentage(compare_ys[0], compare_ys[len(compare_ys) - 1])
         plt.plot(compare_xs, compare_ys, label=f"{compare.display_name}'s {currency} Balance")
         title += f' vs. {compare.display_name} (Total gain: {total_gain}%)'
 

@@ -208,10 +208,10 @@ class DataCollector:
         self._save_user_data()
 
     def _fetched_recently(self, guild_id: int = None, time_tolerance_seconds: float = 60):
-        exact = self._last_full_fetch.get(guild_id)
-        if not exact:
-            exact = self._last_full_fetch.get(None)
-        return datetime.now() - exact < timedelta(seconds=time_tolerance_seconds)
+        last_fetch = self._last_full_fetch.get(guild_id)
+        if not last_fetch:
+            last_fetch = self._last_full_fetch.get(None)
+        return datetime.now() - last_fetch < timedelta(seconds=time_tolerance_seconds)
 
     def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
         """

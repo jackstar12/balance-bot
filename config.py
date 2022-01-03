@@ -9,10 +9,12 @@ REKT_MESSAGES = [
 ]
 # Channels where the Rekt Messages are sent
 REKT_GUILDS = [
+    # Bot-Test
     {
         "guild_id": 916370614598651934,
         "guild_channel": 917146534372601886
     },
+    # Next Level
     {
         "guild_id": 443583326507499520,
         "guild_channel": 704403630375305317
@@ -20,8 +22,8 @@ REKT_GUILDS = [
 ]
 CURRENCY_PRECISION = {
     '$': 2,
-    'BTC': 5,
-    'XBT': 5
+    'BTC': 6,
+    'XBT': 6
 }
 CURRENCY_ALIASES = {
     'BTC': 'XBT',
