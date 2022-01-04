@@ -636,14 +636,17 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
     user_gains = calc_gains(users, search, currency, since_start=since_start)
 
     for cur_user, user_gain in user_gains:
-        guild_name = client.get_guild(cur_user.guild_id)
-        gain_message = "Your gain: " if not guild_name else f"Your gain on {guild_name}: "
+        guild = client.get_guild(ctx.guild_id)
+        if ctx.guild:
+            gain_message = f'{user.display_name}\'s {time_str} gain: '
+        else:
+            gain_message = "Your gain: " if not guild else f"Your gain on {guild}: "
         if user_gain is None:
-            logger.info(f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild_name}')
+            logger.info(f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
             if ctx.guild:
                 await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
             else:
-                await ctx.send(f'Not enough data for calculating your {time_str} gain on {guild_name}')
+                await ctx.send(f'Not enough data for calculating your {time_str} gain on {guild}')
         else:
             user_gain_rel, user_gain_abs = user_gain
             await ctx.send(f'{gain_message}{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
@@ -933,7 +936,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
     footer = ''
     description = ''
 
-    date, data = collector.fetch_data(guild_id=guild.id)
+    date, data = collector.fetch_data()
     if mode == 'balance':
         for user_id in USERS_BY_ID:
             user = get_user_by_id(user_id, guild.id, throw_exceptions=False)

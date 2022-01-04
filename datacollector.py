@@ -68,7 +68,7 @@ class DataCollector:
         """
 
         self.data_lock.acquire()
-        self.user_data.append(self._fetch_data())
+        self.user_data.append(self._fetch_data(set_full_fetch=True))
         self.data_lock.release()
 
         self._save_user_data()
@@ -85,7 +85,7 @@ class DataCollector:
         self.data_lock.acquire()
         time, data = self.user_data[len(self.user_data) - 1]
         if not self._fetched_recently(guild_id, time_tolerance_seconds):
-            time, data = self._fetch_data(users=users, guild_id=guild_id)
+            time, data = self._fetch_data(users=users, guild_id=guild_id, set_full_fetch=True)
             self.user_data.append((time, data))
         self.data_lock.release()
         return time, data
@@ -213,7 +213,7 @@ class DataCollector:
             last_fetch = self._last_full_fetch.get(None)
         return datetime.now() - last_fetch < timedelta(seconds=time_tolerance_seconds)
 
-    def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
+    def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False, set_full_fetch = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
@@ -223,12 +223,14 @@ class DataCollector:
 
         if users is None:
             users = self.users
+
+        if set_full_fetch:
             self._last_full_fetch[guild_id] = time
 
         data = {}
         logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
         for user in users:
-            if not guild_id or guild_id == user.guild_id:
+            if not guild_id or guild_id == user.guild_id or user.guild_id:
                 if user.rekt_on:
                     balance = Balance(0.0, '$', None)
                 else:
@@ -247,6 +249,7 @@ class DataCollector:
                         user.rekt_on = time
                         if callable(self.on_rekt_callback):
                             self.on_rekt_callback(user)
+
         logging.info(f'Done Fetching')
         self.user_lock.release()
         return time, data
@@ -344,7 +347,7 @@ class DataCollector:
             user_balances = {}
             for key in user_json[user_id].keys():
                 if key != 'extra_currencies' and isinstance(user_json[user_id][key], dict):  # Backwards compatibility
-                    user_balances[None if key == 'null' else key] = balance_from_json(user_json[user_id][key])
+                    user_balances[None if key == 'null' else int(key)] = balance_from_json(user_json[user_id][key])
             if len(user_balances) == 0:
                 user_balances[None] = balance_from_json(user_json[user_id])
             user_data[int(user_id)] = user_balances
