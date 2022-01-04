@@ -31,7 +31,7 @@ class BybitClient(Client):
         if response['ret_code'] == 0:
             data = response['result']
             for currency in data:
-                amount = float(data[currency]['wallet_balance'])
+                amount = float(data[currency]['equity'])
                 price = 0
                 if currency == 'USDT':
                     price = 1
