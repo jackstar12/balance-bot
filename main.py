@@ -28,6 +28,15 @@ from key import KEY
 from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
     CURRENCY_PRECISION, REKT_THRESHOLD
 
+from utils import (dm_only,
+                   server_only,
+                   de_emojify,
+                   get_user_by_id,
+                   add_guild_option,
+                   calc_percentage,
+                   calc_timedelta_from_time_args,
+                   calc_xs_ys)
+
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx import FtxClient
@@ -42,6 +51,7 @@ client = commands.Bot(command_prefix=PREFIX, intents=intents)
 slash = SlashCommand(client)
 USERS: List[User] = []
 
+# { user_id: { guild_id: User} }
 USERS_BY_ID: Dict[int, Dict[int, User]] = {}
 
 EXCHANGES: Dict[str, Type[Client]] = {
@@ -55,108 +65,14 @@ EXCHANGES: Dict[str, Type[Client]] = {
 OPEN_DIALOGUES: Dict[int, Dialogue] = {}
 
 
-def dm_only(coro):
-    async def wrapper(ctx, *args, **kwargs):
-        if ctx.guild:
-            await ctx.send('This command can only be used via a Private Message.')
-            return
-        return await coro(ctx, *args, **kwargs)
-
-    return wrapper
-
-
-def server_only(coro):
-    async def wrapper(ctx: SlashContext, *args, **kwargs):
-        if not ctx.guild:
-            await ctx.send('This command can only be used in a server.')
-            return
-        return await coro(ctx, *args, **kwargs)
-
-    return wrapper
-
-
-# Thanks Stackoverflow
-def de_emojify(text):
-    regrex_pattern = re.compile("["
-                                u"\U0001F600-\U0001F64F"  # emoticons
-                                u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                                u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                                u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                                u"\U00002500-\U00002BEF"  # chinese char
-                                u"\U00002702-\U000027B0"
-                                u"\U00002702-\U000027B0"
-                                u"\U000024C2-\U0001F251"
-                                u"\U0001f926-\U0001f937"
-                                u"\U00010000-\U0010ffff"
-                                u"\u2640-\u2642"
-                                u"\u2600-\u2B55"
-                                u"\u200d"
-                                u"\u23cf"
-                                u"\u23e9"
-                                u"\u231a"
-                                u"\ufe0f"  # dingbats
-                                u"\u3030"
-                                "]+", re.UNICODE)
-    return regrex_pattern.sub(r'', text)
-
-
-def get_user_by_id(user_id: int,
-                   guild_id: int = None,
-                   exact: bool = False,
-                   throw_exceptions=True) -> User:
-    """
-    Tries to find a matching entry for the user and guild id.
-    :param exact: whether the global entry should be used if the guild isn't registered
-    :return:
-    The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
-    """
-    result = None
-
-    if user_id in USERS_BY_ID:
-        endpoints = USERS_BY_ID[user_id]
-        if isinstance(endpoints, dict):
-            result = endpoints.get(guild_id, None)
-            if not result and not exact:
-                result = endpoints.get(None, None)  # None entry is global
-            if not result and throw_exceptions:
-                raise ValueError("User {name} not registered for this guild")
-        else:
-            logger.error(
-                f'USERS_BY_ID contains invalid entry! Associated data with {user_id=}: {result=} {endpoints=} ({guild_id=})')
-            if throw_exceptions:
-                raise ValueError("This is caused due to a bug in the bot. Please contact dev.")
-    elif throw_exceptions:
-        logger.error(f'Dont know user {user_id=}')
-        raise ValueError("Unknown user {name}. Please register first.")
-
-    return result
-
-
-def add_guild_option(command: BaseCommandObject, description: str):
-    command.options.append(
-        create_option(
-            name="guild",
-            description=description,
-            required=False,
-            option_type=SlashCommandOptionType.STRING,
-            choices=[
-                create_choice(
-                    name=guild.name,
-                    value=str(guild.id)
-                ) for guild in client.guilds
-            ]
-        )
-    )
-
-
 @client.event
 async def on_ready():
     register_command: BaseCommandObject = slash.commands['register']
     unregister_command: BaseCommandObject = slash.commands['unregister']
     clear_command: BaseCommandObject = slash.commands['clear']
-    add_guild_option(register_command, 'Guild to register this access for. If not given, it will be global.')
-    add_guild_option(unregister_command, 'Which guild access to unregister. If not given, it will be global.')
-    add_guild_option(clear_command, 'Which guild to clear your data for. If not given, it will be global.')
+    add_guild_option(client.guilds, register_command, 'Guild to register this access for. If not given, it will be global.')
+    add_guild_option(client.guilds, unregister_command, 'Which guild access to unregister. If not given, it will be global.')
+    add_guild_option(client.guilds, clear_command, 'Which guild to clear your data for. If not given, it will be global.')
 
     collector.start_fetching()
 
@@ -244,7 +160,7 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
 
     if ctx.guild is not None:
         try:
-            registered_user = get_user_by_id(user.id, ctx.guild.id)
+            registered_user = get_user_by_id(USERS_BY_ID, user.id, ctx.guild.id)
         except ValueError as e:
             await ctx.send(e.args[0].replace('{name}', user.display_name))
             return
@@ -267,17 +183,6 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
                     await ctx.send(f'Error while getting your balance on {guild_name}: {usr_balance.error}')
 
 
-def calc_percentage(then: float, now: float) -> str:
-    diff = now - then
-    if diff == 0.0:
-        result = '0'
-    elif then > 0:
-        result = f'{round(100 * (diff / then), ndigits=3)}'
-    else:
-        result = 'nan'
-    return result
-
-
 async def create_history(message: discord.Message,
                          user: discord.Member,
                          guild_id: int,
@@ -287,8 +192,17 @@ async def create_history(message: discord.Message,
                          to: str = None):
     logger.info(f'New interaction with {de_emojify(user.display_name)}: Show history')
 
+    if '%' in currency:
+        percentage = True
+        currency = currency.rstrip('%')
+        currency = currency.rstrip()
+        if not currency:
+            currency = '$'
+    else:
+        percentage = False
+
     try:
-        registered_user = get_user_by_id(user.id, guild_id)
+        registered_user = get_user_by_id(USERS_BY_ID, user.id, guild_id)
     except ValueError as e:
         await message.edit(content=e.args[0].replace('{name}', user.display_name))
         return
@@ -322,30 +236,21 @@ async def create_history(message: discord.Message,
         await message.edit(content=f'Got no data for this user')
         return
 
-    xs = []
-    ys = []
-    for time, balance in user_data:
-        xs.append(time.replace(microsecond=0))
-        ys.append(round(balance.amount, ndigits=CURRENCY_PRECISION.get(balance.currency, 3)))
+    xs, ys = calc_xs_ys(user_data, percentage)
 
     compare_data = []
     if compare:
         try:
-            compare_user = get_user_by_id(compare.id, guild_id)
+            compare_user = get_user_by_id(USERS_BY_ID, compare.id, guild_id)
         except ValueError as e:
             await message.edit(content=e.args[0].replace('{name}', compare.display_name))
             return
         compare_data = collector.get_single_user_data(compare_user.id, compare_user.guild_id, start=start, end=end,
                                                       currency=currency)
 
-    compare_xs = []
-    compare_ys = []
-    for time, balance in compare_data:
-        compare_xs.append(time.replace(microsecond=0))
-        compare_ys.append(round(balance.amount, ndigits=CURRENCY_PRECISION.get(balance.currency, 3)))
+    compare_xs, compare_ys = calc_xs_ys(compare_data, percentage)
 
     total_gain = calc_percentage(ys[0], ys[len(ys) - 1])
-
     title = f'History for {user.display_name} (Total gain: {total_gain}%)'
     plt.plot(xs, ys, label=f"{user.display_name}'s {currency} Balance")
 
@@ -423,86 +328,6 @@ async def history(ctx,
     asyncio.create_task(
         create_history(message, user, guild_id=ctx.guild.id, currency=currency, compare=compare, since=since, to=to)
     )
-
-
-def calc_timedelta_from_time_args(time_str: str) -> timedelta:
-    """
-    Calculates timedelta from given time args.
-    Arg Format:
-      <n><f>
-      where <f> can be m (minutes), h (hours), d (days) or w (weeks)
-
-      or valid time string
-
-    :raise:
-      ValueError if invalid arg is given
-    :return:
-      Calculated timedelta or None if None was passed in
-    """
-
-    if not time_str:
-        return None
-
-    time_str = time_str.lower()
-
-    # Different time formats: True or False indicates whether the date is included.
-    formats = [
-        (False, "%H:%M:%S"),
-        (False, "%H:%M"),
-        (False, "%H"),
-        (True, "%d.%m.%Y %H:%M:%S"),
-        (True, "%d.%m.%Y %H:%M"),
-        (True, "%d.%m.%Y %H"),
-        (True, "%d.%m.%Y"),
-        (True, "%d.%m. %H:%M:%S"),
-        (True, "%d.%m. %H:%M"),
-        (True, "%d.%m. %H"),
-        (True, "%d.%m.")
-    ]
-
-    delta = None
-    for includes_date, time_format in formats:
-        try:
-            date = datetime.strptime(time_str, time_format)
-            now = datetime.now()
-            if not includes_date:
-                date = date.replace(year=now.year, month=now.month, day=now.day, microsecond=0)
-            elif date.year == 1900:  # %d.%m. not setting year to 1970 but to 1900?
-                date = date.replace(year=now.year)
-            delta = datetime.now() - date
-            break
-        except ValueError:
-            continue
-
-    if not delta:
-        minute = 0
-        hour = 0
-        day = 0
-        week = 0
-        args = time_str.split(' ')
-        if len(args) > 0:
-            for arg in args:
-                try:
-                    if 'h' in arg:
-                        hour += int(arg.rstrip('h'))
-                    elif 'm' in arg:
-                        minute += int(arg.rstrip('m'))
-                    elif 'w' in arg:
-                        week += int(arg.rstrip('w'))
-                    elif 'd' in arg:
-                        day += int(arg.rstrip('d'))
-                    else:
-                        raise ValueError
-                except ValueError:  # Make sure both cases are treated the same
-                    raise ValueError(f'Invalid time argument: {arg}')
-        delta = timedelta(hours=hour, minutes=minute, days=day, weeks=week)
-
-    if not delta:
-        raise ValueError(f'Invalid time argument: {time_str}')
-    elif delta.total_seconds() <= 0:
-        raise ValueError(f'Time delta can not be zero. {time_str}')
-
-    return delta
 
 
 def calc_gains(users: List[User],
@@ -609,7 +434,7 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
     users = []
     if ctx.guild:
         try:
-            registered_user = get_user_by_id(user.id, None if not ctx.guild else ctx.guild.id)
+            registered_user = get_user_by_id(USERS_BY_ID, user.id, None if not ctx.guild else ctx.guild.id)
             users = [registered_user]
         except ValueError as e:
             await ctx.send(content=e.args[0].replace('{name}', user.display_name))
@@ -740,7 +565,7 @@ async def register(ctx: SlashContext,
                     subaccount=subaccount,
                     extra_kwargs=kwargs
                 )
-                existing_user = get_user_by_id(ctx.author.id, guild, exact=True, throw_exceptions=False)
+                existing_user = get_user_by_id(USERS_BY_ID, ctx.author.id, guild, exact=True, throw_exceptions=False)
                 if existing_user:
                     existing_user.api = exchange
                     await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)))
@@ -808,7 +633,7 @@ async def unregister(ctx, guild: str = None):
     logger.info(f'New Interaction with {ctx.author.display_name}: Trying to unregister user {ctx.author.display_name}')
 
     try:
-        registered_user = get_user_by_id(ctx.author.id, guild, exact=False)
+        registered_user = get_user_by_id(USERS_BY_ID, ctx.author.id, guild, exact=False)
     except ValueError as e:
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name))
         return
@@ -879,7 +704,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
         guild = int(guild)
 
     try:
-        registered_user = get_user_by_id(ctx.author.id, guild)
+        registered_user = get_user_by_id(USERS_BY_ID, ctx.author.id, guild)
     except ValueError as e:
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name))
         return
@@ -939,7 +764,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
     date, data = collector.fetch_data()
     if mode == 'balance':
         for user_id in USERS_BY_ID:
-            user = get_user_by_id(user_id, guild.id, throw_exceptions=False)
+            user = get_user_by_id(USERS_BY_ID, user_id, guild.id, throw_exceptions=False)
             if user and guild.get_member(user_id):
                 if user.rekt_on:
                     users_rekt.append(user)
@@ -981,7 +806,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
 
         users = []
         for user_id in USERS_BY_ID:
-            user = get_user_by_id(user_id, guild.id, throw_exceptions=False)
+            user = get_user_by_id(USERS_BY_ID, user_id, guild.id, throw_exceptions=False)
             if user and guild.get_member(user.id):
                 users.append(user)
         user_gains = calc_gains(users, search, since_start=since_start)
@@ -1191,7 +1016,7 @@ async def on_rekt_async(user: User):
                 embed = discord.Embed(description=message_replaced)
                 await channel.send(embed=embed)
         except KeyError as e:
-            logger.error(f'Invalid guild {guild_data} {e}')
+            logger.error(f'Invalid guild {guild_data=} {e}')
         except AttributeError as e:
             logger.error(f'Error while sending message to guild {e}')
 
