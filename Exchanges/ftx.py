@@ -16,11 +16,11 @@ class FtxClient(Client):
 
     # https://docs.ftx.com/#account
     def get_balance(self):
-        s = Session()
-        request = Request('GET', self.ENDPOINT + 'account')
-        self._sign_request(request)
-        response = s.send(request.prepare())
-        response = self._process_response(response)
+        request = Request(
+            'GET',
+            self.ENDPOINT + 'account'
+        )
+        response = self._request(request)
         if response['success']:
             amount = response['result']['totalAccountValue']
         else:

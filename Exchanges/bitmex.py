@@ -14,14 +14,15 @@ class BitmexClient(Client):
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
     def get_balance(self):
-        request = Request(
-            'GET',
-            self.ENDPOINT + 'execution/tradeHistory',
-            params={
-                'startTime': str(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
-            }
-        )
-        res = self._request(request)
+        # Could do something like that for displaying a trade history
+        # request = Request(
+        #     'GET',
+        #     self.ENDPOINT + 'execution/tradeHistory',
+        #     params={
+        #         'startTime': str(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+        #     }
+        # )
+        # res = self._request(request)
         request = Request(
             'GET',
             self.ENDPOINT + 'user/wallet',
@@ -63,13 +64,6 @@ class BitmexClient(Client):
                        currency='$',
                        extra_currencies=extra_currencies,
                        error=err_msg)
-
-    def _request(self, request: Request):
-        s = Session()
-        self._sign_request(request)
-        prepared = request.prepare()
-        response = s.send(prepared)
-        return self._process_response(response)
 
     # https://www.bitmex.com/app/apiKeysUsage
     def _sign_request(self, request: Request):

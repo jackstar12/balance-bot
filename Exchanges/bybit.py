@@ -2,6 +2,8 @@ import urllib.parse
 import time
 import logging
 import hmac
+import json
+import sys
 
 from client import Client
 from requests import Request, Response, Session, HTTPError
@@ -52,13 +54,6 @@ class BybitClient(Client):
             err_msg = response['ret_msg']
 
         return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
-
-    def _request(self, request: Request):
-        s = Session()
-        self._sign_request(request)
-        prepared = request.prepare()
-        response = s.send(prepared)
-        return self._process_response(response)
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
     def _sign_request(self, request):

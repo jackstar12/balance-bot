@@ -17,10 +17,6 @@ class KuCoinClient(Client):
         'passphrase'
     ]
 
-    def __init__(self, *args, **kwargs):
-        super(KuCoinClient, self).__init__(*args, **kwargs)
-        self.s = Session()
-
     # https://docs.kucoin.com/#get-account-balance-of-a-sub-account
     def get_balance(self):
         request = Request('GET', self.ENDPOINT + 'api/v1/account-overview', params={'currency': 'USDT'})
@@ -31,12 +27,6 @@ class KuCoinClient(Client):
             data = response['data']
             balance = Balance(amount=data['accountEquity'], currency='$', error=None)
         return balance
-
-    def _request(self, request: Request):
-        self._sign_request(request)
-        prepared = request.prepare()
-        response = self.s.send(prepared)
-        return self._process_response(response)
 
     # https://docs.kucoin.com/#authentication
     def _sign_request(self, request: Request):

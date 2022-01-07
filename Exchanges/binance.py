@@ -19,17 +19,13 @@ class BinanceClient(Client):
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     def get_balance(self):
-        s = Session()
         request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
-        self._sign_request(request)
-        prepared = request.prepare()
-        response = self._process_response(s.send(prepared))
+        response = self._request(request)
 
         return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', error=response.get('msg', None))
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
-
         request.headers['X-MBX-APIKEY'] = self.api_key
         request.params['timestamp'] = ts
         query_string = urllib.parse.urlencode(request.params, True)

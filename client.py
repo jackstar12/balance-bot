@@ -2,6 +2,7 @@ import abc
 import discord
 import logging
 from typing import Optional, List, Optional, Dict, Any
+from requests import Request, Session, Response
 
 
 class Client:
@@ -24,6 +25,21 @@ class Client:
     @abc.abstractmethod
     def get_balance(self):
         logging.error(f'Exchange {self.exchange} does not implement get_balance!')
+
+    @abc.abstractmethod
+    def _sign_request(self, request: Request):
+        logging.error(f'Exchange {self.exchange} does not implement _sign_request!')
+
+    @abc.abstractmethod
+    def _process_response(self, response: Response):
+        logging.error(f'Exchange {self.exchange} does not implement _process_response')
+
+    def _request(self, request: Request):
+        s = Session()
+        self._sign_request(request)
+        prepared = request.prepare()
+        response = s.send(prepared)
+        return self._process_response(response)
 
     def repr(self):
         r = f'Exchange: {self.exchange}\n' \
