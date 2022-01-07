@@ -192,6 +192,7 @@ async def create_history(message: discord.Message,
                          to: str = None):
     logger.info(f'New interaction with {de_emojify(user.display_name)}: Show history')
 
+    currency_raw = currency
     if '%' in currency:
         percentage = True
         currency = currency.rstrip('%')
@@ -250,20 +251,20 @@ async def create_history(message: discord.Message,
 
     compare_xs, compare_ys = calc_xs_ys(compare_data, percentage)
 
-    total_gain = calc_percentage(ys[0], ys[len(ys) - 1])
+    total_gain = calc_percentage(user_data[0][1].amount, user_data[len(ys) - 1][1].amount)
     title = f'History for {user.display_name} (Total gain: {total_gain}%)'
-    plt.plot(xs, ys, label=f"{user.display_name}'s {currency} Balance")
+    plt.plot(xs, ys, label=f"{user.display_name}'s {currency_raw} Balance")
 
     if compare:
-        total_gain = calc_percentage(compare_ys[0], compare_ys[len(compare_ys) - 1])
-        plt.plot(compare_xs, compare_ys, label=f"{compare.display_name}'s {currency} Balance")
+        total_gain = calc_percentage(compare_data[0][1].amount, compare_data[len(compare_ys) - 1][1].amount)
+        plt.plot(compare_xs, compare_ys, label=f"{compare.display_name}'s {currency_raw} Balance")
         title += f' vs. {compare.display_name} (Total gain: {total_gain}%)'
 
     plt.gcf().autofmt_xdate()
     plt.gcf().set_dpi(100)
     plt.gcf().set_size_inches(8, 5.5)
     plt.title(title)
-    plt.ylabel(currency)
+    plt.ylabel(currency_raw)
     plt.xlabel('Time')
     plt.grid()
     plt.legend(loc="best")
@@ -1026,7 +1027,7 @@ async def on_rekt_async(user: User):
 def on_rekt(user: User):
     try:
         # First time this might be called is after start, in which case there's already an event loop running
-        asyncio.create_task(on_rekt_async(user))
+        client.loop.create_task(on_rekt_async(user))
     except RuntimeError:
         asyncio.run(on_rekt_async(user))
 
@@ -1042,6 +1043,6 @@ collector = DataCollector(USERS,
                           fetching_interval_hours=FETCHING_INTERVAL_HOURS,
                           data_path=DATA_PATH,
                           rekt_threshold=REKT_THRESHOLD,
-                          on_rekt_callback=on_rekt)
+                          on_rekt_callback=lambda user: client.loop.create_task(on_rekt_async(user)))
 
 client.run(KEY)
