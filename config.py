@@ -30,7 +30,8 @@ CURRENCY_PRECISION = {
 }
 CURRENCY_ALIASES = {
     'BTC': 'XBT',
-    'XBT': 'BTC'
+    'XBT': 'BTC',
+    'USD': '$'
 }
 LOG_OUTPUT_DIR = "LOGS/"
 
