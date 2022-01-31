@@ -379,9 +379,10 @@ def calc_gains(users: List[User],
                                                                         currency=currency)
                         if balance_now:
                             users_left.remove(user)
-                            diff = balance_now.amount - balance_then.amount
+                            diff = round(balance_now.amount - balance_then.amount, ndigits=CURRENCY_PRECISION.get(currency, 3))
                             if balance_then.amount > 0:
-                                results.append((user, (100 * (diff / balance_then.amount), diff)))
+                                results.append((user,
+                                                (round(100 * (diff / balance_then.amount), ndigits=CURRENCY_PRECISION.get('%', 2)), diff)))
                             else:
                                 results.append((user, (0.0, diff)))
                 except KeyError:
@@ -831,6 +832,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
             user = get_user_by_id(USERS_BY_ID, user_id, guild.id, throw_exceptions=False)
             if user and guild.get_member(user.id):
                 users.append(user)
+
         user_gains = calc_gains(users, search, since_start=since_start)
 
         for user, user_gain in user_gains:
@@ -840,7 +842,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
                 else:
                     user_gain_rel, user_gain_abs = user_gain
                     user_scores.append((user, user_gain_rel))
-                    value_strings[user] = f'{round(user_gain_rel, ndigits=2)}% ({round(user_gain_abs, ndigits=2)}$)'
+                    value_strings[user] = f'{user_gain_rel}% ({user_gain_abs}$)'
             else:
                 users_missing.append(user)
     else:
@@ -850,6 +852,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
 
     user_scores.sort(key=lambda x: x[1], reverse=True)
     rank = 1
+    rank_true = 1
 
     if len(user_scores) > 0:
         prev_score = None
@@ -857,10 +860,11 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
             member = guild.get_member(user.id)
             if member:
                 if prev_score is not None and score < prev_score:
-                    rank += 1
+                    rank = rank_true
                 if user in value_strings:
                     value = value_strings[user]
                     description += f'{rank}. **{member.display_name}** {value}\n'
+                    rank_true += 1
                 else:
                     logger.error(f'Missing value string for {user=} even though hes in user_scores')
                 prev_score = score
