@@ -255,6 +255,7 @@ async def history(ctx: SlashContext,
         return
 
     registrations = [(registered_user, user)]
+
     if compare:
         members_raw = compare.split(' ')
         if len(members_raw) > 0:
