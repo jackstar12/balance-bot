@@ -181,6 +181,9 @@ class DataCollector:
         new_initial = None
         self.data_lock.acquire()
 
+        if len(self.user_data) == 0:
+            return
+
         if start > self.user_data[0][0]:
             update_initial_balance = False
 
