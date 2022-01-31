@@ -33,7 +33,17 @@ class Balance:
         return json
 
     def to_string(self):
-        return f'{round(self.amount, ndigits=CURRENCY_PRECISION.get(self.currency, 3))}{self.currency}'
+        string = f'{round(self.amount, ndigits=CURRENCY_PRECISION.get(self.currency, 3))}{self.currency}'
+
+        if self.extra_currencies:
+            first = True
+            for currency in self.extra_currencies:
+                string += f' {"(" if first else "/"}{round(self.extra_currencies[currency], ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})'
+                first = False
+            if not first:
+                string += ')'
+
+        return string
 
 
 
