@@ -122,11 +122,10 @@ class DataCollector:
         self.data_lock.acquire()
         for time, data in reversed(self.user_data):
             user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
+            user_balance = self.match_balance_currency(user_balance, currency)
             if user_balance:
-                user_balance = self.match_balance_currency(user_balance, currency)
-                if user_balance:
-                    result = user_balance
-                    break
+                result = user_balance
+                break
         self.data_lock.release()
         return result
 
