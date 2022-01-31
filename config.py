@@ -23,7 +23,8 @@ REKT_GUILDS = [
 ]
 CURRENCY_PRECISION = {
     '$': 2,
-    '%': 1,
+    'USD': 2,
+    '%': 2,
     'BTC': 6,
     'XBT': 6,
     'ETH': 4
