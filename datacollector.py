@@ -10,7 +10,7 @@ from threading import Thread
 from Exchanges import *
 from threading import Lock, Timer
 from typing import List, Tuple, Dict, Callable, Optional, Any
-from user import User
+from Models.user import User
 from datetime import datetime, timedelta
 from Models.balance import Balance, balance_from_json
 from subprocess import call

@@ -2,31 +2,27 @@ import asyncio
 import logging
 import os
 import random
-import sys
 import discord
+import discord.errors
 import json
 import typing
 import time
 import shutil
-import re
-import smtplib
 
 from discord_slash.model import BaseCommandObject
 from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_choice, create_option
 from discord.ext import commands
-from typing import List, Dict, Type, Tuple, Union, Optional
+from typing import List, Dict, Type, Tuple, Optional
 from datetime import datetime, timedelta
-from random import Random
 
 import matplotlib.pyplot as plt
 import argparse
 
-from balance import Balance, balance_from_json
-from user import User, user_from_json
-from client import Client
+from Models.user import User, user_from_json
+from Models.client import Client
+from eventmanager import EventManager, Event
 from datacollector import DataCollector
-from dialogue import Dialogue, YesNoDialogue
 from key import KEY
 from config import (DATA_PATH,
                     PREFIX,
@@ -38,8 +34,7 @@ from config import (DATA_PATH,
                     REKT_THRESHOLD,
                     ARCHIVE_PATH)
 
-from utils import (dm_only,
-                   server_only,
+from utils import (server_only,
                    de_emojify,
                    get_user_by_id,
                    add_guild_option,
@@ -79,15 +74,26 @@ async def on_ready():
     register_command: BaseCommandObject = slash.commands['register']
     unregister_command: BaseCommandObject = slash.commands['unregister']
     clear_command: BaseCommandObject = slash.commands['clear']
-    add_guild_option(client.guilds, register_command, 'Guild to register this access for. If not given, it will be global.')
-    add_guild_option(client.guilds, unregister_command, 'Which guild access to unregister. If not given, it will be global.')
-    add_guild_option(client.guilds, clear_command, 'Which guild to clear your data for. If not given, it will be global.')
+    add_guild_option(client.guilds, register_command,
+                     'Guild to register this access for. If not given, it will be global.')
+    add_guild_option(client.guilds, unregister_command,
+                     'Which guild access to unregister. If not given, it will be global.')
+    add_guild_option(client.guilds, clear_command,
+                     'Which guild to clear your data for. If not given, it will be global.')
 
     collector.start_fetching()
 
     logger.info('Bot Ready')
     print('Bot Ready.')
-    await slash.sync_all_commands(delete_from_unused_guilds=True)
+    rate_limit = True
+    while rate_limit:
+        try:
+            await slash.sync_all_commands(delete_from_unused_guilds=True)
+            rate_limit = False
+        except discord.errors.HTTPException as e:
+            if e.code == 429:
+                print('We are being rate limited. Retry in 5 seconds...')
+                time.sleep(5)
 
 
 @client.event
@@ -145,8 +151,9 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         currency = '$'
     currency = currency.upper()
 
-    logger.info(f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
-    
+    logger.info(
+        f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
+
     if ctx.guild is not None:
         try:
             registered_user = get_user_by_id(USERS_BY_ID, user.id, ctx.guild.id)
@@ -172,7 +179,7 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
                     await ctx.send(f'Error while getting your balance on {guild_name}: {usr_balance.error}')
 
 
-async def create_history(message: discord.Message,
+async def create_history(ctx: SlashContext,
                          user: discord.Member,
                          guild_id: int,
                          currency: str,
@@ -194,7 +201,7 @@ async def create_history(message: discord.Message,
     try:
         registered_user = get_user_by_id(USERS_BY_ID, user.id, guild_id)
     except ValueError as e:
-        await message.edit(content=e.args[0].replace('{name}', user.display_name))
+        await ctx.send(content=e.args[0].replace('{name}', user.display_name))
         return
 
     start = None
@@ -204,7 +211,7 @@ async def create_history(message: discord.Message,
             start = datetime.now() - delta
     except ValueError as e:
         logger.error(e.args[0])
-        await message.edit(content=e.args[0])
+        await ctx.send(content=e.args[0])
         return
 
     end = None
@@ -214,7 +221,7 @@ async def create_history(message: discord.Message,
             end = datetime.now() - delta
     except ValueError as e:
         logger.error(e.args[0])
-        await message.edit(content=e.args[0])
+        await ctx.send(content=e.args[0])
         return
 
     collector.get_user_balance(registered_user, currency=currency)
@@ -223,7 +230,7 @@ async def create_history(message: discord.Message,
 
     if len(user_data) == 0:
         logger.error(f'No data for this user!')
-        await message.edit(content=f'Got no data for this user')
+        await ctx.send(content=f'Got no data for this user')
         return
 
     xs, ys = calc_xs_ys(user_data, percentage)
@@ -233,7 +240,7 @@ async def create_history(message: discord.Message,
         try:
             compare_user = get_user_by_id(USERS_BY_ID, compare.id, guild_id)
         except ValueError as e:
-            await message.edit(content=e.args[0].replace('{name}', compare.display_name))
+            await ctx.send(content=e.args[0].replace('{name}', compare.display_name))
             return
         compare_data = collector.get_single_user_data(compare_user.id, compare_user.guild_id, start=start, end=end,
                                                       currency=currency)
@@ -262,7 +269,7 @@ async def create_history(message: discord.Message,
     plt.close()
     file = discord.File(DATA_PATH + "tmp.png", "history.png")
 
-    await message.edit(content='', file=file)
+    await ctx.send(content='', file=file)
 
 
 @slash.slash(
@@ -277,9 +284,9 @@ async def create_history(message: discord.Message,
         ),
         create_option(
             name="compare",
-            description="User to compare with",
+            description="Users to compare with",
             required=False,
-            option_type=SlashCommandOptionType.USER
+            option_type=SlashCommandOptionType.STRING
         ),
         create_option(
             name="since",
@@ -305,7 +312,8 @@ async def create_history(message: discord.Message,
 async def history(ctx,
                   user: discord.Member = None,
                   compare: discord.Member = None,
-                  since: str = None, to: str = None,
+                  since: str = None,
+                  to: str = None,
                   currency: str = None):
     if user is None:
         user = ctx.author
@@ -313,11 +321,16 @@ async def history(ctx,
         currency = '$'
     currency = currency.upper()
 
-    message = await ctx.send(f'...')
+    await ctx.defer()
 
-    asyncio.create_task(
-        create_history(message, user, guild_id=ctx.guild.id, currency=currency, compare=compare, since=since, to=to)
-    )
+    # members_raw = compare.split(' ')
+    # if len(members_raw) > 0:
+    #     for member_raw in members_raw:
+    #         member_raw = member_raw.lstrip('!')
+    #         member_raw = member_raw.rstrip('>')
+    #         member = client.get_user(int(member_raw))
+
+    await create_history(ctx, user, guild_id=ctx.guild.id, currency=currency, compare=compare, since=since, to=to)
 
 
 def calc_gains(users: List[User],
@@ -457,14 +470,16 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
         else:
             gain_message = "Your gain: " if not guild else f"Your gain on {guild}: "
         if user_gain is None:
-            logger.info(f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
+            logger.info(
+                f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
             if ctx.guild:
                 await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
             else:
                 await ctx.send(f'Not enough data for calculating your {time_str} gain on {guild}')
         else:
             user_gain_rel, user_gain_abs = user_gain
-            await ctx.send(f'{gain_message}{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
+            await ctx.send(
+                f'{gain_message}{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
 
 
 def get_available_exchanges() -> str:
@@ -539,8 +554,9 @@ async def register(ctx: SlashContext,
                     name, value = arg.split('=')
                     kwargs[name] = value
                 except ValueError:
-                    await ctx.send(f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...',
-                                   hidden=True)
+                    await ctx.send(
+                        f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...',
+                        hidden=True)
                     logging.error(f'Invalid Keyword Arg {arg} passed in')
 
     try:
@@ -884,7 +900,8 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
 )
 @server_only
 async def leaderboard_balance(ctx: SlashContext):
-    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
+    logger.info(
+        f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
     await ctx.defer()
     await create_leaderboard(ctx, guild=ctx.guild, mode='balance', time='24h')
 
@@ -904,7 +921,8 @@ async def leaderboard_balance(ctx: SlashContext):
 )
 @server_only
 async def leaderboard_gain(ctx: SlashContext, time: str = None):
-    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
+    logger.info(
+        f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
 
     if not time:
         time = 'start'
@@ -1021,6 +1039,7 @@ async def on_rekt_async(user: User):
 
     save_registered_users()
 
+
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
 
@@ -1053,5 +1072,18 @@ collector = DataCollector(USERS,
                           data_path=DATA_PATH,
                           rekt_threshold=REKT_THRESHOLD,
                           on_rekt_callback=lambda user: client.loop.create_task(on_rekt_async(user)))
+
+event_manager = EventManager()
+
+#event_time = datetime(year=2022, month=2, day=1, hour=0, minute=0)
+event_time = datetime(year=2022, month=1, day=31, hour=22, minute=10)
+
+
+def clear_all():
+    for user in USERS:
+        collector.clear_user_data(user, end=event_time, update_initial_balance=True)
+
+
+event_manager.schedule(Event(event_time + timedelta(seconds=30), clear_all))
 
 client.run(KEY)
