@@ -5,15 +5,14 @@ import asyncio
 import sys
 import shutil
 
-
-import balance
+from Models import balance
 from threading import Thread
 from Exchanges import *
 from threading import Lock, Timer
 from typing import List, Tuple, Dict, Callable, Optional, Any
 from user import User
 from datetime import datetime, timedelta
-from balance import Balance, balance_from_json
+from Models.balance import Balance, balance_from_json
 from subprocess import call
 from config import CURRENCY_ALIASES
 
@@ -92,12 +91,12 @@ class DataCollector:
         self.data_lock.release()
         return time, data
 
-    def get_user_balance(self, user: User, currency: str = None) -> Balance:
+    def get_user_balance(self, user: User, currency: str = None, force_fetch = False) -> Balance:
 
         if currency is None:
             currency = '$'
 
-        time, data = self._fetch_data(users=[user], keep_errors=True)
+        time, data = self._fetch_data(users=[user], keep_errors=True, force_fetch=force_fetch)
 
         result = data[user.id][user.guild_id]
 
@@ -207,7 +206,7 @@ class DataCollector:
                     break
             self.data_lock.release()
             if not new_initial:
-                user.initial_balance = datetime.now(), self.get_user_balance(user)
+                user.initial_balance = datetime.now(), self.get_user_balance(user, force_fetch=True)
 
         self._save_user_data()
 
@@ -217,7 +216,7 @@ class DataCollector:
             last_fetch = self._last_full_fetch.get(None)
         return datetime.now() - last_fetch < timedelta(seconds=time_tolerance_seconds)
 
-    def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False, set_full_fetch = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
+    def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False, set_full_fetch = False, force_fetch = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
@@ -235,7 +234,7 @@ class DataCollector:
         logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
         for user in users:
             if not guild_id or guild_id == user.guild_id or user.guild_id:
-                if user.rekt_on:
+                if user.rekt_on and not force_fetch:
                     balance = Balance(0.0, '$', None)
                 else:
                     balance = user.api.get_balance()
