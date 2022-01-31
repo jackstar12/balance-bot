@@ -1075,8 +1075,7 @@ collector = DataCollector(USERS,
 
 event_manager = EventManager()
 
-#event_time = datetime(year=2022, month=2, day=1, hour=0, minute=0)
-event_time = datetime(year=2022, month=1, day=31, hour=22, minute=10)
+event_time = datetime(year=2022, month=2, day=1, hour=0, minute=0)
 
 
 def clear_all():
@@ -1084,6 +1083,6 @@ def clear_all():
         collector.clear_user_data(user, end=event_time, update_initial_balance=True)
 
 
-event_manager.schedule(Event(event_time + timedelta(seconds=30), clear_all))
+event_manager.schedule(Event(event_time + timedelta(seconds=60), clear_all))
 
 client.run(KEY)
