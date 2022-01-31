@@ -7,7 +7,9 @@ import discord
 import json
 import typing
 import time
+import shutil
 import re
+import smtplib
 
 from discord_slash.model import BaseCommandObject
 from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
@@ -18,6 +20,7 @@ from datetime import datetime, timedelta
 from random import Random
 
 import matplotlib.pyplot as plt
+import argparse
 
 from balance import Balance, balance_from_json
 from user import User, user_from_json
@@ -25,8 +28,15 @@ from client import Client
 from datacollector import DataCollector
 from dialogue import Dialogue, YesNoDialogue
 from key import KEY
-from config import DATA_PATH, PREFIX, FETCHING_INTERVAL_HOURS, REKT_MESSAGES, LOG_OUTPUT_DIR, REKT_GUILDS, \
-    CURRENCY_PRECISION, REKT_THRESHOLD
+from config import (DATA_PATH,
+                    PREFIX,
+                    FETCHING_INTERVAL_HOURS,
+                    REKT_MESSAGES,
+                    LOG_OUTPUT_DIR,
+                    REKT_GUILDS,
+                    CURRENCY_PRECISION,
+                    REKT_THRESHOLD,
+                    ARCHIVE_PATH)
 
 from utils import (dm_only,
                    server_only,
@@ -35,7 +45,8 @@ from utils import (dm_only,
                    add_guild_option,
                    calc_percentage,
                    calc_timedelta_from_time_args,
-                   calc_xs_ys)
+                   calc_xs_ys,
+                   create_yes_no_button_row)
 
 from Exchanges.binance import BinanceClient
 from Exchanges.bitmex import BitmexClient
@@ -61,8 +72,6 @@ EXCHANGES: Dict[str, Type[Client]] = {
     'kucoin': KuCoinClient,
     'bybit': BybitClient
 }
-
-OPEN_DIALOGUES: Dict[int, Dialogue] = {}
 
 
 @client.event
@@ -95,25 +104,6 @@ async def on_guild_join(guild: discord.Guild):
                     )
                 )
     await slash.sync_all_commands(delete_from_unused_guilds=True)
-
-
-@client.event
-async def on_message(message: discord.Message):
-    if message.author.id in OPEN_DIALOGUES and message.guild is None:
-
-        open_dialogue = OPEN_DIALOGUES[message.author.id]
-
-        if open_dialogue.possible_inputs:
-            if message.content not in open_dialogue.possible_inputs:
-                await message.channel.send(open_dialogue.invalid_choice_message)
-                return
-
-        if open_dialogue.success_message:
-            await message.channel.send(open_dialogue.success_message)
-
-        await open_dialogue.choice_callback(message.channel, message.content)
-
-        OPEN_DIALOGUES.pop(message.author.id)
 
 
 @slash.slash(
@@ -155,14 +145,13 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         currency = '$'
     currency = currency.upper()
 
-    logger.info(
-        f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
-
+    logger.info(f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
+    
     if ctx.guild is not None:
         try:
             registered_user = get_user_by_id(USERS_BY_ID, user.id, ctx.guild.id)
         except ValueError as e:
-            await ctx.send(e.args[0].replace('{name}', user.display_name))
+            await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
             return
 
         usr_balance = collector.get_user_balance(registered_user, currency)
@@ -525,9 +514,8 @@ def get_available_exchanges() -> str:
             required=False,
             option_type=3
         )
-    ]
+    ],
 )
-@dm_only
 async def register(ctx: SlashContext,
                    exchange_name: str,
                    api_key: str,
@@ -540,6 +528,8 @@ async def register(ctx: SlashContext,
 
     logger.info(f'New Interaction with {ctx.author.display_name}: Trying to register user')
 
+    await ctx.defer(hidden=True)
+
     kwargs = {}
     if args:
         args = args.split(' ')
@@ -549,8 +539,8 @@ async def register(ctx: SlashContext,
                     name, value = arg.split('=')
                     kwargs[name] = value
                 except ValueError:
-                    await ctx.send(
-                        f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...')
+                    await ctx.send(f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...',
+                                   hidden=True)
                     logging.error(f'Invalid Keyword Arg {arg} passed in')
 
     try:
@@ -558,8 +548,8 @@ async def register(ctx: SlashContext,
         exchange_cls = EXCHANGES[exchange_name]
         if issubclass(exchange_cls, Client):
             # Check if required keyword args are given
-            if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and all(
-                    required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
+            if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
+                    all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
                 exchange: Client = exchange_cls(
                     api_key=api_key,
                     api_secret=api_secret,
@@ -569,7 +559,7 @@ async def register(ctx: SlashContext,
                 existing_user = get_user_by_id(USERS_BY_ID, ctx.author.id, guild, exact=True, throw_exceptions=False)
                 if existing_user:
                     existing_user.api = exchange
-                    await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)))
+                    await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)), hidden=True)
                     logger.info(f'Updated user')
                     save_registered_users()
                 else:
@@ -581,31 +571,39 @@ async def register(ctx: SlashContext,
 
                     init_balance = new_user.api.get_balance()
                     if init_balance.error is None:
-                        message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process. (y/n)'
+                        message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
+
+                        def register_user():
+                            new_user.initial_balance = (datetime.now(), init_balance)
+
+                            USERS.append(new_user)
+                            if new_user.id not in USERS_BY_ID:
+                                USERS_BY_ID[new_user.id] = {}
+
+                            USERS_BY_ID[new_user.id][guild] = new_user
+                            collector.add_user(new_user)
+                            save_registered_users()
+                            logger.info(f'Registered new user')
+
+                        button_row = create_yes_no_button_row(
+                            slash,
+                            author_id=ctx.author.id,
+                            yes_callback=register_user,
+                            yes_message="You were successfully registered!",
+                            no_message="Registration cancelled",
+                            hidden=True
+                        )
                     else:
                         message = f'An error occured while getting your balance: {init_balance.error}.'
+                        button_row = None
 
                     await ctx.send(
                         content=message,
-                        embed=new_user.get_discord_embed(client.get_guild(guild))
+                        embed=new_user.get_discord_embed(client.get_guild(guild)),
+                        hidden=True,
+                        components=[button_row] if button_row else None
                     )
 
-                    def register_user():
-                        new_user.initial_balance = (datetime.now(), init_balance)
-
-                        USERS.append(new_user)
-                        if new_user.id not in USERS_BY_ID:
-                            USERS_BY_ID[new_user.id] = {}
-                        USERS_BY_ID[new_user.id][guild] = new_user
-                        collector.add_user(new_user)
-                        logger.info(f'Registered new user')
-                        save_registered_users()
-
-                    OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
-                        yes_callback=register_user,
-                        yes_message='You were successfully registered!',
-                        no_message='Registration canceled.'
-                    )
             else:
                 logger.error(
                     f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
@@ -626,7 +624,6 @@ async def register(ctx: SlashContext,
     description="Unregisters you from tracking",
     options=[]
 )
-@dm_only
 async def unregister(ctx, guild: str = None):
     if guild:
         guild = int(guild)
@@ -636,7 +633,7 @@ async def unregister(ctx, guild: str = None):
     try:
         registered_user = get_user_by_id(USERS_BY_ID, ctx.author.id, guild, exact=False)
     except ValueError as e:
-        await ctx.send(e.args[0].replace('{name}', ctx.author.display_name))
+        await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
         return
 
     def unregister_user():
@@ -651,16 +648,21 @@ async def unregister(ctx, guild: str = None):
         save_registered_users()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
 
+    buttons = create_yes_no_button_row(
+        slash,
+        author_id=ctx.author.id,
+        yes_callback=unregister_user,
+        yes_message="You were succesfully urnegistered!",
+        no_message="Unregistration cancelled",
+        hidden=True
+    )
+
     guild_name = ""
     if guild:
         guild_name = f' from {client.get_guild(guild).name}'
-    await ctx.send(f'Do you really want to unregister{guild_name}? This will **delete all your data**. (y/n)')
-
-    OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
-        yes_callback=unregister_user,
-        yes_message='You were successfully unregistered!',
-        no_message='Unregistration cancelled.'
-    )
+    await ctx.send(content=f'Do you really want to unregister{guild_name}? This will **delete all your data**.',
+                   components=[buttons],
+                   hidden=True)
 
 
 @slash.slash(
@@ -668,15 +670,14 @@ async def unregister(ctx, guild: str = None):
     description="Shows your stored information",
     options=[]
 )
-@dm_only
 async def info(ctx):
     if ctx.author.id in USERS_BY_ID:
         registrations = USERS_BY_ID[ctx.author.id]
         for registration in registrations.values():
             guild_name = client.get_guild(registration.guild_id)
-            await ctx.send(embed=registration.get_discord_embed(guild_name))
+            await ctx.send(embed=registration.get_discord_embed(guild_name), hidden=True)
     else:
-        await ctx.send(f'You are not registered.')
+        await ctx.send(f'You are not registered.', hidden=True)
 
 
 @slash.slash(
@@ -707,7 +708,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
     try:
         registered_user = get_user_by_id(USERS_BY_ID, ctx.author.id, guild)
     except ValueError as e:
-        await ctx.send(e.args[0].replace('{name}', ctx.author.display_name))
+        await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
         return
 
     start = None
@@ -717,7 +718,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
             start = datetime.now() - delta
     except ValueError as e:
         logger.error(e.args[0])
-        await ctx.send(e.args[0])
+        await ctx.send(e.args[0], hidden=True)
         return
 
     end = None
@@ -727,7 +728,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
             end = datetime.now() - delta
     except ValueError as e:
         logger.error(e.args[0])
-        await ctx.send(e.args[0])
+        await ctx.send(e.args[0], hidden=True)
         return
 
     from_to = ''
@@ -735,8 +736,6 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
         from_to += f' since **{start}**'
     if end:
         from_to += f' till **{end}**'
-
-    await ctx.send(f'Do you really want to **delete** your history{from_to}? (y/n)')
 
     def clear_user():
         collector.clear_user_data(registered_user,
@@ -746,14 +745,21 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
                                   update_initial_balance=True)
         save_registered_users()
 
-    OPEN_DIALOGUES[ctx.author.id] = YesNoDialogue(
+    buttons = create_yes_no_button_row(
+        slash,
+        author_id=ctx.author.id,
         yes_callback=clear_user,
         yes_message=f'Deleted your history{from_to}',
-        no_message=f'Clear cancelled.',
+        no_message="Clear cancelled",
+        hidden=True
     )
 
+    await ctx.send(content=f'Do you really want to **delete** your history{from_to}?',
+                   components=[buttons],
+                   hidden=True)
 
-async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str):
+
+async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str, time: str):
     user_scores: List[Tuple[User, float]] = []
     value_strings: Dict[User, str] = {}
     users_rekt: List[User] = []
@@ -792,7 +798,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
                 delta = calc_timedelta_from_time_args(time)
             except ValueError as e:
                 logging.error(e.args[0])
-                await message.edit(content=e.args[0])
+                await ctx.send(content=e.args[0])
                 return
         else:
             delta = timedelta(0)
@@ -824,7 +830,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
                 users_missing.append(user)
     else:
         logging.error(f'Unknown mode {mode} was passed in')
-        await message.edit(f'Unknown mode {mode}')
+        await ctx.send(f'Unknown mode {mode}')
         return
 
     user_scores.sort(key=lambda x: x[1], reverse=True)
@@ -868,7 +874,7 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
         description=description
     )
     logger.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
-    await message.edit(content='', embed=embed)
+    await ctx.send(content='', embed=embed)
 
 
 @slash.subcommand(
@@ -880,12 +886,8 @@ async def create_leaderboard(message, guild: discord.Guild, mode: str, time: str
 @server_only
 async def leaderboard_balance(ctx: SlashContext):
     logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
-
-    message = await ctx.send('...')
-
-    asyncio.create_task(
-        create_leaderboard(message=message, guild=ctx.guild, mode='balance', time='24h')
-    )
+    await ctx.defer()
+    await create_leaderboard(ctx, guild=ctx.guild, mode='balance', time='24h')
 
 
 @slash.subcommand(
@@ -908,11 +910,8 @@ async def leaderboard_gain(ctx: SlashContext, time: str = None):
     if not time:
         time = 'start'
 
-    message = await ctx.send('...')
-
-    asyncio.create_task(
-        create_leaderboard(message=message, guild=ctx.guild, mode='gain', time=time)
-    )
+    await ctx.defer()
+    await create_leaderboard(ctx, guild=ctx.guild, mode='gain', time=time)
 
 
 @slash.slash(
@@ -969,7 +968,7 @@ async def donate(ctx: SlashContext):
                     "**ZBD**: jackstar12@zbd.gg\n"
                     "**USDT (TRX)**: TPf47q7143stBkWicj4SidJ1DDeYSvtWBf\n"
                     "**USDT (BSC)**: 0x694cf86962f84d281d322887569b16935b48d9dd\n\n"
-                    "jacksn#9149."
+                    "@jacksn#9149."
     )
     await ctx.send(embed=embed)
 
@@ -1023,16 +1022,27 @@ async def on_rekt_async(user: User):
 
     save_registered_users()
 
+parser = argparse.ArgumentParser(description="Run the bot.")
+parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
 
-def on_rekt(user: User):
-    try:
-        # First time this might be called is after start, in which case there's already an event loop running
-        client.loop.create_task(on_rekt_async(user))
-    except RuntimeError:
-        asyncio.run(on_rekt_async(user))
-
+args = parser.parse_args()
 
 logger = setup_logger(debug=False)
+
+if args.reset and os.path.exists(DATA_PATH):
+    if not os.path.exists(ARCHIVE_PATH):
+        os.mkdir(ARCHIVE_PATH)
+
+    new_path = ARCHIVE_PATH + f"Archive_{datetime.now().strftime('%Y-%m-%d_%H-%M')}/"
+    os.mkdir(new_path)
+    try:
+        shutil.copy(DATA_PATH + "user_data.json", new_path + "user_data.json")
+        shutil.copy(DATA_PATH + "users.json", new_path + "users.json")
+
+        os.remove(DATA_PATH + "user_data.json")
+        os.remove(DATA_PATH + "users.json")
+    except FileNotFoundError as e:
+        logger.info(f'Error while archiving data: {e}')
 
 if os.path.exists(DATA_PATH):
     load_registered_users()

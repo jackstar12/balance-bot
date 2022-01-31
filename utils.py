@@ -1,11 +1,15 @@
 import re
 import logging
 
+from discord_slash.utils.manage_components import create_button, create_actionrow
+from discord_slash.model import ButtonStyle
+from discord_slash import SlashCommand, ComponentContext
+
 from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
 from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 from balance import Balance
 from user import User
 from config import CURRENCY_PRECISION
@@ -16,6 +20,14 @@ def dm_only(coro):
         if ctx.guild:
             await ctx.send('This command can only be used via a Private Message.')
             return
+        return await coro(ctx, *args, **kwargs)
+
+    return wrapper
+
+
+def admin_only(coro):
+    async def wrapper(ctx, *args, **kwargs):
+
         return await coro(ctx, *args, **kwargs)
 
     return wrapper
@@ -197,7 +209,8 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
     return delta
 
 
-def calc_xs_ys(data: List[Tuple[datetime, Balance]], percentage=False) -> Tuple[List[datetime], List[float]]:
+def calc_xs_ys(data: List[Tuple[datetime, Balance]],
+               percentage=False) -> Tuple[List[datetime], List[float]]:
     xs = []
     ys = []
     for time, balance in data:
@@ -211,3 +224,62 @@ def calc_xs_ys(data: List[Tuple[datetime, Balance]], percentage=False) -> Tuple[
             amount = balance.amount
         ys.append(round(amount, ndigits=CURRENCY_PRECISION.get(balance.currency, 3)))
     return xs, ys
+
+
+def create_yes_no_button_row(slash: SlashCommand,
+                             author_id: int,
+                             yes_callback: Callable = None,
+                             no_callback: Callable = None,
+                             yes_message: str = None,
+                             no_message: str = None,
+                             hidden=False):
+    """
+
+    Utility method for creating a yes/no interaction
+    Takes in needed parameters and returns the created buttons as an ActionRow which are wired up to the callbacks.
+    These must be added to the message.
+
+    :param slash: Slash Command Handler to use
+    :param author_id: Who are the buttons correspond to?
+    :param yes_callback: Optional callback for yes button
+    :param no_callback: Optional callback no button
+    :param yes_message: Optional message to print on yes button
+    :param no_message: Optional message to print on no button
+    :param hidden: whether the response message should be hidden or not
+    :return: ActionRow containing the buttons.
+    """
+    yes_id = f'yes_button_{author_id}'
+    no_id = f'no_button_{author_id}'
+
+    buttons = [
+        create_button(
+            style=ButtonStyle.green,
+            label='Yes',
+            custom_id=yes_id
+        ),
+        create_button(
+            style=ButtonStyle.red,
+            label='No',
+            custom_id=no_id
+        )
+    ]
+
+    def wrap_callback(custom_id: str, callback=None, message=None):
+        if slash.get_component_callback(custom_id=custom_id) is not None:
+            slash.remove_component_callback(custom_id=custom_id)
+
+        @slash.component_callback(components=[custom_id])
+        async def wrapper(ctx: ComponentContext):
+
+            if callable(callback):
+                callback()
+            await ctx.edit_origin(components=[])
+            if message:
+                await ctx.send(content=message, hidden=hidden)
+            for button in buttons:
+                slash.remove_component_callback(custom_id=button['custom_id'])
+
+    wrap_callback(yes_id, yes_callback, yes_message)
+    wrap_callback(no_id, no_callback, no_message)
+
+    return create_actionrow(*buttons)
