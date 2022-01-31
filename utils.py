@@ -27,7 +27,10 @@ def dm_only(coro):
 
 def admin_only(coro):
     async def wrapper(ctx: SlashContext, *args, **kwargs):
-        return await coro(ctx, *args, **kwargs)
+        if ctx.author.guild_permissions.administrator:
+            return await coro(ctx, *args, **kwargs)
+        else:
+            await ctx.send('This command can only be used by administrators', hidden=True)
 
     return wrapper
 
@@ -128,9 +131,9 @@ def calc_percentage(then: float, now: float) -> str:
     return result
 
 
-def calc_timedelta_from_time_args(time_str: str) -> timedelta:
+def calc_time_from_time_args(time_str: str) -> timedelta:
     """
-    Calculates timedelta from given time args.
+    Calculates time from given time args.
     Arg Format:
       <n><f>
       where <f> can be m (minutes), h (hours), d (days) or w (weeks)
@@ -163,21 +166,20 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
         (True, "%d.%m.")
     ]
 
-    delta = None
+    date = None
+    now = datetime.now()
     for includes_date, time_format in formats:
         try:
             date = datetime.strptime(time_str, time_format)
-            now = datetime.now()
             if not includes_date:
                 date = date.replace(year=now.year, month=now.month, day=now.day, microsecond=0)
             elif date.year == 1900:  # %d.%m. not setting year to 1970 but to 1900?
                 date = date.replace(year=now.year)
-            delta = datetime.now() - date
             break
         except ValueError:
             continue
 
-    if not delta:
+    if not date:
         minute = 0
         hour = 0
         day = 0
@@ -198,14 +200,14 @@ def calc_timedelta_from_time_args(time_str: str) -> timedelta:
                         raise ValueError
                 except ValueError:  # Make sure both cases are treated the same
                     raise ValueError(f'Invalid time argument: {arg}')
-        delta = timedelta(hours=hour, minutes=minute, days=day, weeks=week)
+        date = now - timedelta(hours=hour, minutes=minute, days=day, weeks=week)
 
-    if not delta:
+    if not date:
         raise ValueError(f'Invalid time argument: {time_str}')
-    elif delta.total_seconds() <= 0:
+    elif date > now:
         raise ValueError(f'Time delta can not be zero. {time_str}')
 
-    return delta
+    return date
 
 
 def calc_xs_ys(data: List[Tuple[datetime, Balance]],

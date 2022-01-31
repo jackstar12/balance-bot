@@ -39,7 +39,7 @@ from utils import (server_only,
                    get_user_by_id,
                    add_guild_option,
                    calc_percentage,
-                   calc_timedelta_from_time_args,
+                   calc_time_from_time_args,
                    calc_xs_ys,
                    create_yes_no_button_row)
 
@@ -179,99 +179,6 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
                     await ctx.send(f'Error while getting your balance on {guild_name}: {usr_balance.error}')
 
 
-async def create_history(ctx: SlashContext,
-                         user: discord.Member,
-                         guild_id: int,
-                         currency: str,
-                         compare: discord.Member = None,
-                         since: str = None,
-                         to: str = None):
-    logger.info(f'New interaction with {de_emojify(user.display_name)}: Show history')
-
-    currency_raw = currency
-    if '%' in currency:
-        percentage = True
-        currency = currency.rstrip('%')
-        currency = currency.rstrip()
-        if not currency:
-            currency = '$'
-    else:
-        percentage = False
-
-    try:
-        registered_user = get_user_by_id(USERS_BY_ID, user.id, guild_id)
-    except ValueError as e:
-        await ctx.send(content=e.args[0].replace('{name}', user.display_name))
-        return
-
-    start = None
-    try:
-        delta = calc_timedelta_from_time_args(since)
-        if delta:
-            start = datetime.now() - delta
-    except ValueError as e:
-        logger.error(e.args[0])
-        await ctx.send(content=e.args[0])
-        return
-
-    end = None
-    try:
-        delta = calc_timedelta_from_time_args(to)
-        if delta:
-            end = datetime.now() - delta
-    except ValueError as e:
-        logger.error(e.args[0])
-        await ctx.send(content=e.args[0])
-        return
-
-    collector.get_user_balance(registered_user, currency=currency)
-    user_data = collector.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id, start=start,
-                                               end=end, currency=currency)
-
-    if len(user_data) == 0:
-        logger.error(f'No data for this user!')
-        await ctx.send(content=f'Got no data for this user')
-        return
-
-    xs, ys = calc_xs_ys(user_data, percentage)
-
-    compare_data = []
-    if compare:
-        try:
-            compare_user = get_user_by_id(USERS_BY_ID, compare.id, guild_id)
-        except ValueError as e:
-            await ctx.send(content=e.args[0].replace('{name}', compare.display_name))
-            return
-        compare_data = collector.get_single_user_data(compare_user.id, compare_user.guild_id, start=start, end=end,
-                                                      currency=currency)
-
-    compare_xs, compare_ys = calc_xs_ys(compare_data, percentage)
-
-    total_gain = calc_percentage(user_data[0][1].amount, user_data[len(ys) - 1][1].amount)
-    title = f'History for {user.display_name} (Total gain: {total_gain}%)'
-    plt.plot(xs, ys, label=f"{user.display_name}'s {currency_raw} Balance")
-
-    if compare:
-        total_gain = calc_percentage(compare_data[0][1].amount, compare_data[len(compare_ys) - 1][1].amount)
-        plt.plot(compare_xs, compare_ys, label=f"{compare.display_name}'s {currency_raw} Balance")
-        title += f' vs. {compare.display_name} (Total gain: {total_gain}%)'
-
-    plt.gcf().autofmt_xdate()
-    plt.gcf().set_dpi(100)
-    plt.gcf().set_size_inches(8, 5.5)
-    plt.title(title)
-    plt.ylabel(currency_raw)
-    plt.xlabel('Time')
-    plt.grid()
-    plt.legend(loc="best")
-
-    plt.savefig(DATA_PATH + "tmp.png")
-    plt.close()
-    file = discord.File(DATA_PATH + "tmp.png", "history.png")
-
-    await ctx.send(content='', file=file)
-
-
 @slash.slash(
     name="history",
     description="Draws balance history of a user",
@@ -309,28 +216,112 @@ async def create_history(ctx: SlashContext,
     ]
 )
 @server_only
-async def history(ctx,
+async def history(ctx: SlashContext,
                   user: discord.Member = None,
-                  compare: discord.Member = None,
+                  compare: str = None,
                   since: str = None,
                   to: str = None,
                   currency: str = None):
+
     if user is None:
         user = ctx.author
     if currency is None:
         currency = '$'
     currency = currency.upper()
 
+    logger.info(f'New interaction with {de_emojify(user.display_name)}: Show history')
+
+    try:
+        start = calc_time_from_time_args(since)
+    except ValueError as e:
+        logger.error(e.args[0])
+        await ctx.send(content=e.args[0], hidden=True)
+        return
+
+    try:
+        end = calc_time_from_time_args(to)
+    except ValueError as e:
+        logger.error(e.args[0])
+        await ctx.send(content=e.args[0], hidden=True)
+        return
+
     await ctx.defer()
 
-    # members_raw = compare.split(' ')
-    # if len(members_raw) > 0:
-    #     for member_raw in members_raw:
-    #         member_raw = member_raw.lstrip('!')
-    #         member_raw = member_raw.rstrip('>')
-    #         member = client.get_user(int(member_raw))
+    try:
+        registered_user = get_user_by_id(USERS_BY_ID, user.id, ctx.guild.id)
+    except ValueError as e:
+        logger.info(e.args[0].replace('{name}', user.display_name))
+        await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
+        return
 
-    await create_history(ctx, user, guild_id=ctx.guild.id, currency=currency, compare=compare, since=since, to=to)
+    registrations = [(registered_user, user)]
+    if compare:
+        members_raw = compare.split(' ')
+        if len(members_raw) > 0:
+            for member_raw in members_raw:
+                if len(member_raw) > 3:
+                    # ID Format: <@!373964325091672075>'
+                    member_raw = member_raw[3:-1]
+                    member = ctx.guild.get_member(int(member_raw))
+                    if member:
+                        try:
+                            registered_user = get_user_by_id(USERS_BY_ID, member.id, ctx.guild.id)
+                        except ValueError as e:
+                            logger.info(e.args[0].replace('{name}', member.display_name))
+                            await ctx.send(e.args[0].replace('{name}', member.display_name), hidden=True)
+                            return
+                        registrations.append((registered_user, member))
+
+    currency_raw = currency
+    if '%' in currency:
+        percentage = True
+        currency = currency.rstrip('%')
+        currency = currency.rstrip()
+        if not currency:
+            currency = '$'
+    else:
+        percentage = False
+
+    first = True
+    title = ''
+    for registered_user, member in registrations:
+
+        collector.get_user_balance(registered_user, currency=currency)
+        user_data = collector.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id, start=start,
+                                                   end=end, currency=currency)
+
+        if len(user_data) == 0:
+            logger.error(f'No data for this user!')
+            await ctx.send(content=f'Got no data for this user')
+            return
+
+        xs, ys = calc_xs_ys(user_data, percentage)
+
+        total_gain = calc_percentage(user_data[0][1].amount, user_data[len(ys) - 1][1].amount)
+
+        if first:
+            title = f'History for {member.display_name} (Total gain: {total_gain}%)'
+            first = False
+        else:
+            title += f' vs. {member.display_name} (Total gain: {total_gain}%)'
+
+        plt.plot(xs, ys, label=f"{member.display_name}'s {currency_raw} Balance")
+
+
+    plt.gcf().autofmt_xdate()
+    plt.gcf().set_dpi(100)
+    plt.gcf().set_size_inches(8, 5.5)
+    plt.title(title)
+    plt.ylabel(currency_raw)
+    plt.xlabel('Time')
+    plt.grid()
+    plt.legend(loc="best")
+
+    plt.savefig(DATA_PATH + "tmp.png")
+    plt.close()
+    file = discord.File(DATA_PATH + "tmp.png", "history.png")
+
+    await ctx.send(content='', file=file)
 
 
 def calc_gains(users: List[User],
@@ -450,17 +441,15 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
     since_start = time_str == 'start' or time_str == 'all' or time_str == 'total'
 
     if since_start:
-        delta = timedelta(0)
+        search = datetime.now()
     else:
         try:
-            delta = calc_timedelta_from_time_args(time)
+            search = calc_time_from_time_args(time)
         except ValueError as e:
             logger.error(e.args[0])
             await ctx.send(content=e.args[0].replace('{name}', user.display_name))
             return
 
-    time = datetime.now()
-    search = time - delta
     collector.fetch_data(users=users)
     user_gains = calc_gains(users, search, currency, since_start=since_start)
 
@@ -729,9 +718,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
 
     start = None
     try:
-        delta = calc_timedelta_from_time_args(since)
-        if delta:
-            start = datetime.now() - delta
+        start = calc_time_from_time_args(since)
     except ValueError as e:
         logger.error(e.args[0])
         await ctx.send(e.args[0], hidden=True)
@@ -739,9 +726,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
 
     end = None
     try:
-        delta = calc_timedelta_from_time_args(to)
-        if delta:
-            end = datetime.now() - delta
+        end = calc_time_from_time_args(to)
     except ValueError as e:
         logger.error(e.args[0])
         await ctx.send(e.args[0], hidden=True)
@@ -811,16 +796,13 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
 
         if not since_start:
             try:
-                delta = calc_timedelta_from_time_args(time)
+                search = calc_time_from_time_args(time)
             except ValueError as e:
                 logging.error(e.args[0])
                 await ctx.send(content=e.args[0])
                 return
         else:
-            delta = timedelta(0)
-
-        time = datetime.now()
-        search = (time - delta).replace(microsecond=0)
+            search = datetime.now()
 
         if since_start:
             description += f'Gain since start\n\n'
