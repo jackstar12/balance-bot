@@ -1087,6 +1087,6 @@ def clear_all():
         collector.clear_user_data(user, end=event_time, update_initial_balance=True)
 
 
-event_manager.schedule(Event(event_time + timedelta(seconds=60), clear_all))
+event_manager.schedule(Event(event_time + timedelta(seconds=30), clear_all))
 
 client.run(KEY)
