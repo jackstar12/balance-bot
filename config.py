@@ -1,7 +1,8 @@
 PREFIX = "c "
 DATA_PATH = "data/"
+ARCHIVE_PATH = "archive/"
 FETCHING_INTERVAL_HOURS = 1
-REKT_THRESHOLD = 2.5
+REKT_THRESHOLD = 1
 REKT_MESSAGES = [
     "{name} hat sich mit der Leverage vergriffen :cry:",
     "{name} gone **REKT**!",
@@ -32,3 +33,4 @@ CURRENCY_ALIASES = {
     'XBT': 'BTC'
 }
 LOG_OUTPUT_DIR = "LOGS/"
+
