@@ -5,9 +5,9 @@ import hmac
 import json
 import sys
 
-from client import Client
+from Models.client import Client
 from requests import Request, Response, Session, HTTPError
-from balance import Balance
+from Models.balance import Balance
 from typing import List, Tuple, Dict
 
 

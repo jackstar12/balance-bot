@@ -2,12 +2,11 @@ import dataclasses
 import discord
 import logging
 
-from balance import balance_from_json
-from client import Client
+from Models.balance import balance_from_json
+from Models.client import Client
 from datetime import datetime
-from balance import Balance
+from Models.balance import Balance
 from typing import Tuple, Dict, List, Type
-
 
 
 @dataclasses.dataclass

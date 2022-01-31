@@ -3,8 +3,8 @@ import hmac
 import logging
 from logging import getLogger
 from fastapi import requests
-from client import Client
-from balance import Balance
+from Models.client import Client
+from Models.balance import Balance
 import time
 import requests
 from requests import Request, Session

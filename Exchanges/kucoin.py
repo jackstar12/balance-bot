@@ -1,12 +1,12 @@
 import base64
 
-from client import Client
+from Models.client import Client
 import hmac
 from requests import Request, Response, Session, HTTPError
 import urllib.parse
 import time
 import logging
-from balance import Balance
+from Models.balance import Balance
 
 
 class KuCoinClient(Client):

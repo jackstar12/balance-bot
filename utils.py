@@ -3,15 +3,15 @@ import logging
 
 from discord_slash.utils.manage_components import create_button, create_actionrow
 from discord_slash.model import ButtonStyle
-from discord_slash import SlashCommand, ComponentContext
+from discord_slash import SlashCommand, ComponentContext, SlashContext
 
 from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
 from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
 from typing import List, Tuple, Callable
-from balance import Balance
-from user import User
+from Models.balance import Balance
+from Models.user import User
 from config import CURRENCY_PRECISION
 
 
@@ -26,8 +26,7 @@ def dm_only(coro):
 
 
 def admin_only(coro):
-    async def wrapper(ctx, *args, **kwargs):
-
+    async def wrapper(ctx: SlashContext, *args, **kwargs):
         return await coro(ctx, *args, **kwargs)
 
     return wrapper

@@ -7,10 +7,10 @@ import requests
 import logging
 import time
 
-from balance import Balance
+from Models.balance import Balance
 from requests import Session, Request, Response, HTTPError
 
-from client import Client
+from Models.client import Client
 
 
 class BinanceClient(Client):
