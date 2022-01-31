@@ -698,7 +698,6 @@ async def info(ctx):
         )
     ]
 )
-@dm_only
 async def clear(ctx, since: str = None, to: str = None, guild: str = None):
     logging.info(f'New interaction with {de_emojify(ctx.author.display_name)}: clear history {since=} {to=}')
 
