@@ -10,7 +10,6 @@ from requests import Request, HTTPError
 
 from Models.balance import Balance
 from Models.client import Client
-from Models.trade import Trade
 
 
 class _BinanceBaseClient(Client):
