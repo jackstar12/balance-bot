@@ -261,9 +261,17 @@ async def history(ctx: SlashContext,
         if len(members_raw) > 0:
             for member_raw in members_raw:
                 if len(member_raw) > 3:
-                    # ID Format: <@!373964325091672075>'
-                    member_raw = member_raw[3:-1]
-                    member = ctx.guild.get_member(int(member_raw))
+                    # ID Format: <@!373964325091672075>
+                    #         or <@373964325091672075>
+                    for pos in range(len(member_raw)):
+                        if member_raw[pos].isnumeric():
+                            member_raw = member_raw[pos:-1]
+                            break
+                    try:
+                        member = ctx.guild.get_member(int(member_raw))
+                    except ValueError:
+                        # Could not cast to integer
+                        continue
                     if member:
                         try:
                             registered_user = get_user_by_id(USERS_BY_ID, member.id, ctx.guild.id)
@@ -301,17 +309,17 @@ async def history(ctx: SlashContext,
         total_gain = calc_percentage(user_data[0][1].amount, user_data[len(ys) - 1][1].amount)
 
         if first:
-            title = f'History for {member.display_name} (Total gain: {total_gain}%)'
+            title = f'History for {member.display_name} (Total: {total_gain}%)'
             first = False
         else:
-            title += f' vs. {member.display_name} (Total gain: {total_gain}%)'
+            title += f' vs. {member.display_name} (Total: {total_gain}%)'
 
         plt.plot(xs, ys, label=f"{member.display_name}'s {currency_raw} Balance")
 
 
     plt.gcf().autofmt_xdate()
     plt.gcf().set_dpi(100)
-    plt.gcf().set_size_inches(8, 5.5)
+    plt.gcf().set_size_inches(8 + len(registrations), 5.5 + len(registrations) * (5.5 / 8))
     plt.title(title)
     plt.ylabel(currency_raw)
     plt.xlabel('Time')
