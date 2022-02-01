@@ -13,6 +13,7 @@ def balance_from_json(data: dict):
     )
 
 
+
 @dataclass
 class Balance:
     amount: float
@@ -38,7 +39,7 @@ class Balance:
         if self.extra_currencies and display_extras:
             first = True
             for currency in self.extra_currencies:
-                string += f' {"(" if first else "/"}{round(self.extra_currencies[currency], ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency}'
+                string += f'{" (" if first else "/"}{round(self.extra_currencies[currency], ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency}'
                 first = False
             if not first:
                 string += ')'

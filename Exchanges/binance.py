@@ -1,28 +1,19 @@
-import dataclasses
 import hmac
-import json
-import sys
-import urllib.parse
-import requests
+import hmac
 import logging
 import time
+import urllib.parse
+from typing import Dict, Callable
+
+import requests
+from requests import Request, HTTPError
 
 from Models.balance import Balance
-from requests import Session, Request, Response, HTTPError
-
 from Models.client import Client
+from Models.trade import Trade
 
 
-class BinanceClient(Client):
-    ENDPOINT = 'https://fapi.binance.com/'
-    exchange = 'binance'
-
-    # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
-    def get_balance(self):
-        request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
-        response = self._request(request)
-
-        return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', error=response.get('msg', None))
+class _BinanceBaseClient(Client):
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
@@ -60,3 +51,54 @@ class BinanceClient(Client):
         if response.status_code == 200:
             return response_json
 
+
+class BinanceFutures(_BinanceBaseClient):
+    ENDPOINT = 'https://fapi.binance.com/'
+    exchange = 'binance-futures'
+
+    # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
+    def get_balance(self):
+        request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
+        response = self._request(request)
+
+        return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', error=response.get('msg', None))
+
+
+class BinanceSpot(_BinanceBaseClient):
+    ENDPOINT = 'https://api.binance.com/api/v3/'
+    exchange = 'binance-spot'
+
+    # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
+    def get_balance(self):
+        request = Request('GET', self.ENDPOINT + 'account')
+        response = self._request(request)
+
+        total_balance = 0
+        extra_currencies: Dict[str, float] = {}
+        err_msg = None
+        if response.get('msg') is None:
+            data = response['balances']
+            for balance in data:
+                currency = balance['asset']
+                amount = float(balance['free'])
+                price = 0
+                if currency == 'USDT':
+                    price = 1
+                elif amount > 0:
+                    request = Request(
+                        'GET',
+                        self.ENDPOINT + 'ticker/price',
+                        params={
+                            'symbol': f'{currency}USDT'
+                        }
+                    )
+                    response_price = self._request(request, sign=False)
+                    if response_price.get('msg') is None:
+                        price = float(response_price['price'])
+                        if amount * price > 0.01:
+                            extra_currencies[currency] = amount
+                total_balance += amount * price
+        else:
+            err_msg = response['msg']
+
+        return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)

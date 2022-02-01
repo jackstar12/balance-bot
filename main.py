@@ -43,7 +43,7 @@ from utils import (server_only,
                    calc_xs_ys,
                    create_yes_no_button_row)
 
-from Exchanges.binance import BinanceClient
+from Exchanges.binance import BinanceFutures, BinanceSpot
 from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
@@ -61,7 +61,8 @@ USERS: List[User] = []
 USERS_BY_ID: Dict[int, Dict[int, User]] = {}
 
 EXCHANGES: Dict[str, Type[Client]] = {
-    'binance': BinanceClient,
+    'binance-futures': BinanceFutures,
+    'binance-spot': BinanceSpot,
     'bitmex': BitmexClient,
     'ftx': FtxClient,
     'kucoin': KuCoinClient,
@@ -123,7 +124,7 @@ async def ping(ctx: SlashContext):
     end_time = time.time()
 
     await message.edit(
-        content=f"Pong! {round(client.latency, ndigits=3)}ms\nAPI: {round((end_time - start_time), ndigits=3)}ms")
+        content=f"Pong! {round(client.latency * 1000, ndigits=3)}ms\nAPI: {round((end_time - start_time), ndigits=3)}ms")
 
 
 @slash.slash(
@@ -144,15 +145,14 @@ async def ping(ctx: SlashContext):
         )
     ]
 )
-async def balance(ctx, user: discord.Member = None, currency: str = None):
+async def balance(ctx: SlashContext, user: discord.Member = None, currency: str = None):
     if user is None:
         user = ctx.author
     if currency is None:
         currency = '$'
     currency = currency.upper()
 
-    logger.info(
-        f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
+    logger.info(f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
 
     if ctx.guild is not None:
         try:
@@ -160,6 +160,8 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
         except ValueError as e:
             await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
             return
+
+        await ctx.defer()
 
         usr_balance = collector.get_user_balance(registered_user, currency)
         if usr_balance.error is None:
@@ -169,6 +171,9 @@ async def balance(ctx, user: discord.Member = None, currency: str = None):
     else:
         if user.id in USERS_BY_ID:
             registered_guilds = USERS_BY_ID[user.id]
+
+            await ctx.defer()
+
             for guild_id in registered_guilds:
                 usr_balance = collector.get_user_balance(registered_guilds[guild_id], currency)
                 guild_name = client.get_guild(guild_id)
@@ -995,10 +1000,14 @@ async def help(ctx: SlashContext):
     )
     embed.add_field(
         name="How do I register?",
-        value="You can register using the **/register** command in the private message of the bot.\n"
-              "You have to pass in which exchange you are using and an api access (key, secret). This access can and should be **read only**.\n"
-              "Also make sure to pass in the name of your subaccount (optional parameter), if you use one.\n\n"
-              "The bot will try to read your balance and ask if it is correct. To confirm, send a message \"y\" for yes or \"n\" if the result is not correct.",
+        value="You can register using the **/register** command of the bot.\n"
+              "The bot will try to read your balance and ask if it is correct. To confirm press the yes button.\n"
+              "Congrats, you're registered!",
+        inline=False
+    )
+    embed.add_field(
+        name="Which information do I have to give the bot?",
+        value="The bot requires ",
         inline=False
     )
     # embed.add_field(

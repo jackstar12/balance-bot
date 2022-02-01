@@ -60,6 +60,8 @@ class User:
 
 def user_from_json(user_json, exchange_classes: Dict[str, Type[Client]]) -> User:
     exchange_name = user_json['exchange'].lower()
+    if exchange_name == 'binance':
+        exchange_name = 'binance-futures'
     exchange_cls = exchange_classes[exchange_name]
     if issubclass(exchange_cls, Client):
         exchange: Client = exchange_cls(

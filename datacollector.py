@@ -80,6 +80,7 @@ class DataCollector:
         delay = next - time
 
         timer = Timer(delay.total_seconds(), self.start_fetching)
+        timer.daemon = True
         timer.start()
 
     def fetch_data(self, users: List[User] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
