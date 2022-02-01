@@ -785,7 +785,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
                         users_missing.append(user)
                     elif balance.amount > REKT_THRESHOLD:
                         user_scores.append((user, balance.amount))
-                        value_strings[user] = balance.to_string()
+                        value_strings[user] = balance.to_string(display_extras=False)
                     else:
                         users_rekt.append(user)
 
