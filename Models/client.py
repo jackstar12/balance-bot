@@ -21,6 +21,7 @@ class Client:
         self.api_secret = api_secret
         self.subaccount = subaccount
         self.extra_kwargs = extra_kwargs
+        self._session = Session()
 
     @abc.abstractmethod
     def get_balance(self):
@@ -34,11 +35,11 @@ class Client:
     def _process_response(self, response: Response):
         logging.error(f'Exchange {self.exchange} does not implement _process_response')
 
-    def _request(self, request: Request):
-        s = Session()
-        self._sign_request(request)
+    def _request(self, request: Request, sign=True):
+        if sign:
+            self._sign_request(request)
         prepared = request.prepare()
-        response = s.send(prepared)
+        response = self._session.send(prepared)
         return self._process_response(response)
 
     def repr(self):
