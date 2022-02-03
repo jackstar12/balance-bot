@@ -71,7 +71,6 @@ class BinanceSpot(_BinanceBaseClient):
     def get_balance(self):
         request = Request('GET', self.ENDPOINT + 'account')
         response = self._request(request)
-        logging.info(f'Binance Spot response {response}')
         total_balance = 0
         extra_currencies: Dict[str, float] = {}
         err_msg = None
