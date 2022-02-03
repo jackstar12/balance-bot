@@ -1000,14 +1000,12 @@ async def help(ctx: SlashContext):
     )
     embed.add_field(
         name="How do I register?",
-        value="You can register using the **/register** command of the bot.\n"
-              "The bot will try to read your balance and ask if it is correct. To confirm press the yes button.\n"
-              "Congrats, you're registered!",
+        value="https://github.com/jackstar12/balance-bot/blob/master/examples/register.md",
         inline=False
     )
     embed.add_field(
         name="Which information do I have to give the bot?",
-        value="The bot requires ",
+        value="The bot requires an API access to your trading account. This should be read only.",
         inline=False
     )
     # embed.add_field(
