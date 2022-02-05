@@ -44,9 +44,9 @@ from utils import (server_only,
                    calc_xs_ys,
                    create_yes_no_button_row)
 
-from Exchanges.binance import BinanceFutures, BinanceSpot
+from Exchanges.binance.binance import BinanceFutures, BinanceSpot
 from Exchanges.bitmex import BitmexClient
-from Exchanges.ftx import FtxClient
+from Exchanges.ftx.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
 from Exchanges.bybit import BybitClient
 

@@ -3,6 +3,7 @@ import discord
 import logging
 from typing import List, Optional, Dict, Any, Callable
 from requests import Request, Session, Response
+from Models.trade import Trade
 
 
 class Client:
@@ -26,6 +27,10 @@ class Client:
     @abc.abstractmethod
     def get_balance(self):
         logging.error(f'Exchange {self.exchange} does not implement get_balance!')
+
+    def on_trade(self, callback: Callable[[str, Trade], None], id: str):
+        self._on_trade = callback
+        self._id = id
 
     @abc.abstractmethod
     def _sign_request(self, request: Request):
