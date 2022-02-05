@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import logging
 from config import CURRENCY_PRECISION
 
@@ -18,7 +18,7 @@ def balance_from_json(data: dict):
 class Balance:
     amount: float
     currency: str
-    error: str = None
+    error: Optional[str] = None
     extra_currencies: Dict[str, float] = None
 
     def to_json(self, currency=False):

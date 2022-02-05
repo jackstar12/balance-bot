@@ -1,7 +1,7 @@
 import abc
 import discord
 import logging
-from typing import Optional, List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable
 from requests import Request, Session, Response
 
 

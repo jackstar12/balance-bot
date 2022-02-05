@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
 from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
-from typing import List, Tuple, Callable
+from typing import List, Tuple, Callable, Optional
 from Models.balance import Balance
 from Models.user import User
 from config import CURRENCY_PRECISION
@@ -43,6 +43,47 @@ def server_only(coro):
         return await coro(ctx, *args, **kwargs)
 
     return wrapper
+
+
+def set_author_default(name: str):
+    def decorator(coro):
+        async def wrapper(ctx: SlashContext, *args, **kwargs):
+            if name in kwargs:
+                user = kwargs[name]
+                if user is None:
+                    kwargs[name] = ctx.author
+            else:
+                logging.error(f'CRITICAL: Function {coro} does not contain keyword arg {name}')
+                await ctx.send('This is a bug in the bot. Please contact @jacksn#9149')
+                return
+            return await coro(ctx, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def time_args(names: List[Tuple[str, Optional[str]]]):
+    def decorator(coro):
+        async def wrapper(ctx: SlashContext, *args, **kwargs):
+            for name, default in names:
+                if name in kwargs:
+                    time_arg = kwargs[name]
+                    if not time_arg:
+                        time_arg = default
+                    if time_arg:
+                        try:
+                            time = calc_time_from_time_args(time_arg)
+                        except ValueError as e:
+                            logging.error(e.args[0].replace('{name}', ctx.author.display_name))
+                            await ctx.send(content=e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
+                            return
+                        kwargs[name] = time
+                else:
+                    logging.error(f'CRITICAL: Function {coro} does not contain keyword arg {name}')
+                    await ctx.send('This is a bug in the bot. Please contact @jacksn#9149')
+                    return
+            return await coro(ctx, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 # Thanks Stackoverflow
@@ -131,7 +172,7 @@ def calc_percentage(then: float, now: float) -> str:
     return result
 
 
-def calc_time_from_time_args(time_str: str) -> timedelta:
+def calc_time_from_time_args(time_str: str) -> datetime:
     """
     Calculates time from given time args.
     Arg Format:
@@ -284,3 +325,18 @@ def create_yes_no_button_row(slash: SlashCommand,
     wrap_callback(no_id, no_callback, no_message)
 
     return create_actionrow(*buttons)
+
+
+def readable_time(time: datetime):
+    now = datetime.now()
+    if time is None:
+        time_str = 'since start'
+    else:
+        if time.date() == now.date():
+            time_str = f'since {time.strftime("%H:%M")}'
+        elif time.year == now.year:
+            time_str = f'since {time.strftime("%d.%m. %H:%M")}'
+        else:
+            time_str = f'since {time.strftime("%d.%m.%Y %H:%M")}'
+
+    return time_str

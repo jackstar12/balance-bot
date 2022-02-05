@@ -34,6 +34,7 @@ from config import (DATA_PATH,
                     REKT_THRESHOLD,
                     ARCHIVE_PATH)
 
+import utils
 from utils import (server_only,
                    de_emojify,
                    get_user_by_id,
@@ -145,9 +146,8 @@ async def ping(ctx: SlashContext):
         )
     ]
 )
+@utils.set_author_default(name='user')
 async def balance(ctx: SlashContext, user: discord.Member = None, currency: str = None):
-    if user is None:
-        user = ctx.author
     if currency is None:
         currency = '$'
     currency = currency.upper()
@@ -220,35 +220,17 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         )
     ]
 )
+@utils.set_author_default(name='user')
+@utils.time_args(names=[('since', None), ('to', None)])
 @server_only
 async def history(ctx: SlashContext,
                   user: discord.Member = None,
                   compare: str = None,
-                  since: str = None,
-                  to: str = None,
+                  since: datetime = None,
+                  to: datetime = None,
                   currency: str = None):
 
-    if user is None:
-        user = ctx.author
-    if currency is None:
-        currency = '$'
-    currency = currency.upper()
-
     logger.info(f'New interaction with {de_emojify(user.display_name)}: Show history')
-
-    try:
-        start = calc_time_from_time_args(since)
-    except ValueError as e:
-        logger.error(e.args[0])
-        await ctx.send(content=e.args[0], hidden=True)
-        return
-
-    try:
-        end = calc_time_from_time_args(to)
-    except ValueError as e:
-        logger.error(e.args[0])
-        await ctx.send(content=e.args[0], hidden=True)
-        return
 
     await ctx.defer()
 
@@ -287,6 +269,12 @@ async def history(ctx: SlashContext,
                         registrations.append((registered_user, member))
 
     currency_raw = currency
+    if currency is None:
+        if len(registrations) > 1:
+            currency = '%'
+        else:
+            currency = '$'
+    currency = currency.upper()
     if '%' in currency:
         percentage = True
         currency = currency.rstrip('%')
@@ -301,8 +289,8 @@ async def history(ctx: SlashContext,
     for registered_user, member in registrations:
 
         collector.get_user_balance(registered_user, currency=currency)
-        user_data = collector.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id, start=start,
-                                                   end=end, currency=currency)
+        user_data = collector.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id, start=since,
+                                                   end=to, currency=currency)
 
         if len(user_data) == 0:
             logger.error(f'No data for this user!')
@@ -354,6 +342,9 @@ def calc_gains(users: List[User],
 
     if currency is None:
         currency = '$'
+
+    if search is None:
+        search = datetime.now()
 
     user_data = collector.get_user_data()
     users_left = users.copy()
@@ -426,19 +417,15 @@ def calc_gains(users: List[User],
         )
     ]
 )
-async def gain(ctx, user: discord.Member = None, time: str = None, currency: str = None):
-    if user is None:
-        user = ctx.author
-
-    time_str = time
-    if time_str is None:
-        time_str = 'total'
+@utils.time_args(names=[('time', None)])
+@utils.set_author_default(name='user')
+async def gain(ctx, user: discord.Member, time: datetime = None, currency: str = None):
 
     if currency is None:
         currency = '$'
     currency = currency.upper()
 
-    logger.info(f'New Interaction with {ctx.author}: Calculate gain for {de_emojify(user.display_name)} {time_str=}')
+    logger.info(f'New Interaction with {ctx.author}: Calculate gain for {de_emojify(user.display_name)} {time=}')
 
     users = []
     if ctx.guild:
@@ -452,25 +439,17 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
         users = list(USERS_BY_ID[user.id].values())
     else:
         await ctx.send(f'You are not registered.')
-    since_start = time_str == 'start' or time_str == 'all' or time_str == 'total'
 
-    if since_start:
-        search = datetime.now()
-    else:
-        try:
-            search = calc_time_from_time_args(time)
-        except ValueError as e:
-            logger.error(e.args[0])
-            await ctx.send(content=e.args[0].replace('{name}', user.display_name))
-            return
+    since_start = time is None
+    time_str = utils.readable_time(time)
 
     collector.fetch_data(users=users)
-    user_gains = calc_gains(users, search, currency, since_start=since_start)
+    user_gains = calc_gains(users, time, currency, since_start=since_start)
 
     for cur_user, user_gain in user_gains:
         guild = client.get_guild(ctx.guild_id)
         if ctx.guild:
-            gain_message = f'{user.display_name}\'s {time_str} gain: '
+            gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
         else:
             gain_message = "Your gain: " if not guild else f"Your gain on {guild}: "
         if user_gain is None:
@@ -479,11 +458,10 @@ async def gain(ctx, user: discord.Member = None, time: str = None, currency: str
             if ctx.guild:
                 await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
             else:
-                await ctx.send(f'Not enough data for calculating your {time_str} gain on {guild}')
+                await ctx.send(f'Not enough data for calculating your gain on {guild}')
         else:
             user_gain_rel, user_gain_abs = user_gain
-            await ctx.send(
-                f'{gain_message}{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
+            await ctx.send(f'{gain_message}{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
 
 
 def get_available_exchanges() -> str:
@@ -591,28 +569,32 @@ async def register(ctx: SlashContext,
 
                     init_balance = new_user.api.get_balance()
                     if init_balance.error is None:
-                        message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
+                        if round(init_balance.amount, ndigits=2) == 0.0:
+                            message = f'You do not have any balance in your account. Please fund your account before registering.'
+                            button_row = None
+                        else:
+                            message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
 
-                        def register_user():
-                            new_user.initial_balance = (datetime.now(), init_balance)
+                            def register_user():
+                                new_user.initial_balance = (datetime.now(), init_balance)
 
-                            USERS.append(new_user)
-                            if new_user.id not in USERS_BY_ID:
-                                USERS_BY_ID[new_user.id] = {}
+                                USERS.append(new_user)
+                                if new_user.id not in USERS_BY_ID:
+                                    USERS_BY_ID[new_user.id] = {}
 
-                            USERS_BY_ID[new_user.id][guild] = new_user
-                            collector.add_user(new_user)
-                            save_registered_users()
-                            logger.info(f'Registered new user')
+                                USERS_BY_ID[new_user.id][guild] = new_user
+                                collector.add_user(new_user)
+                                save_registered_users()
+                                logger.info(f'Registered new user')
 
-                        button_row = create_yes_no_button_row(
-                            slash,
-                            author_id=ctx.author.id,
-                            yes_callback=register_user,
-                            yes_message="You were successfully registered!",
-                            no_message="Registration cancelled",
-                            hidden=True
-                        )
+                            button_row = create_yes_no_button_row(
+                                slash,
+                                author_id=ctx.author.id,
+                                yes_callback=register_user,
+                                yes_message="You were successfully registered!",
+                                no_message="Registration cancelled",
+                                hidden=True
+                            )
                     else:
                         message = f'An error occured while getting your balance: {init_balance.error}.'
                         button_row = None
@@ -718,7 +700,8 @@ async def info(ctx):
         )
     ]
 )
-async def clear(ctx, since: str = None, to: str = None, guild: str = None):
+@utils.time_args(names=[('since', None), ('to', None)])
+async def clear(ctx, since: datetime = None, to: datetime = None, guild: str = None):
     logging.info(f'New interaction with {de_emojify(ctx.author.display_name)}: clear history {since=} {to=}')
 
     if guild:
@@ -730,32 +713,16 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
         return
 
-    start = None
-    try:
-        start = calc_time_from_time_args(since)
-    except ValueError as e:
-        logger.error(e.args[0])
-        await ctx.send(e.args[0], hidden=True)
-        return
-
-    end = None
-    try:
-        end = calc_time_from_time_args(to)
-    except ValueError as e:
-        logger.error(e.args[0])
-        await ctx.send(e.args[0], hidden=True)
-        return
-
     from_to = ''
-    if start:
-        from_to += f' since **{start}**'
-    if end:
-        from_to += f' till **{end}**'
+    if since:
+        from_to += f' since **{since}**'
+    if to:
+        from_to += f' till **{to}**'
 
     def clear_user():
         collector.clear_user_data(registered_user,
-                                  start=start,
-                                  end=end,
+                                  start=since,
+                                  end=to,
                                   remove_all_guilds=True,
                                   update_initial_balance=True)
         save_registered_users()
@@ -774,7 +741,7 @@ async def clear(ctx, since: str = None, to: str = None, guild: str = None):
                    hidden=True)
 
 
-async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str, time: str):
+async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str, time: datetime = None):
     user_scores: List[Tuple[User, float]] = []
     value_strings: Dict[User, str] = {}
     users_rekt: List[User] = []
@@ -806,22 +773,8 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
         footer += f'Data used from: {date}'
     elif mode == 'gain':
 
-        since_start = time == 'all' or time == 'start' or time == 'total'
-
-        if not since_start:
-            try:
-                search = calc_time_from_time_args(time)
-            except ValueError as e:
-                logging.error(e.args[0])
-                await ctx.send(content=e.args[0])
-                return
-        else:
-            search = datetime.now()
-
-        if since_start:
-            description += f'Gain since start\n\n'
-        else:
-            description += f'Gain since {search}\n\n'
+        since_start = time is None
+        description += f'Gain since {utils.readable_time(time)}\n\n'
 
         users = []
         for user_id in USERS_BY_ID:
@@ -829,7 +782,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
             if user and guild.get_member(user.id):
                 users.append(user)
 
-        user_gains = calc_gains(users, search, since_start=since_start)
+        user_gains = calc_gains(users, time, since_start=since_start)
 
         for user, user_gain in user_gains:
             if user_gain is not None:
@@ -903,7 +856,7 @@ async def leaderboard_balance(ctx: SlashContext):
     logger.info(
         f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
     await ctx.defer()
-    await create_leaderboard(ctx, guild=ctx.guild, mode='balance', time='24h')
+    await create_leaderboard(ctx, guild=ctx.guild, mode='balance', time=None)
 
 
 @slash.subcommand(
@@ -919,13 +872,10 @@ async def leaderboard_balance(ctx: SlashContext):
         )
     ]
 )
+@utils.time_args(names=[('time', None)])
 @server_only
-async def leaderboard_gain(ctx: SlashContext, time: str = None):
-    logger.info(
-        f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
-
-    if not time:
-        time = 'start'
+async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
+    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
 
     await ctx.defer()
     await create_leaderboard(ctx, guild=ctx.guild, mode='gain', time=time)
@@ -1000,14 +950,12 @@ async def help(ctx: SlashContext):
     )
     embed.add_field(
         name="How do I register?",
-        value="You can register using the **/register** command of the bot.\n"
-              "The bot will try to read your balance and ask if it is correct. To confirm press the yes button.\n"
-              "Congrats, you're registered!",
+        value="https://github.com/jackstar12/balance-bot/blob/master/examples/register.md",
         inline=False
     )
     embed.add_field(
         name="Which information do I have to give the bot?",
-        value="The bot requires ",
+        value="The bot only requires an **read only** api access",
         inline=False
     )
     # embed.add_field(

@@ -3,5 +3,6 @@ __all__ = [
     "binance",
     "bitmex",
     "ftx",
-    "kucoin"
+    "kucoin",
+    "bybit"
 ]
