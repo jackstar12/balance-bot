@@ -105,7 +105,7 @@ async def on_guild_join(guild: discord.Guild):
     for command in commands:
         for option in command.options:
             if option['name'] == 'guild':
-                option.choices.append(
+                option['choices'].append(
                     create_choice(
                         name=guild.name,
                         value=guild.id
