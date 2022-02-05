@@ -3,7 +3,6 @@ import discord
 import logging
 from typing import List, Optional, Dict, Any, Callable
 from requests import Request, Session, Response
-from Models.trade import Trade
 
 
 class Client:
