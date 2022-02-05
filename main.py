@@ -125,7 +125,7 @@ async def ping(ctx: SlashContext):
     end_time = time.time()
 
     await message.edit(
-        content=f"Pong! {round(client.latency * 1000, ndigits=3)}ms\nAPI: {round((end_time - start_time), ndigits=3)}ms")
+        content=f":ping_pong: Pong! {round(client.latency * 1000, ndigits=3)}ms\nAPI: {round((end_time - start_time), ndigits=3)}ms")
 
 
 @slash.slash(
@@ -1028,15 +1028,5 @@ collector = DataCollector(USERS,
                           on_rekt_callback=lambda user: client.loop.create_task(on_rekt_async(user)))
 
 event_manager = EventManager()
-
-event_time = datetime(year=2022, month=2, day=1, hour=0, minute=0)
-
-
-def clear_all():
-    for user in USERS:
-        collector.clear_user_data(user, end=event_time, update_initial_balance=True)
-
-
-event_manager.schedule(Event(event_time + timedelta(seconds=30), clear_all))
 
 client.run(KEY)
