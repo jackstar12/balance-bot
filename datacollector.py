@@ -14,7 +14,6 @@ from Models.user import User
 from datetime import datetime, timedelta
 from Models.balance import Balance, balance_from_json
 from Models.client import Client
-from Models.trade import Trade
 from subprocess import call
 from config import CURRENCY_ALIASES
 
@@ -33,13 +32,7 @@ class DataCollector:
         super().__init__()
         self.users = users
 
-        for user in users:
-            id = f'{user.id}.{user.guild_id if user.guild_id else ""}'
-            user.api.on_trade(callback=self._on_trade, id=id)
-
         self.user_data: List[Tuple[datetime, Dict[int, Dict[int, Balance]]]] = []
-        self.user_trades: Dict[User, List[Trade]] = {}
-
         self.user_lock = Lock()
         self.data_lock = Lock()
 
@@ -352,11 +345,6 @@ class DataCollector:
             logging.info('No user data found')
         except json.JSONDecodeError as e:
             logging.error(f'{e}: Error while parsing user data.')
-
-    def _on_trade(self, id, trade: Trade):
-        with self.user_lock:
-
-            logging.info('Got new Trade')
 
     def _append_from_json(self, ts: int, user_json: dict):
         user_data = {}
