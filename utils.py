@@ -60,7 +60,7 @@ def time_args(names: List[Tuple[str, Optional[str]]]):
     def decorator(coro):
         async def wrapper(ctx: SlashContext, *args, **kwargs):
             for name, default in names:
-                time_arg = kwargs[name]
+                time_arg = kwargs.get(name)
                 if not time_arg:
                     time_arg = default
                 if time_arg:
