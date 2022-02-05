@@ -48,14 +48,9 @@ def server_only(coro):
 def set_author_default(name: str):
     def decorator(coro):
         async def wrapper(ctx: SlashContext, *args, **kwargs):
-            if name in kwargs:
-                user = kwargs[name]
-                if user is None:
-                    kwargs[name] = ctx.author
-            else:
-                logging.error(f'CRITICAL: Function {coro} does not contain keyword arg {name}')
-                await ctx.send('This is a bug in the bot. Please contact @jacksn#9149')
-                return
+            user = kwargs.get(name)
+            if user is None:
+                kwargs[name] = ctx.author
             return await coro(ctx, *args, **kwargs)
         return wrapper
     return decorator
@@ -65,22 +60,17 @@ def time_args(names: List[Tuple[str, Optional[str]]]):
     def decorator(coro):
         async def wrapper(ctx: SlashContext, *args, **kwargs):
             for name, default in names:
-                if name in kwargs:
-                    time_arg = kwargs[name]
-                    if not time_arg:
-                        time_arg = default
-                    if time_arg:
-                        try:
-                            time = calc_time_from_time_args(time_arg)
-                        except ValueError as e:
-                            logging.error(e.args[0].replace('{name}', ctx.author.display_name))
-                            await ctx.send(content=e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
-                            return
-                        kwargs[name] = time
-                else:
-                    logging.error(f'CRITICAL: Function {coro} does not contain keyword arg {name}')
-                    await ctx.send('This is a bug in the bot. Please contact @jacksn#9149')
-                    return
+                time_arg = kwargs.get(name)
+                if not time_arg:
+                    time_arg = default
+                if time_arg:
+                    try:
+                        time = calc_time_from_time_args(time_arg)
+                    except ValueError as e:
+                        logging.error(e.args[0].replace('{name}', ctx.author.display_name))
+                        await ctx.send(content=e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
+                        return
+                    kwargs[name] = time
             return await coro(ctx, *args, **kwargs)
         return wrapper
     return decorator
