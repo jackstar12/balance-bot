@@ -3,6 +3,7 @@ import discord
 import logging
 from typing import List, Optional, Dict, Any, Callable
 from requests import Request, Session, Response
+from Models.trade import Trade
 
 
 class Client:
@@ -22,6 +23,8 @@ class Client:
         self.subaccount = subaccount
         self.extra_kwargs = extra_kwargs
         self._session = Session()
+        self._on_trade = None
+        self._id = id
 
     @abc.abstractmethod
     def get_balance(self):
