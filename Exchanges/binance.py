@@ -71,7 +71,6 @@ class BinanceSpot(_BinanceBaseClient):
     def get_balance(self):
         request = Request('GET', self.ENDPOINT + 'account')
         response = self._request(request)
-
         total_balance = 0
         extra_currencies: Dict[str, float] = {}
         err_msg = None
@@ -79,7 +78,7 @@ class BinanceSpot(_BinanceBaseClient):
             data = response['balances']
             for balance in data:
                 currency = balance['asset']
-                amount = float(balance['free'])
+                amount = float(balance['free']) + float(balance['locked'])
                 price = 0
                 if currency == 'USDT':
                     price = 1
@@ -94,8 +93,6 @@ class BinanceSpot(_BinanceBaseClient):
                     response_price = self._request(request, sign=False)
                     if response_price.get('msg') is None:
                         price = float(response_price['price'])
-                        if amount * price > 0.01:
-                            extra_currencies[currency] = amount
                 total_balance += amount * price
         else:
             err_msg = response['msg']
