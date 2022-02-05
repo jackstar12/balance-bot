@@ -182,6 +182,8 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
                     await ctx.send(f'{balance_message}{usr_balance.to_string()}')
                 else:
                     await ctx.send(f'Error while getting your balance on {guild_name}: {usr_balance.error}')
+        else:
+            await ctx.send(f'You are not registered', hidden=True)
 
 
 @slash.slash(
