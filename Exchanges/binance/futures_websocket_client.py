@@ -6,6 +6,7 @@ from typing import Callable
 
 from Exchanges.binance.websocket_manager import WebsocketManager
 from Models.trade import Trade
+from datetime import datetime
 
 
 # https://binance-docs.github.io/apidocs/futures/en/#user-data-streams
@@ -29,13 +30,14 @@ class FuturesWebsocketClient(WebsocketManager):
         event = message['e']
         data = message['o']
         if event == 'ORDER_TRADE_UPDATE':
-            if data['X'] == 'FILLED':
+            if data['X'] == 'FILLED' or True:
                 trade = Trade(
                     symbol=data['s'],
                     price=data['p'],
                     qty=data['q'],
                     side=data['S'],
-                    type='o'
+                    type='o',
+                    time=datetime.now()
                 )
                 if callable(self._on_trade):
                     self._on_trade(self, trade)

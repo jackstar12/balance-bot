@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List
 
-from Models.user import User
+from Models.discorduser import DiscordUser
 
 
 @dataclass
@@ -12,5 +12,5 @@ class Event:
     start: datetime
     end: datetime
     name: str
-    registrations: List[User] = None
+    registrations: List[DiscordUser] = None
     description: str = None

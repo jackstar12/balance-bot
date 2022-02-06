@@ -1,85 +1,150 @@
 import json
+import logging
 import os
-import typing
-import asyncio
-import sys
 import shutil
-
-from Models import balance
-from threading import Thread
-from Exchanges import *
+from datetime import datetime, timedelta
 from threading import Lock, Timer
 from typing import List, Tuple, Dict, Callable, Optional, Any
-from Models.user import User
-from datetime import datetime, timedelta
+
 from Models.balance import Balance, balance_from_json
-from Models.client import Client
 from Models.trade import Trade
-from subprocess import call
+from Models.discorduser import DiscordUser
+from Models.discorduser import user_from_json
 from config import CURRENCY_ALIASES
+from Models.singleton import Singleton
 
 
-import logging
+class UserManager(Singleton):
 
+    def init(self,
+             exchanges: dict = None,
+             fetching_interval_hours: int = 4,
+             rekt_threshold: float = 2.5,
+             data_path: str = '',
+             on_rekt_callback: Callable[[DiscordUser], Any] = None):
 
-class DataCollector:
-
-    def __init__(self,
-                 users: List[User],
-                 fetching_interval_hours: int = 4,
-                 rekt_threshold: float = 2.5,
-                 data_path: str = '',
-                 on_rekt_callback: Callable[[User], Any] = None):
-        super().__init__()
-        self.users = users
-
-        for user in users:
-            id = f'{user.id}.{user.guild_id if user.guild_id else ""}'
-            user.api.on_trade(callback=self._on_trade, id=id)
-
-        self.user_data: List[Tuple[datetime, Dict[int, Dict[int, Balance]]]] = []
-        self.user_trades: Dict[User, List[Trade]] = {}
-
-        self.user_lock = Lock()
-        self.data_lock = Lock()
-
+        # Public parameters
         self.interval_hours = fetching_interval_hours
         self.rekt_threshold = rekt_threshold
         self.data_path = data_path
         self.backup_path = self.data_path + 'backup/'
-
-        if not os.path.exists(self.backup_path):
-            os.mkdir(self.backup_path)
-
         self.on_rekt_callback = on_rekt_callback
+
+        # Privates
+        self._users = []
+        self._users_by_id: Dict[int, Dict[int, DiscordUser]] = {}  # { user_id: { guild_id: User} }
+        self._exchanges = exchanges
+
+        self._user_data: List[Tuple[datetime, Dict[int, Dict[int, Balance]]]] = []
+        self._user_trades: Dict[DiscordUser, List[Trade]] = {}
+
+        self._user_lock = Lock()
+        self._data_lock = Lock()
 
         self._last_full_fetch = {}
         self._saves_since_backup = 0
         self._load_user_data()
 
-    def add_user(self, user: User):
-        self.user_lock.acquire()
-        if user not in self.users:
-            self.users.append(user)
-        self.user_lock.release()
+        # Set up paths and load data
+        if not os.path.exists(self.backup_path):
+            os.mkdir(self.backup_path)
 
-    def remove_user(self, user: User):
-        self.user_lock.acquire()
-        if user in self.users:
-            self.users.remove(user)
-        self.user_lock.release()
+        if os.path.exists(self.data_path):
+            self.load_registered_users()
+        else:
+            os.mkdir(self.data_path)
+
+    def load_registered_users(self):
+        try:
+            with open(self.data_path + 'users.json', 'r') as f:
+                users_json = json.load(fp=f)
+                for user_json in users_json:
+                    try:
+                        user = user_from_json(user_json, self._exchanges)
+                        self.add_user(user)
+                    except KeyError as e:
+                        logging.error(f'{e} occurred while parsing user data {user_json} from users.json')
+        except FileNotFoundError:
+            logging.info(f'No user information found')
+        except json.decoder.JSONDecodeError:
+            pass
+
+    def save_registered_users(self):
+        with open(self.data_path + 'users.json', 'w') as f:
+            with self._user_lock:
+                users_json = [user.to_json() for user in self._users]
+                json.dump(obj=users_json, fp=f, indent=3)
+
+    def add_user(self, user: DiscordUser):
+        with self._user_lock:
+            if user not in self._users:
+                if user.id not in self._users_by_id:
+                    self._users_by_id[user.id] = {}
+                self._users_by_id[user.id][user.guild_id] = user
+                self._users.append(user)
+                user.api.on_trade(self._on_trade, user)
+
+    def remove_user(self, user: DiscordUser):
+        with self._user_lock:
+            self._users_by_id[user.id].pop(user.guild_id)
+
+            if len(self._users_by_id[user.id]) == 0:
+                self._users_by_id.pop(user.id)
+
+            if user in self._users:
+                self._users.remove(user)
+
+    def get_users_by_id(self):
+        with self._user_lock:
+            return self._users_by_id.copy()
+
+    def get_user(self,
+                 user_id: int,
+                 guild_id: int = None,
+                 exact: bool = False,
+                 throw_exceptions=True) -> DiscordUser:
+        """
+        Tries to find a matching entry for the user and guild id.
+        :param user_id: id of user to get
+        :param guild_id: guild id of user to get
+        :param throw_exceptions: whether to throw exceptions if user isn't registered
+        :param exact: whether the global entry should be used if the guild isn't registered
+        :return:
+        The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
+        """
+        result = None
+        with self._user_lock:
+            if user_id in self._users_by_id:
+                endpoints = self._users_by_id[user_id]
+                if isinstance(endpoints, dict):
+                    result = endpoints.get(guild_id, None)
+                    if not result and not exact:
+                        result = endpoints.get(None, None)  # None entry is global
+                    if not result and throw_exceptions:
+                        raise ValueError("User {name} not registered for this guild")
+                else:
+                    logging.error(
+                        f'users_by_id contains invalid entry! Associated data with {user_id=}: {result=} {endpoints=} ({guild_id=})')
+                    if throw_exceptions:
+                        raise ValueError("This is caused due to a bug in the bot. Please contact dev.")
+            elif throw_exceptions:
+                logging.error(f'Dont know user {user_id=}')
+                raise ValueError("Unknown user {name}. Please register first.")
+
+        return result
 
     def get_user_data(self):
-        return self.user_data
+        with self._data_lock:
+            return self._user_data.copy()
+
 
     def start_fetching(self):
         """
         Start fetching data at specified interval
         """
 
-        self.data_lock.acquire()
-        self.user_data.append(self._fetch_data(set_full_fetch=True))
-        self.data_lock.release()
+        with self._data_lock:
+            self._user_data.append(self._fetch_data(set_full_fetch=True))
 
         self._save_user_data()
 
@@ -92,16 +157,15 @@ class DataCollector:
         timer.daemon = True
         timer.start()
 
-    def fetch_data(self, users: List[User] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
-        self.data_lock.acquire()
-        time, data = self.user_data[len(self.user_data) - 1]
-        if not self._fetched_recently(guild_id, time_tolerance_seconds):
-            time, data = self._fetch_data(users=users, guild_id=guild_id, set_full_fetch=True)
-            self.user_data.append((time, data))
-        self.data_lock.release()
+    def fetch_data(self, users: List[DiscordUser] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
+        with self._data_lock:
+            time, data = self._user_data[len(self._user_data) - 1]
+            if not self._fetched_recently(guild_id, time_tolerance_seconds):
+                time, data = self._fetch_data(users=users, guild_id=guild_id, set_full_fetch=True)
+                self._user_data.append((time, data))
         return time, data
 
-    def get_user_balance(self, user: User, currency: str = None, force_fetch = False) -> Balance:
+    def get_user_balance(self, user: DiscordUser, currency: str = None, force_fetch = False) -> Balance:
 
         if currency is None:
             currency = '$'
@@ -111,9 +175,8 @@ class DataCollector:
         result = data[user.id][user.guild_id]
 
         if result.error is None or result.error == '':
-            self.data_lock.acquire()
-            self.user_data.append((time, data))
-            self.data_lock.release()
+            with self._data_lock:
+                self._user_data.append((time, data))
             matched_balance = self.match_balance_currency(result, currency)
             if matched_balance:
                 result = matched_balance
@@ -128,14 +191,13 @@ class DataCollector:
         if currency is None:
             currency = '$'
 
-        self.data_lock.acquire()
-        for time, data in reversed(self.user_data):
-            user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
-            user_balance = self.match_balance_currency(user_balance, currency)
-            if user_balance:
-                result = user_balance
-                break
-        self.data_lock.release()
+        with self._data_lock:
+            for time, data in reversed(self._user_data):
+                user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
+                user_balance = self.match_balance_currency(user_balance, currency)
+                if user_balance:
+                    result = user_balance
+                    break
         return result
 
     def get_balance_from_data(self, data, user_id: int, guild_id: int = None, exact=False) -> Optional[Balance]:
@@ -155,7 +217,6 @@ class DataCollector:
                              end: datetime = None,
                              currency: str = None) -> List[Tuple[datetime, Balance]]:
         single_user_data = []
-        self.data_lock.acquire()
 
         # Defaults.
         if start is None:
@@ -165,18 +226,18 @@ class DataCollector:
         if currency is None:
             currency = '$'
 
-        for time, data in self.user_data:
-            if start < time < end:
-                user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
-                if user_balance:
-                    user_balance = self.match_balance_currency(user_balance, currency)
+        with self._data_lock:
+            for time, data in self._user_data:
+                if start < time < end:
+                    user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
                     if user_balance:
-                        single_user_data.append((time, user_balance))
-        self.data_lock.release()
+                        user_balance = self.match_balance_currency(user_balance, currency)
+                        if user_balance:
+                            single_user_data.append((time, user_balance))
         return single_user_data
 
     def clear_user_data(self,
-                        user: User,
+                        user: DiscordUser,
                         start: datetime = None,
                         end: datetime = None,
                         remove_all_guilds = False,
@@ -188,33 +249,31 @@ class DataCollector:
             end = datetime.now()
 
         new_initial = None
-        self.data_lock.acquire()
 
-        if len(self.user_data) == 0:
+        if len(self._user_data) == 0:
             return
 
-        if start > self.user_data[0][0]:
+        if start > self._user_data[0][0]:
             update_initial_balance = False
 
-        for time, data in self.user_data:
-            if user.id in data:
-                if start <= time <= end:
-                    if remove_all_guilds:
-                        data.pop(user.id)
-                    elif user.guild_id in data[user.id]:
-                        data[user.id].pop(user.guild_id)
-
-        self.data_lock.release()
+        with self._data_lock:
+            for time, data in self._user_data:
+                if user.id in data:
+                    if start <= time <= end:
+                        if remove_all_guilds:
+                            data.pop(user.id)
+                        elif user.guild_id in data[user.id]:
+                            data[user.id].pop(user.guild_id)
 
         if update_initial_balance:
             new_initial = None
-            self.data_lock.acquire()
-            for time, data in self.user_data:
-                new_initial = self.get_balance_from_data(data, user.id, user.guild_id, exact=True)
-                if new_initial:
-                    user.initial_balance = time, new_initial
-                    break
-            self.data_lock.release()
+            with self._data_lock:
+                self._data_lock.acquire()
+                for time, data in self._user_data:
+                    new_initial = self.get_balance_from_data(data, user.id, user.guild_id, exact=True)
+                    if new_initial:
+                        user.initial_balance = time, new_initial
+                        break
             if not new_initial:
                 user.initial_balance = datetime.now(), self.get_user_balance(user, force_fetch=True)
 
@@ -226,45 +285,44 @@ class DataCollector:
             last_fetch = self._last_full_fetch.get(None)
         return datetime.now() - last_fetch < timedelta(seconds=time_tolerance_seconds)
 
-    def _fetch_data(self, users: List[User] = None, guild_id: int = None, keep_errors: bool = False, set_full_fetch = False, force_fetch = False) -> Tuple[datetime, Dict[int, Dict[int,  Balance]]]:
+    def _fetch_data(self, users: List[DiscordUser] = None, guild_id: int = None, keep_errors: bool = False, set_full_fetch = False, force_fetch = False) -> Tuple[datetime, Dict[int, Dict[int, Balance]]]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
         """
-        self.user_lock.acquire()
         time = datetime.now()
-
-        if users is None:
-            users = self.users
 
         if set_full_fetch:
             self._last_full_fetch[guild_id] = time
 
-        data = {}
-        logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
-        for user in users:
-            if not guild_id or guild_id == user.guild_id or user.guild_id:
-                if user.rekt_on and not force_fetch:
-                    balance = Balance(0.0, '$', None)
-                else:
-                    balance = user.api.get_balance()
-                if balance.error:
-                    logging.error(f'Error while fetching user {user} balance: {balance.error}')
-                    if keep_errors:
+        with self._user_lock:
+            if users is None:
+                users = self._users
+
+            data = {}
+            logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
+            for user in users:
+                if not guild_id or guild_id == user.guild_id or user.guild_id:
+                    if user.rekt_on and not force_fetch:
+                        balance = Balance(0.0, '$', None)
+                    else:
+                        balance = user.api.get_balance()
+                    if balance.error:
+                        logging.error(f'Error while fetching user {user} balance: {balance.error}')
+                        if keep_errors:
+                            if user.id not in data:
+                                data[user.id] = {}
+                            data[user.id][user.guild_id] = balance
+                    else:
                         if user.id not in data:
                             data[user.id] = {}
                         data[user.id][user.guild_id] = balance
-                else:
-                    if user.id not in data:
-                        data[user.id] = {}
-                    data[user.id][user.guild_id] = balance
-                    if balance.amount <= self.rekt_threshold and not user.rekt_on:
-                        user.rekt_on = time
-                        if callable(self.on_rekt_callback):
-                            self.on_rekt_callback(user)
+                        if balance.amount <= self.rekt_threshold and not user.rekt_on:
+                            user.rekt_on = time
+                            if callable(self.on_rekt_callback):
+                                self.on_rekt_callback(user)
 
         logging.info(f'Done Fetching')
-        self.user_lock.release()
         return time, data
 
     def _save_user_data(self):
@@ -278,23 +336,23 @@ class DataCollector:
         except FileNotFoundError as e:
             logging.error(f'{e} occurred while backing up user data.')
 
-        self.data_lock.acquire()
+        self._data_lock.acquire()
 
         with open(self.data_path + "user_data.json", "w") as f:
             user_data_json = []
             prev_date, prev_data = datetime.fromtimestamp(0), {}
-            for date, data in self.user_data:
+            for date, data in self._user_data:
                 # Data is removed if
                 # - it doesn't contain anything
                 # - it isn't further than 10 minutes apart from the last timestamp and all common users have the same entries
                 if len(data.keys()) == 0 or ((date - prev_date) < timedelta(minutes=10)
                                              and all(data[key] == prev_data[key] for key in data.keys() & prev_data.keys())):
                     if len(data.keys()) < len(prev_data.keys()) or len(data.keys()) == 0:
-                        self.user_data.remove((date, data))
+                        self._user_data.remove((date, data))
                         date = prev_date
                         data = prev_data
-                    elif (prev_date, prev_data) in self.user_data:
-                        self.user_data.remove((prev_date, prev_data))
+                    elif (prev_date, prev_data) in self._user_data:
+                        self._user_data.remove((prev_date, prev_data))
                 else:
                     user_data_json.append(
                         (round(date.timestamp()), {user_id: {guild_id: data[user_id][guild_id].to_json() for guild_id in data[user_id]} for user_id in data})
@@ -304,7 +362,7 @@ class DataCollector:
 
             json.dump(fp=f, obj=user_data_json)
 
-        self.data_lock.release()
+        self._data_lock.release()
 
     def _load_user_data(self):
 
@@ -353,9 +411,11 @@ class DataCollector:
         except json.JSONDecodeError as e:
             logging.error(f'{e}: Error while parsing user data.')
 
-    def _on_trade(self, id, trade: Trade):
-        with self.user_lock:
-
+    def _on_trade(self, identifier: DiscordUser, trade: Trade):
+        with self._user_lock:
+            if not identifier.trades:
+                identifier.trades = []
+            identifier.trades.append(trade)
             logging.info('Got new Trade')
 
     def _append_from_json(self, ts: int, user_json: dict):
@@ -370,9 +430,9 @@ class DataCollector:
                 user_balances[None] = balance_from_json(user_json[user_id])
             user_data[int(user_id)] = user_balances
 
-        self.data_lock.acquire()
-        self.user_data.append((datetime.fromtimestamp(ts), user_data))
-        self.data_lock.release()
+        self._data_lock.acquire()
+        self._user_data.append((datetime.fromtimestamp(ts), user_data))
+        self._data_lock.release()
 
     def match_balance_currency(self, balance: Balance, currency: str):
         result = None

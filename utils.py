@@ -11,7 +11,7 @@ from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
 from typing import List, Tuple, Callable, Optional
 from Models.balance import Balance
-from Models.user import User
+from Models.discorduser import DiscordUser
 from config import CURRENCY_PRECISION
 
 
@@ -105,7 +105,7 @@ def get_user_by_id(users_by_id,
                    user_id: int,
                    guild_id: int = None,
                    exact: bool = False,
-                   throw_exceptions=True) -> User:
+                   throw_exceptions=True) -> DiscordUser:
     """
     Tries to find a matching entry for the user and guild id.
     :param exact: whether the global entry should be used if the guild isn't registered

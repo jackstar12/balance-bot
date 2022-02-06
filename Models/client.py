@@ -1,9 +1,11 @@
 import abc
-import discord
 import logging
 from typing import List, Optional, Dict, Any, Callable
 from requests import Request, Session, Response
 from Models.trade import Trade
+from Models.balance import Balance
+from datetime import datetime
+from typing import Tuple
 
 
 class Client:
@@ -12,6 +14,11 @@ class Client:
     subaccount: str
     exchange = ''
     required_extra_args: List[str] = []
+
+    rekt_on: datetime = None
+    initial_balance: Tuple[datetime, Balance] = None
+    track_trades: bool = False
+    trades: List[Trade] = None
 
     def __init__(self,
                  api_key: str,
@@ -24,15 +31,15 @@ class Client:
         self.extra_kwargs = extra_kwargs
         self._session = Session()
         self._on_trade = None
-        self._id = id
+        self._identifier = id
 
     @abc.abstractmethod
     def get_balance(self):
         logging.error(f'Exchange {self.exchange} does not implement get_balance!')
 
-    def on_trade(self, callback: Callable[[str, Trade], None], id: str):
+    def on_trade(self, callback: Callable[[str, Trade], None], identifier):
         self._on_trade = callback
-        self._id = id
+        self._identifier = identifier
 
     @abc.abstractmethod
     def _sign_request(self, request: Request):

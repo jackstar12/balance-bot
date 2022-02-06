@@ -65,7 +65,7 @@ class BinanceFutures(_BinanceBaseClient):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._ws = FuturesWebsocketClient(self, lambda ws, trade: self._on_trade(self._id, trade))
+        self._ws = FuturesWebsocketClient(self, lambda ws, trade: self._on_trade(self._identifier, trade))
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     def get_balance(self):
@@ -92,8 +92,8 @@ class BinanceFutures(_BinanceBaseClient):
         )
         self._request(request)
 
-    def on_trade(self, callback: Callable[[str, Trade], None], id: str):
-        super().on_trade(callback, id)
+    def on_trade(self, callback: Callable[[str, Trade], None], identifier):
+        super().on_trade(callback, identifier)
         self._ws.start()
 
 
