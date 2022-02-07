@@ -3,25 +3,29 @@ import hmac
 import logging
 import time
 import urllib.parse
+from datetime import datetime
 from typing import Dict, Callable
 
 import requests
 from requests import Request, HTTPError
 from Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 
-from Models.balance import Balance
-from Models.client import Client
-from Models.trade import Trade
+#from models.balance import Balance
+from clientworker import ClientWorker
+#from models.client import Client
+from api.dbmodels.client import Client
+from api.dbmodels.balance import Balance
+from api.dbmodels.trade import Trade
 
 
-class _BinanceBaseClient(Client):
+class _BinanceBaseClient(ClientWorker):
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
-        request.headers['X-MBX-APIKEY'] = self.api_key
+        request.headers['X-MBX-APIKEY'] = self._client.api_key
         request.params['timestamp'] = ts
         query_string = urllib.parse.urlencode(request.params, True)
-        signature = hmac.new(self.api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
+        signature = hmac.new(self._client.api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
         request.params['signature'] = signature
 
     def _process_response(self, response: requests.Response) -> dict:
@@ -65,14 +69,14 @@ class BinanceFutures(_BinanceBaseClient):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._ws = FuturesWebsocketClient(self, lambda ws, trade: self._on_trade(self._identifier, trade))
+        self._ws = FuturesWebsocketClient(self, self._on_message)
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
-    def get_balance(self):
+    def get_balance(self, time: datetime = None):
         request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
         response = self._request(request)
 
-        return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', error=response.get('msg', None))
+        return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', time=time if time else datetime.now(), error=response.get('msg', None))
 
     def start_user_stream(self):
         request = Request(
@@ -92,9 +96,20 @@ class BinanceFutures(_BinanceBaseClient):
         )
         self._request(request)
 
-    def on_trade(self, callback: Callable[[str, Trade], None], identifier):
-        super().on_trade(callback, identifier)
-        self._ws.start()
+    def _on_message(self, ws, message):
+        event = message['e']
+        data = message['o']
+        if event == 'ORDER_TRADE_UPDATE':
+            if data['X'] == 'FILLED' or True:
+                trade = Trade(
+                    symbol=data['s'],
+                    price=data['p'],
+                    qty=data['q'],
+                    side=data['S'],
+                    type='o',
+                    time=datetime.now()
+                )
+                self._client.trades.append(trade)
 
 
 class BinanceSpot(_BinanceBaseClient):

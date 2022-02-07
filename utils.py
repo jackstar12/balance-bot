@@ -10,8 +10,8 @@ from discord_slash import SlashContext, SlashCommandOptionType
 from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
 from typing import List, Tuple, Callable, Optional
-from Models.balance import Balance
-from Models.discorduser import DiscordUser
+from models.balance import Balance
+from models.discorduser import DiscordUser
 from config import CURRENCY_PRECISION
 
 

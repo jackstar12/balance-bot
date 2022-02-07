@@ -8,7 +8,8 @@ import time
 import shutil
 from threading import Thread
 
-import API.app as api
+import api.app as api
+from api.database import db
 from discord_slash.model import BaseCommandObject
 from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_choice, create_option
@@ -19,8 +20,13 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import argparse
 
-from Models.discorduser import DiscordUser
-from Models.client import Client
+#from models.discorduser import DiscordUser
+from clientworker import ClientWorker
+from api.dbmodels.discorduser import DiscordUser
+from api.dbmodels.user import User
+from api.dbmodels.client import Client
+
+#from models.client import Client
 from usermanager import UserManager
 from key import KEY
 from config import (DATA_PATH,
@@ -54,7 +60,7 @@ intents.guilds = True
 client = commands.Bot(command_prefix=PREFIX, intents=intents)
 slash = SlashCommand(client)
 
-EXCHANGES: Dict[str, Type[Client]] = {
+EXCHANGES: Dict[str, Type[ClientWorker]] = {
     'binance-futures': BinanceFutures,
     'binance-spot': BinanceSpot,
     'bitmex': BitmexClient,
@@ -112,13 +118,13 @@ async def on_guild_join(guild: discord.Guild):
     description="Ping"
 )
 async def ping(ctx: SlashContext):
-    """Get the bot's current websocket and API latency."""
+    """Get the bot's current websocket and api latency."""
     start_time = time.time()
     message = await ctx.send("Testing Ping...")
     end_time = time.time()
 
     await message.edit(
-        content=f"Pong! {round(client.latency * 1000, ndigits=3)}ms\nAPI: {round((end_time - start_time), ndigits=3)}ms")
+        content=f"Pong! {round(client.latency * 1000, ndigits=3)}ms\napi: {round((end_time - start_time), ndigits=3)}ms")
 
 
 @slash.slash(
@@ -488,19 +494,19 @@ def get_available_exchanges() -> str:
         ),
         create_option(
             name="api_key",
-            description="Your API Key",
+            description="Your api Key",
             required=True,
             option_type=3
         ),
         create_option(
             name="api_secret",
-            description="Your API Secret",
+            description="Your api Secret",
             required=True,
             option_type=3
         ),
         create_option(
             name="subaccount",
-            description="Subaccount for API Access",
+            description="Subaccount for api Access",
             required=False,
             option_type=3
         ),
@@ -543,30 +549,31 @@ async def register(ctx: SlashContext,
     try:
         exchange_name = exchange_name.lower()
         exchange_cls = EXCHANGES[exchange_name]
-        if issubclass(exchange_cls, Client):
+        if issubclass(exchange_cls, ClientWorker):
             # Check if required keyword args are given
             if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
                     all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
-                exchange: Client = exchange_cls(
+                client_data: Client = Client(
                     api_key=api_key,
                     api_secret=api_secret,
                     subaccount=subaccount,
-                    extra_kwargs=kwargs
+                    extra_kwargs=kwargs,
+                    exchange=exchange_name
                 )
-                existing_user = user_manager.get_user(ctx.author.id, guild, exact=True, throw_exceptions=False)
+                worker = exchange_cls(client_data)
+                existing_user = user_manager.get_user(user_id=ctx.author.id)
                 if existing_user:
-                    existing_user.api = exchange
-                    await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)), hidden=True)
+                    existing_user.api = client_data
+                    await ctx.send(embed=existing_user.get_discord_embed(client_data.get_guild(guild)), hidden=True)
                     logger.info(f'Updated user')
                     user_manager.save_registered_users()
                 else:
                     new_user = DiscordUser(
-                        ctx.author.id,
-                        exchange,
-                        guild_id=guild
+                        user_id = ctx.author.id,
+                        name=ctx.author.name,
+                        client=client_data
                     )
-
-                    init_balance = new_user.api.get_balance()
+                    init_balance = worker.get_balance()
                     if init_balance.error is None:
                         if round(init_balance.amount, ndigits=2) == 0.0:
                             message = f'You do not have any balance in your account. Please fund your account before registering.'
@@ -575,9 +582,11 @@ async def register(ctx: SlashContext,
                             message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
 
                             def register_user():
-                                new_user.initial_balance = (datetime.now(), init_balance)
-                                user_manager.add_user(new_user)
-                                user_manager.save_registered_users()
+                                new_user.client.history.append(init_balance)
+                                user_manager.db_add_worker(worker)
+                                db.session.add(new_user)
+                                db.session.add(client_data)
+                                db.session.commit()
                                 logger.info(f'Registered new user')
 
                             button_row = create_yes_no_button_row(
@@ -976,7 +985,7 @@ if args.reset and os.path.exists(DATA_PATH):
     try:
         shutil.copy(DATA_PATH + "user_data.json", new_path + "user_data.json")
         shutil.copy(DATA_PATH + "users.json", new_path + "users.json")
-
+        
         os.remove(DATA_PATH + "user_data.json")
         os.remove(DATA_PATH + "users.json")
     except FileNotFoundError as e:

@@ -2,8 +2,8 @@ import abc
 import logging
 from typing import List, Optional, Dict, Any, Callable
 from requests import Request, Session, Response
-from Models.trade import Trade
-from Models.balance import Balance
+from models.trade import Trade
+from models.balance import Balance
 from datetime import datetime
 from typing import Tuple
 

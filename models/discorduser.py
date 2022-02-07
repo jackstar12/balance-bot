@@ -2,11 +2,11 @@ import dataclasses
 import discord
 import logging
 
-from Models.balance import balance_from_json
-from Models.client import Client
+from models.balance import balance_from_json
+from models.client import Client
 from datetime import datetime
-from Models.balance import Balance
-from Models.trade import Trade
+from models.balance import Balance
+from models.trade import Trade
 from typing import Tuple, Dict, List, Type
 
 
@@ -27,8 +27,8 @@ class DiscordUser:
 
         embed.add_field(name='Guild', value=guild_name if guild_name else 'Global', inline=False)
         embed.add_field(name='Exchange', value=self.api.exchange)
-        embed.add_field(name='API Key', value=self.api.api_key)
-        embed.add_field(name='API Secret', value=self.api.api_secret)
+        embed.add_field(name='api Key', value=self.api.api_key)
+        embed.add_field(name='api Secret', value=self.api.api_secret)
 
         if self.api.subaccount:
             embed.add_field(name='Subaccount', value=self.api.subaccount)

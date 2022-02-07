@@ -5,13 +5,18 @@ import shutil
 from datetime import datetime, timedelta
 from threading import Lock, Timer
 from typing import List, Tuple, Dict, Callable, Optional, Any
+from flask_sqlalchemy import SQLAlchemy
 
-from Models.balance import Balance, balance_from_json
-from Models.trade import Trade
-from Models.discorduser import DiscordUser
-from Models.discorduser import user_from_json
+from models.balance import Balance, balance_from_json
+from models.trade import Trade
+from models.discorduser import DiscordUser
+from models.discorduser import user_from_json
 from config import CURRENCY_ALIASES
-from Models.singleton import Singleton
+from models.singleton import Singleton
+from api.database import db
+from api.dbmodels.discorduser import DiscordUser
+from api.dbmodels.client import Client
+from clientworker import ClientWorker
 
 
 class UserManager(Singleton):
@@ -30,6 +35,7 @@ class UserManager(Singleton):
         self.backup_path = self.data_path + 'backup/'
         self.on_rekt_callback = on_rekt_callback
 
+        self._db = db
         # Privates
         self._users = []
         self._users_by_id: Dict[int, Dict[int, DiscordUser]] = {}  # { user_id: { guild_id: User} }
@@ -37,6 +43,8 @@ class UserManager(Singleton):
 
         self._user_data: List[Tuple[datetime, Dict[int, Dict[int, Balance]]]] = []
         self._user_trades: Dict[DiscordUser, List[Trade]] = {}
+        self._workers: List[ClientWorker] = []
+        self._worker_lock = Lock()
 
         self._user_lock = Lock()
         self._data_lock = Lock()
@@ -49,10 +57,10 @@ class UserManager(Singleton):
         if not os.path.exists(self.backup_path):
             os.mkdir(self.backup_path)
 
-        if os.path.exists(self.data_path):
-            self.load_registered_users()
-        else:
-            os.mkdir(self.data_path)
+        #if os.path.exists(self.data_path):
+        #    self.load_registered_users()
+        #else:
+        #    os.mkdir(self.data_path)
 
     def load_registered_users(self):
         try:
@@ -84,6 +92,11 @@ class UserManager(Singleton):
                 self._users.append(user)
                 user.api.on_trade(self._on_trade, user)
 
+    def db_add_worker(self, worker: ClientWorker):
+        with self._worker_lock:
+            if worker not in self._workers:
+                self._workers.append(worker)
+
     def remove_user(self, user: DiscordUser):
         with self._user_lock:
             self._users_by_id[user.id].pop(user.guild_id)
@@ -113,6 +126,7 @@ class UserManager(Singleton):
         The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
         """
         result = None
+        return DiscordUser.query.filter_by(user_id=user_id).first()
         with self._user_lock:
             if user_id in self._users_by_id:
                 endpoints = self._users_by_id[user_id]

@@ -1,5 +1,5 @@
 from typing import List, Dict, Callable
-from Models.event import Event
+from models.event import Event
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Timer, Lock

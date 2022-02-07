@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List
 
-from Models.discorduser import DiscordUser
+from models.discorduser import DiscordUser
 
 
 @dataclass

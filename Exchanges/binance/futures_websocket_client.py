@@ -5,7 +5,7 @@ from threading import Timer, Lock
 from typing import Callable
 
 from Exchanges.binance.websocket_manager import WebsocketManager
-from Models.trade import Trade
+from models.trade import Trade
 from datetime import datetime
 
 
@@ -14,13 +14,13 @@ class FuturesWebsocketClient(WebsocketManager):
 
     _ENDPOINT = 'wss://fstream.binance.com'
 
-    def __init__(self, client, on_trade: Callable = None):
+    def __init__(self, client, on_message: Callable = None):
         super().__init__()
         self._client = client
         self._listenKey = None
         self._key_lock = Lock()
         self._keep_alive_timer = None
-        self._on_trade = on_trade
+        self._on_message = on_message
 
     def _get_url(self):
         return self._ENDPOINT + f'/ws/{self._listenKey}'
@@ -29,20 +29,10 @@ class FuturesWebsocketClient(WebsocketManager):
         message = json.loads(message)
         event = message['e']
         data = message['o']
-        if event == 'ORDER_TRADE_UPDATE':
-            if data['X'] == 'FILLED' or True:
-                trade = Trade(
-                    symbol=data['s'],
-                    price=data['p'],
-                    qty=data['q'],
-                    side=data['S'],
-                    type='o',
-                    time=datetime.now()
-                )
-                if callable(self._on_trade):
-                    self._on_trade(self, trade)
-        elif event == 'listenKeyExpired':
+        if event == 'listenKeyExpired':
             self._renew_listen_key()
+        elif callable(self._on_message):
+            self._on_message(self, message)
 
     def start(self):
         if self._listenKey is None:

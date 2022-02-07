@@ -6,14 +6,14 @@ from threading import Lock
 from typing import List, Callable
 
 from fastapi import requests
-from Models.client import Client
-from Models.balance import Balance
+from models.client import Client
+from models.balance import Balance
 import time
 import requests
 from requests import Request, Session
 
 from Exchanges.ftx.client import FtxWebsocketClient
-from Models.trade import Trade
+from models.trade import Trade
 
 
 class FtxClient(Client):
