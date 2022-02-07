@@ -14,7 +14,6 @@ import sqlalchemy.sql.sqltypes as types
 import flask_jwt_extended as flask_jwt
 from sqlalchemy_utils import database_exists, create_database
 
-from Models.balance import Balance
 from usermanager import UserManager
 from Models.customencoder import CustomEncoder
 
@@ -34,29 +33,23 @@ class User(db.Model):
     id = schema.Column(types.Integer, primary_key=True)
     email = schema.Column(types.String, unique=True, nullable=False)
     password = schema.Column(types.String, unique=True, nullable=False)
-    clients = schema.Column(types.ARRAY(types.Integer))
-
-
-class Trade(db.Model):
-    client_id = schema.Column(types.Integer, schema.ForeignKey('client.id'), primary_key=True)
-    symbol = schema.Column(types.String, nullable=False)
-    price = schema.Column(types.Float, nullable=False)
-    qty = schema.Column(types.Float, nullable=False)
-    side = schema.Column(types.String, nullable=False)
-    type = schema.Column(types.String, nullable=False)
-    time = schema.Column(types.DateTime, nullable=False)
+    clients = db.relationship('Client', backref='user', lazy=True)
 
 
 class Client(db.Model):
     id = schema.Column(types.Integer, primary_key=True)
+    user_id = db.Column(types.Integer, schema.ForeignKey('user.id'), nullable=False)
+
     api_key = schema.Column(types.String, nullable=False)
     api_secret = schema.Column(types.String, nullable=False)
     exchange = schema.Column(types.String, nullable=False)
     subaccount = schema.Column(types.String, nullable=True)
 
+    name = schema.Column(types.String, nullable=True)
     rekt_on = schema.Column(types.DateTime, nullable=True)
+
     initial_balance = schema.Column(types.TupleType(types.DateTime, db.relationship('Balance', backref='client', lazy=True)))
-    trades: List[Trade] = db.relationship('Trade', backref='client', lazy=True)
+    trades = db.relationship('Trade', backref='client', lazy=True)
     history = db.relationship('Balance', backref='client', lazy=True)
 
     required_extra_args: List[str]
@@ -69,7 +62,7 @@ class Client(db.Model):
 
     @abc.abstractmethod
     def get_balance(self):
-        logging.error(f'Exchange {self.exchange} does not implement get_balance!')
+        logging.error(f'Exchange {self.exchange} does not implement get_balance')
 
     def on_trade(self, callback: Callable[[str, Trade], None], identifier):
         self._on_trade = callback
@@ -77,7 +70,7 @@ class Client(db.Model):
 
     @abc.abstractmethod
     def _sign_request(self, request: Request):
-        logging.error(f'Exchange {self.exchange} does not implement _sign_request!')
+        logging.error(f'Exchange {self.exchange} does not implement _sign_request')
 
     @abc.abstractmethod
     def _process_response(self, response: Response):
@@ -90,18 +83,25 @@ class Client(db.Model):
         response = self._session.send(prepared)
         return self._process_response(response)
 
-    def repr(self):
-        r = f'Exchange: {self.exchange}\n' \
-               f'API Key: {self.api_key}\n' \
-               f'API secret: {self.api_secret}'
-        if self.subaccount != '':
-            r += f'\nSubaccount: {self.subaccount}'
+    def __repr__(self):
+        return f'<Client exchange={self.exchange} user_id={self.user_id}>'
 
-        return r
+
+class Trade(db.Model):
+    id = schema.Column(types.Integer, primary_key=True)
+    client_id = schema.Column(types.Integer, schema.ForeignKey('client.id'), primary_key=True)
+    symbol = schema.Column(types.String, nullable=False)
+    price = schema.Column(types.Float, nullable=False)
+    qty = schema.Column(types.Float, nullable=False)
+    side = schema.Column(types.String, nullable=False)
+    type = schema.Column(types.String, nullable=False)
+    time = schema.Column(types.DateTime, nullable=False)
 
 
 class Balance(db.Model):
-    id = schema.Column(types.Integer, schema.ForeignKey('client.id'), primary_key=True)
+    id = schema.Column(types.Integer, primary_key=True)
+    client_id = schema.Column(types.Integer, schema.ForeignKey('client.id'), primary_key=True)
+    time = schema.Column(types.DateTime, nullable=False)
     amount = schema.Column(types.Float, nullable=False)
     currency = schema.Column(types.String, nullable=False)
     error = schema.Column(types.String, nullable=True)
@@ -131,7 +131,6 @@ class Balance(db.Model):
                 string += ')'
 
         return string
-
 
 
 db.create_all()
