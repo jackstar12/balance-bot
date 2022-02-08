@@ -152,6 +152,25 @@ class UserManager(Singleton):
             return self._user_data.copy()
 
 
+    def db_start_fetching(self):
+        """
+                Start fetching data at specified interval
+                """
+
+        with self._data_lock:
+            self._user_data.append(self._fetch_data(set_full_fetch=True))
+
+        self._save_user_data()
+
+        time = datetime.now()
+        next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
+                            microsecond=0) + timedelta(hours=self.interval_hours)
+        delay = next - time
+
+        timer = Timer(delay.total_seconds(), self.start_fetching)
+        timer.daemon = True
+        timer.start()
+
     def start_fetching(self):
         """
         Start fetching data at specified interval
@@ -298,6 +317,42 @@ class UserManager(Singleton):
         if not last_fetch:
             last_fetch = self._last_full_fetch.get(None)
         return datetime.now() - last_fetch < timedelta(seconds=time_tolerance_seconds)
+
+    def _db_fetch_data(self, workers: List[ClientWorker] = None, guild_id: int = None, keep_errors: bool = False,
+                       set_full_fetch=False, force_fetch=False) -> Tuple[datetime, Dict[int, Dict[int, Balance]]]:
+        """
+        :return:
+        Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
+        """
+        time = datetime.now()
+
+        if set_full_fetch:
+            self._last_full_fetch[guild_id] = time
+
+        with self._worker_lock:
+            if workers is None:
+                workers = self._workers
+
+            data = {}
+            logging.info(f'Fetching data for {len(workers)} users {keep_errors=}')
+            for worker in workers:
+                if worker.rekt_on and not force_fetch:
+                    balance = Balance(0.0, '$', None)
+                else:
+                    balance = worker.get_balance()
+                if balance.error:
+                    logging.error(f'Error while fetching user {worker} balance: {balance.error}')
+                    if keep_errors:
+                        worker.client.history.append(balance)
+                else:
+                    worker.client.history.append(balance)
+                    if balance.amount <= self.rekt_threshold and not worker.rekt_on:
+                        worker.rekt_on = time
+                        if callable(self.on_rekt_callback):
+                            self.on_rekt_callback(worker)
+
+        logging.info(f'Done Fetching')
+        return time, data
 
     def _fetch_data(self, users: List[DiscordUser] = None, guild_id: int = None, keep_errors: bool = False, set_full_fetch = False, force_fetch = False) -> Tuple[datetime, Dict[int, Dict[int, Balance]]]:
         """

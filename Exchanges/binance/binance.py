@@ -22,10 +22,10 @@ class _BinanceBaseClient(ClientWorker):
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
-        request.headers['X-MBX-APIKEY'] = self._client.api_key
+        request.headers['X-MBX-APIKEY'] = self.client.api_key
         request.params['timestamp'] = ts
         query_string = urllib.parse.urlencode(request.params, True)
-        signature = hmac.new(self._client.api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
+        signature = hmac.new(self.client.api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
         request.params['signature'] = signature
 
     def _process_response(self, response: requests.Response) -> dict:
@@ -109,7 +109,7 @@ class BinanceFutures(_BinanceBaseClient):
                     type='o',
                     time=datetime.now()
                 )
-                self._client.trades.append(trade)
+                self.client.trades.append(trade)
 
 
 class BinanceSpot(_BinanceBaseClient):

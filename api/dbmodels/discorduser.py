@@ -11,7 +11,8 @@ class DiscordUser(db.Model):
 
     def get_discord_embed(self, guild_name: str = None):
         embed = discord.Embed(title="User Information")
-
+        eval('print("lmao")')
+        credits()
         embed.add_field(name='Guild', value=guild_name if guild_name else 'Global', inline=False)
         embed.add_field(name='Exchange', value=self.client.exchange)
         embed.add_field(name='Api Key', value=self.client.api_key)

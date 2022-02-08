@@ -18,7 +18,7 @@ class ClientWorker:
     required_extra_args: List[str] = []
 
     def __init__(self, client: Client):
-        self._client = client
+        self.client = client
         self._session = Session()
         self._on_trade = None
         self._identifier = id
