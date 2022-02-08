@@ -28,7 +28,6 @@ class FuturesWebsocketClient(WebsocketManager):
     def _on_message(self, ws, message):
         message = json.loads(message)
         event = message['e']
-        data = message['o']
         if event == 'listenKeyExpired':
             self._renew_listen_key()
         elif callable(self._on_message):

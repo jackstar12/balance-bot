@@ -573,7 +573,7 @@ async def register(ctx: SlashContext,
                         name=ctx.author.name,
                         client=client_data
                     )
-                    init_balance = worker.get_balance()
+                    init_balance = worker.get_balance(datetime)
                     if init_balance.error is None:
                         if round(init_balance.amount, ndigits=2) == 0.0:
                             message = f'You do not have any balance in your account. Please fund your account before registering.'

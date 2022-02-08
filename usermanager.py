@@ -15,6 +15,7 @@ from config import CURRENCY_ALIASES
 from models.singleton import Singleton
 from api.database import db
 from api.dbmodels.discorduser import DiscordUser
+from api.dbmodels.balance import Balance
 from api.dbmodels.client import Client
 from clientworker import ClientWorker
 
@@ -61,6 +62,16 @@ class UserManager(Singleton):
         #    self.load_registered_users()
         #else:
         #    os.mkdir(self.data_path)
+        self._workers_by_id: Dict[int, ClientWorker] = {}  # { user_id: ClientWorker }
+        users = DiscordUser.query.all()
+        for user in users:
+            client_cls = exchanges[user.client.exchange]
+            if issubclass(client_cls, ClientWorker):
+                worker = client_cls(user.client)
+                worker.on_trade(self._on_trade)
+                self.db_add_worker(worker)
+            else:
+                logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
     def load_registered_users(self):
         try:
@@ -96,6 +107,7 @@ class UserManager(Singleton):
         with self._worker_lock:
             if worker not in self._workers:
                 self._workers.append(worker)
+                self._workers_by_id[worker.client.discorduser.user_id] = worker
 
     def remove_user(self, user: DiscordUser):
         with self._user_lock:
@@ -203,13 +215,11 @@ class UserManager(Singleton):
         if currency is None:
             currency = '$'
 
-        time, data = self._fetch_data(users=[user], keep_errors=True, force_fetch=force_fetch)
+        data = self._db_fetch_data(workers=[self._get_worker(user.user_id)], keep_errors=True, force_fetch=force_fetch)
 
-        result = data[user.id][user.guild_id]
+        result = data[0]
 
         if result.error is None or result.error == '':
-            with self._data_lock:
-                self._user_data.append((time, data))
             matched_balance = self.match_balance_currency(result, currency)
             if matched_balance:
                 result = matched_balance
@@ -217,6 +227,10 @@ class UserManager(Singleton):
                 result.error = f'User balance does not contain currency {currency}'
 
         return result
+
+    def _get_worker(self, user_id: int) -> ClientWorker:
+        with self._worker_lock:
+            return self._workers_by_id.get(user_id)
 
     def get_latest_user_balance(self, user_id: int, guild_id: int = None, currency: str = None) -> Optional[Balance]:
         result = None
@@ -258,6 +272,7 @@ class UserManager(Singleton):
             end = datetime.now()
         if currency is None:
             currency = '$'
+
 
         with self._data_lock:
             for time, data in self._user_data:
@@ -319,7 +334,7 @@ class UserManager(Singleton):
         return datetime.now() - last_fetch < timedelta(seconds=time_tolerance_seconds)
 
     def _db_fetch_data(self, workers: List[ClientWorker] = None, guild_id: int = None, keep_errors: bool = False,
-                       set_full_fetch=False, force_fetch=False) -> Tuple[datetime, Dict[int, Dict[int, Balance]]]:
+                       set_full_fetch=False, force_fetch=False) -> List[Balance]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
@@ -333,26 +348,30 @@ class UserManager(Singleton):
             if workers is None:
                 workers = self._workers
 
-            data = {}
+            data = []
             logging.info(f'Fetching data for {len(workers)} users {keep_errors=}')
             for worker in workers:
-                if worker.rekt_on and not force_fetch:
+                # TODO: Think about non event members
+                if worker.client.rekt_on and not force_fetch:
                     balance = Balance(0.0, '$', None)
                 else:
-                    balance = worker.get_balance()
+                    balance = worker.get_balance(time)
                 if balance.error:
                     logging.error(f'Error while fetching user {worker} balance: {balance.error}')
                     if keep_errors:
+                        data.append(balance)
                         worker.client.history.append(balance)
                 else:
                     worker.client.history.append(balance)
-                    if balance.amount <= self.rekt_threshold and not worker.rekt_on:
-                        worker.rekt_on = time
+                    data.append(balance)
+                    if balance.amount <= self.rekt_threshold and not worker.client.rekt_on:
+                        worker.client.rekt_on = time
                         if callable(self.on_rekt_callback):
                             self.on_rekt_callback(worker)
+            db.session.commit()
 
         logging.info(f'Done Fetching')
-        return time, data
+        return data
 
     def _fetch_data(self, users: List[DiscordUser] = None, guild_id: int = None, keep_errors: bool = False, set_full_fetch = False, force_fetch = False) -> Tuple[datetime, Dict[int, Dict[int, Balance]]]:
         """
@@ -375,7 +394,7 @@ class UserManager(Singleton):
                     if user.rekt_on and not force_fetch:
                         balance = Balance(0.0, '$', None)
                     else:
-                        balance = user.api.get_balance()
+                        balance = user.api.get_balance(datetime)
                     if balance.error:
                         logging.error(f'Error while fetching user {user} balance: {balance.error}')
                         if keep_errors:
@@ -480,11 +499,8 @@ class UserManager(Singleton):
         except json.JSONDecodeError as e:
             logging.error(f'{e}: Error while parsing user data.')
 
-    def _on_trade(self, identifier: DiscordUser, trade: Trade):
+    def _on_trade(self, client: Client, trade: Trade):
         with self._user_lock:
-            if not identifier.trades:
-                identifier.trades = []
-            identifier.trades.append(trade)
             logging.info('Got new Trade')
 
     def _append_from_json(self, ts: int, user_json: dict):
@@ -504,6 +520,24 @@ class UserManager(Singleton):
         self._data_lock.release()
 
     def match_balance_currency(self, balance: Balance, currency: str):
+        result = None
+
+        if balance is None:
+            return None
+
+        if balance.currency != currency:
+            if balance.extra_currencies:
+                result_currency = balance.extra_currencies.get(currency)
+                if not result_currency:
+                    result_currency = balance.extra_currencies.get(CURRENCY_ALIASES.get(currency))
+                if result_currency:
+                    result = Balance(amount=result_currency, currency=currency)
+        else:
+            result = balance
+
+        return result
+
+    def db_match_balance_currency(self, balance: Balance, currency: str):
         result = None
 
         if balance is None:

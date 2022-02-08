@@ -72,7 +72,7 @@ class BinanceFutures(_BinanceBaseClient):
         self._ws = FuturesWebsocketClient(self, self._on_message)
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
-    def get_balance(self, time: datetime = None):
+    def get_balance(self, time: datetime):
         request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
         response = self._request(request)
 
@@ -96,6 +96,10 @@ class BinanceFutures(_BinanceBaseClient):
         )
         self._request(request)
 
+    def on_trade(self, callback: Callable[[Client, Trade], None]):
+        self._callback = callback
+        self._ws.start()
+
     def _on_message(self, ws, message):
         event = message['e']
         data = message['o']
@@ -110,6 +114,8 @@ class BinanceFutures(_BinanceBaseClient):
                     time=datetime.now()
                 )
                 self.client.trades.append(trade)
+                if callable(self._callback):
+                    self._callback(self.client, trade)
 
 
 class BinanceSpot(_BinanceBaseClient):
@@ -117,7 +123,7 @@ class BinanceSpot(_BinanceBaseClient):
     exchange = 'binance-spot'
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
-    def get_balance(self):
+    def get_balance(self, time):
         request = Request('GET', self.ENDPOINT + 'account')
         response = self._request(request)
 
@@ -132,7 +138,7 @@ class BinanceSpot(_BinanceBaseClient):
                 price = 0
                 if currency == 'USDT':
                     price = 1
-                elif amount > 0:
+                elif amount > 0 and currency != 'LDUSDT':
                     request = Request(
                         'GET',
                         self.ENDPOINT + 'ticker/price',

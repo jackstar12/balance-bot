@@ -1,5 +1,6 @@
 import abc
 import logging
+from datetime import datetime
 from typing import List, Callable
 from urllib.request import Request
 from requests import Request, Response, Session
@@ -24,12 +25,12 @@ class ClientWorker:
         self._identifier = id
 
     @abc.abstractmethod
-    def get_balance(self):
+    def get_balance(self, time: datetime):
         logging.error(f'Exchange {self.exchange} does not implement get_balance')
+        raise NotImplementedError(f'Exchange {self.exchange} does not implement get_balance')
 
-    def on_trade(self, callback: Callable[[str, Trade], None], identifier):
+    def on_trade(self, callback: Callable[[Client, Trade], None]):
         self._on_trade = callback
-        self._identifier = identifier
 
     @abc.abstractmethod
     def _sign_request(self, request: Request):
