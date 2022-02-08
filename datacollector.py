@@ -240,7 +240,11 @@ class DataCollector:
                 if user.rekt_on and not force_fetch:
                     balance = Balance(0.0, '$', None)
                 else:
-                    balance = user.api.get_balance()
+                    try:
+                        balance = user.api.get_balance()
+                    except Exception as e:
+                        logging.error(f'CRITICAL: Exception {e} happened while fetching data for {user=}')
+                        continue
                 if balance.error:
                     logging.error(f'Error while fetching user {user} balance: {balance.error}')
                     if keep_errors:
