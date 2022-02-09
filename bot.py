@@ -291,7 +291,7 @@ async def history(ctx: SlashContext,
     for registered_user, member in registrations:
 
         user_manager.get_user_balance(registered_user, currency=currency)
-        user_data = user_manager.get_single_user_data(registered_user.id, guild_id=registered_user.guild_id,
+        user_data = user_manager.get_single_user_data(registered_user.user_id,
                                                       start=since,
                                                       end=to, currency=currency)
 
@@ -302,7 +302,7 @@ async def history(ctx: SlashContext,
 
         xs, ys = calc_xs_ys(user_data, percentage)
 
-        total_gain = calc_percentage(user_data[0][1].amount, user_data[len(ys) - 1][1].amount)
+        total_gain = calc_percentage(user_data[0].amount, user_data[len(ys) - 1].amount)
 
         if first:
             title = f'History for {member.display_name} (Total: {total_gain}%)'

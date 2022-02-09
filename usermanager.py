@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from threading import Lock, Timer
 from typing import List, Tuple, Dict, Callable, Optional, Any
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import extract, and_
 
 from models.balance import Balance, balance_from_json
 from models.trade import Trade
@@ -17,6 +18,7 @@ from api.database import db
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.balance import Balance
 from api.dbmodels.client import Client
+from api.dbmodels.event import Event
 from clientworker import ClientWorker
 
 
@@ -123,6 +125,25 @@ class UserManager(Singleton):
         with self._user_lock:
             return self._users_by_id.copy()
 
+    def get_client(self,
+                   user_id: int,
+                   guild_id: int = None,
+                   throw_exceptions=True):
+        user = DiscordUser.query.filer_by(user_id=user_id)
+        if user:
+            if guild_id:
+                event = Event.query.filter_by(guild_id=guild_id).first()
+                if event:
+                    for client in event.registrations:
+                        if client.discorduser.user_id == user_id:
+                            return client
+                    raise ValueError("User {name} is not registered for this event")
+            if user.global_client_id:
+                return Client.query.filter_by(id=user.global_client_id).first()
+            else:
+                raise ValueError("User {name} does not have a global registration")
+                pass # TODO: Adapt error fallback
+
     def get_user(self,
                  user_id: int,
                  guild_id: int = None,
@@ -137,26 +158,9 @@ class UserManager(Singleton):
         :return:
         The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
         """
-        result = None
-        return DiscordUser.query.filter_by(user_id=user_id).first()
-        with self._user_lock:
-            if user_id in self._users_by_id:
-                endpoints = self._users_by_id[user_id]
-                if isinstance(endpoints, dict):
-                    result = endpoints.get(guild_id, None)
-                    if not result and not exact:
-                        result = endpoints.get(None, None)  # None entry is global
-                    if not result and throw_exceptions:
-                        raise ValueError("User {name} not registered for this guild")
-                else:
-                    logging.error(
-                        f'users_by_id contains invalid entry! Associated data with {user_id=}: {result=} {endpoints=} ({guild_id=})')
-                    if throw_exceptions:
-                        raise ValueError("This is caused due to a bug in the bot. Please contact dev.")
-            elif throw_exceptions:
-                logging.error(f'Dont know user {user_id=}')
-                raise ValueError("Unknown user {name}. Please register first.")
-
+        result = DiscordUser.query.filter_by(user_id=user_id)
+        if not result and throw_exceptions:
+            raise ValueError("User {name} does not have a global registration")
         return result
 
     def get_user_data(self):
@@ -164,29 +168,10 @@ class UserManager(Singleton):
             return self._user_data.copy()
 
 
-    def db_start_fetching(self):
+    def start_fetching(self):
         """
                 Start fetching data at specified interval
                 """
-
-        with self._data_lock:
-            self._user_data.append(self._fetch_data(set_full_fetch=True))
-
-        self._save_user_data()
-
-        time = datetime.now()
-        next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
-                            microsecond=0) + timedelta(hours=self.interval_hours)
-        delay = next - time
-
-        timer = Timer(delay.total_seconds(), self.start_fetching)
-        timer.daemon = True
-        timer.start()
-
-    def start_fetching(self):
-        """
-        Start fetching data at specified interval
-        """
 
         with self._data_lock:
             self._user_data.append(self._fetch_data(set_full_fetch=True))
@@ -232,21 +217,6 @@ class UserManager(Singleton):
         with self._worker_lock:
             return self._workers_by_id.get(user_id)
 
-    def get_latest_user_balance(self, user_id: int, guild_id: int = None, currency: str = None) -> Optional[Balance]:
-        result = None
-
-        if currency is None:
-            currency = '$'
-
-        with self._data_lock:
-            for time, data in reversed(self._user_data):
-                user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
-                user_balance = self.match_balance_currency(user_balance, currency)
-                if user_balance:
-                    result = user_balance
-                    break
-        return result
-
     def get_balance_from_data(self, data, user_id: int, guild_id: int = None, exact=False) -> Optional[Balance]:
         balance = None
 
@@ -262,8 +232,7 @@ class UserManager(Singleton):
                              guild_id: int = None,
                              start: datetime = None,
                              end: datetime = None,
-                             currency: str = None) -> List[Tuple[datetime, Balance]]:
-        single_user_data = []
+                             currency: str = None) -> List[Balance]:
 
         # Defaults.
         if start is None:
@@ -273,16 +242,18 @@ class UserManager(Singleton):
         if currency is None:
             currency = '$'
 
+        user = self.get_user(user_id)
+        results = Balance.query.filter(
+            Balance.client_id == user.client.id, Balance.time > start, Balance.time < end
+        ).all()
 
-        with self._data_lock:
-            for time, data in self._user_data:
-                if start < time < end:
-                    user_balance = self.get_balance_from_data(data, user_id, guild_id, exact=True)
-                    if user_balance:
-                        user_balance = self.match_balance_currency(user_balance, currency)
-                        if user_balance:
-                            single_user_data.append((time, user_balance))
-        return single_user_data
+        if currency != '$':
+            for result in results:
+                result = self.match_balance_currency(result, currency)
+                if result is None:
+                    results.remove(result)
+
+        return results
 
     def clear_user_data(self,
                         user: DiscordUser,
@@ -549,7 +520,8 @@ class UserManager(Singleton):
                 if not result_currency:
                     result_currency = balance.extra_currencies.get(CURRENCY_ALIASES.get(currency))
                 if result_currency:
-                    result = Balance(amount=result_currency, currency=currency)
+                    result.amount = result_currency
+                    result.currency = currency
         else:
             result = balance
 

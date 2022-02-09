@@ -10,7 +10,7 @@ from discord_slash import SlashContext, SlashCommandOptionType
 from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
 from typing import List, Tuple, Callable, Optional
-from models.balance import Balance
+from api.dbmodels.balance import Balance
 from models.discorduser import DiscordUser
 from config import CURRENCY_PRECISION
 
@@ -241,14 +241,14 @@ def calc_time_from_time_args(time_str: str) -> datetime:
     return date
 
 
-def calc_xs_ys(data: List[Tuple[datetime, Balance]],
+def calc_xs_ys(data: List[Balance],
                percentage=False) -> Tuple[List[datetime], List[float]]:
     xs = []
     ys = []
-    for time, balance in data:
-        xs.append(time.replace(microsecond=0))
+    for balance in data:
+        xs.append(balance.time.replace(microsecond=0))
         if percentage:
-            if data[0][1].amount > 0:
+            if data[0].amount > 0:
                 amount = 100 * (balance.amount - data[0][1].amount) / data[0][1].amount
             else:
                 amount = 0.0
