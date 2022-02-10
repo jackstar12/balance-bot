@@ -11,13 +11,6 @@ class DiscordUser(db.Model):
     clients = db.relationship('Client', backref='discorduser', lazy=True, uselist=True)
 
     def get_discord_embed(self):
-        # client = None
-        # for cur_client in self.clients:
-        #     if cur_client.event_id and guild_id:
-        #         if cur_client.event.guild_id == guild_id:
-        #             client = cur_client
-        #     elif cur_client.event_id:
-        #         client = cur_client
 
         embed = discord.Embed(title="User Information")
 

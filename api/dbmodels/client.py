@@ -1,5 +1,6 @@
 import abc
 import logging
+from datetime import datetime
 from typing import List, Callable
 from urllib.request import Request
 from requests import Request, Response, Session
@@ -32,3 +33,11 @@ class Client(db.Model):
     history = db.relationship('Balance', backref='client_history', lazy=True)
 
     required_extra_args: List[str] = []
+
+    @db.hybird_property
+    def is_global(self):
+        return self.discoduser.global_client_id == self.id
+
+    @db.hybrid_property
+    def is_active(self):
+        return not all(not event.is_active for event in self.events)

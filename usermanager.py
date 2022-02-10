@@ -5,8 +5,6 @@ import shutil
 from datetime import datetime, timedelta
 from threading import Lock, Timer
 from typing import List, Tuple, Dict, Callable, Optional, Any
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import extract, and_
 
 from models.balance import Balance, balance_from_json
 from models.trade import Trade
@@ -14,6 +12,8 @@ from models.discorduser import DiscordUser
 from models.discorduser import user_from_json
 from config import CURRENCY_ALIASES
 from models.singleton import Singleton
+
+import api.dbutils as dbutils
 from api.database import db
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.balance import Balance
@@ -60,16 +60,23 @@ class UserManager(Singleton):
         if not os.path.exists(self.backup_path):
             os.mkdir(self.backup_path)
 
-        #if os.path.exists(self.data_path):
+        # if os.path.exists(self.data_path):
         #    self.load_registered_users()
-        #else:
+        # else:
         #    os.mkdir(self.data_path)
-        self._workers_by_id: Dict[int, ClientWorker] = {}  # { user_id: ClientWorker }
+        self._workers_by_id: Dict[
+            Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
         users = DiscordUser.query.all()
-        for user in users:
-            client_cls = exchanges[user.client.exchange]
+        now = datetime.now()
+
+        clients = Client.query.filter(
+            Client.is_global or Client.is_active
+        ).all()
+
+        for client in clients:
+            client_cls = exchanges[client.exchange]
             if issubclass(client_cls, ClientWorker):
-                worker = client_cls(user.client)
+                worker = client_cls(client)
                 worker.on_trade(self._on_trade)
                 self.db_add_worker(worker)
             else:
@@ -109,7 +116,12 @@ class UserManager(Singleton):
         with self._worker_lock:
             if worker not in self._workers:
                 self._workers.append(worker)
-                self._workers_by_id[worker.client.discorduser.user_id] = worker
+                events = worker.client.events
+                events.append(None)  # None entry is global
+                for event in events:
+                    if event not in self._workers_by_id:
+                        self._workers_by_id[event] = {}
+                    self._workers_by_id[event][worker.client.discorduser.id] = worker
 
     def remove_user(self, user: DiscordUser):
         with self._user_lock:
@@ -125,48 +137,9 @@ class UserManager(Singleton):
         with self._user_lock:
             return self._users_by_id.copy()
 
-    def get_client(self,
-                   user_id: int,
-                   guild_id: int = None,
-                   throw_exceptions=True):
-        user = DiscordUser.query.filer_by(user_id=user_id)
-        if user:
-            if guild_id:
-                event = Event.query.filter_by(guild_id=guild_id).first()
-                if event:
-                    for client in event.registrations:
-                        if client.discorduser.user_id == user_id:
-                            return client
-                    raise ValueError("User {name} is not registered for this event")
-            if user.global_client_id:
-                return Client.query.filter_by(id=user.global_client_id).first()
-            else:
-                raise ValueError("User {name} does not have a global registration")
-                pass # TODO: Adapt error fallback
-
-    def get_user(self,
-                 user_id: int,
-                 guild_id: int = None,
-                 exact: bool = False,
-                 throw_exceptions=True) -> DiscordUser:
-        """
-        Tries to find a matching entry for the user and guild id.
-        :param user_id: id of user to get
-        :param guild_id: guild id of user to get
-        :param throw_exceptions: whether to throw exceptions if user isn't registered
-        :param exact: whether the global entry should be used if the guild isn't registered
-        :return:
-        The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
-        """
-        result = DiscordUser.query.filter_by(user_id=user_id)
-        if not result and throw_exceptions:
-            raise ValueError("User {name} does not have a global registration")
-        return result
-
     def get_user_data(self):
         with self._data_lock:
             return self._user_data.copy()
-
 
     def start_fetching(self):
         """
@@ -195,7 +168,25 @@ class UserManager(Singleton):
                 self._user_data.append((time, data))
         return time, data
 
-    def get_user_balance(self, user: DiscordUser, currency: str = None, force_fetch = False) -> Balance:
+    def get_user_balance(self, user: DiscordUser, currency: str = None, force_fetch=False) -> Balance:
+
+        if currency is None:
+            currency = '$'
+
+        data = self._db_fetch_data(workers=[self._get_worker(user.user_id, )], keep_errors=True, force_fetch=force_fetch)
+
+        result = data[0]
+
+        if result.error is None or result.error == '':
+            matched_balance = self.match_balance_currency(result, currency)
+            if matched_balance:
+                result = matched_balance
+            else:
+                result.error = f'User balance does not contain currency {currency}'
+
+        return result
+
+    def get_client_balance(self, client: Client, currency: str = None, force_fetch=False) -> Balance:
 
         if currency is None:
             currency = '$'
@@ -213,9 +204,10 @@ class UserManager(Singleton):
 
         return result
 
-    def _get_worker(self, user_id: int) -> ClientWorker:
+    def _get_worker(self, user_id: int, guild_id: int = None) -> ClientWorker:
         with self._worker_lock:
-            return self._workers_by_id.get(user_id)
+            event = dbutils.get_active_event(guild_id)
+            return self._workers_by_id[event.id if event else None].get(user_id)
 
     def get_balance_from_data(self, data, user_id: int, guild_id: int = None, exact=False) -> Optional[Balance]:
         balance = None
@@ -227,9 +219,8 @@ class UserManager(Singleton):
 
         return balance
 
-    def get_single_user_data(self,
-                             user_id: int,
-                             guild_id: int = None,
+    def get_client_user_data(self,
+                             client,
                              start: datetime = None,
                              end: datetime = None,
                              currency: str = None) -> List[Balance]:
@@ -242,7 +233,7 @@ class UserManager(Singleton):
         if currency is None:
             currency = '$'
 
-        user = self.get_user(user_id)
+        user = dbutils.get_user(user_id)
         results = Balance.query.filter(
             Balance.client_id == user.client.id, Balance.time > start, Balance.time < end
         ).all()
@@ -255,48 +246,24 @@ class UserManager(Singleton):
 
         return results
 
-    def clear_user_data(self,
-                        user: DiscordUser,
-                        start: datetime = None,
-                        end: datetime = None,
-                        remove_all_guilds = False,
-                        update_initial_balance = False):
-
+    def clear_client_data(self,
+                          client: Client,
+                          start: datetime = None,
+                          end: datetime = None,
+                          update_initial_balance=False):
         if start is None:
             start = datetime.fromtimestamp(0)
         if end is None:
             end = datetime.now()
 
-        new_initial = None
+        for balance in client.history:
+            if start <= balance.time <= end:
+                client.history.remove(balance)
 
-        if len(self._user_data) == 0:
-            return
+        if len(client.history) > 0:
+            client.history.append()
 
-        if start > self._user_data[0][0]:
-            update_initial_balance = False
-
-        with self._data_lock:
-            for time, data in self._user_data:
-                if user.id in data:
-                    if start <= time <= end:
-                        if remove_all_guilds:
-                            data.pop(user.id)
-                        elif user.guild_id in data[user.id]:
-                            data[user.id].pop(user.guild_id)
-
-        if update_initial_balance:
-            new_initial = None
-            with self._data_lock:
-                self._data_lock.acquire()
-                for time, data in self._user_data:
-                    new_initial = self.get_balance_from_data(data, user.id, user.guild_id, exact=True)
-                    if new_initial:
-                        user.initial_balance = time, new_initial
-                        break
-            if not new_initial:
-                user.initial_balance = datetime.now(), self.get_user_balance(user, force_fetch=True)
-
-        self._save_user_data()
+        db.session.commit()
 
     def _fetched_recently(self, guild_id: int = None, time_tolerance_seconds: float = 60):
         last_fetch = self._last_full_fetch.get(guild_id)
@@ -344,7 +311,8 @@ class UserManager(Singleton):
         logging.info(f'Done Fetching')
         return data
 
-    def _fetch_data(self, users: List[DiscordUser] = None, guild_id: int = None, keep_errors: bool = False, set_full_fetch = False, force_fetch = False) -> Tuple[datetime, Dict[int, Dict[int, Balance]]]:
+    def _fetch_data(self, users: List[DiscordUser] = None, guild_id: int = None, keep_errors: bool = False,
+                    set_full_fetch=False, force_fetch=False) -> Tuple[datetime, Dict[int, Dict[int, Balance]]]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
@@ -405,7 +373,8 @@ class UserManager(Singleton):
                 # - it doesn't contain anything
                 # - it isn't further than 10 minutes apart from the last timestamp and all common users have the same entries
                 if len(data.keys()) == 0 or ((date - prev_date) < timedelta(minutes=10)
-                                             and all(data[key] == prev_data[key] for key in data.keys() & prev_data.keys())):
+                                             and all(
+                            data[key] == prev_data[key] for key in data.keys() & prev_data.keys())):
                     if len(data.keys()) < len(prev_data.keys()) or len(data.keys()) == 0:
                         self._user_data.remove((date, data))
                         date = prev_date
@@ -414,7 +383,9 @@ class UserManager(Singleton):
                         self._user_data.remove((prev_date, prev_data))
                 else:
                     user_data_json.append(
-                        (round(date.timestamp()), {user_id: {guild_id: data[user_id][guild_id].to_json() for guild_id in data[user_id]} for user_id in data})
+                        (round(date.timestamp()),
+                         {user_id: {guild_id: data[user_id][guild_id].to_json() for guild_id in data[user_id]} for
+                          user_id in data})
                     )
                 prev_date = date
                 prev_data = data

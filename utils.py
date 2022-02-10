@@ -317,6 +317,10 @@ def create_yes_no_button_row(slash: SlashCommand,
     return create_actionrow(*buttons)
 
 
+def create_event_selection(custom_id: str, callback: Callable[[str], None] = None, message=None):
+
+
+
 def readable_time(time: datetime):
     now = datetime.now()
     if time is None:

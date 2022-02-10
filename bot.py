@@ -8,6 +8,7 @@ import time
 import shutil
 from threading import Thread
 
+import api.dbutils as dbutils
 import api.app as api
 from api.database import db
 from discord_slash.model import BaseCommandObject
@@ -698,14 +699,14 @@ async def info(ctx):
     ]
 )
 @utils.time_args(names=[('since', None), ('to', None)])
-async def clear(ctx, since: datetime = None, to: datetime = None, guild: str = None):
+async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, guild: str = None):
     logging.info(f'New interaction with {de_emojify(ctx.author.display_name)}: clear history {since=} {to=}')
 
     if guild:
         guild = int(guild)
 
     try:
-        registered_user = user_manager.get_user(ctx.author.id, guild)
+        registered_client = dbutils.get_client(ctx.author.id. ctx.guild_id)
     except ValueError as e:
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
         return

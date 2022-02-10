@@ -1,5 +1,5 @@
 from api.database import db
-
+from datetime import datetime
 
 association = db.Table('association',
                        db.Column('event_id', db.Integer, db.ForeignKey('event.id'), primary_key=True),
@@ -18,3 +18,11 @@ class Event(db.Model):
     name = db.Column(db.String, nullable=False)
     description = db.Column(db.String, nullable=False)
     registrations = db.relationship('Client', secondary=association, backref='events')
+
+    @db.hybrid_property
+    def is_active(self):
+        return self.start <= datetime.now() <= self.end
+
+    @db.hybrid_property
+    def is_free_for_registration(self):
+        return self.registration_start <= datetime.now() <= self.registration_end
