@@ -1,5 +1,7 @@
 from api.database import db
 from datetime import datetime
+from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
+import discord
 
 association = db.Table('association',
                        db.Column('event_id', db.Integer, db.ForeignKey('event.id'), primary_key=True),
@@ -19,10 +21,21 @@ class Event(db.Model):
     description = db.Column(db.String, nullable=False)
     registrations = db.relationship('Client', secondary=association, backref='events')
 
-    @db.hybrid_property
+    @hybrid_property
     def is_active(self):
         return self.start <= datetime.now() <= self.end
 
-    @db.hybrid_property
+    @hybrid_property
     def is_free_for_registration(self):
         return self.registration_start <= datetime.now() <= self.registration_end
+
+    def get_discord_embed(self):
+        embed = discord.Embed(title=f'Event **{self.name}**')
+        embed.add_field(name="Start", value=self.start)
+        embed.add_field(name="End", value=self.end)
+        embed.add_field(name="Registration Start", value=self.registration_start)
+        embed.add_field(name="Registration End", value=self.registration_end)
+
+        return embed
+
+

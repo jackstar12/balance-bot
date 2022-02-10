@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
 from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
-from typing import List, Tuple, Callable, Optional
+from typing import List, Tuple, Callable, Optional, Union
 from api.dbmodels.balance import Balance
 from models.discorduser import DiscordUser
 from config import CURRENCY_PRECISION
@@ -151,14 +151,14 @@ def add_guild_option(guilds, command: BaseCommandObject, description: str):
     )
 
 
-def calc_percentage(then: float, now: float) -> str:
+def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
     diff = now - then
     if diff == 0.0:
-        result = '0'
+        result = '0' if string else 0.0
     elif then > 0:
-        result = f'{round(100 * (diff / then), ndigits=3)}'
+        result = f'{round(100 * (diff / then), ndigits=3)}' if string else round(100 * (diff / then), ndigits=3)
     else:
-        result = 'nan'
+        result = 'nan' if string else 0.0
     return result
 
 
@@ -318,7 +318,7 @@ def create_yes_no_button_row(slash: SlashCommand,
 
 
 def create_event_selection(custom_id: str, callback: Callable[[str], None] = None, message=None):
-
+    pass
 
 
 def readable_time(time: datetime):

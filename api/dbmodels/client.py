@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Callable
 from urllib.request import Request
 from requests import Request, Response, Session
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from api.database import db
 from api.dbmodels.trade import Trade
@@ -34,10 +35,18 @@ class Client(db.Model):
 
     required_extra_args: List[str] = []
 
-    @db.hybird_property
+    @hybrid_property
     def is_global(self):
-        return self.discoduser.global_client_id == self.id
+        return self.discorduser.global_client_id == self.id
 
-    @db.hybrid_property
+    @hybrid_property
     def is_active(self):
         return not all(not event.is_active for event in self.events)
+
+    def get_event_string(self):
+        events = ''
+        if self.is_global:
+            events += 'Global'
+        for event in self.events:
+            events += f', {event.name}'
+        return events

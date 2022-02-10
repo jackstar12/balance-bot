@@ -1,5 +1,6 @@
 import hmac
 import hmac
+import json
 import logging
 import time
 import urllib.parse
@@ -101,6 +102,7 @@ class BinanceFutures(_BinanceBaseClient):
         self._ws.start()
 
     def _on_message(self, ws, message):
+        message = json.loads(message)
         event = message['e']
         data = message['o']
         if event == 'ORDER_TRADE_UPDATE':
@@ -113,7 +115,6 @@ class BinanceFutures(_BinanceBaseClient):
                     type='o',
                     time=datetime.now()
                 )
-                self.client.trades.append(trade)
                 if callable(self._callback):
                     self._callback(self.client, trade)
 

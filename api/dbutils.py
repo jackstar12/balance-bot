@@ -11,7 +11,7 @@ from typing import Optional
 def get_client(user_id: int,
                guild_id: int = None,
                throw_exceptions=True) -> Optional[Client]:
-    user = DiscordUser.query.filer_by(user_id=user_id)
+    user = DiscordUser.query.filter_by(user_id=user_id).first()
     if user:
         if guild_id:
             event = Event.query.filter_by(guild_id=guild_id).first()
@@ -29,10 +29,11 @@ def get_client(user_id: int,
         raise ValueError("User {name} is not registered")
 
 
-def get_active_event(guild_id: int, throw_exceptions=False) -> Optional[Event]:
+def get_active_event(guild_id: int, throw_exceptions=True) -> Optional[Event]:
     event = Event.query.filter_by(guild_id=guild_id).first()
     if not event and throw_exceptions:
         raise ValueError('There is no active event')
+
     return event
 
 
@@ -46,7 +47,16 @@ def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
     :return:
     The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
     """
-    result = DiscordUser.query.filter_by(user_id=user_id)
+    result = DiscordUser.query.filter_by(user_id=user_id).first()
     if not result and throw_exceptions:
         raise ValueError("User {name} does not have a global registration")
     return result
+
+
+def get_guild_start_end_times(guild_id, start, end):
+    event = Event.query.filter_by(guild_id=guild_id).first()
+    if event:
+        # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
+        return max(start, event.start), min(end, event.end)
+    else:
+        return datetime.fromtimestamp(0), datetime.now()

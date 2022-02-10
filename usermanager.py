@@ -39,6 +39,7 @@ class UserManager(Singleton):
         self.on_rekt_callback = on_rekt_callback
 
         self._db = db
+        self._db_lock = Lock()
         # Privates
         self._users = []
         self._users_by_id: Dict[int, Dict[int, DiscordUser]] = {}  # { user_id: { guild_id: User} }
@@ -64,23 +65,20 @@ class UserManager(Singleton):
         #    self.load_registered_users()
         # else:
         #    os.mkdir(self.data_path)
-        self._workers_by_id: Dict[
-            Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
-        users = DiscordUser.query.all()
-        now = datetime.now()
+        self._workers_by_id: Dict[Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
+        self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
-        clients = Client.query.filter(
-            Client.is_global or Client.is_active
-        ).all()
+        clients = Client.query.all()
 
         for client in clients:
-            client_cls = exchanges[client.exchange]
-            if issubclass(client_cls, ClientWorker):
-                worker = client_cls(client)
-                worker.on_trade(self._on_trade)
-                self.db_add_worker(worker)
-            else:
-                logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
+            if client.is_global or client.is_active:
+                client_cls = exchanges[client.exchange]
+                if issubclass(client_cls, ClientWorker):
+                    worker = client_cls(client)
+                    worker.on_trade(self._on_trade)
+                    self.db_add_worker(worker)
+                else:
+                    logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
     def load_registered_users(self):
         try:
@@ -97,12 +95,6 @@ class UserManager(Singleton):
         except json.decoder.JSONDecodeError:
             pass
 
-    def save_registered_users(self):
-        with open(self.data_path + 'users.json', 'w') as f:
-            with self._user_lock:
-                users_json = [user.to_json() for user in self._users]
-                json.dump(obj=users_json, fp=f, indent=3)
-
     def add_user(self, user: DiscordUser):
         with self._user_lock:
             if user not in self._users:
@@ -116,30 +108,28 @@ class UserManager(Singleton):
         with self._worker_lock:
             if worker not in self._workers:
                 self._workers.append(worker)
-                events = worker.client.events
-                events.append(None)  # None entry is global
-                for event in events:
+                for event in [None, *worker.client.events]:
                     if event not in self._workers_by_id:
                         self._workers_by_id[event] = {}
                     self._workers_by_id[event][worker.client.discorduser.id] = worker
+                self._workers_by_client_id[worker.client.id] = worker
 
-    def remove_user(self, user: DiscordUser):
-        with self._user_lock:
-            self._users_by_id[user.id].pop(user.guild_id)
+    def db_remove_worker(self, worker: ClientWorker):
+        with self._worker_lock:
+            if worker in self._workers:
+                for event in [None, *worker.client.events]:
+                    self._workers_by_id[event].pop(worker.client.discorduser.id)
+                self._workers_by_client_id.pop(worker.client.id)
+                self._workers.remove(worker)
+                del worker
 
-            if len(self._users_by_id[user.id]) == 0:
-                self._users_by_id.pop(user.id)
-
-            if user in self._users:
-                self._users.remove(user)
+    def remove_client(self, client: Client):
+        self.db_remove_worker(self._get_worker(client))
+        Client.query.filter_by(id=client.id).all().delete(synchronize_session=True)
 
     def get_users_by_id(self):
         with self._user_lock:
             return self._users_by_id.copy()
-
-    def get_user_data(self):
-        with self._data_lock:
-            return self._user_data.copy()
 
     def start_fetching(self):
         """
@@ -160,7 +150,7 @@ class UserManager(Singleton):
         timer.daemon = True
         timer.start()
 
-    def fetch_data(self, users: List[DiscordUser] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
+    def fetch_data(self, users: List[Client] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
         with self._data_lock:
             time, data = self._user_data[len(self._user_data) - 1]
             if not self._fetched_recently(guild_id, time_tolerance_seconds):
@@ -191,7 +181,7 @@ class UserManager(Singleton):
         if currency is None:
             currency = '$'
 
-        data = self._db_fetch_data(workers=[self._get_worker(user.user_id)], keep_errors=True, force_fetch=force_fetch)
+        data = self._db_fetch_data(workers=[self._get_worker(client)], keep_errors=True, force_fetch=force_fetch)
 
         result = data[0]
 
@@ -204,7 +194,11 @@ class UserManager(Singleton):
 
         return result
 
-    def _get_worker(self, user_id: int, guild_id: int = None) -> ClientWorker:
+    def _get_worker(self, client: Client) -> ClientWorker:
+        with self._worker_lock:
+            return self._workers_by_client_id.get(client.id)
+
+    def _get_worker_event(self, user_id, guild_id):
         with self._worker_lock:
             event = dbutils.get_active_event(guild_id)
             return self._workers_by_id[event.id if event else None].get(user_id)
@@ -220,29 +214,24 @@ class UserManager(Singleton):
         return balance
 
     def get_client_user_data(self,
-                             client,
+                             client: Client,
+                             guild_id: int,
                              start: datetime = None,
                              end: datetime = None,
                              currency: str = None) -> List[Balance]:
 
-        # Defaults.
-        if start is None:
-            start = datetime.fromtimestamp(0)
-        if end is None:
-            end = datetime.now()
+        start, end = dbutils.get_guild_start_end_times(guild_id, start, end)
         if currency is None:
             currency = '$'
 
-        user = dbutils.get_user(user_id)
-        results = Balance.query.filter(
-            Balance.client_id == user.client.id, Balance.time > start, Balance.time < end
-        ).all()
+        results = []
 
-        if currency != '$':
-            for result in results:
-                result = self.match_balance_currency(result, currency)
-                if result is None:
-                    results.remove(result)
+        for balance in client.history:
+            if start <= balance.time <= end:
+                if currency != '$':
+                    balance = self.match_balance_currency(balance, currency)
+                if balance:
+                    results.append(balance)
 
         return results
 
@@ -442,7 +431,9 @@ class UserManager(Singleton):
             logging.error(f'{e}: Error while parsing user data.')
 
     def _on_trade(self, client: Client, trade: Trade):
-        with self._user_lock:
+        with self._db_lock:
+            trade.client = client
+            db.session.add(trade)
             logging.info('Got new Trade')
 
     def _append_from_json(self, ts: int, user_json: dict):
