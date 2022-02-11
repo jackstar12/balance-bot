@@ -13,6 +13,7 @@ class Event(db.Model):
     __tablename__ = 'event'
     id = db.Column(db.Integer, primary_key=True)
     guild_id = db.Column(db.Integer, nullable=False)
+    channel_id = db.Column(db.Integer, nullable=False)
     registration_start = db.Column(db.DateTime, nullable=False)
     registration_end = db.Column(db.DateTime, nullable=False)
     start = db.Column(db.DateTime, nullable=False)
@@ -29,12 +30,19 @@ class Event(db.Model):
     def is_free_for_registration(self):
         return self.registration_start <= datetime.now() <= self.registration_end
 
-    def get_discord_embed(self):
+    def get_discord_embed(self, registrations=False):
         embed = discord.Embed(title=f'Event **{self.name}**')
         embed.add_field(name="Start", value=self.start)
         embed.add_field(name="End", value=self.end)
         embed.add_field(name="Registration Start", value=self.registration_start)
         embed.add_field(name="Registration End", value=self.registration_end)
+
+        if registrations:
+            value = ''
+            for registration in self.registrations:
+                value += f'{registration.discorduser.name}\n'
+            if value:
+                embed.add_field(name="Registrations", value=value, inline=False)
 
         return embed
 

@@ -17,6 +17,7 @@ from discord_slash.utils.manage_commands import create_choice, create_option
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime
+from eventmanager import EventManager, FutureCallback
 
 import matplotlib.pyplot as plt
 import argparse
@@ -558,7 +559,7 @@ async def register_user(ctx: SlashContext,
 
                             def register_user():
                                 new_user.clients[0].history.append(init_balance)
-                                user_manager.db_add_worker(worker)
+                                user_manager._add_worker(worker)
                                 db.session.add(new_user)
                                 db.session.add(client)
                                 db.session.commit()
@@ -601,6 +602,7 @@ async def register_user(ctx: SlashContext,
 @slash.subcommand(
     base='register',
     name='event',
+    description='Register an event for this guild.',
     options=[
         create_option(
             name=name,
@@ -641,18 +643,21 @@ async def register_event(ctx: SlashContext, name: str, start: datetime, end: dat
     event = Event(
         name=name,
         start=start,
+        end=end,
         registration_start=registration_start,
         registration_end=registration_end,
         guild_id=ctx.guild_id
     )
 
-    def register_event():
-        pass
+    def register():
+        db.session.add(event)
+        db.session.commit()
+        event_manager.register(event)
 
     row = create_yes_no_button_row(
         slash=slash,
         author_id=ctx.author_id,
-        yes_callback=register_event,
+        yes_callback=register,
         yes_message="Event was successfully created",
         no_message="Event creation cancelled",
         hidden=True
@@ -1021,6 +1026,8 @@ user_manager = UserManager(exchanges=EXCHANGES,
                            data_path=DATA_PATH,
                            rekt_threshold=REKT_THRESHOLD,
                            on_rekt_callback=lambda user: bot.loop.create_task(on_rekt_async(user)))
+
+event_manager = EventManager()
 
 api_thread = Thread(target=api.run)
 api_thread.daemon = True

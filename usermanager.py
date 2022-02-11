@@ -68,17 +68,7 @@ class UserManager(Singleton):
         self._workers_by_id: Dict[Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
-        clients = Client.query.all()
-
-        for client in clients:
-            if client.is_global or client.is_active:
-                client_cls = exchanges[client.exchange]
-                if issubclass(client_cls, ClientWorker):
-                    worker = client_cls(client)
-                    worker.on_trade(self._on_trade)
-                    self.db_add_worker(worker)
-                else:
-                    logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
+        self.synch_workers()
 
     def load_registered_users(self):
         try:
@@ -104,7 +94,7 @@ class UserManager(Singleton):
                 self._users.append(user)
                 user.api.on_trade(self._on_trade, user)
 
-    def db_add_worker(self, worker: ClientWorker):
+    def _add_worker(self, worker: ClientWorker):
         with self._worker_lock:
             if worker not in self._workers:
                 self._workers.append(worker)
@@ -114,7 +104,7 @@ class UserManager(Singleton):
                     self._workers_by_id[event][worker.client.discorduser.id] = worker
                 self._workers_by_client_id[worker.client.id] = worker
 
-    def db_remove_worker(self, worker: ClientWorker):
+    def _remove_worker(self, worker: ClientWorker):
         with self._worker_lock:
             if worker in self._workers:
                 for event in [None, *worker.client.events]:
@@ -124,7 +114,7 @@ class UserManager(Singleton):
                 del worker
 
     def remove_client(self, client: Client):
-        self.db_remove_worker(self._get_worker(client))
+        self._remove_worker(self._get_worker(client))
         Client.query.filter_by(id=client.id).all().delete(synchronize_session=True)
 
     def get_users_by_id(self):
@@ -193,6 +183,23 @@ class UserManager(Singleton):
                 result.error = f'User balance does not contain currency {currency}'
 
         return result
+
+    def synch_workers(self):
+        clients = Client.query.all()
+
+        for client in clients:
+            if client.is_global or client.is_active:
+                client_cls = self._exchanges[client.exchange]
+                if issubclass(client_cls, ClientWorker):
+                    worker = client_cls(client)
+                    worker.on_trade(self._on_trade)
+                    self._add_worker(worker)
+                else:
+                    logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
+            else:
+                worker = self._get_worker(client)
+                if worker:
+                    self._remove_worker(worker)
 
     def _get_worker(self, client: Client) -> ClientWorker:
         with self._worker_lock:
