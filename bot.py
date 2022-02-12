@@ -19,22 +19,20 @@ from discord_slash.utils.manage_commands import create_choice, create_option
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime
+from errors import UserInputError
 
 from api.dbmodels.balance import balance_from_json
-from api.dbmodels.trade import Trade
 from eventmanager import EventManager, FutureCallback
 
 import matplotlib.pyplot as plt
 import argparse
 
-#from models.discorduser import DiscordUser
 from clientworker import ClientWorker
 from api.dbmodels.discorduser import DiscordUser, add_user_from_json
 from api.dbmodels.user import User
 from api.dbmodels.event import Event
 from api.dbmodels.client import Client
 
-#from models.client import Client
 from usermanager import UserManager
 from key import KEY
 from config import (DATA_PATH,
@@ -60,6 +58,7 @@ from Exchanges.bitmex import BitmexClient
 from Exchanges.ftx.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
 from Exchanges.bybit import BybitClient
+
 
 intents = discord.Intents().default()
 intents.members = True
@@ -93,9 +92,8 @@ async def on_ready():
     user_manager.start_fetching()
     event_manager.initialize_events()
 
-
     logger.info('Bot Ready')
-    print('Bot Ready.')
+    print('Bot Ready')
     rate_limit = True
     while rate_limit:
         try:
@@ -130,6 +128,7 @@ async def on_guild_join(guild: discord.Guild):
     name="ping",
     description="Ping"
 )
+@utils.log_and_catch_user_input_errors()
 async def ping(ctx: SlashContext):
     """Get the bot's current websocket and api latency."""
     start_time = time.time()
@@ -158,35 +157,25 @@ async def ping(ctx: SlashContext):
         )
     ]
 )
+@utils.log_and_catch_user_input_errors()
 @utils.set_author_default(name='user')
 async def balance(ctx: SlashContext, user: discord.Member = None, currency: str = None):
     if currency is None:
         currency = '$'
     currency = currency.upper()
 
-    logger.info(f'New interaction with {ctx.author.display_name}: Get balance for {de_emojify(user.display_name)} ({currency=})')
-
     if ctx.guild is not None:
-        try:
-            registered_user = dbutils.get_client(user.id, ctx.guild.id)
-        except ValueError as e:
-            await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
-            return
+        registered_user = dbutils.get_client(user.id, ctx.guild.id)
 
         await ctx.defer()
-
         usr_balance = user_manager.get_client_balance(registered_user, currency)
         if usr_balance.error is None:
             await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
         else:
             await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
     else:
-        try:
-            user = dbutils.get_user(ctx.author_id)
-        except ValueError:
-            await ctx.send(f'You are not registered', hidden=True)
-            return
 
+        user = dbutils.get_user(ctx.author_id)
         await ctx.defer()
 
         for user_client in user.clients:
@@ -234,6 +223,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         )
     ]
 )
+@utils.log_and_catch_user_input_errors()
 @utils.set_author_default(name='user')
 @utils.time_args(names=[('since', None), ('to', None)])
 async def history(ctx: SlashContext,
@@ -242,26 +232,15 @@ async def history(ctx: SlashContext,
                   since: datetime = None,
                   to: datetime = None,
                   currency: str = None):
-    logger.info(f'New interaction with {de_emojify(user.display_name)}: Show history')
 
     await ctx.defer()
 
     if ctx.guild:
-        try:
-            registered_client = dbutils.get_client(user.id, ctx.guild.id)
-        except ValueError as e:
-            logger.info(e.args[0].replace('{name}', user.display_name))
-            await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
-            return
+        registered_client = dbutils.get_client(user.id, ctx.guild.id)
         registrations = [(registered_client, user)]
     else:
-        try:
-            registered_user = dbutils.get_user(user.id)
-            registrations = [(client, client.get_event_string()) for client in registered_user.clients]
-        except ValueError as e:
-            logger.info(e.args[0].replace('{name}', user.display_name))
-            await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
-            return
+        registered_user = dbutils.get_user(user.id)
+        registrations = [(client, client.get_event_string()) for client in registered_user.clients]
 
     if compare:
         members_raw = compare.split(' ')
@@ -276,16 +255,11 @@ async def history(ctx: SlashContext,
                             break
                     try:
                         member = ctx.guild.get_member(int(member_raw))
-                    except ValueError:
+                    except UserInputError:
                         # Could not cast to integer
                         continue
                     if member:
-                        try:
-                            registered_client = dbutils.get_client(member.id, ctx.guild.id)
-                        except ValueError as e:
-                            logger.info(e.args[0].replace('{name}', member.display_name))
-                            await ctx.send(e.args[0].replace('{name}', member.display_name), hidden=True)
-                            return
+                        registered_client = dbutils.get_client(member.id, ctx.guild.id)
                         registrations.append((registered_client, member.display_name))
 
     if currency is None:
@@ -316,9 +290,7 @@ async def history(ctx: SlashContext,
                                                     currency=currency)
 
         if len(user_data) == 0:
-            logger.error(f'No data for this user!')
-            await ctx.send(content=f'Got no data for this user')
-            return
+            raise UserInputError(f'Got no data for {name}!')
 
         xs, ys = calc_xs_ys(user_data, percentage)
 
@@ -410,6 +382,7 @@ def calc_gains(clients: List[Client],
         )
     ]
 )
+@utils.log_and_catch_user_input_errors()
 @utils.time_args(names=[('time', None)])
 @utils.set_author_default(name='user')
 async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, currency: str = None):
@@ -417,18 +390,12 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
         currency = '$'
     currency = currency.upper()
 
-    logger.info(f'New Interaction with {ctx.author}: Calculate gain for {de_emojify(user.display_name)} {time=}')
-
-    try:
-        if ctx.guild:
-            registered_client = dbutils.get_client(user.id, ctx.guild_id)
-            clients = [registered_client]
-        else:
-            user = dbutils.get_user(ctx.author_id)
-            clients = user.clients
-    except ValueError as e:
-        await ctx.send(content=e.args[0].replace('{name}', user.display_name))
-        return
+    if ctx.guild:
+        registered_client = dbutils.get_client(user.id, ctx.guild_id)
+        clients = [registered_client]
+    else:
+        user = dbutils.get_user(ctx.author_id)
+        clients = user.clients
 
     since_start = time is None
     time_str = utils.readable_time(time)
@@ -504,6 +471,7 @@ def get_available_exchanges() -> str:
         )
     ]
 )
+@utils.log_and_catch_user_input_errors(log_args=False)
 async def register_user(ctx: SlashContext,
                         exchange_name: str,
                         api_key: str,
@@ -513,8 +481,6 @@ async def register_user(ctx: SlashContext,
                         args: str = None):
     if guild:
         guild = int(guild)
-
-    logger.info(f'New Interaction with {ctx.author.display_name}: Trying to register user')
 
     await ctx.defer(hidden=True)
 
@@ -528,7 +494,7 @@ async def register_user(ctx: SlashContext,
                 try:
                     name, value = arg.split('=')
                     kwargs[name] = value
-                except ValueError:
+                except UserInputError:
                     await ctx.send(
                         f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...',
                         hidden=True)
@@ -617,15 +583,12 @@ async def register_user(ctx: SlashContext,
     description="Registers your global access to an ongoing event.",
     options=[]
 )
+@utils.log_and_catch_user_input_errors()
 @server_only
 async def register_existing(ctx: SlashContext):
 
-    try:
-        event = dbutils.get_event(guild_id=ctx.guild_id, registration=True)
-        user = dbutils.get_user(ctx.author_id)
-    except ValueError as e:
-        await ctx.send(content=e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
-        return
+    event = dbutils.get_event(guild_id=ctx.guild_id, registration=True)
+    user = dbutils.get_user(ctx.author_id)
 
     if event.is_free_for_registration:
         if user.global_client:
@@ -645,13 +608,13 @@ async def register_existing(ctx: SlashContext):
     description="Shows you all ongoing events",
     options=[]
 )
+@utils.log_and_catch_user_input_errors()
 @server_only
 async def event_show(ctx: SlashContext):
-    logging.info(f'Show events: {ctx.author=} {ctx.guild=}')
 
     try:
         event = dbutils.get_event(ctx.guild_id, channel_id=ctx.channel_id)
-    except ValueError as e:
+    except UserInputError as e:
         await ctx.send(e.args[0], hidden=True)
         logging.info('No event registered.')
         return
@@ -680,8 +643,9 @@ async def event_show(ctx: SlashContext):
         ]
     ]
 )
-@server_only
+@utils.log_and_catch_user_input_errors()
 @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)], allow_future=True)
+@server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime, registration_start: datetime, registration_end: datetime):
 
     now = datetime.now()
@@ -734,23 +698,17 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
     await ctx.send(embed=event.get_discord_embed(), components=[row], hidden=True)
 
 
-
 @slash.slash(
     name="unregister",
     description="Unregisters you from tracking",
     options=[]
 )
+@utils.log_and_catch_user_input_errors()
 async def unregister(ctx, guild: str = None):
     if guild:
         guild = int(guild)
 
-    logger.info(f'New Interaction with {ctx.author.display_name}: Trying to unregister user {ctx.author.display_name}')
-
-    try:
-        client = dbutils.get_client(ctx.author.id, guild)
-    except ValueError as e:
-        await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
-        return
+    client = dbutils.get_client(ctx.author.id, guild)
 
     def unregister_user():
         user_manager.remove_client(client)
@@ -760,7 +718,7 @@ async def unregister(ctx, guild: str = None):
         slash,
         author_id=ctx.author.id,
         yes_callback=unregister_user,
-        yes_message="You were succesfully urnegistered!",
+        yes_message="You were succesfully unregistered!",
         no_message="Unregistration cancelled",
         hidden=True
     )
@@ -778,16 +736,9 @@ async def unregister(ctx, guild: str = None):
     description="Shows your stored information",
     options=[]
 )
+@utils.log_and_catch_user_input_errors()
 async def info(ctx, guild=None):
-
-    try:
-        user = dbutils.get_user(ctx.author_id)
-    except ValueError as e:
-        await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
-        return
-
-    trades = Trade.query.all()
-
+    user = dbutils.get_user(ctx.author_id)
     await ctx.send(content='', embed=user.get_discord_embed(), hidden=True)
 
 
@@ -809,18 +760,13 @@ async def info(ctx, guild=None):
         )
     ]
 )
+@utils.log_and_catch_user_input_errors()
 @utils.time_args(names=[('since', None), ('to', None)])
 async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, guild: str = None):
-    logging.info(f'New interaction with {de_emojify(ctx.author.display_name)}: clear history {since=} {to=}')
-
     if guild:
         guild = int(guild)
 
-    try:
-        client = dbutils.get_client(ctx.author.id. ctx.guild_id)
-    except ValueError as e:
-        await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
-        return
+    client = dbutils.get_client(ctx.author.id. ctx.guild_id)
 
     from_to = ''
     if since:
@@ -848,7 +794,7 @@ async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, 
                    hidden=True)
 
 
-async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str, time: datetime = None):
+def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
     users_rekt: List[DiscordUser] = []
@@ -889,7 +835,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
 
         description += f'Gain {utils.readable_time(time)}\n\n'
 
-        client_gains = calc_gains(clients, ctx.guild_id, time)
+        client_gains = calc_gains(clients, guild.id, time)
 
         for client, client_gain in client_gains:
             if client_gain is not None:
@@ -902,9 +848,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
             else:
                 clients_missing.append(client)
     else:
-        logging.error(f'Unknown mode {mode} was passed in')
-        await ctx.send(f'Unknown mode {mode}')
-        return
+        raise UserInputError(f'Unknown mode {mode} was passed in')
 
     user_scores.sort(key=lambda x: x[1], reverse=True)
     rank = 1
@@ -944,12 +888,11 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
 
     description += f'\n{footer}'
 
-    embed = discord.Embed(
+    logger.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
+    return discord.Embed(
         title='Leaderboard :medal:',
         description=description
     )
-    logger.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
-    await ctx.send(content='', embed=embed)
 
 
 @slash.subcommand(
@@ -958,11 +901,11 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
     description="Shows you the highest ranked users by $ balance",
     options=[]
 )
+@utils.log_and_catch_user_input_errors()
 @server_only
 async def leaderboard_balance(ctx: SlashContext):
-    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
     await ctx.defer()
-    await create_leaderboard(ctx, guild=ctx.guild, mode='balance', time=None)
+    await ctx.send(content='', embed=create_leaderboard(guild=ctx.guild, mode='balance', time=None))
 
 
 @slash.subcommand(
@@ -978,13 +921,12 @@ async def leaderboard_balance(ctx: SlashContext):
         )
     ]
 )
+@utils.log_and_catch_user_input_errors()
 @utils.time_args(names=[('time', None)])
 @server_only
 async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
-    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
-
     await ctx.defer()
-    await create_leaderboard(ctx, guild=ctx.guild, mode='gain', time=time)
+    await ctx.send(content='', embed=create_leaderboard(guild=ctx.guild, mode='gain', time=time))
 
 
 @slash.slash(
@@ -1072,8 +1014,6 @@ async def on_rekt_async(user: DiscordUser):
         except AttributeError as e:
             logger.error(f'Error while sending message to guild {e}')
 
-    #user_manager.save_registered_users()
-
 
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
@@ -1147,6 +1087,8 @@ if args.migrate:
     load_user_data()
 
     print('Done migrating. Do not run this again.')
+
+    users = DiscordUser.query.all()
     exit()
 
 

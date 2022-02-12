@@ -1,6 +1,8 @@
 import re
 import logging
+from functools import wraps
 
+from errors import UserInputError
 from discord_slash.utils.manage_components import create_button, create_actionrow
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
@@ -16,6 +18,7 @@ from config import CURRENCY_PRECISION
 
 
 def dm_only(coro):
+    @wraps(coro)
     async def wrapper(ctx, *args, **kwargs):
         if ctx.guild:
             await ctx.send('This command can only be used via a Private Message.')
@@ -26,6 +29,7 @@ def dm_only(coro):
 
 
 def admin_only(coro):
+    @wraps(coro)
     async def wrapper(ctx: SlashContext, *args, **kwargs):
         if ctx.author.guild_permissions.administrator:
             return await coro(ctx, *args, **kwargs)
@@ -36,6 +40,7 @@ def admin_only(coro):
 
 
 def server_only(coro):
+    @wraps(coro)
     async def wrapper(ctx: SlashContext, *args, **kwargs):
         if not ctx.guild:
             await ctx.send('This command can only be used in a server.')
@@ -47,6 +52,7 @@ def server_only(coro):
 
 def set_author_default(name: str):
     def decorator(coro):
+        @wraps(coro)
         async def wrapper(ctx: SlashContext, *args, **kwargs):
             user = kwargs.get(name)
             if user is None:
@@ -57,21 +63,42 @@ def set_author_default(name: str):
 
 
 def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
+    """
+    Handy decorator for using time arguments.
+    After applying this decorator you also have to apply log_and_catch_user_input_errors
+    :param names: Tuple for each time argument: (argument name, default value)
+    :param allow_future: whether dates in the future are permitted
+    :return:
+    """
     def decorator(coro):
-        async def wrapper(ctx: SlashContext, *args, **kwargs):
+        @wraps(coro)
+        async def wrapper(*args, **kwargs):
             for name, default in names:
                 time_arg = kwargs.get(name)
                 if not time_arg:
                     time_arg = default
                 if time_arg:
-                    try:
-                        time = calc_time_from_time_args(time_arg, allow_future)
-                    except ValueError as e:
-                        logging.error(e.args[0].replace('{name}', ctx.author.display_name))
-                        await ctx.send(content=e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
-                        return
+                    time = calc_time_from_time_args(time_arg, allow_future)
                     kwargs[name] = time
-            return await coro(ctx, *args, **kwargs)
+            return await coro(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def log_and_catch_user_input_errors(log_args=True):
+    def decorator(coro):
+        @wraps(coro)
+        async def wrapper(ctx: SlashContext, *args, **kwargs):
+            logging.info(f'New Interaction: '
+                         f'Execute command {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} '
+                         f'guild={ctx.guild} {f"{args=}, {kwargs=}" if log_args else ""}')
+            try:
+                return await coro(ctx, *args, **kwargs)
+            except UserInputError as e:
+                if e.user_id:
+                    e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
+                await ctx.send(e.reason, hidden=True)
+                logging.error(f'Failed because of UserInputError: {de_emojify(e.reason)}')
         return wrapper
     return decorator
 
@@ -228,15 +255,15 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> datetime:
                     elif 'd' in arg:
                         day += int(arg.rstrip('d'))
                     else:
-                        raise ValueError
+                        raise UserInputError(f'Invalid time argument: {arg}')
                 except ValueError:  # Make sure both cases are treated the same
-                    raise ValueError(f'Invalid time argument: {arg}')
+                    raise UserInputError(f'Invalid time argument: {arg}')
         date = now - timedelta(hours=hour, minutes=minute, days=day, weeks=week)
 
     if not date:
-        raise ValueError(f'Invalid time argument: {time_str}')
+        raise UserInputError(f'Invalid time argument: {time_str}')
     elif date > now and not allow_future:
-        raise ValueError(f'Time delta can not be zero. {time_str}')
+        raise UserInputError(f'Future dates are not allowed. {time_str}')
 
     return date
 

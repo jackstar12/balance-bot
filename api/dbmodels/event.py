@@ -2,6 +2,7 @@ from api.database import db
 from api.dbmodels.serializer import Serializer
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
+import numpy
 import discord
 
 association = db.Table('association',
@@ -52,11 +53,35 @@ class Event(db.Model, Serializer):
     def get_summary_embed(self):
         embed = discord.Embed(title=f'Summary')
 
+        awards = discord.Embed(title=f'Awards')
+        description = ''
+
+        des
+
         trade_counts = [len(client.trades) for client in self.registrations]
         trade_counts.sort()
 
-        """
-        Most degen trader = add up percentage
-        """
+        volatility = [
+            (
+                client,
+                numpy.array(
+                    [balance.amount for balance in client.history]
+                ).std()
+            )
+            for client in self.registrations
+        ]
+        volatility.sort(key=lambda x: x[1], reverse=True)
+
+        description += f'**Most Degen Trader :grimacing:**\n' \
+                       f'{volatility[0][0].discorduser.name}\n'
+
+        description += f'\n**Still HODLing:sleeping:**\n' \
+                       f'{volatility[len(volatility) - 1][0].discorduser.name}\n'
+
+
+
+
+
+        description += '\n'
 
         return embed
