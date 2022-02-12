@@ -124,7 +124,7 @@ class BinanceSpot(_BinanceBaseClient):
     exchange = 'binance-spot'
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
-    def _get_balance(self, time=None):
+    def _get_balance(self, time: datetime):
         request = Request('GET', self.ENDPOINT + 'account')
         response = self._request(request)
 

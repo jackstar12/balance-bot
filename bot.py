@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import random
@@ -19,6 +20,7 @@ from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime
 
+from api.dbmodels.balance import balance_from_json
 from api.dbmodels.trade import Trade
 from eventmanager import EventManager, FutureCallback
 
@@ -27,7 +29,7 @@ import argparse
 
 #from models.discorduser import DiscordUser
 from clientworker import ClientWorker
-from api.dbmodels.discorduser import DiscordUser
+from api.dbmodels.discorduser import DiscordUser, add_user_from_json
 from api.dbmodels.user import User
 from api.dbmodels.event import Event
 from api.dbmodels.client import Client
@@ -1075,6 +1077,7 @@ async def on_rekt_async(user: DiscordUser):
 
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
+parser.add_argument("-m", "--migrate", action="store_true", help="Specifying this puts the current data into a database.")
 
 args = parser.parse_args()
 
@@ -1095,6 +1098,60 @@ if args.reset and os.path.exists(DATA_PATH):
     except FileNotFoundError as e:
         logger.info(f'Error while archiving data: {e}')
 
+
+api_thread = Thread(target=api.run)
+api_thread.daemon = True
+api_thread.start()
+
+if args.migrate:
+
+    def load_registered_users():
+        try:
+            with open(DATA_PATH + 'users.json', 'r') as f:
+                users_json = json.load(fp=f)
+                for user_json in users_json:
+                    try:
+                        add_user_from_json(user_json)
+                    except KeyError as e:
+                        logging.error(f'{e} occurred while parsing user data {user_json} from users.json')
+        except FileNotFoundError:
+            logging.info(f'No user information found')
+        except json.decoder.JSONDecodeError:
+            pass
+
+
+    def load_user_data():
+        try:
+            with open(DATA_PATH + "user_data.json", "r") as f:
+                raw_json = json.load(fp=f)
+                if raw_json:
+                    for ts, data in raw_json:
+                        time = datetime.fromtimestamp(ts)
+                        for user_id in data:
+                            user = DiscordUser.query.filter_by(user_id=user_id).first()
+                            if user:
+                                for key in data[user_id].keys():
+                                    balance = balance_from_json(data[user_id][key], time)
+                                    user.global_client.history.append(balance)
+                                    db.session.add(balance)
+                                    break
+        except FileNotFoundError:
+            logging.info('No user data found')
+        except json.JSONDecodeError as e:
+            logging.error(f'{e}: Error while parsing user data.')
+
+        db.session.commit()
+
+
+    load_registered_users()
+    load_user_data()
+
+    print('Done migrating. Do not run this again.')
+
+    users = DiscordUser.query.all()
+    exit()
+
+
 user_manager = UserManager(exchanges=EXCHANGES,
                            fetching_interval_hours=FETCHING_INTERVAL_HOURS,
                            data_path=DATA_PATH,
@@ -1102,9 +1159,5 @@ user_manager = UserManager(exchanges=EXCHANGES,
                            on_rekt_callback=lambda user: bot.loop.create_task(on_rekt_async(user)))
 
 event_manager = EventManager(discord_client=bot)
-
-api_thread = Thread(target=api.run)
-api_thread.daemon = True
-api_thread.start()
 
 bot.run(KEY)

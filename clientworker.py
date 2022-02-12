@@ -41,7 +41,10 @@ class ClientWorker:
             return None
         else:
             self._last_fetch = time
-        return self._get_balance(time)
+        balance = self._get_balance(time)
+        if not balance.time:
+            balance.time = time
+        return balance
 
     @abc.abstractmethod
     def _get_balance(self, time: datetime):

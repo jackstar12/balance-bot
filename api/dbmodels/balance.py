@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from api.database import db
 from config import CURRENCY_PRECISION
 from api.dbmodels.serializer import Serializer
@@ -36,3 +38,13 @@ class Balance(db.Model, Serializer):
                 string += ')'
 
         return string
+
+
+def balance_from_json(data: dict, time: datetime):
+    currency = data.get('currency', '$')
+    return Balance(
+        amount=round(data.get('amount', 0), ndigits=CURRENCY_PRECISION.get(currency, 3)),
+        currency=currency,
+        extra_currencies=data.get('extra_currencies', None),
+        time=time
+    )
