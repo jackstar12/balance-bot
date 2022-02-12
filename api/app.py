@@ -1,27 +1,24 @@
 import json
 from datetime import timezone, datetime, timedelta
+from http import HTTPStatus
 from typing import List, Tuple
 
+import bcrypt
 import flask_jwt_extended as flask_jwt
 from flask import request, jsonify
-from flask_restx import Api, Resource
-import bcrypt
+
 import api.dbutils as dbutils
 from api.database import db, app
-from api.dbmodels.user import User
 from api.dbmodels.client import Client
+from api.dbmodels.user import User
 from models.customencoder import CustomEncoder
 from usermanager import UserManager
-from http import HTTPStatus
 
 # Create database connection object
 jwt = flask_jwt.JWTManager(app)
 
 db.init_app(app)
-app.app_context().push()
 db.create_all(app=app)
-
-salt = bcrypt.gensalt()
 
 
 @app.after_request

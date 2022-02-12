@@ -1147,8 +1147,6 @@ if args.migrate:
     load_user_data()
 
     print('Done migrating. Do not run this again.')
-
-    users = DiscordUser.query.all()
     exit()
 
 

@@ -2,14 +2,17 @@ import base64
 
 from models.client import Client
 import hmac
+from datetime import datetime
+
 from requests import Request, Response, Session, HTTPError
 import urllib.parse
 import time
 import logging
-from models.balance import Balance
+from clientworker import ClientWorker
+from api.dbmodels.balance import Balance
 
 
-class KuCoinClient(Client):
+class KuCoinClient(ClientWorker):
     exchange = 'kucoin'
     ENDPOINT = 'https://api-futures.kucoin.com/'
 
@@ -18,7 +21,7 @@ class KuCoinClient(Client):
     ]
 
     # https://docs.kucoin.com/#get-account-balance-of-a-sub-account
-    def get_balance(self):
+    def _get_balance(self, time: datetime):
         request = Request('GET', self.ENDPOINT + 'api/v1/account-overview', params={'currency': 'USDT'})
         response = self._request(request)
         if response['code'] != '200000':

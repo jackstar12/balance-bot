@@ -1,19 +1,19 @@
 import hmac
-from models.client import Client
 from requests import Request, Response, Session, HTTPError
-from models.balance import Balance
+from api.dbmodels.balance import Balance
 import urllib.parse
 import time
 import logging
 from datetime import datetime
+from clientworker import ClientWorker
 
 
-class BitmexClient(Client):
+class BitmexClient(ClientWorker):
     exchange = 'bitmex'
     ENDPOINT = 'https://www.bitmex.com/api/v1/'
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
-    def get_balance(self):
+    def _get_balance(self, time: datetime):
         # Could do something like that for displaying a trade history
         # request = Request(
         #     'GET',

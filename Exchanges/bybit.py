@@ -4,14 +4,16 @@ import logging
 import hmac
 import json
 import sys
+from datetime import datetime
 
-from models.client import Client
+from clientworker import ClientWorker
+from api.dbmodels.balance import Balance
 from requests import Request, Response, Session, HTTPError
 from models.balance import Balance
 from typing import List, Tuple, Dict
 
 
-class BybitClient(Client):
+class BybitClient(ClientWorker):
     exchange = 'bybit'
     ENDPOINT = 'https://api.bybit.com/v2/'
 
@@ -19,7 +21,7 @@ class BybitClient(Client):
     type = str
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
-    def get_balance(self):
+    def _get_balance(self, time: datetime):
 
         request = Request(
             'GET',
