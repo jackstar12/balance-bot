@@ -10,7 +10,9 @@ from models.balance import Balance
 from models.trade import Trade
 from models.discorduser import DiscordUser
 from config import CURRENCY_ALIASES
+from models.balance import Balance
 from models.singleton import Singleton
+from models.trade import Trade
 
 import api.dbutils as dbutils
 from api.database import db, Session
