@@ -9,14 +9,12 @@ from typing import Dict, Callable
 
 import requests
 from requests import Request, HTTPError
-from Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 
 #from models.balance import Balance
 from clientworker import ClientWorker
 #from models.client import Client
 from api.dbmodels.client import Client
 from api.dbmodels.balance import Balance
-from api.dbmodels.trade import Trade
 
 
 class _BinanceBaseClient(ClientWorker):
@@ -57,20 +55,10 @@ class _BinanceBaseClient(ClientWorker):
         if response.status_code == 200:
             return response_json
 
-    def start_user_stream(self):
-        return None
-
-    def keep_alive(self, listenKey):
-        pass
-
 
 class BinanceFutures(_BinanceBaseClient):
     ENDPOINT = 'https://fapi.binance.com/'
     exchange = 'binance-futures'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._ws = FuturesWebsocketClient(self, self._on_message)
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     def _get_balance(self, time: datetime = None):
@@ -78,45 +66,6 @@ class BinanceFutures(_BinanceBaseClient):
         response = self._request(request)
 
         return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', time=time if time else datetime.now(), error=response.get('msg', None))
-
-    def start_user_stream(self):
-        request = Request(
-            method='POST',
-            url=self.ENDPOINT + 'fapi/v1/listenKey'
-        )
-        response = self._request(request)
-        if response.get('msg') is None:
-            return response['listenKey']
-        else:
-            return None
-
-    def keep_alive(self, listenKey):
-        request = Request(
-            method='PUT',
-            url=self.ENDPOINT + 'fapi/v1/listenKey'
-        )
-        self._request(request)
-
-    def set_on_trade_callback(self, callback: Callable[[Client, Trade], None]):
-        self._callback = callback
-        self._ws.start()
-
-    def _on_message(self, ws, message):
-        message = json.loads(message)
-        event = message['e']
-        data = message['o']
-        if event == 'ORDER_TRADE_UPDATE':
-            if data['X'] == 'FILLED' or True:
-                trade = Trade(
-                    symbol=data['s'],
-                    price=data['p'],
-                    qty=data['q'],
-                    side=data['S'],
-                    type='o',
-                    time=datetime.now()
-                )
-                if callable(self._callback):
-                    self._callback(self.client_id, trade)
 
 
 class BinanceSpot(_BinanceBaseClient):

@@ -1,19 +1,19 @@
 import hmac
-from models.client import Client
 from requests import Request, Response, Session, HTTPError
-from models.balance import Balance
+from api.dbmodels.balance import Balance
 import urllib.parse
 import time
 import logging
 from datetime import datetime
+from clientworker import ClientWorker
 
 
-class BitmexClient(Client):
+class BitmexClient(ClientWorker):
     exchange = 'bitmex'
     ENDPOINT = 'https://www.bitmex.com/api/v1/'
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
-    def get_balance(self):
+    def _get_balance(self, time: datetime):
         # Could do something like that for displaying a trade history
         # request = Request(
         #     'GET',
@@ -73,10 +73,10 @@ class BitmexClient(Client):
         if prepared.body is not None:
             request_signature += prepared.body
 
-        signature = hmac.new(self.api_secret.encode(), request_signature.encode(), 'sha256').hexdigest()
+        signature = hmac.new(self._api_secret.encode(), request_signature.encode(), 'sha256').hexdigest()
 
         request.headers['api-expires'] = str(ts)
-        request.headers['api-key'] = self.api_key
+        request.headers['api-key'] = self._api_key
         request.headers['api-signature'] = signature
 
     def _process_response(self, response: Response):

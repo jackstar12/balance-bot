@@ -1,24 +1,16 @@
-import json
 import logging
-import os
-import shutil
 from datetime import datetime, timedelta
-from threading import RLock, Timer, Thread
-from typing import List, Tuple, Dict, Callable, Optional, Any
-
-from models.balance import Balance
-from models.trade import Trade
-from models.discorduser import DiscordUser
-from config import CURRENCY_ALIASES
-from models.singleton import Singleton
+from threading import RLock, Timer
+from typing import List, Dict, Callable, Optional, Any
 
 import api.dbutils as dbutils
-from api.database import db, Session
-from api.dbmodels.discorduser import DiscordUser, add_user_from_json
-from api.dbmodels.balance import Balance, balance_from_json
+from api.database import db
+from api.dbmodels.balance import Balance
 from api.dbmodels.client import Client
-from api.dbmodels.event import Event
+from api.dbmodels.discorduser import DiscordUser
 from clientworker import ClientWorker
+from config import CURRENCY_ALIASES
+from models.singleton import Singleton
 
 
 class UserManager(Singleton):
@@ -97,7 +89,7 @@ class UserManager(Singleton):
         timer.daemon = True
         timer.start()
 
-    def fetch_data(self, clients: List[Client] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
+    def fetch_data(self, clients: List[Client] = None, guild_id: int = None):
         workers = [self._get_worker(client) for client in clients]
         self._db_fetch_data(workers, guild_id)
 
@@ -145,7 +137,6 @@ class UserManager(Singleton):
                 client_cls = self._exchanges[client.exchange]
                 if issubclass(client_cls, ClientWorker):
                     worker = client_cls(client)
-                    worker.set_on_trade_callback(self._on_trade)
                     self._add_worker(worker)
                 else:
                     logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
@@ -248,12 +239,6 @@ class UserManager(Singleton):
 
         logging.info(f'Done Fetching')
         return data
-
-    def _on_trade(self, client_id: int, trade: Trade):
-        client = Client.query.filter_by(id=client_id).first()
-        client.trades.append(trade)
-        db.session.commit()
-        logging.info('Got new Trade')
 
     def db_match_balance_currency(self, balance: Balance, currency: str):
         result = None

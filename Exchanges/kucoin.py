@@ -1,15 +1,17 @@
 import base64
 
-from models.client import Client
 import hmac
+from datetime import datetime
+
 from requests import Request, Response, Session, HTTPError
 import urllib.parse
 import time
 import logging
-from models.balance import Balance
+from clientworker import ClientWorker
+from api.dbmodels.balance import Balance
 
 
-class KuCoinClient(Client):
+class KuCoinClient(ClientWorker):
     exchange = 'kucoin'
     ENDPOINT = 'https://api-futures.kucoin.com/'
 
@@ -18,7 +20,7 @@ class KuCoinClient(Client):
     ]
 
     # https://docs.kucoin.com/#get-account-balance-of-a-sub-account
-    def get_balance(self):
+    def _get_balance(self, time: datetime):
         request = Request('GET', self.ENDPOINT + 'api/v1/account-overview', params={'currency': 'USDT'})
         response = self._request(request)
         if response['code'] != '200000':
@@ -36,16 +38,16 @@ class KuCoinClient(Client):
         if prepared.body is not None:
             signature_payload += prepared.body
         signature = base64.b64encode(
-            hmac.new(self.api_secret.encode('utf-8'), signature_payload.encode('utf-8'), 'sha256').digest()
+            hmac.new(self._api_secret.encode('utf-8'), signature_payload.encode('utf-8'), 'sha256').digest()
         )
         passphrase = base64.b64encode(
-            hmac.new(self.api_secret.encode('utf-8'), self.extra_kwargs['passphrase'].encode('utf-8'), 'sha256').digest()
+            hmac.new(self._api_secret.encode('utf-8'), self._extra_kwargs['passphrase'].encode('utf-8'), 'sha256').digest()
         )
-        request.headers['KC-api-KEY'] = self.api_key
-        request.headers['KC-api-TIMESTAMP'] = str(ts)
-        request.headers['KC-api-SIGN'] = signature
-        request.headers['KC-api-PASSPHRASE'] = passphrase
-        request.headers['KC-api-KEY-VERSION'] = '2'
+        request.headers['KC-API-KEY'] = self._api_key
+        request.headers['KC-API-TIMESTAMP'] = str(ts)
+        request.headers['KC-API-SIGN'] = signature
+        request.headers['KC-API-PASSPHRASE'] = passphrase
+        request.headers['KC-API-KEY-VERSION'] = '2'
 
     # https://docs.kucoin.com/#request
     def _process_response(self, response: Response) -> dict:

@@ -5,10 +5,6 @@ from typing import List, Callable
 from urllib.request import Request
 from requests import Request, Response, Session
 
-import api.database as db
-from api.dbmodels.trade import Trade
-from api.dbmodels.balance import Balance
-from api.dbmodels.event import Event
 from api.dbmodels.client import Client
 
 
@@ -50,9 +46,6 @@ class ClientWorker:
     def _get_balance(self, time: datetime):
         logging.error(f'Exchange {self.exchange} does not implement _get_balance')
         raise NotImplementedError(f'Exchange {self.exchange} does not implement _get_balance')
-
-    def set_on_trade_callback(self, callback: Callable[[int, Trade], None]):
-        self._on_trade = callback
 
     @abc.abstractmethod
     def _sign_request(self, request: Request):

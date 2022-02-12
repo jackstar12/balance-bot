@@ -4,45 +4,16 @@ import logging
 from datetime import datetime
 from typing import List, Callable
 
-from api.dbmodels.trade import Trade
 from api.dbmodels.balance import Balance
 from clientworker import ClientWorker
 import time
 import requests
 from requests import Request, Session
 
-from Exchanges.ftx.client import FtxWebsocketClient
-
 
 class FtxClient(ClientWorker):
     exchange = 'ftx'
     ENDPOINT = 'https://ftx.com/api/'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.ws = FtxWebsocketClient(api_key=self._api_key,
-                                     api_secret=self._api_secret,
-                                     subaccount=self._subaccount)
-
-    def set_on_trade_callback(self, callback: Callable[[int, Trade], None]):
-        super().set_on_trade_callback(callback)
-        self.ws.connect()
-        self.ws.get_fills()
-
-    def _on_message(self, ws, message):
-        if message['channel'] == 'fills':
-            if callable(self._on_trade):
-                self._on_trade(
-                    self.client_id,
-                    Trade(
-                        symbol=message['market'],
-                        side=message['side'],
-                        price=float(message['price']),
-                        qty=float(message['size']),
-                        type=message['type'],
-                        time=datetime.now()
-                    )
-                )
 
     # https://docs.ftx.com/#account
     def _get_balance(self, time: datetime):

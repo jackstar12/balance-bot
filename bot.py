@@ -21,7 +21,6 @@ from typing import List, Dict, Type, Tuple
 from datetime import datetime
 
 from api.dbmodels.balance import balance_from_json
-from api.dbmodels.trade import Trade
 from eventmanager import EventManager, FutureCallback
 
 import matplotlib.pyplot as plt
@@ -785,8 +784,6 @@ async def info(ctx, guild=None):
     except ValueError as e:
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
         return
-
-    trades = Trade.query.all()
 
     await ctx.send(content='', embed=user.get_discord_embed(), hidden=True)
 

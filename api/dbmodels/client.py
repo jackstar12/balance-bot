@@ -24,7 +24,6 @@ class Client(db.Model, Serializer):
     # Data
     name = db.Column(db.String, nullable=True)
     rekt_on = db.Column(db.DateTime, nullable=True)
-    trades = db.relationship('Trade', backref='client_trades', lazy=True)
     history = db.relationship('Balance', backref='client_history', lazy=True)
 
     required_extra_args: List[str] = []
