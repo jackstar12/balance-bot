@@ -1,18 +1,12 @@
-import abc
-import logging
-from datetime import datetime
-from typing import List, Callable
-from urllib.request import Request
-from requests import Request, Response, Session
+from typing import List
+
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from api.database import db
-from api.dbmodels.trade import Trade
-from api.dbmodels.balance import Balance
-from api.dbmodels.event import Event
+from api.dbmodels.serializer import Serializer
 
 
-class Client(db.Model):
+class Client(db.Model, Serializer):
     __tablename__ = 'client'
 
     # Identification

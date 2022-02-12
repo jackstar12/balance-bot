@@ -56,7 +56,7 @@ def set_author_default(name: str):
     return decorator
 
 
-def time_args(names: List[Tuple[str, Optional[str]]]):
+def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
     def decorator(coro):
         async def wrapper(ctx: SlashContext, *args, **kwargs):
             for name, default in names:
@@ -65,7 +65,7 @@ def time_args(names: List[Tuple[str, Optional[str]]]):
                     time_arg = default
                 if time_arg:
                     try:
-                        time = calc_time_from_time_args(time_arg)
+                        time = calc_time_from_time_args(time_arg, allow_future)
                     except ValueError as e:
                         logging.error(e.args[0].replace('{name}', ctx.author.display_name))
                         await ctx.send(content=e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
@@ -162,7 +162,7 @@ def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
     return result
 
 
-def calc_time_from_time_args(time_str: str) -> datetime:
+def calc_time_from_time_args(time_str: str, allow_future=False) -> datetime:
     """
     Calculates time from given time args.
     Arg Format:
@@ -235,7 +235,7 @@ def calc_time_from_time_args(time_str: str) -> datetime:
 
     if not date:
         raise ValueError(f'Invalid time argument: {time_str}')
-    elif date > now:
+    elif date > now and not allow_future:
         raise ValueError(f'Time delta can not be zero. {time_str}')
 
     return date

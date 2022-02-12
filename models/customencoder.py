@@ -13,12 +13,3 @@ class CustomEncoder(json.JSONEncoder):
 
         return json.JSONEncoder.default(self, o)
 
-
-class CustomDecoder(json.JSONDecoder):
-    def __init__(self, *args, **kwargs):
-        super().__init__(object_hook=self.object_hook, *args, **kwargs)
-
-    def object_hook(self, dct):
-
-        return dct
-

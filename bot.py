@@ -6,6 +6,7 @@ import discord.errors
 import typing
 import time
 import shutil
+from datetime import timedelta
 from threading import Thread
 
 import api.dbutils as dbutils
@@ -17,6 +18,8 @@ from discord_slash.utils.manage_commands import create_choice, create_option
 from discord.ext import commands
 from typing import List, Dict, Type, Tuple
 from datetime import datetime
+
+from api.dbmodels.trade import Trade
 from eventmanager import EventManager, FutureCallback
 
 import matplotlib.pyplot as plt
@@ -75,17 +78,19 @@ EXCHANGES: Dict[str, Type[ClientWorker]] = {
 
 @bot.event
 async def on_ready():
-    register_command: BaseCommandObject = slash.commands['register']
-    unregister_command: BaseCommandObject = slash.commands['unregister']
-    clear_command: BaseCommandObject = slash.commands['clear']
-    add_guild_option(bot.guilds, register_command,
-                     'Guild to register this access for. If not given, it will be global.')
-    add_guild_option(bot.guilds, unregister_command,
-                     'Which guild access to unregister. If not given, it will be global.')
-    add_guild_option(bot.guilds, clear_command,
-                     'Which guild to clear your data for. If not given, it will be global.')
+    #register_command: BaseCommandObject = slash.commands['register']
+    #unregister_command: BaseCommandObject = slash.commands['unregister']
+    #clear_command: BaseCommandObject = slash.commands['clear']
+    #add_guild_option(bot.guilds, register_command,
+    #                 'Guild to register this access for. If not given, it will be global.')
+    #add_guild_option(bot.guilds, unregister_command,
+    #                 'Which guild access to unregister. If not given, it will be global.')
+    #add_guild_option(bot.guilds, clear_command,
+    #                 'Which guild to clear your data for. If not given, it will be global.')
 
     user_manager.start_fetching()
+    event_manager.initialize_events()
+
 
     logger.info('Bot Ready')
     print('Bot Ready.')
@@ -98,6 +103,8 @@ async def on_ready():
             if e.status == 429:
                 print('We are being rate limited. Will retry in 10 seconds...')
                 time.sleep(10)
+            else:
+                raise e
     print('Done syncing')
 
 
@@ -227,7 +234,6 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
 )
 @utils.set_author_default(name='user')
 @utils.time_args(names=[('since', None), ('to', None)])
-@server_only
 async def history(ctx: SlashContext,
                   user: discord.Member = None,
                   compare: str = None,
@@ -238,14 +244,22 @@ async def history(ctx: SlashContext,
 
     await ctx.defer()
 
-    try:
-        registered_client = dbutils.get_client(user.id, ctx.guild.id)
-    except ValueError as e:
-        logger.info(e.args[0].replace('{name}', user.display_name))
-        await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
-        return
-
-    registrations = [(registered_client, user)]
+    if ctx.guild:
+        try:
+            registered_client = dbutils.get_client(user.id, ctx.guild.id)
+        except ValueError as e:
+            logger.info(e.args[0].replace('{name}', user.display_name))
+            await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
+            return
+        registrations = [(registered_client, user)]
+    else:
+        try:
+            registered_user = dbutils.get_user(user.id)
+            registrations = [(client, client.get_event_string()) for client in registered_user.clients]
+        except ValueError as e:
+            logger.info(e.args[0].replace('{name}', user.display_name))
+            await ctx.send(e.args[0].replace('{name}', user.display_name), hidden=True)
+            return
 
     if compare:
         members_raw = compare.split(' ')
@@ -270,15 +284,15 @@ async def history(ctx: SlashContext,
                             logger.info(e.args[0].replace('{name}', member.display_name))
                             await ctx.send(e.args[0].replace('{name}', member.display_name), hidden=True)
                             return
-                        registrations.append((registered_client, member))
+                        registrations.append((registered_client, member.display_name))
 
-    currency_raw = currency
     if currency is None:
         if len(registrations) > 1:
             currency = '%'
         else:
             currency = '$'
     currency = currency.upper()
+    currency_raw = currency
     if '%' in currency:
         percentage = True
         currency = currency.rstrip('%')
@@ -290,14 +304,14 @@ async def history(ctx: SlashContext,
 
     first = True
     title = ''
-    for registered_client, member in registrations:
+    for registered_client, name in registrations:
 
         user_manager.get_client_balance(registered_client, currency=currency)
-        user_data = user_manager.get_client_user_data(registered_client,
-                                                      guild_id=ctx.guild_id,
-                                                      start=since,
-                                                      end=to,
-                                                      currency=currency)
+        user_data = user_manager.get_client_history(registered_client,
+                                                    guild_id=ctx.guild_id,
+                                                    start=since,
+                                                    end=to,
+                                                    currency=currency)
 
         if len(user_data) == 0:
             logger.error(f'No data for this user!')
@@ -309,12 +323,12 @@ async def history(ctx: SlashContext,
         total_gain = calc_percentage(user_data[0].amount, user_data[len(ys) - 1].amount)
 
         if first:
-            title = f'History for {member.display_name} (Total: {total_gain}%)'
+            title = f'History for {name} (Total: {total_gain}%)'
             first = False
         else:
-            title += f' vs. {member.display_name} (Total: {total_gain}%)'
+            title += f' vs. {name} (Total: {total_gain}%)'
 
-        plt.plot(xs, ys, label=f"{member.display_name}'s {currency_raw} Balance")
+        plt.plot(xs, ys, label=f"{name}'s {currency_raw} Balance")
 
     plt.gcf().autofmt_xdate()
     plt.gcf().set_dpi(100)
@@ -335,9 +349,9 @@ async def history(ctx: SlashContext,
 def calc_gains(clients: List[Client],
                guild_id: int,
                search: datetime,
-               currency: str = None,
-               since_start=False) -> List[Tuple[DiscordUser, Tuple[float, float]]]:
+               currency: str = None) -> List[Tuple[DiscordUser, Tuple[float, float]]]:
     """
+    :param guild_id:
     :param clients: users to calculate gain for
     :param search: date since when gain should be calculated
     :param currency:
@@ -350,13 +364,9 @@ def calc_gains(clients: List[Client],
     if currency is None:
         currency = '$'
 
-    if search is None:
-        search = datetime.now()
-
     results = []
-
     for client in clients:
-        data = user_manager.get_client_user_data(client, guild_id, start=search)
+        data = user_manager.get_client_history(client, guild_id, start=search)
         if len(data) > 0:
             balance_then = user_manager.db_match_balance_currency(data[0], currency)
             balance_now = user_manager.db_match_balance_currency(data[len(data) - 1], currency)
@@ -421,8 +431,8 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
     since_start = time is None
     time_str = utils.readable_time(time)
 
-    user_manager.fetch_data(users=clients)
-    user_gains = calc_gains(clients, ctx.guild_id, time, currency, since_start=since_start)
+    user_manager.fetch_data(clients=clients)
+    user_gains = calc_gains(clients, ctx.guild_id, time, currency)
 
     for cur_client, user_gain in user_gains:
         guild = bot.get_guild(ctx.guild_id)
@@ -450,10 +460,9 @@ def get_available_exchanges() -> str:
     return exchange_list
 
 
-@slash.subcommand(
-    base="register",
-    name="user",
-    description=f"Register you for tracking.",
+@slash.slash(
+    name="register",
+    description="Register you for tracking.",
     options=[
         create_option(
             name="exchange_name",
@@ -491,7 +500,7 @@ def get_available_exchanges() -> str:
             required=False,
             option_type=3
         )
-    ],
+    ]
 )
 async def register_user(ctx: SlashContext,
                         exchange_name: str,
@@ -506,6 +515,8 @@ async def register_user(ctx: SlashContext,
     logger.info(f'New Interaction with {ctx.author.display_name}: Trying to register user')
 
     await ctx.defer(hidden=True)
+
+    active_event = dbutils.get_event(ctx.guild_id, throw_exceptions=False)
 
     kwargs = {}
     if args:
@@ -599,8 +610,54 @@ async def register_user(ctx: SlashContext,
         await ctx.send(f'Exchange {exchange_name} unknown')
 
 
-@slash.subcommand(
-    base='register',
+@slash.slash(
+    name="register_existing",
+    description="Registers your global access to an ongoing event.",
+    options=[]
+)
+@server_only
+async def register_existing(ctx: SlashContext):
+
+    try:
+        event = dbutils.get_event(guild_id=ctx.guild_id, registration=True)
+        user = dbutils.get_user(ctx.author_id)
+    except ValueError as e:
+        await ctx.send(content=e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
+        return
+
+    if event.is_free_for_registration:
+        if user.global_client:
+            if user.global_client not in event.registrations:
+                event.registrations.append(user.global_client)
+                await ctx.send('Success', hidden=True)
+            else:
+                await ctx.send('You are already registered for this event!', hidden=True)
+        else:
+            await ctx.send('You do not have a global access to use', hidden=True)
+    else:
+        await ctx.send(f'Event {event.name} is not available for registration', hidden=True)
+
+
+@slash.slash(
+    name="event_show",
+    description="Shows you all ongoing events",
+    options=[]
+)
+@server_only
+async def event_show(ctx: SlashContext):
+    logging.info(f'Show events: {ctx.author=} {ctx.guild=}')
+
+    try:
+        event = dbutils.get_event(ctx.guild_id, channel_id=ctx.channel_id)
+    except ValueError as e:
+        await ctx.send(e.args[0], hidden=True)
+        logging.info('No event registered.')
+        return
+
+    await ctx.send(embed=event.get_discord_embed(registrations=True))
+
+
+@slash.slash(
     name='event',
     description='Register an event for this guild.',
     options=[
@@ -613,6 +670,7 @@ async def register_user(ctx: SlashContext,
         for name, description in
         [
             ("name", "Name of the event"),
+            ("description", "Description of the event"),
             ("start", "Start of the event"),
             ("end", "End of the event"),
             ("registration_start", "Start of registration period"),
@@ -621,8 +679,14 @@ async def register_user(ctx: SlashContext,
     ]
 )
 @server_only
-@utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)])
-async def register_event(ctx: SlashContext, name: str, start: datetime, end: datetime, registration_start: datetime, registration_end: datetime):
+@utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)], allow_future=True)
+async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime, registration_start: datetime, registration_end: datetime):
+
+    now = datetime.now()
+    start = now + timedelta(seconds=20)
+    registration_start = now + timedelta(seconds=10)
+    registration_end = now + timedelta(seconds=30)
+    end = now + timedelta(seconds=40)
 
     if start >= end:
         await ctx.send("Start time can't be after end time.", hidden=True)
@@ -642,11 +706,13 @@ async def register_event(ctx: SlashContext, name: str, start: datetime, end: dat
 
     event = Event(
         name=name,
+        description=description,
         start=start,
         end=end,
         registration_start=registration_start,
         registration_end=registration_end,
-        guild_id=ctx.guild_id
+        guild_id=ctx.guild_id,
+        channel_id=ctx.channel_id
     )
 
     def register():
@@ -718,6 +784,8 @@ async def info(ctx, guild=None):
         await ctx.send(e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
         return
 
+    trades = Trade.query.all()
+
     await ctx.send(content='', embed=user.get_discord_embed(), hidden=True)
 
 
@@ -782,17 +850,28 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
     users_rekt: List[DiscordUser] = []
-    users_missing: List[DiscordUser] = []
+    clients_missing: List[DiscordUser] = []
 
     footer = ''
     description = ''
 
-    date, data = user_manager.fetch_data()
+    event = dbutils.get_event(guild.id, throw_exceptions=False)
 
-    event = dbutils.get_active_event(guild.id)
+    if event:
+        clients = event.registrations
+    else:
+        clients = []
+        # All global clients
+        users = DiscordUser.query.filter(DiscordUser.global_client_id).all()
+        for user in users:
+            member = guild.get_member(user.user_id)
+            if member:
+                clients.append(user.global_client)
+
+    user_manager.fetch_data(clients=clients)
 
     if mode == 'balance':
-        for client in event.registrations:
+        for client in clients:
             if client.rekt_on:
                 users_rekt.append(client)
             elif len(client.history) > 0:
@@ -803,15 +882,12 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
                 else:
                     users_rekt.append(client)
             else:
-                users_missing.append(client)
-
-        date = date.replace(microsecond=0)
+                clients_missing.append(client)
     elif mode == 'gain':
 
-        since_start = time is None
-        description += f'Gain since {utils.readable_time(time)}\n\n'
+        description += f'Gain {utils.readable_time(time)}\n\n'
 
-        client_gains = calc_gains(event.registrations, ctx.guild_id, time, since_start=since_start)
+        client_gains = calc_gains(clients, ctx.guild_id, time)
 
         for client, client_gain in client_gains:
             if client_gain is not None:
@@ -822,7 +898,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
                     user_scores.append((client, user_gain_rel))
                     value_strings[client] = f'{user_gain_rel}% ({user_gain_abs}$)'
             else:
-                users_missing.append(client)
+                clients_missing.append(client)
     else:
         logging.error(f'Unknown mode {mode} was passed in')
         await ctx.send(f'Unknown mode {mode}')
@@ -835,7 +911,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
     if len(user_scores) > 0:
         prev_score = None
         for client, score in user_scores:
-            member = guild.get_member(client.id)
+            member = guild.get_member(client.discorduser.user_id)
             if member:
                 if prev_score is not None and score < prev_score:
                     rank = rank_true
@@ -850,17 +926,17 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
     if len(users_rekt) > 0:
         description += f'\n**Rekt**\n'
         for user_rekt in users_rekt:
-            member = guild.get_member(user_rekt.id)
+            member = guild.get_member(user_rekt.discorduser.user_id)
             if member:
                 description += f'{member.display_name}'
                 if user_rekt.rekt_on:
                     description += f' since {user_rekt.rekt_on.replace(microsecond=0)}'
                 description += '\n'
 
-    if len(users_missing) > 0:
+    if len(clients_missing) > 0:
         description += f'\n**Missing**\n'
-        for user_missing in users_missing:
-            member = guild.get_member(user_missing.id)
+        for client_missing in clients_missing:
+            member = guild.get_member(client_missing.discorduser.user_id)
             if member:
                 description += f'{member.display_name}\n'
 
@@ -882,8 +958,7 @@ async def create_leaderboard(ctx: SlashContext, guild: discord.Guild, mode: str,
 )
 @server_only
 async def leaderboard_balance(ctx: SlashContext):
-    logger.info(
-        f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
+    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
     await ctx.defer()
     await create_leaderboard(ctx, guild=ctx.guild, mode='balance', time=None)
 
@@ -904,8 +979,7 @@ async def leaderboard_balance(ctx: SlashContext):
 @utils.time_args(names=[('time', None)])
 @server_only
 async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
-    logger.info(
-        f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
+    logger.info(f'New Interaction: Creating balance leaderboard, requested by user {de_emojify(ctx.author.display_name)}')
 
     await ctx.defer()
     await create_leaderboard(ctx, guild=ctx.guild, mode='gain', time=time)
@@ -1027,7 +1101,7 @@ user_manager = UserManager(exchanges=EXCHANGES,
                            rekt_threshold=REKT_THRESHOLD,
                            on_rekt_callback=lambda user: bot.loop.create_task(on_rekt_async(user)))
 
-event_manager = EventManager()
+event_manager = EventManager(discord_client=bot)
 
 api_thread = Thread(target=api.run)
 api_thread.daemon = True

@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 from datetime import datetime, timedelta
-from threading import Lock, Timer
+from threading import RLock, Timer, Thread
 from typing import List, Tuple, Dict, Callable, Optional, Any
 
 from models.balance import Balance, balance_from_json
@@ -14,7 +14,7 @@ from config import CURRENCY_ALIASES
 from models.singleton import Singleton
 
 import api.dbutils as dbutils
-from api.database import db
+from api.database import db, Session
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.balance import Balance
 from api.dbmodels.client import Client
@@ -39,7 +39,7 @@ class UserManager(Singleton):
         self.on_rekt_callback = on_rekt_callback
 
         self._db = db
-        self._db_lock = Lock()
+        self._db_lock = RLock()
         # Privates
         self._users = []
         self._users_by_id: Dict[int, Dict[int, DiscordUser]] = {}  # { user_id: { guild_id: User} }
@@ -48,10 +48,10 @@ class UserManager(Singleton):
         self._user_data: List[Tuple[datetime, Dict[int, Dict[int, Balance]]]] = []
         self._user_trades: Dict[DiscordUser, List[Trade]] = {}
         self._workers: List[ClientWorker] = []
-        self._worker_lock = Lock()
+        self._worker_lock = RLock()
 
-        self._user_lock = Lock()
-        self._data_lock = Lock()
+        self._user_lock = RLock()
+        self._data_lock = RLock()
 
         self._last_full_fetch = {}
         self._saves_since_backup = 0
@@ -69,6 +69,9 @@ class UserManager(Singleton):
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
         self.synch_workers()
+
+    def set_flask_app(self, app):
+        self._app = app
 
     def load_registered_users(self):
         try:
@@ -92,7 +95,7 @@ class UserManager(Singleton):
                     self._users_by_id[user.id] = {}
                 self._users_by_id[user.id][user.guild_id] = user
                 self._users.append(user)
-                user.api.on_trade(self._on_trade, user)
+                user.api.set_on_trade_callback(self._on_trade, user)
 
     def _add_worker(self, worker: ClientWorker):
         with self._worker_lock:
@@ -123,13 +126,10 @@ class UserManager(Singleton):
 
     def start_fetching(self):
         """
-                Start fetching data at specified interval
-                """
+        Start fetching data at specified interval
+        """
 
-        with self._data_lock:
-            self._user_data.append(self._fetch_data(set_full_fetch=True))
-
-        self._save_user_data()
+        self._db_fetch_data(set_full_fetch=True)
 
         time = datetime.now()
         next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
@@ -140,20 +140,16 @@ class UserManager(Singleton):
         timer.daemon = True
         timer.start()
 
-    def fetch_data(self, users: List[Client] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
-        with self._data_lock:
-            time, data = self._user_data[len(self._user_data) - 1]
-            if not self._fetched_recently(guild_id, time_tolerance_seconds):
-                time, data = self._fetch_data(users=users, guild_id=guild_id, set_full_fetch=True)
-                self._user_data.append((time, data))
-        return time, data
+    def fetch_data(self, clients: List[Client] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
+        workers = [self._get_worker(client) for client in clients]
+        self._db_fetch_data(workers, guild_id)
 
-    def get_user_balance(self, user: DiscordUser, currency: str = None, force_fetch=False) -> Balance:
+    def get_user_balance(self, user: DiscordUser, guild_id: int, currency: str = None, force_fetch=False) -> Balance:
 
         if currency is None:
             currency = '$'
 
-        data = self._db_fetch_data(workers=[self._get_worker(user.user_id, )], keep_errors=True, force_fetch=force_fetch)
+        data = self._db_fetch_data(workers=[self._get_worker_event(user.user_id, guild_id)], keep_errors=True, force_fetch=force_fetch)
 
         result = data[0]
 
@@ -192,7 +188,7 @@ class UserManager(Singleton):
                 client_cls = self._exchanges[client.exchange]
                 if issubclass(client_cls, ClientWorker):
                     worker = client_cls(client)
-                    worker.on_trade(self._on_trade)
+                    worker.set_on_trade_callback(self._on_trade)
                     self._add_worker(worker)
                 else:
                     logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
@@ -207,7 +203,7 @@ class UserManager(Singleton):
 
     def _get_worker_event(self, user_id, guild_id):
         with self._worker_lock:
-            event = dbutils.get_active_event(guild_id)
+            event = dbutils.get_event(guild_id)
             return self._workers_by_id[event.id if event else None].get(user_id)
 
     def get_balance_from_data(self, data, user_id: int, guild_id: int = None, exact=False) -> Optional[Balance]:
@@ -220,12 +216,12 @@ class UserManager(Singleton):
 
         return balance
 
-    def get_client_user_data(self,
-                             client: Client,
-                             guild_id: int,
-                             start: datetime = None,
-                             end: datetime = None,
-                             currency: str = None) -> List[Balance]:
+    def get_client_history(self,
+                           client: Client,
+                           guild_id: int,
+                           start: datetime = None,
+                           end: datetime = None,
+                           currency: str = None) -> List[Balance]:
 
         start, end = dbutils.get_guild_start_end_times(guild_id, start, end)
         if currency is None:
@@ -256,16 +252,10 @@ class UserManager(Singleton):
             if start <= balance.time <= end:
                 client.history.remove(balance)
 
-        if len(client.history) > 0:
-            client.history.append()
+        if len(client.history) > 0 and update_initial_balance:
+            self.get_client_balance(client)
 
         db.session.commit()
-
-    def _fetched_recently(self, guild_id: int = None, time_tolerance_seconds: float = 60):
-        last_fetch = self._last_full_fetch.get(guild_id)
-        if not last_fetch:
-            last_fetch = self._last_full_fetch.get(None)
-        return datetime.now() - last_fetch < timedelta(seconds=time_tolerance_seconds)
 
     def _db_fetch_data(self, workers: List[ClientWorker] = None, guild_id: int = None, keep_errors: bool = False,
                        set_full_fetch=False, force_fetch=False) -> List[Balance]:
@@ -285,68 +275,33 @@ class UserManager(Singleton):
             data = []
             logging.info(f'Fetching data for {len(workers)} users {keep_errors=}')
             for worker in workers:
+                if not worker:
+                    continue
+                client = Client.query.filter_by(id=worker.client_id).first()
                 # TODO: Think about non event members
-                if worker.client.rekt_on and not force_fetch:
+                if client.rekt_on and not force_fetch:
                     balance = Balance(0.0, '$', None)
                 else:
                     balance = worker.get_balance(time)
-                if balance.error:
-                    logging.error(f'Error while fetching user {worker} balance: {balance.error}')
-                    if keep_errors:
+                if balance:
+                    if balance.error:
+                        logging.error(f'Error while fetching user {worker} balance: {balance.error}')
+                        if keep_errors:
+                            data.append(balance)
+                            client.history.append(balance)
+                    else:
+                        client.history.append(balance)
                         data.append(balance)
-                        worker.client.history.append(balance)
+                        if balance.amount <= self.rekt_threshold and not client.rekt_on:
+                            client.rekt_on = time
+                            if callable(self.on_rekt_callback):
+                                self.on_rekt_callback(worker)
                 else:
-                    worker.client.history.append(balance)
-                    data.append(balance)
-                    if balance.amount <= self.rekt_threshold and not worker.client.rekt_on:
-                        worker.client.rekt_on = time
-                        if callable(self.on_rekt_callback):
-                            self.on_rekt_callback(worker)
+                    data.append(client.history[len(client.history) - 1])
             db.session.commit()
 
         logging.info(f'Done Fetching')
         return data
-
-    def _fetch_data(self, users: List[DiscordUser] = None, guild_id: int = None, keep_errors: bool = False,
-                    set_full_fetch=False, force_fetch=False) -> Tuple[datetime, Dict[int, Dict[int, Balance]]]:
-        """
-        :return:
-        Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
-        """
-        time = datetime.now()
-
-        if set_full_fetch:
-            self._last_full_fetch[guild_id] = time
-
-        with self._user_lock:
-            if users is None:
-                users = self._users
-
-            data = {}
-            logging.info(f'Fetching data for {len(users)} users {keep_errors=}')
-            for user in users:
-                if not guild_id or guild_id == user.guild_id or user.guild_id:
-                    if user.rekt_on and not force_fetch:
-                        balance = Balance(0.0, '$', None)
-                    else:
-                        balance = user.api.get_balance(datetime)
-                    if balance.error:
-                        logging.error(f'Error while fetching user {user} balance: {balance.error}')
-                        if keep_errors:
-                            if user.id not in data:
-                                data[user.id] = {}
-                            data[user.id][user.guild_id] = balance
-                    else:
-                        if user.id not in data:
-                            data[user.id] = {}
-                        data[user.id][user.guild_id] = balance
-                        if balance.amount <= self.rekt_threshold and not user.rekt_on:
-                            user.rekt_on = time
-                            if callable(self.on_rekt_callback):
-                                self.on_rekt_callback(user)
-
-        logging.info(f'Done Fetching')
-        return time, data
 
     def _save_user_data(self):
 
@@ -437,11 +392,11 @@ class UserManager(Singleton):
         except json.JSONDecodeError as e:
             logging.error(f'{e}: Error while parsing user data.')
 
-    def _on_trade(self, client: Client, trade: Trade):
-        with self._db_lock:
-            trade.client = client
-            db.session.add(trade)
-            logging.info('Got new Trade')
+    def _on_trade(self, client_id: int, trade: Trade):
+        client = Client.query.filter_by(id=client_id).first()
+        client.trades.append(trade)
+        db.session.commit()
+        logging.info('Got new Trade')
 
     def _append_from_json(self, ts: int, user_json: dict):
         user_data = {}

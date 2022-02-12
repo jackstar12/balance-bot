@@ -1,11 +1,12 @@
 from typing import List, Dict, Callable
-from models.event import Event
 from dataclasses import dataclass
 from datetime import datetime
-from threading import Timer, Lock
+from threading import Timer, RLock
 from api.dbmodels.event import Event
 from usermanager import UserManager
 import logging
+from api.database import db
+import discord
 
 
 @dataclass
@@ -16,71 +17,91 @@ class FutureCallback:
 
 class EventManager:
 
-    def __init__(self, discord_client):
+    def __init__(self, discord_client: discord.Client):
         self._scheduled: List[FutureCallback] = []
-        self._schedule_lock = Lock()
+        self._schedule_lock = RLock()
         self._cur_timer = None
         self._um = UserManager()
         self._dc_client = discord_client
 
+    def initialize_events(self):
+        events = Event.query.all()
+        for event in events:
+            self.register(event)
+
+    def _get_event_channel(self, event: Event):
+        guild = self._dc_client.get_guild(event.guild_id)
+        return guild.get_channel(event.channel_id)
+
+    async def _event_start(self, event: Event):
+        self._um.synch_workers()
+        await self._get_event_channel(event).send(content=f'Event **{event.name}** just started!',
+                                                  embed=event.get_discord_embed(registrations=True))
+
+    async def _event_end(self, event: Event):
+        await self._get_event_channel(event).send(content=f'Event **{event.name}** just ended! Here\'s a little summary', embed=event.get_summary_embed())
+        self._um.synch_workers()
+        Event.query.filter_by(id=event.id).delete()
+        db.session.commit()
+
+    async def _event_registration_start(self, event: Event):
+        await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has started!')
+
+    async def _event_registration_end(self, event: Event):
+        await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has ended!')
+
     def register(self, event: Event):
-        self._schedule(
-            FutureCallback(
-                time=event.start,
-                callback=self._event_start
-            )
-        )
-        self._schedule(
-            FutureCallback(
-                time=event.end,
-                callback=self._event_end
-            )
-        )
+        event_callbacks = [
+            (event.start, lambda: self._event_start(event)),
+            (event.end, lambda: self._event_end(event)),
+            (event.registration_start, lambda: self._event_registration_start(event)),
+            (event.registration_end, lambda: self._event_registration_end(event))
+        ]
+        now = datetime.now()
+        for time, callback in event_callbacks:
+            if time > now:
+                self._schedule(
+                    FutureCallback(
+                        time=time,
+                        callback=self._wrap_async(callback)
+                    )
+                )
 
-    async def _event_start(self, event):
-
-        try:
-            guild = self._dc_client.get_guild(event.guild_id)
-            channel = guild.get_channel(event.channel_id)
-            embed = event.get_discord_embed()
-            await channel.send(content=f'Event **{event.name}** just started!', embed=embed)
-            member = guild.get_member(user.user_id)
-            if member:
-                message_replaced = message.replace("{name}", member.display_name)
-                embed = discord.Embed(description=message_replaced)
-                await channel.send(embed=embed)
-        except AttributeError as e:
-            logging.error(f'Error while sending message to guild {e}')
-
-
-    async def _event_end(self, event):
-        pass
-
-    def _event_registration_start(self, event):
-        pass
-
-    def _event_registration_end(self, event):
-        pass
+    def _wrap_async(self, coro):
+        def func():
+            self._dc_client.loop.create_task(coro())
+        return func
 
     def _schedule(self, callback: FutureCallback):
-        self._scheduled.append(callback)
-        if len(self._scheduled) == 1:
-            self._execute()
-        else:
-            self._scheduled.sort(key=lambda x: x.time)
+        with self._schedule_lock:
+            self._scheduled.append(callback)
+            if len(self._scheduled) == 1:
+                self._execute()
+            else:
+                # Execution has to be restarted if the callback to schedule happens before the current waiting callback
+                if callback.time < self._scheduled[0].time:
+                    self._cur_timer.cancel()
+                    self._scheduled.sort(key=lambda x: x.time)
+                    self._execute()
+                else:
+                    self._scheduled.sort(key=lambda x: x.time)
 
     def _execute(self):
-        if len(self._scheduled) > 0:
-            cur_event = self._scheduled[0]
-            diff_seconds = (cur_event.time - datetime.now()).total_seconds()
+        with self._schedule_lock:
+            if len(self._scheduled) > 0:
+                cur_event = self._scheduled[0]
+                diff_seconds = (cur_event.time - datetime.now()).total_seconds()
 
-            def wrapper():
-                self._scheduled.remove(cur_event)
-                try:
-                    cur_event.callback()
-                except Exception as e:
-                    logging.error(f'Unhandled exception during event callback {cur_event.callback}: {e}')
-                self._execute()
+                def wrapper():
+                    try:
+                        cur_event.callback()
+                    except Exception as e:
+                        logging.error(f'Unhandled exception during event callback {cur_event.callback}: {e}')
+                    with self._schedule_lock:
+                        if cur_event in self._scheduled:
+                            self._scheduled.remove(cur_event)
+                    self._execute()
 
-            self._cur_timer = Timer(diff_seconds, wrapper)
-            self._cur_timer.start()
+                self._cur_timer = Timer(diff_seconds, wrapper)
+                self._cur_timer.daemon = True
+                self._cur_timer.start()

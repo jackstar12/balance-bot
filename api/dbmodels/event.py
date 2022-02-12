@@ -1,4 +1,5 @@
 from api.database import db
+from api.dbmodels.serializer import Serializer
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 import discord
@@ -9,7 +10,7 @@ association = db.Table('association',
                        )
 
 
-class Event(db.Model):
+class Event(db.Model, Serializer):
     __tablename__ = 'event'
     id = db.Column(db.Integer, primary_key=True)
     guild_id = db.Column(db.Integer, nullable=False)
@@ -31,11 +32,13 @@ class Event(db.Model):
         return self.registration_start <= datetime.now() <= self.registration_end
 
     def get_discord_embed(self, registrations=False):
-        embed = discord.Embed(title=f'Event **{self.name}**')
+        embed = discord.Embed(title=f'Event')
+        embed.add_field(name="Name", value=self.name)
+        embed.add_field(name="Description", value=self.description, inline=False)
         embed.add_field(name="Start", value=self.start)
-        embed.add_field(name="End", value=self.end)
+        embed.add_field(name="End", value=self.end, inline=False)
         embed.add_field(name="Registration Start", value=self.registration_start)
-        embed.add_field(name="Registration End", value=self.registration_end)
+        embed.add_field(name="Registration End", value=self.registration_end, inline=False)
 
         if registrations:
             value = ''
@@ -46,4 +49,14 @@ class Event(db.Model):
 
         return embed
 
+    def get_summary_embed(self):
+        embed = discord.Embed(title=f'Summary')
 
+        trade_counts = [len(client.trades) for client in self.registrations]
+        trade_counts.sort()
+
+        """
+        Most degen trader = add up percentage
+        """
+
+        return embed

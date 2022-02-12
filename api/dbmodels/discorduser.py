@@ -1,8 +1,9 @@
 from api.database import db
 import discord
+from api.dbmodels.serializer import Serializer
 
 
-class DiscordUser(db.Model):
+class DiscordUser(db.Model, Serializer):
     __tablename__ = 'discorduser'
     id = db.Column(db.Integer(), primary_key=True)
     user_id = db.Column(db.Integer(), nullable=False)

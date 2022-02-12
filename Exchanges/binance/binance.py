@@ -23,10 +23,10 @@ class _BinanceBaseClient(ClientWorker):
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
-        request.headers['X-MBX-APIKEY'] = self.client.api_key
+        request.headers['X-MBX-APIKEY'] = self._api_key
         request.params['timestamp'] = ts
         query_string = urllib.parse.urlencode(request.params, True)
-        signature = hmac.new(self.client.api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
+        signature = hmac.new(self._api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
         request.params['signature'] = signature
 
     def _process_response(self, response: requests.Response) -> dict:
@@ -73,7 +73,7 @@ class BinanceFutures(_BinanceBaseClient):
         self._ws = FuturesWebsocketClient(self, self._on_message)
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
-    def get_balance(self, time: datetime):
+    def _get_balance(self, time: datetime = None):
         request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
         response = self._request(request)
 
@@ -97,7 +97,7 @@ class BinanceFutures(_BinanceBaseClient):
         )
         self._request(request)
 
-    def on_trade(self, callback: Callable[[Client, Trade], None]):
+    def set_on_trade_callback(self, callback: Callable[[Client, Trade], None]):
         self._callback = callback
         self._ws.start()
 
@@ -116,7 +116,7 @@ class BinanceFutures(_BinanceBaseClient):
                     time=datetime.now()
                 )
                 if callable(self._callback):
-                    self._callback(self.client, trade)
+                    self._callback(self.client_id, trade)
 
 
 class BinanceSpot(_BinanceBaseClient):
@@ -124,7 +124,7 @@ class BinanceSpot(_BinanceBaseClient):
     exchange = 'binance-spot'
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
-    def get_balance(self, time):
+    def _get_balance(self, time=None):
         request = Request('GET', self.ENDPOINT + 'account')
         response = self._request(request)
 

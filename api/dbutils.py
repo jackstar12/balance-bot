@@ -14,7 +14,7 @@ def get_client(user_id: int,
     user = DiscordUser.query.filter_by(user_id=user_id).first()
     if user:
         if guild_id:
-            event = Event.query.filter_by(guild_id=guild_id).first()
+            event = get_event(guild_id, throw_exceptions=False)
             if event:
                 for client in event.registrations:
                     if client.discorduser.user_id == user_id:
@@ -29,12 +29,23 @@ def get_client(user_id: int,
         raise ValueError("User {name} is not registered")
 
 
-def get_active_event(guild_id: int, throw_exceptions=True) -> Optional[Event]:
-    event = Event.query.filter_by(guild_id=guild_id).first()
-    if not event and throw_exceptions:
-        raise ValueError('There is no active event')
+def get_event(guild_id: int, channel_id: int = None, registration=False, throw_exceptions=True) -> Optional[Event]:
+    events = Event.query.filter(
+        Event.guild_id == guild_id
+    ).all()
+    for event in events:
+        if registration and event.is_free_for_registration:
+            return event
+        elif not registration and event.is_active:
+            return event
 
-    return event
+    if throw_exceptions:
+        raise ValueError(f'There is no {"event you can register for" if registration else "active event"}')
+    return None
+
+
+def get_all_events(guild_id: int, channel_id):
+    pass
 
 
 def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
@@ -49,14 +60,16 @@ def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
     """
     result = DiscordUser.query.filter_by(user_id=user_id).first()
     if not result and throw_exceptions:
-        raise ValueError("User {name} does not have a global registration")
+        raise ValueError("User {name} is not registered")
     return result
 
 
 def get_guild_start_end_times(guild_id, start, end):
-    event = Event.query.filter_by(guild_id=guild_id).first()
+    start = datetime.fromtimestamp(0) if not start else start
+    end = datetime.now() if not end else end
+    event = get_event(guild_id, throw_exceptions=False)
     if event:
         # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
         return max(start, event.start), min(end, event.end)
     else:
-        return datetime.fromtimestamp(0), datetime.now()
+        return start, end
