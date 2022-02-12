@@ -1,3 +1,4 @@
+from functools import wraps
 from typing import List, Dict, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -68,6 +69,7 @@ class EventManager:
                 )
 
     def _wrap_async(self, coro):
+        @wraps(coro)
         def func():
             self._dc_client.loop.create_task(coro())
         return func

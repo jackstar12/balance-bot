@@ -6,6 +6,7 @@ from api.dbmodels.balance import Balance
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.event import Event
 from typing import Optional
+from errors import UserInputError
 
 
 def get_client(user_id: int,
@@ -20,13 +21,13 @@ def get_client(user_id: int,
                     if client.discorduser.user_id == user_id:
                         return client
                 if throw_exceptions:
-                    raise ValueError("User {name} is not registered for this event")
+                    raise UserInputError("User {name} is not registered for this event", user_id)
         if user.global_client_id:
             return Client.query.filter_by(id=user.global_client_id).first()
         elif throw_exceptions:
-            raise ValueError("User {name} does not have a global registration")
+            raise UserInputError("User {name} does not have a global registration", user_id)
     elif throw_exceptions:
-        raise ValueError("User {name} is not registered")
+        raise UserInputError("User {name} is not registered", user_id)
 
 
 def get_event(guild_id: int, channel_id: int = None, registration=False, throw_exceptions=True) -> Optional[Event]:
@@ -40,7 +41,7 @@ def get_event(guild_id: int, channel_id: int = None, registration=False, throw_e
             return event
 
     if throw_exceptions:
-        raise ValueError(f'There is no {"event you can register for" if registration else "active event"}')
+        raise UserInputError(f'There is no {"event you can register for" if registration else "active event"}')
     return None
 
 
@@ -60,7 +61,7 @@ def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
     """
     result = DiscordUser.query.filter_by(user_id=user_id).first()
     if not result and throw_exceptions:
-        raise ValueError("User {name} is not registered")
+        raise UserInputError("User {name} is not registered", user_id)
     return result
 
 
