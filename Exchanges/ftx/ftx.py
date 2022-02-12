@@ -1,24 +1,51 @@
 import urllib.parse
 import hmac
 import logging
-from logging import getLogger
-from threading import Lock
+from datetime import datetime
 from typing import List, Callable
 
-from fastapi import requests
-from Models.client import Client
-from Models.balance import Balance
+from api.dbmodels.trade import Trade
+from api.dbmodels.balance import Balance
+from clientworker import ClientWorker
 import time
 import requests
 from requests import Request, Session
 
+from Exchanges.ftx.client import FtxWebsocketClient
 
-class FtxClient(Client):
+
+class FtxClient(ClientWorker):
     exchange = 'ftx'
     ENDPOINT = 'https://ftx.com/api/'
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ws = FtxWebsocketClient(api_key=self._api_key,
+                                     api_secret=self._api_secret,
+                                     subaccount=self._subaccount)
+
+    def set_on_trade_callback(self, callback: Callable[[int, Trade], None]):
+        super().set_on_trade_callback(callback)
+        self.ws.connect()
+        self.ws.get_fills()
+
+    def _on_message(self, ws, message):
+        if message['channel'] == 'fills':
+            if callable(self._on_trade):
+                self._on_trade(
+                    self.client_id,
+                    Trade(
+                        symbol=message['market'],
+                        side=message['side'],
+                        price=float(message['price']),
+                        qty=float(message['size']),
+                        type=message['type'],
+                        time=datetime.now()
+                    )
+                )
+
     # https://docs.ftx.com/#account
-    def get_balance(self):
+    def _get_balance(self, time: datetime):
         request = Request(
             'GET',
             self.ENDPOINT + 'account'
@@ -28,7 +55,7 @@ class FtxClient(Client):
             amount = response['result']['totalAccountValue']
         else:
             amount = 0
-        return Balance(amount, '$', response.get('error'))
+        return Balance(amount=amount, currency='$', error=response.get('error'), time=time)
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)
@@ -36,12 +63,12 @@ class FtxClient(Client):
         signature_payload = f'{ts}{prepared.method}{prepared.path_url}'.encode()
         if prepared.body:
             signature_payload += prepared.body
-        signature = hmac.new(self.api_secret.encode(), signature_payload, 'sha256').hexdigest()
-        request.headers['FTX-KEY'] = self.api_key
+        signature = hmac.new(self._api_secret.encode(), signature_payload, 'sha256').hexdigest()
+        request.headers['FTX-KEY'] = self._api_key
         request.headers['FTX-SIGN'] = signature
         request.headers['FTX-TS'] = str(ts)
-        if self.subaccount:
-            request.headers['FTX-SUBACCOUNT'] = urllib.parse.quote(self.subaccount)
+        if self._subaccount:
+            request.headers['FTX-SUBACCOUNT'] = urllib.parse.quote(self._subaccount)
 
     def _process_response(self, response: requests.Response) -> dict:
         response_json = response.json()

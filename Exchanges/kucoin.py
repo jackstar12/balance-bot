@@ -1,12 +1,12 @@
 import base64
 
-from Models.client import Client
+from models.client import Client
 import hmac
 from requests import Request, Response, Session, HTTPError
 import urllib.parse
 import time
 import logging
-from Models.balance import Balance
+from models.balance import Balance
 
 
 class KuCoinClient(Client):
@@ -41,11 +41,11 @@ class KuCoinClient(Client):
         passphrase = base64.b64encode(
             hmac.new(self.api_secret.encode('utf-8'), self.extra_kwargs['passphrase'].encode('utf-8'), 'sha256').digest()
         )
-        request.headers['KC-API-KEY'] = self.api_key
-        request.headers['KC-API-TIMESTAMP'] = str(ts)
-        request.headers['KC-API-SIGN'] = signature
-        request.headers['KC-API-PASSPHRASE'] = passphrase
-        request.headers['KC-API-KEY-VERSION'] = '2'
+        request.headers['KC-api-KEY'] = self.api_key
+        request.headers['KC-api-TIMESTAMP'] = str(ts)
+        request.headers['KC-api-SIGN'] = signature
+        request.headers['KC-api-PASSPHRASE'] = passphrase
+        request.headers['KC-api-KEY-VERSION'] = '2'
 
     # https://docs.kucoin.com/#request
     def _process_response(self, response: Response) -> dict:
@@ -59,9 +59,9 @@ class KuCoinClient(Client):
             if response.status_code == 400:
                 error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 401:
-                error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
+                error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your api access"
             elif response.status_code == 403:
-                error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
+                error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your api access"
             elif response.status_code == 404:
                 error = "404 Not Found. This is probably a bug in the bot, please contact dev"
             elif response.status_code == 429:

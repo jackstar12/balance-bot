@@ -1,7 +1,7 @@
 import hmac
-from Models.client import Client
+from models.client import Client
 from requests import Request, Response, Session, HTTPError
-from Models.balance import Balance
+from models.balance import Balance
 import urllib.parse
 import time
 import logging

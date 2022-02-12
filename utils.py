@@ -9,9 +9,9 @@ from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
 from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
-from typing import List, Tuple, Callable, Optional
-from Models.balance import Balance
-from Models.user import User
+from typing import List, Tuple, Callable, Optional, Union
+from api.dbmodels.balance import Balance
+from models.discorduser import DiscordUser
 from config import CURRENCY_PRECISION
 
 
@@ -56,7 +56,7 @@ def set_author_default(name: str):
     return decorator
 
 
-def time_args(names: List[Tuple[str, Optional[str]]]):
+def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
     def decorator(coro):
         async def wrapper(ctx: SlashContext, *args, **kwargs):
             for name, default in names:
@@ -65,7 +65,7 @@ def time_args(names: List[Tuple[str, Optional[str]]]):
                     time_arg = default
                 if time_arg:
                     try:
-                        time = calc_time_from_time_args(time_arg)
+                        time = calc_time_from_time_args(time_arg, allow_future)
                     except ValueError as e:
                         logging.error(e.args[0].replace('{name}', ctx.author.display_name))
                         await ctx.send(content=e.args[0].replace('{name}', ctx.author.display_name), hidden=True)
@@ -105,7 +105,7 @@ def get_user_by_id(users_by_id,
                    user_id: int,
                    guild_id: int = None,
                    exact: bool = False,
-                   throw_exceptions=True) -> User:
+                   throw_exceptions=True) -> DiscordUser:
     """
     Tries to find a matching entry for the user and guild id.
     :param exact: whether the global entry should be used if the guild isn't registered
@@ -151,18 +151,18 @@ def add_guild_option(guilds, command: BaseCommandObject, description: str):
     )
 
 
-def calc_percentage(then: float, now: float) -> str:
+def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
     diff = now - then
     if diff == 0.0:
-        result = '0'
+        result = '0' if string else 0.0
     elif then > 0:
-        result = f'{round(100 * (diff / then), ndigits=3)}'
+        result = f'{round(100 * (diff / then), ndigits=3)}' if string else round(100 * (diff / then), ndigits=3)
     else:
-        result = 'nan'
+        result = 'nan' if string else 0.0
     return result
 
 
-def calc_time_from_time_args(time_str: str) -> datetime:
+def calc_time_from_time_args(time_str: str, allow_future=False) -> datetime:
     """
     Calculates time from given time args.
     Arg Format:
@@ -235,20 +235,20 @@ def calc_time_from_time_args(time_str: str) -> datetime:
 
     if not date:
         raise ValueError(f'Invalid time argument: {time_str}')
-    elif date > now:
+    elif date > now and not allow_future:
         raise ValueError(f'Time delta can not be zero. {time_str}')
 
     return date
 
 
-def calc_xs_ys(data: List[Tuple[datetime, Balance]],
+def calc_xs_ys(data: List[Balance],
                percentage=False) -> Tuple[List[datetime], List[float]]:
     xs = []
     ys = []
-    for time, balance in data:
-        xs.append(time.replace(microsecond=0))
+    for balance in data:
+        xs.append(balance.time.replace(microsecond=0))
         if percentage:
-            if data[0][1].amount > 0:
+            if data[0].amount > 0:
                 amount = 100 * (balance.amount - data[0][1].amount) / data[0][1].amount
             else:
                 amount = 0.0
@@ -315,6 +315,10 @@ def create_yes_no_button_row(slash: SlashCommand,
     wrap_callback(no_id, no_callback, no_message)
 
     return create_actionrow(*buttons)
+
+
+def create_event_selection(custom_id: str, callback: Callable[[str], None] = None, message=None):
+    pass
 
 
 def readable_time(time: datetime):

@@ -4,3 +4,4 @@ data
 archive
 log.txt
 LOGS
+api/db.sqlite3
