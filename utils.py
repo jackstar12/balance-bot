@@ -95,7 +95,10 @@ def log_and_catch_user_input_errors(log_args=True):
                 return await coro(ctx, *args, **kwargs)
             except UserInputError as e:
                 if e.user_id:
-                    e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
+                    if ctx.guild:
+                        e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
+                    else:
+                        e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
                 logging.error(f'Failed because of UserInputError: {de_emojify(e.reason)}')
         return wrapper
