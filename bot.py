@@ -362,7 +362,7 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
     time_str = utils.readable_time(time)
 
     user_manager.fetch_data(clients=clients)
-    user_gains = calc_gains(clients, ctx.guild_id, time, currency)
+    user_gains = utils.calc_gains(clients, ctx.guild_id, time, currency)
 
     for cur_client, user_gain in user_gains:
         guild = bot.get_guild(ctx.guild_id)
@@ -525,18 +525,15 @@ async def register_user(ctx: SlashContext,
                     )
 
             else:
-                logger.error(
-                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
+                logger.error(f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
                 args_readable = ''
                 for arg in exchange_cls.required_extra_args:
                     args_readable += f'{arg}\n'
-                await ctx.send(
-                    f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}')
+                raise UserInputError(f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}')
         else:
-            logger.error(f'Class {exchange_cls} is no subclass of Client!')
+            logger.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
     except KeyError:
-        logger.error(f'Exchange {exchange_name} unknown')
-        await ctx.send(f'Exchange {exchange_name} unknown')
+        raise UserInputError(f'Exchange {exchange_name} unknown')
 
 
 @slash.slash(
@@ -768,7 +765,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     else:
         clients = []
         # All global clients
-        users = DiscordUser.query.filter(DiscordUser.global_client_id).all()
+        users = DiscordUser.query.filter(DiscordUser.global_client_id is not None).all()
         for user in users:
             member = guild.get_member(user.user_id)
             if member:
@@ -793,7 +790,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
 
         description += f'Gain {utils.readable_time(time)}\n\n'
 
-        client_gains = calc_gains(clients, guild.id, time)
+        client_gains = utils.calc_gains(clients, guild.id, time)
 
         for client, client_gain in client_gains:
             if client_gain is not None:

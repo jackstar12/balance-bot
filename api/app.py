@@ -37,12 +37,12 @@ def refresh_expiring_jwts(response):
         return response
 
 
-def required_headers(name: str, arg_names: List[Tuple[str, bool]]):
+def required_params(name: str, arg_names: List[Tuple[str, bool]]):
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             for arg_name, required in arg_names:
-                value = request.headers.get(arg_name)
+                value = request.json.get(arg_name)
                 kwargs[arg_name] = value
                 if not value and required:
                     return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
@@ -62,7 +62,7 @@ def register_discord():
 
 
 @app.route('/api/register', methods=["POST"])
-@required_headers(name='register', arg_names=[('email', True), ('password', True)])
+@required_params(name='register', arg_names=[('email', True), ('password', True)])
 def register(email: str, password: str):
 
     user = User.query.filter_by(email=email).first()
@@ -82,7 +82,7 @@ def register(email: str, password: str):
 
 
 @app.route('/api/login', methods=["POST"])
-@required_headers(name='login', arg_names=[('email', True), ('password', True)])
+@required_params(name='login', arg_names=[('email', True), ('password', True)])
 def login(email: str, password: str):
     user = User.query.filter_by(email=email).first()
     if user:
@@ -120,6 +120,23 @@ def discord():
             return {'msg': 'No discord account connected'}
     elif request.method == 'POST':
         pass
+
+
+@app.route('/api/client/register')
+@flask_jwt.jwt_required()
+@required_params(name="client_register", arg_names=[
+    ("exchange", True),
+    ("api_key", True),
+    ("api_secret", True),
+    ("subaccount", False),
+    ("extra_kwargs", False),
+])
+def client_register(exchange: str,
+                    api_key: str,
+                    api_secret: str,
+                    subaccount: str = None,
+                    extra_kwargs: dict = None):
+    pass
 
 
 
