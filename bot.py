@@ -320,44 +320,6 @@ async def history(ctx: SlashContext,
     await ctx.send(content='', file=file)
 
 
-def calc_gains(clients: List[Client],
-               guild_id: int,
-               search: datetime,
-               currency: str = None) -> List[Tuple[DiscordUser, Tuple[float, float]]]:
-    """
-    :param guild_id:
-    :param clients: users to calculate gain for
-    :param search: date since when gain should be calculated
-    :param currency:
-    :param since_start: should the gain since the start be calculated?
-    :return:
-    Gain for each user is stored in a list of tuples following this structure: (User, (user gain rel, user gain abs)) success
-                                                                               (User, None) missing
-    """
-
-    if currency is None:
-        currency = '$'
-
-    results = []
-    for client in clients:
-        data = user_manager.get_client_history(client, guild_id, start=search)
-        if len(data) > 0:
-            balance_then = user_manager.db_match_balance_currency(data[0], currency)
-            balance_now = user_manager.db_match_balance_currency(data[len(data) - 1], currency)
-            diff = round(balance_now.amount - balance_then.amount,
-                         ndigits=CURRENCY_PRECISION.get(currency, 3))
-            if balance_then.amount > 0:
-                results.append((client,
-                                (round(100 * (diff / balance_then.amount),
-                                       ndigits=CURRENCY_PRECISION.get('%', 2)), diff)))
-            else:
-                results.append((client, (0.0, diff)))
-        else:
-            results.append((client, None))
-
-    return results
-
-
 @slash.slash(
     name="gain",
     description="Calculate gain",
@@ -611,14 +573,7 @@ async def register_existing(ctx: SlashContext):
 @utils.log_and_catch_user_input_errors()
 @server_only
 async def event_show(ctx: SlashContext):
-
-    try:
-        event = dbutils.get_event(ctx.guild_id, channel_id=ctx.channel_id)
-    except UserInputError as e:
-        await ctx.send(e.args[0], hidden=True)
-        logging.info('No event registered.')
-        return
-
+    event = dbutils.get_event(ctx.guild_id, channel_id=ctx.channel_id)
     await ctx.send(embed=event.get_discord_embed(registrations=True))
 
 
@@ -648,54 +603,58 @@ async def event_show(ctx: SlashContext):
 @server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime, registration_start: datetime, registration_end: datetime):
 
-    now = datetime.now()
-    start = now + timedelta(seconds=20)
-    registration_start = now + timedelta(seconds=10)
-    registration_end = now + timedelta(seconds=30)
-    end = now + timedelta(seconds=40)
+    if ctx.author.guild_permissions.administrator:
 
-    if start >= end:
-        await ctx.send("Start time can't be after end time.", hidden=True)
-        return
-    if registration_start >= registration_end:
-        await ctx.send("Registration start can't be after registration end", hidden=True)
-        return
-    if registration_end < start:
-        await ctx.send("Registration end should be after or at event start", hidden=True)
-        return
-    if registration_end > end:
-        await ctx.send("Registration end can't be after event end.", hidden=True)
-        return
-    if registration_start > start:
-        await ctx.send("Registration start should be before event start.", hidden=True)
-        return
+        now = datetime.now()
+        start = now + timedelta(seconds=20)
+        registration_start = now + timedelta(seconds=10)
+        registration_end = now + timedelta(seconds=30)
+        end = now + timedelta(seconds=40)
 
-    event = Event(
-        name=name,
-        description=description,
-        start=start,
-        end=end,
-        registration_start=registration_start,
-        registration_end=registration_end,
-        guild_id=ctx.guild_id,
-        channel_id=ctx.channel_id
-    )
+        if start >= end:
+            await ctx.send("Start time can't be after end time.", hidden=True)
+            return
+        if registration_start >= registration_end:
+            await ctx.send("Registration start can't be after registration end", hidden=True)
+            return
+        if registration_end < start:
+            await ctx.send("Registration end should be after or at event start", hidden=True)
+            return
+        if registration_end > end:
+            await ctx.send("Registration end can't be after event end.", hidden=True)
+            return
+        if registration_start > start:
+            await ctx.send("Registration start should be before event start.", hidden=True)
+            return
 
-    def register():
-        db.session.add(event)
-        db.session.commit()
-        event_manager.register(event)
+        event = Event(
+            name=name,
+            description=description,
+            start=start,
+            end=end,
+            registration_start=registration_start,
+            registration_end=registration_end,
+            guild_id=ctx.guild_id,
+            channel_id=ctx.channel_id
+        )
 
-    row = create_yes_no_button_row(
-        slash=slash,
-        author_id=ctx.author_id,
-        yes_callback=register,
-        yes_message="Event was successfully created",
-        no_message="Event creation cancelled",
-        hidden=True
-    )
+        def register():
+            db.session.add(event)
+            db.session.commit()
+            event_manager.register(event)
 
-    await ctx.send(embed=event.get_discord_embed(), components=[row], hidden=True)
+        row = create_yes_no_button_row(
+            slash=slash,
+            author_id=ctx.author_id,
+            yes_callback=register,
+            yes_message="Event was successfully created",
+            no_message="Event creation cancelled",
+            hidden=True
+        )
+
+        await ctx.send(embed=event.get_discord_embed(), components=[row], hidden=True)
+    else:
+        await ctx.send('You are not allowed to do this.', hidden=True)
 
 
 @slash.slash(

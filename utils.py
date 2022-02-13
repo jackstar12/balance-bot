@@ -2,11 +2,15 @@ import re
 import logging
 from functools import wraps
 
+import discord
+
+from api.dbmodels.client import Client
+from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError
 from discord_slash.utils.manage_components import create_button, create_actionrow
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
-
+from usermanager import UserManager
 from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
 from discord_slash.model import BaseCommandObject
@@ -187,6 +191,146 @@ def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
     else:
         result = 'nan' if string else 0.0
     return result
+
+
+def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
+    user_scores: List[Tuple[DiscordUser, float]] = []
+    value_strings: Dict[DiscordUser, str] = {}
+    users_rekt: List[DiscordUser] = []
+    clients_missing: List[DiscordUser] = []
+
+    footer = ''
+    description = ''
+
+    event = dbutils.get_event(guild.id, throw_exceptions=False)
+
+    if event:
+        clients = event.registrations
+    else:
+        clients = []
+        # All global clients
+        users = DiscordUser.query.filter(DiscordUser.global_client_id).all()
+        for user in users:
+            member = guild.get_member(user.user_id)
+            if member:
+                clients.append(user.global_client)
+
+    user_manager.fetch_data(clients=clients)
+
+    if mode == 'balance':
+        for client in clients:
+            if client.rekt_on:
+                users_rekt.append(client)
+            elif len(client.history) > 0:
+                balance = client.history[len(client.history) - 1]
+                if balance.amount > REKT_THRESHOLD:
+                    user_scores.append((client, balance.amount))
+                    value_strings[client] = balance.to_string(display_extras=False)
+                else:
+                    users_rekt.append(client)
+            else:
+                clients_missing.append(client)
+    elif mode == 'gain':
+
+        description += f'Gain {utils.readable_time(time)}\n\n'
+
+        client_gains = calc_gains(clients, guild.id, time)
+
+        for client, client_gain in client_gains:
+            if client_gain is not None:
+                if client.rekt_on:
+                    users_rekt.append(client)
+                else:
+                    user_gain_rel, user_gain_abs = client_gain
+                    user_scores.append((client, user_gain_rel))
+                    value_strings[client] = f'{user_gain_rel}% ({user_gain_abs}$)'
+            else:
+                clients_missing.append(client)
+    else:
+        raise UserInputError(f'Unknown mode {mode} was passed in')
+
+    user_scores.sort(key=lambda x: x[1], reverse=True)
+    rank = 1
+    rank_true = 1
+
+    if len(user_scores) > 0:
+        prev_score = None
+        for client, score in user_scores:
+            member = guild.get_member(client.discorduser.user_id)
+            if member:
+                if prev_score is not None and score < prev_score:
+                    rank = rank_true
+                if client in value_strings:
+                    value = value_strings[client]
+                    description += f'{rank}. **{member.display_name}** {value}\n'
+                    rank_true += 1
+                else:
+                    logger.error(f'Missing value string for {client=} even though hes in user_scores')
+                prev_score = score
+
+    if len(users_rekt) > 0:
+        description += f'\n**Rekt**\n'
+        for user_rekt in users_rekt:
+            member = guild.get_member(user_rekt.discorduser.user_id)
+            if member:
+                description += f'{member.display_name}'
+                if user_rekt.rekt_on:
+                    description += f' since {user_rekt.rekt_on.replace(microsecond=0)}'
+                description += '\n'
+
+    if len(clients_missing) > 0:
+        description += f'\n**Missing**\n'
+        for client_missing in clients_missing:
+            member = guild.get_member(client_missing.discorduser.user_id)
+            if member:
+                description += f'{member.display_name}\n'
+
+    description += f'\n{footer}'
+
+    logging.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
+    return discord.Embed(
+        title='Leaderboard :medal:',
+        description=description
+    )
+
+
+def calc_gains(clients: List[Client],
+               guild_id: int,
+               search: datetime,
+               currency: str = None) -> List[Tuple[Client, Tuple[float, float]]]:
+    """
+    :param guild_id:
+    :param clients: users to calculate gain for
+    :param search: date since when gain should be calculated
+    :param currency:
+    :param since_start: should the gain since the start be calculated?
+    :return:
+    Gain for each user is stored in a list of tuples following this structure: (User, (user gain rel, user gain abs)) success
+                                                                               (User, None) missing
+    """
+
+    if currency is None:
+        currency = '$'
+
+    results = []
+    user_manager = UserManager()
+    for client in clients:
+        data = user_manager.get_client_history(client, guild_id, start=search)
+        if len(data) > 0:
+            balance_then = user_manager.db_match_balance_currency(data[0], currency)
+            balance_now = user_manager.db_match_balance_currency(data[len(data) - 1], currency)
+            diff = round(balance_now.amount - balance_then.amount,
+                         ndigits=CURRENCY_PRECISION.get(currency, 3))
+            if balance_then.amount > 0:
+                results.append((client,
+                                (round(100 * (diff / balance_then.amount),
+                                       ndigits=CURRENCY_PRECISION.get('%', 2)), diff)))
+            else:
+                results.append((client, (0.0, diff)))
+        else:
+            results.append((client, None))
+
+    return results
 
 
 def calc_time_from_time_args(time_str: str, allow_future=False) -> datetime:

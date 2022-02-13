@@ -1,3 +1,4 @@
+import utils
 from api.database import db
 from api.dbmodels.serializer import Serializer
 from datetime import datetime
@@ -56,16 +57,31 @@ class Event(db.Model, Serializer):
         awards = discord.Embed(title=f'Awards')
         description = ''
 
-        des
+        gains = utils.calc_gains(self.registrations, self.guild_id)
+        gains.sort(lambda x: x[1][0], reverse=True)
 
-        trade_counts = [len(client.trades) for client in self.registrations]
-        trade_counts.sort()
+        description += f'**Best Trader :crown:**\n' \
+                       f'{gains[0][0].discorduser.name}\n'
+
+        description += f'**Worst Trader :disappointed_relieved:**\n' \
+                       f'{gains[len(gains) - 1][0].discorduser.name}'
+
+        # trade_counts = [len(client.trades) for client in self.registrations]
+        # trade_counts.sort()
+
+        def non_null_balances(history):
+            balances = []
+            for balance in history:
+                balances.append(balance)
+                if balance.amount == 0.0:
+                    break
+            return balances
 
         volatility = [
             (
                 client,
                 numpy.array(
-                    [balance.amount for balance in client.history]
+                    non_null_balances(client.history)
                 ).std()
             )
             for client in self.registrations
@@ -77,10 +93,6 @@ class Event(db.Model, Serializer):
 
         description += f'\n**Still HODLing:sleeping:**\n' \
                        f'{volatility[len(volatility) - 1][0].discorduser.name}\n'
-
-
-
-
 
         description += '\n'
 
