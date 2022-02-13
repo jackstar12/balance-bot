@@ -97,7 +97,8 @@ def log_and_catch_user_input_errors(log_args=True):
                          f'Execute command {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} '
                          f'guild={ctx.guild} {f"{args=}, {kwargs=}" if log_args else ""}')
             try:
-                return await coro(ctx, *args, **kwargs)
+                await coro(ctx, *args, **kwargs)
+                logging.info(f'Done executing command {coro.__name__}')
             except UserInputError as e:
                 if e.user_id:
                     e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)

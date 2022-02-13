@@ -1,11 +1,12 @@
 import json
 from datetime import timezone, datetime, timedelta
+from functools import wraps
 from http import HTTPStatus
 from typing import List, Tuple
 
 import bcrypt
 import flask_jwt_extended as flask_jwt
-from flask import request, jsonify
+from flask import request, jsonify, redirect
 
 import api.dbutils as dbutils
 from api.database import db, app
@@ -38,6 +39,7 @@ def refresh_expiring_jwts(response):
 
 def required_headers(name: str, arg_names: List[Tuple[str, bool]]):
     def decorator(fn):
+        @wraps(fn)
         def wrapper(*args, **kwargs):
             for arg_name, required in arg_names:
                 value = request.headers.get(arg_name)
@@ -45,9 +47,18 @@ def required_headers(name: str, arg_names: List[Tuple[str, bool]]):
                 if not value and required:
                     return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
             return fn(*args, **kwargs)
-        wrapper.__name__ = name
         return wrapper
     return decorator
+
+
+@app.route('/api/register/discord', methods=["GET"])
+@flask_jwt.jwt_required()
+def register_discord():
+    user = flask_jwt.current_user
+    if user.discorduser:
+        return {'msg': 'Discord is already connected'}, HTTPStatus.BAD_REQUEST
+    else:
+        return redirect()
 
 
 @app.route('/api/register', methods=["POST"])

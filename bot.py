@@ -46,8 +46,7 @@ from config import (DATA_PATH,
                     ARCHIVE_PATH)
 
 import utils
-from utils import (server_only,
-                   de_emojify,
+from utils import (de_emojify,
                    add_guild_option,
                    calc_percentage,
                    calc_xs_ys,
@@ -546,7 +545,7 @@ async def register_user(ctx: SlashContext,
     options=[]
 )
 @utils.log_and_catch_user_input_errors()
-@server_only
+@utils.server_only
 async def register_existing(ctx: SlashContext):
 
     event = dbutils.get_event(guild_id=ctx.guild_id, registration=True)
@@ -571,7 +570,7 @@ async def register_existing(ctx: SlashContext):
     options=[]
 )
 @utils.log_and_catch_user_input_errors()
-@server_only
+@utils.server_only
 async def event_show(ctx: SlashContext):
     event = dbutils.get_event(ctx.guild_id, channel_id=ctx.channel_id)
     await ctx.send(embed=event.get_discord_embed(registrations=True))
@@ -600,7 +599,7 @@ async def event_show(ctx: SlashContext):
 )
 @utils.log_and_catch_user_input_errors()
 @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)], allow_future=True)
-@server_only
+@utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime, registration_start: datetime, registration_end: datetime):
 
     if ctx.author.guild_permissions.administrator:
@@ -861,7 +860,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     options=[]
 )
 @utils.log_and_catch_user_input_errors()
-@server_only
+@utils.server_only
 async def leaderboard_balance(ctx: SlashContext):
     await ctx.defer()
     await ctx.send(content='', embed=create_leaderboard(guild=ctx.guild, mode='balance', time=None))
@@ -882,7 +881,7 @@ async def leaderboard_balance(ctx: SlashContext):
 )
 @utils.log_and_catch_user_input_errors()
 @utils.time_args(names=[('time', None)])
-@server_only
+@utils.server_only
 async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     await ctx.defer()
     await ctx.send(content='', embed=create_leaderboard(guild=ctx.guild, mode='gain', time=time))
