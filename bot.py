@@ -601,11 +601,11 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
 
     if ctx.author.guild_permissions.administrator:
 
-        now = datetime.now()
-        start = now + timedelta(seconds=20)
-        registration_start = now + timedelta(seconds=10)
-        registration_end = now + timedelta(seconds=30)
-        end = now + timedelta(seconds=40)
+        # now = datetime.now()
+        # start = now + timedelta(seconds=20)
+        # registration_start = now + timedelta(seconds=10)
+        # registration_end = now + timedelta(seconds=30)
+        # end = now + timedelta(seconds=40)
 
         if start >= end:
             await ctx.send("Start time can't be after end time.", hidden=True)
@@ -973,6 +973,7 @@ async def on_rekt_async(user: DiscordUser):
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
 parser.add_argument("-m", "--migrate", action="store_true", help="Specifying this puts the current data into a database.")
+parser.add_argument("-d", "--dev", action="store_true", help="Whether to run in development mode.")
 
 args = parser.parse_args()
 

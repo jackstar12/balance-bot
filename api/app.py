@@ -139,7 +139,6 @@ def client_register(exchange: str,
     pass
 
 
-
 @app.route('/api/client')
 @flask_jwt.jwt_required()
 def client():

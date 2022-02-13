@@ -22,7 +22,8 @@ class FtxClient(ClientWorker):
         super().__init__(*args, **kwargs)
         self.ws = FtxWebsocketClient(api_key=self._api_key,
                                      api_secret=self._api_secret,
-                                     subaccount=self._subaccount)
+                                     subaccount=self._subaccount,
+                                     on_message_callback=self._on_message)
 
     def set_on_trade_callback(self, callback: Callable[[int, Trade], None]):
         super().set_on_trade_callback(callback)
