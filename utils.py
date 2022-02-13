@@ -17,7 +17,6 @@ from discord_slash.model import BaseCommandObject
 from discord_slash.utils.manage_commands import create_choice, create_option
 from typing import List, Tuple, Callable, Optional, Union
 from api.dbmodels.balance import Balance
-from models.discorduser import DiscordUser
 from config import CURRENCY_PRECISION
 
 
@@ -25,7 +24,7 @@ def dm_only(coro):
     @wraps(coro)
     async def wrapper(ctx, *args, **kwargs):
         if ctx.guild:
-            await ctx.send('This command can only be used via a Private Message.')
+            await ctx.send('This command can only be used via a Private Message.', hidden=True)
             return
         return await coro(ctx, *args, **kwargs)
 
@@ -101,7 +100,10 @@ def log_and_catch_user_input_errors(log_args=True):
                 logging.info(f'Done executing command {coro.__name__}')
             except UserInputError as e:
                 if e.user_id:
-                    e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
+                    if ctx.guild:
+                        e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
+                    else:
+                        e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
                 logging.error(f'Failed because of UserInputError: {de_emojify(e.reason)}')
         return wrapper

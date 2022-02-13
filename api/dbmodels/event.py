@@ -1,4 +1,4 @@
-import utils
+#import utils
 from api.database import db
 from api.dbmodels.serializer import Serializer
 from datetime import datetime
@@ -15,8 +15,8 @@ association = db.Table('association',
 class Event(db.Model, Serializer):
     __tablename__ = 'event'
     id = db.Column(db.Integer, primary_key=True)
-    guild_id = db.Column(db.Integer, nullable=False)
-    channel_id = db.Column(db.Integer, nullable=False)
+    guild_id = db.Column(db.BigInteger, nullable=False)
+    channel_id = db.Column(db.BigInteger, nullable=False)
     registration_start = db.Column(db.DateTime, nullable=False)
     registration_end = db.Column(db.DateTime, nullable=False)
     start = db.Column(db.DateTime, nullable=False)
@@ -57,14 +57,14 @@ class Event(db.Model, Serializer):
         awards = discord.Embed(title=f'Awards')
         description = ''
 
-        gains = utils.calc_gains(self.registrations, self.guild_id)
-        gains.sort(lambda x: x[1][0], reverse=True)
-
-        description += f'**Best Trader :crown:**\n' \
-                       f'{gains[0][0].discorduser.name}\n'
-
-        description += f'**Worst Trader :disappointed_relieved:**\n' \
-                       f'{gains[len(gains) - 1][0].discorduser.name}'
+        #gains = utils.calc_gains(self.registrations, self.guild_id)
+        #gains.sort(lambda x: x[1][0], reverse=True)
+#
+        #description += f'**Best Trader :crown:**\n' \
+        #               f'{gains[0][0].discorduser.name}\n'
+#
+        #description += f'**Worst Trader :disappointed_relieved:**\n' \
+        #               f'{gains[len(gains) - 1][0].discorduser.name}'
 
         # trade_counts = [len(client.trades) for client in self.registrations]
         # trade_counts.sort()

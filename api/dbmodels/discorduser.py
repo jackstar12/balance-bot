@@ -10,7 +10,7 @@ from api.dbmodels.serializer import Serializer
 class DiscordUser(db.Model, Serializer):
     __tablename__ = 'discorduser'
     id = db.Column(db.Integer(), primary_key=True)
-    user_id = db.Column(db.Integer(), nullable=False)
+    user_id = db.Column(db.BigInteger(), nullable=False)
     name = db.Column(db.String(), nullable=True)
 
     global_client_id = db.Column(db.Integer(), db.ForeignKey('client.id'))

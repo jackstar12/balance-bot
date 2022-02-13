@@ -99,7 +99,7 @@ class UserManager(Singleton):
         timer.daemon = True
         timer.start()
 
-    def fetch_data(self, clients: List[Client] = None, guild_id: int = None, time_tolerance_seconds: float = 60):
+    def fetch_data(self, clients: List[Client] = None, guild_id: int = None):
         workers = [self._get_worker(client) for client in clients]
         self._db_fetch_data(workers, guild_id)
 

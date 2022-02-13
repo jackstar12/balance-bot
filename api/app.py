@@ -162,7 +162,7 @@ def trades():
 
 def init():
     db.init_app(app)
-    db.create_all(app=app)
+    db.create_all()
 
 
 def run():
