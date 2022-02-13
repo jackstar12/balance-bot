@@ -1038,6 +1038,7 @@ if args.reset and os.path.exists(DATA_PATH):
     except FileNotFoundError as e:
         logger.info(f'Error while archiving data: {e}')
 
+api.init()
 
 api_thread = Thread(target=api.run)
 api_thread.daemon = True

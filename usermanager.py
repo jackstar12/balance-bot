@@ -15,7 +15,7 @@ from models.singleton import Singleton
 from models.trade import Trade
 
 import api.dbutils as dbutils
-from api.database import db, Session
+from api.database import db
 from api.dbmodels.discorduser import DiscordUser, add_user_from_json
 from api.dbmodels.balance import Balance, balance_from_json
 from api.dbmodels.client import Client

@@ -17,9 +17,6 @@ from usermanager import UserManager
 # Create database connection object
 jwt = flask_jwt.JWTManager(app)
 
-db.init_app(app)
-db.create_all(app=app)
-
 
 @app.after_request
 def refresh_expiring_jwts(response):
@@ -150,6 +147,11 @@ def callback(token, payload):
 def trades():
     um = UserManager()
     return json.dumps(um.get_user(user_id=466706956158107649, guild_id=None).api.trades, cls=CustomEncoder)
+
+
+def init():
+    db.init_app(app)
+    db.create_all(app=app)
 
 
 def run():
