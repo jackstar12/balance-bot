@@ -255,7 +255,7 @@ async def history(ctx: SlashContext,
                             break
                     try:
                         member = ctx.guild.get_member(int(member_raw))
-                    except UserInputError:
+                    except ValueError:
                         # Could not cast to integer
                         continue
                     if member:
