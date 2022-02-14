@@ -12,6 +12,7 @@ class DiscordUser(db.Model, Serializer):
     id = db.Column(db.Integer(), primary_key=True)
     user_id = db.Column(db.BigInteger(), nullable=False)
     name = db.Column(db.String(), nullable=True)
+    user = db.relationship('User', backref='discorduser', lazy=True, uselist=False)
 
     global_client_id = db.Column(db.Integer(), db.ForeignKey('client.id'))
     global_client = db.relationship('Client', lazy=True, foreign_keys=global_client_id, post_update=True, uselist=False)

@@ -2,21 +2,35 @@ import json
 from datetime import timezone, datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
-from typing import List, Tuple
+from typing import List, Tuple, Union, Dict, Callable
+from sqlalchemy import or_, and_
 
 import bcrypt
+import os
 import flask_jwt_extended as flask_jwt
-from flask import request, jsonify, redirect
+from flask import request, jsonify, redirect, session, url_for
+from requests_oauthlib import OAuth2Session
 
 import api.dbutils as dbutils
 from api.database import db, app
 from api.dbmodels.client import Client
+from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.user import User
 from models.customencoder import CustomEncoder
 from usermanager import UserManager
 
 # Create database connection object
 jwt = flask_jwt.JWTManager(app)
+
+import api.discordauth
+
+app.config['SECRET_KEY'] = os.environ.get('OAUTH2_CLIENT_SECRET')
+
+
+@jwt.user_lookup_loader
+def callback(token, payload):
+    email = payload.get('sub')
+    return User.query.filter_by(email=email).first()
 
 
 @app.after_request
@@ -37,32 +51,52 @@ def refresh_expiring_jwts(response):
         return response
 
 
-def required_params(name: str, arg_names: List[Tuple[str, bool]]):
+def check_args_before_call(callback, arg_names, *args, **kwargs):
+    for arg_name, required in arg_names:
+        if request.json:
+            value = request.json.get(arg_name)
+            kwargs[arg_name] = value
+            if not value and required:
+                return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
+        else:
+            return {'msg': f'Missing parameter {arg_name}'}
+    return callback(*args, **kwargs)
+
+
+def require_json_args(arg_names: List[Tuple[str, bool]]):
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
-            for arg_name, required in arg_names:
-                value = request.json.get(arg_name)
-                kwargs[arg_name] = value
-                if not value and required:
-                    return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
-            return fn(*args, **kwargs)
+            return check_args_before_call(fn, arg_names, *args, **kwargs)
         return wrapper
     return decorator
 
 
-@app.route('/api/register/discord', methods=["GET"])
-@flask_jwt.jwt_required()
-def register_discord():
-    user = flask_jwt.current_user
-    if user.discorduser:
-        return {'msg': 'Discord is already connected'}, HTTPStatus.BAD_REQUEST
+def create_endpoint(
+        route: str,
+        methods: Dict[str, Dict[str, Union[List[Tuple[str, bool]], Callable]]],
+        jwt_auth=False):
+
+    def wrapper(*args, **kwargs):
+        if request.method in methods:
+            arg_names = methods[request.method]['ARGS']
+            callback = methods[request.method]['CALLBACK']
+        else:
+            return {'msg': f'This is a bug in the server.'}, HTTPStatus.INTERNAL_SERVER_ERROR
+        return check_args_before_call(callback, arg_names, *args, **kwargs)
+
+    if jwt_auth:
+        app.route(route, methods=list(methods.keys()))(
+            flask_jwt.jwt_required()(wrapper)
+        )
     else:
-        return redirect()
+        app.route(route, methods=list(methods.keys()))(
+            wrapper
+        )
 
 
 @app.route('/api/register', methods=["POST"])
-@required_params(name='register', arg_names=[('email', True), ('password', True)])
+@require_json_args(arg_names=[('email', True), ('password', True)])
 def register(email: str, password: str):
 
     user = User.query.filter_by(email=email).first()
@@ -82,7 +116,7 @@ def register(email: str, password: str):
 
 
 @app.route('/api/login', methods=["POST"])
-@required_params(name='login', arg_names=[('email', True), ('password', True)])
+@require_json_args(arg_names=[('email', True), ('password', True)])
 def login(email: str, password: str):
     user = User.query.filter_by(email=email).first()
     if user:
@@ -103,77 +137,73 @@ def logout():
 @flask_jwt.jwt_required()
 def info():
     user = flask_jwt.get_current_user()
-    json = user.serialize()
-    return json, 200
-    pass
+    return jsonify(user.serialize()), 200
 
 
-@app.route('/api/discord', methods=["POST", "GET"])
-@flask_jwt.jwt_required()
-def discord():
-    if request.method == 'GET':
-        discord_user = flask_jwt.current_user.discorduser
-        if discord_user:
-            json = discord_user.serialize()
-            return json, 200
-        else:
-            return {'msg': 'No discord account connected'}
-    elif request.method == 'POST':
-        pass
-
-
-@app.route('/api/client/register')
-@flask_jwt.jwt_required()
-@required_params(name="client_register", arg_names=[
-    ("exchange", True),
-    ("api_key", True),
-    ("api_secret", True),
-    ("subaccount", False),
-    ("extra_kwargs", False),
-])
-def client_register(exchange: str,
+def register_client(exchange: str,
                     api_key: str,
                     api_secret: str,
                     subaccount: str = None,
-                    extra_kwargs: dict = None):
+                    extra_kwargs: str = None):
     pass
 
 
-@app.route('/api/client')
-@flask_jwt.jwt_required()
-def client():
-    user = flask_jwt.get_current_user()
-    id = request.args.get('id')
-    if id:
-        client = Client.query.filter_by(id=id).all()
+def get_client_query(user: User, client_id: int):
+    user_checks = [Client.user_id == user.id]
+    if user.discorduser:
+        user_checks.append(Client.discord_user_id == user.discorduser.id)
+    return Client.query.filter(
+        and_(
+            Client.id == client_id,
+            or_(*user_checks)
+        )
+    )
+
+
+def get_client(id: int):
+    user = flask_jwt.current_user
+    client = get_client_query(user, id).first()
+    if client:
+        return jsonify(client.serialize(full=False))
     else:
-        return {'msg': 'ID Parameter required'}, 401
+        return {'msg': f'Invalid client id'}, HTTPStatus.BAD_REQUEST
 
 
-# api routes
-@app.route('/api/user')
-@flask_jwt.jwt_required()
-def data():
-    um = UserManager()
-    user = dbutils.get_user
-    return json.dumps(um.get_single_user_data(user_id=466706956158107649, guild_id=None), cls=CustomEncoder)
+def delete_client(id: int):
+    user = flask_jwt.current_user
+    get_client_query(user, id).delete()
+    db.session.commit()
+    return {'msg': 'Success'}
 
 
-@app.route('/api/')
-
-
-@jwt.user_lookup_loader
-def callback(token, payload):
-    email = payload.get('sub')
-    return User.query.filter_by(email=email).first()
-
-
-
-@app.route('/api/trades')
-@flask_jwt.jwt_required()
-def trades():
-    um = UserManager()
-    return json.dumps(um.get_user(user_id=466706956158107649, guild_id=None).api.trades, cls=CustomEncoder)
+create_endpoint(
+    route='/api/client',
+    methods={
+        'POST': {
+            'ARGS': [
+                ("exchange", True),
+                ("api_key", True),
+                ("api_secret", True),
+                ("subaccount", False),
+                ("extra_kwargs", False)
+            ],
+            'CALLBACK': register_client
+        },
+        'GET': {
+            'ARGS': [
+                ("id", True)
+            ],
+            'CALLBACK': get_client
+        },
+        'DELETE': {
+            'ARGS': [
+                ("id", True)
+            ],
+            'CALLBACK': delete_client
+        }
+    },
+    jwt_auth=True
+)
 
 
 def init():

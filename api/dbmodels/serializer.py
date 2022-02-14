@@ -4,9 +4,21 @@ from api.database import db
 
 class Serializer:
 
-    def serialize(self):
-        return {c: getattr(self, c) for c in inspect(self).attrs.keys()}
+    # The full flag is needed to avoid cyclic serializations
+    def serialize(self, full=True):
+        s = {}
+        for k in inspect(self).attrs.keys():
+            v = getattr(self, k)
+            if issubclass(type(v), list):
+                v = Serializer.serialize_list(v, full=full)
+            elif issubclass(type(v), Serializer):
+                if full:
+                    v = v.serialize(full=False)
+                else:
+                    continue
+            s[k] = v
+        return s
 
     @staticmethod
-    def serialize_list(l):
-        return [m.serialize() for m in l]
+    def serialize_list(l, full=True):
+        return [m.serialize(full=full) for m in l]

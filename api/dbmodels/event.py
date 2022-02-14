@@ -72,7 +72,7 @@ class Event(db.Model, Serializer):
         def non_null_balances(history):
             balances = []
             for balance in history:
-                balances.append(balance)
+                balances.append(balance.amount)
                 if balance.amount == 0.0:
                     break
             return balances
