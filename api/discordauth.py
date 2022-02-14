@@ -19,6 +19,8 @@ API_BASE_URL = os.environ.get('API_BASE_URL', 'https://discordapp.com/api')
 AUTHORIZATION_BASE_URL = API_BASE_URL + '/oauth2/authorize'
 TOKEN_URL = API_BASE_URL + '/oauth2/token'
 
+app.config['SECRET_KEY'] = 'u0Hp5yCS9uDIMYElRMcWl1tzM9iTSIig'
+
 
 if 'http://' in OAUTH2_REDIRECT_URI:
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = 'true'
@@ -56,7 +58,7 @@ def register_discord():
         return {'authorization': authorization_url}
 
 
-@app.route('/api/discord/callback')
+@app.route('/callback')
 def callback():
     user = User.query.filter_by(email="jacksn@mail.com").first()
     if request.values.get('error'):

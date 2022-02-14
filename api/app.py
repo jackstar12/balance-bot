@@ -1,30 +1,26 @@
 import json
+import os
 from datetime import timezone, datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
 from typing import List, Tuple, Union, Dict, Callable
-from sqlalchemy import or_, and_
 
 import bcrypt
-import os
 import flask_jwt_extended as flask_jwt
-from flask import request, jsonify, redirect, session, url_for
-from requests_oauthlib import OAuth2Session
+from flask import request, jsonify
+from sqlalchemy import or_, and_
 
-import api.dbutils as dbutils
 from api.database import db, app
 from api.dbmodels.client import Client
-from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.user import User
-from models.customencoder import CustomEncoder
-from usermanager import UserManager
 
 # Create database connection object
 jwt = flask_jwt.JWTManager(app)
 
-import api.discordauth
-
 app.config['SECRET_KEY'] = os.environ.get('OAUTH2_CLIENT_SECRET')
+
+
+import api.discordauth
 
 
 @jwt.user_lookup_loader
