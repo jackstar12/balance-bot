@@ -11,6 +11,7 @@ class Trade(db.Model, Serializer):
     qty = db.Column(db.Float, nullable=False)
     side = db.Column(db.String, nullable=False)
     type = db.Column(db.String, nullable=False)
+
     label = db.Column(db.String, nullable=True)
     memo = db.Column(db.String, nullable=True)
 

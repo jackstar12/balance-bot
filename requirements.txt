@@ -8,3 +8,4 @@ gevent~=21.8.0
 websocket-client~=0.53.0
 SQLAlchemy~=1.4.25
 Flask~=2.0.2
+flask_migrate
