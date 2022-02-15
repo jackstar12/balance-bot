@@ -1,7 +1,6 @@
 import json
 import dataclasses
 from datetime import datetime
-from models.client import Client
 
 
 class CustomEncoder(json.JSONEncoder):

@@ -5,7 +5,6 @@ from threading import Timer, Lock
 from typing import Callable
 
 from Exchanges.binance.websocket_manager import WebsocketManager
-from models.trade import Trade
 from datetime import datetime
 
 

@@ -73,10 +73,10 @@ class BitmexClient(ClientWorker):
         if prepared.body is not None:
             request_signature += prepared.body
 
-        signature = hmac.new(self.api_secret.encode(), request_signature.encode(), 'sha256').hexdigest()
+        signature = hmac.new(self._api_secret.encode(), request_signature.encode(), 'sha256').hexdigest()
 
         request.headers['api-expires'] = str(ts)
-        request.headers['api-key'] = self.api_key
+        request.headers['api-key'] = self._api_key
         request.headers['api-signature'] = signature
 
     def _process_response(self, response: Response):

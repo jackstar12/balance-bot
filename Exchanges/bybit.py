@@ -9,7 +9,6 @@ from datetime import datetime
 from clientworker import ClientWorker
 from api.dbmodels.balance import Balance
 from requests import Request, Response, Session, HTTPError
-from models.balance import Balance
 from typing import List, Tuple, Dict
 
 
@@ -60,10 +59,10 @@ class BybitClient(ClientWorker):
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
     def _sign_request(self, request):
         ts = int(time.time() * 1000)
-        request.params['api_key'] = self.api_key
+        request.params['api_key'] = self._api_key
         request.params['timestamp'] = str(ts)
         query_string = urllib.parse.urlencode(request.params)
-        sign = hmac.new(self.api_secret.encode('utf-8'), query_string.encode('utf-8'), 'sha256').hexdigest()
+        sign = hmac.new(self._api_secret.encode('utf-8'), query_string.encode('utf-8'), 'sha256').hexdigest()
         request.params['sign'] = sign
 
     def _process_response(self, response: Response):

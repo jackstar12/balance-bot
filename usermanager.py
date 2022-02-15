@@ -6,13 +6,9 @@ from datetime import datetime, timedelta
 from threading import RLock, Timer, Thread
 from typing import List, Tuple, Dict, Callable, Optional, Any
 
-from models.balance import Balance
-from models.trade import Trade
-from models.discorduser import DiscordUser
-from config import CURRENCY_ALIASES
-from models.balance import Balance
+from api.dbmodels.trade import Trade
 from models.singleton import Singleton
-from models.trade import Trade
+from config import CURRENCY_ALIASES
 
 import api.dbutils as dbutils
 from api.database import db

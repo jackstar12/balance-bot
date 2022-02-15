@@ -136,39 +136,6 @@ def de_emojify(text):
     return regrex_pattern.sub(r'', text)
 
 
-def get_user_by_id(users_by_id,
-                   user_id: int,
-                   guild_id: int = None,
-                   exact: bool = False,
-                   throw_exceptions=True) -> DiscordUser:
-    """
-    Tries to find a matching entry for the user and guild id.
-    :param exact: whether the global entry should be used if the guild isn't registered
-    :return:
-    The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
-    """
-    result = None
-
-    if user_id in users_by_id:
-        endpoints = users_by_id[user_id]
-        if isinstance(endpoints, dict):
-            result = endpoints.get(guild_id, None)
-            if not result and not exact:
-                result = endpoints.get(None, None)  # None entry is global
-            if not result and throw_exceptions:
-                raise ValueError("User {name} not registered for this guild")
-        else:
-            logging.error(
-                f'users_by_id contains invalid entry! Associated data with {user_id=}: {result=} {endpoints=} ({guild_id=})')
-            if throw_exceptions:
-                raise ValueError("This is caused due to a bug in the bot. Please contact dev.")
-    elif throw_exceptions:
-        logging.error(f'Dont know user {user_id=}')
-        raise ValueError("Unknown user {name}. Please register first.")
-
-    return result
-
-
 def add_guild_option(guilds, command: BaseCommandObject, description: str):
     command.options.append(
         create_option(
@@ -236,7 +203,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
                 clients_missing.append(client)
     elif mode == 'gain':
 
-        description += f'Gain {utils.readable_time(time)}\n\n'
+        description += f'Gain {readable_time(time)}\n\n'
 
         client_gains = calc_gains(clients, guild.id, time)
 
@@ -269,7 +236,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
                     description += f'{rank}. **{member.display_name}** {value}\n'
                     rank_true += 1
                 else:
-                    logger.error(f'Missing value string for {client=} even though hes in user_scores')
+                    logging.error(f'Missing value string for {client=} even though hes in user_scores')
                 prev_score = score
 
     if len(users_rekt) > 0:
