@@ -51,18 +51,17 @@ def register_discord():
     if user.discorduser:
         return {'msg': 'Discord is already connected'}, HTTPStatus.BAD_REQUEST
     else:
-        scope = request.args.get('scope', 'identify')
-        discord = make_session(scope=scope.split(' '))
+        discord = make_session(scope=['identify'])
         authorization_url, state = discord.authorization_url(AUTHORIZATION_BASE_URL)
         session['oauth2_state'] = state
-        return {'authorization': authorization_url}
+        return {'authorization': authorization_url}, HTTPStatus.OK
 
 
 @app.route('/callback')
 def callback():
     user = User.query.filter_by(email="jacksn@mail.com").first()
     if request.values.get('error'):
-        return request.values['error']
+        return request.values['error'], HTTPStatus.INTERNAL_SERVER_ERROR
     discord = make_session(state=session.get('oauth2_state'))
     token = discord.fetch_token(
         TOKEN_URL,
@@ -76,9 +75,6 @@ def callback():
             user_id=user_json['id'],
             name=user_json['username']
         )
-    else:
-        for client in discord_user.clients:
-            client.user = user
     user.discorduser = discord_user
     db.session.commit()
-    return {'Success'}
+    return {'msg': f'Successfully connected'}, HTTPStatus.OK
