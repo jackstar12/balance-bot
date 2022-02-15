@@ -11,8 +11,8 @@ class User(db.Model, Serializer):
     clients = db.relationship('Client', backref='user', lazy=True)
     discord_user_id = db.Column(db.Integer(), db.ForeignKey('discorduser.id'), nullable=True)
 
-    def serialize(self, full=True):
-        s = super().serialize(full=full)
+    def serialize(self, data=False, full=True):
+        s = super().serialize(data, full)
         del s['password']
         del s['salt']
         return s

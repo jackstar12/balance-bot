@@ -4,7 +4,7 @@ from api.dbmodels.serializer import Serializer
 
 class Trade(db.Model, Serializer):
     id = db.Column(db.Integer, primary_key=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
 
     symbol = db.Column(db.String, nullable=False)
     price = db.Column(db.Float, nullable=False)
@@ -16,4 +16,7 @@ class Trade(db.Model, Serializer):
     memo = db.Column(db.String, nullable=True)
 
     time = db.Column(db.DateTime, nullable=False)
+
+    def is_data(self):
+        return True
 

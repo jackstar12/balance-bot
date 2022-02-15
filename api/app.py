@@ -137,7 +137,7 @@ def logout():
 @flask_jwt.jwt_required()
 def info():
     user = flask_jwt.get_current_user()
-    return jsonify(user.serialize()), 200
+    return jsonify(user.serialize(data=False)), 200
 
 
 def register_client(exchange: str,
@@ -146,6 +146,81 @@ def register_client(exchange: str,
                     subaccount: str = None,
                     extra_kwargs: str = None):
     pass
+#    try:
+#        exchange_name = exchange_name.lower()
+#        exchange_cls = EXCHANGES[exchange_name]
+#        if issubclass(exchange_cls, ClientWorker):
+#            # Check if required keyword args are given
+#            if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
+#                    all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
+#                client: Client = Client(
+#                    api_key=api_key,
+#                    api_secret=api_secret,
+#                    subaccount=subaccount,
+#                    extra_kwargs=kwargs,
+#                    exchange=exchange_name
+#                )
+#                worker = exchange_cls(client)
+#                existing_user = dbutils.get_client(user_id=ctx.author.id, guild_id=ctx.guild_id, throw_exceptions=False)
+#                if existing_user:
+#                    existing_user.api = client
+#                    await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)), hidden=True)
+#                    logger.info(f'Updated user')
+#                    # user_manager.save_registered_users()
+#                else:
+#                    new_user = DiscordUser(
+#                        user_id=ctx.author.id,
+#                        name=ctx.author.name,
+#                        clients=[client],
+#                        global_client=client
+#                    )
+#                    init_balance = worker.get_balance(datetime.now())
+#                    if init_balance.error is None:
+#                        if round(init_balance.amount, ndigits=2) == 0.0:
+#                            message = f'You do not have any balance in your account. Please fund your account before registering.'
+#                            button_row = None
+#                        else:
+#                            message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
+#
+#                            def register_user():
+#                                new_user.clients[0].history.append(init_balance)
+#                                user_manager._add_worker(worker)
+#                                db.session.add(new_user)
+#                                db.session.add(client)
+#                                db.session.commit()
+#                                logger.info(f'Registered new user')
+#
+#                            button_row = create_yes_no_button_row(
+#                                slash,
+#                                author_id=ctx.author.id,
+#                                yes_callback=register_user,
+#                                yes_message="You were successfully registered!",
+#                                no_message="Registration cancelled",
+#                                hidden=True
+#                            )
+#                    else:
+#                        message = f'An error occured while getting your balance: {init_balance.error}.'
+#                        button_row = None
+#
+#                    await ctx.send(
+#                        content=message,
+#                        embed=new_user.get_discord_embed(),
+#                        hidden=True,
+#                        components=[button_row] if button_row else None
+#                    )
+#
+#            else:
+#                logger.error(
+#                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
+#                args_readable = ''
+#                for arg in exchange_cls.required_extra_args:
+#                    args_readable += f'{arg}\n'
+#                raise UserInputError(
+#                    f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}')
+#        else:
+#            logger.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
+#    except KeyError:
+#        raise UserInputError(f'Exchange {exchange_name} unknown')
 
 
 def get_client_query(user: User, client_id: int):
@@ -164,7 +239,7 @@ def get_client(id: int):
     user = flask_jwt.current_user
     client = get_client_query(user, id).first()
     if client:
-        return jsonify(client.serialize(full=False))
+        return jsonify(client.serialize(full=False, data=True))
     else:
         return {'msg': f'Invalid client id'}, HTTPStatus.BAD_REQUEST
 

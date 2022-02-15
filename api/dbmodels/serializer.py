@@ -4,21 +4,30 @@ from api.database import db
 
 class Serializer:
 
+    def is_data(self):
+        return False
+
     # The full flag is needed to avoid cyclic serializations
-    def serialize(self, full=True):
-        s = {}
-        for k in inspect(self).attrs.keys():
-            v = getattr(self, k)
-            if issubclass(type(v), list):
-                v = Serializer.serialize_list(v, full=full)
-            elif issubclass(type(v), Serializer):
-                if full:
-                    v = v.serialize(full=False)
-                else:
-                    continue
-            s[k] = v
-        return s
+    def serialize(self, data=True, full=True):
+        if data or not self.is_data():
+            s = {}
+            for k in inspect(self).attrs.keys():
+                v = getattr(self, k)
+                if issubclass(type(v), list):
+                    v = Serializer.serialize_list(v, data, full)
+                elif issubclass(type(v), Serializer):
+                    if full:
+                        v = v.serialize(full=False, data=data)
+                    else:
+                        continue
+                s[k] = v
+            return s
 
     @staticmethod
-    def serialize_list(l, full=True):
-        return [m.serialize(full=full) for m in l]
+    def serialize_list(l, data=True, full=True):
+        r = []
+        for m in l:
+            s = m.serialize(data, full)
+            if s:
+                r.append(s)
+        return r

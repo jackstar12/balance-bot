@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import List
 
 from api.database import db
 import discord
@@ -14,31 +15,13 @@ class DiscordUser(db.Model, Serializer):
     name = db.Column(db.String(), nullable=True)
     user = db.relationship('User', backref='discorduser', lazy=True, uselist=False)
 
-    global_client_id = db.Column(db.Integer(), db.ForeignKey('client.id'))
+    global_client_id = db.Column(db.Integer(), db.ForeignKey('client.id', ondelete="SET NULL"), nullable=True)
     global_client = db.relationship('Client', lazy=True, foreign_keys=global_client_id, post_update=True, uselist=False)
 
-    clients = db.relationship('Client', backref='discorduser', lazy=True, uselist=True, foreign_keys='[Client.discord_user_id]')
+    clients = db.relationship('Client', backref='discorduser', lazy=True, uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete-orphan')
 
-    def get_discord_embed(self):
-
-        embed = discord.Embed(title="User Information")
-
-        for client in self.clients:
-            embed = discord.Embed(title="User Information")
-            embed.add_field(name='Event', value=client.get_event_string(), inline=False)
-            embed.add_field(name='Exchange', value=client.exchange)
-            embed.add_field(name='Api Key', value=client.api_key)
-            embed.add_field(name='Api Secret', value=client.api_secret)
-
-            if client.subaccount:
-                embed.add_field(name='Subaccount', value=client.subaccount)
-            for extra in client.extra_kwargs:
-                embed.add_field(name=extra, value=client.extra_kwargs[extra])
-
-            if len(client.history) > 0:
-                embed.add_field(name='Initial Balance', value=client.history[0].to_string())
-
-        return embed
+    def get_discord_embed(self) -> List[discord.Embed]:
+        return [client.get_discord_embed() for client in self.clients]
 
 
 def add_user_from_json(user_json) -> DiscordUser:

@@ -1,5 +1,6 @@
 from typing import List
 
+import discord
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from api.database import db
@@ -24,8 +25,8 @@ class Client(db.Model, Serializer):
     # Data
     name = db.Column(db.String, nullable=True)
     rekt_on = db.Column(db.DateTime, nullable=True)
-    trades = db.relationship('Trade', backref='client_trades', lazy=True)
-    history = db.relationship('Balance', backref='client_history', lazy=True)
+    trades = db.relationship('Trade', backref='client_trades', lazy=True, cascade="all, delete")
+    history = db.relationship('Balance', backref='client_history', lazy=True, cascade="all, delete")
 
     required_extra_args: List[str] = []
 
@@ -37,10 +38,28 @@ class Client(db.Model, Serializer):
     def is_active(self):
         return not all(not event.is_active for event in self.events)
 
-    def get_event_string(self):
+    def get_event_string(self, is_global=False):
         events = ''
-        if self.is_global:
+        if self.is_global or is_global:
             events += 'Global'
         for event in self.events:
             events += f', {event.name}'
         return events
+
+    def get_discord_embed(self, is_global=False):
+
+        embed = discord.Embed(title="User Information")
+        embed.add_field(name='Event', value=self.get_event_string(is_global), inline=False)
+        embed.add_field(name='Exchange', value=self.exchange)
+        embed.add_field(name='Api Key', value=self.api_key)
+        embed.add_field(name='Api Secret', value=self.api_secret)
+
+        if self.subaccount:
+            embed.add_field(name='Subaccount', value=self.subaccount)
+        for extra in self.extra_kwargs:
+            embed.add_field(name=extra, value=self.extra_kwargs[extra])
+
+        if len(self.history) > 0:
+            embed.add_field(name='Initial Balance', value=self.history[0].to_string())
+
+        return embed

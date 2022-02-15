@@ -32,6 +32,7 @@ from api.dbmodels.discorduser import DiscordUser, add_user_from_json
 from api.dbmodels.user import User
 from api.dbmodels.event import Event
 from api.dbmodels.client import Client
+from sqlalchemy import inspect
 
 from usermanager import UserManager
 from key import KEY
@@ -433,19 +434,14 @@ def get_available_exchanges() -> str:
     ]
 )
 @utils.log_and_catch_user_input_errors(log_args=False)
-async def register_user(ctx: SlashContext,
+async def register(ctx: SlashContext,
                         exchange_name: str,
                         api_key: str,
                         api_secret: str,
                         subaccount: typing.Optional[str] = None,
-                        guild: str = None,
                         args: str = None):
-    if guild:
-        guild = int(guild)
 
     await ctx.defer(hidden=True)
-
-    active_event = dbutils.get_event(ctx.guild_id, throw_exceptions=False)
 
     kwargs = {}
     if args:
@@ -468,27 +464,37 @@ async def register_user(ctx: SlashContext,
             # Check if required keyword args are given
             if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
                     all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
-                client: Client = Client(
+                event = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
+                existing_client = None
+
+                discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
+                if not discord_user:
+                    discord_user = DiscordUser(
+                        user_id=ctx.author.id,
+                        name=ctx.author.name
+                    )
+                else:
+                    if event:
+                        for client in event.registrations:
+                            if client.discord_user_id == ctx.author_id:
+                                existing_client = client
+                                break
+                    else:
+                        existing_client = discord_user.global_client
+
+                new_client: Client = Client(
                     api_key=api_key,
                     api_secret=api_secret,
                     subaccount=subaccount,
                     extra_kwargs=kwargs,
-                    exchange=exchange_name
+                    exchange=exchange_name,
+                    discorduser=discord_user
                 )
-                worker = exchange_cls(client)
-                existing_user = dbutils.get_client(user_id=ctx.author.id, guild_id=ctx.guild_id, throw_exceptions=False)
-                if existing_user:
-                    existing_user.api = client
-                    await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)), hidden=True)
-                    logger.info(f'Updated user')
-                    #user_manager.save_registered_users()
-                else:
-                    new_user = DiscordUser(
-                        user_id = ctx.author.id,
-                        name=ctx.author.name,
-                        clients=[client],
-                        global_client=client
-                    )
+                if event:
+                    new_client.events.append(event)
+                worker = exchange_cls(new_client)
+
+                async def start_registration(ctx):
                     init_balance = worker.get_balance(datetime.now())
                     if init_balance.error is None:
                         if round(init_balance.amount, ndigits=2) == 0.0:
@@ -497,16 +503,27 @@ async def register_user(ctx: SlashContext,
                         else:
                             message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
 
-                            def register_user():
-                                new_user.clients[0].history.append(init_balance)
-                                user_manager._add_worker(worker)
-                                db.session.add(new_user)
-                                db.session.add(client)
+                            def register_user(ctx):
+                                if not event:
+                                    discord_user.global_client = new_client
+                                    discord_user.global_client_id = new_client.id
+                                else:
+                                    discord_user.clients.append(new_client)
+
+                                new_client.history.append(init_balance)
+                                user_manager.add_client(new_client)
+
+                                if inspect(discord_user).transient:
+                                    db.session.add(discord_user)
+                                db.session.add(new_client)
+
+                                if existing_client:
+                                    user_manager.remove_client(existing_client)
                                 db.session.commit()
                                 logger.info(f'Registered new user')
 
                             button_row = create_yes_no_button_row(
-                                slash,
+                                slash=slash,
                                 author_id=ctx.author.id,
                                 yes_callback=register_user,
                                 yes_message="You were successfully registered!",
@@ -519,11 +536,28 @@ async def register_user(ctx: SlashContext,
 
                     await ctx.send(
                         content=message,
-                        embed=new_user.get_discord_embed(),
+                        embed=new_client.get_discord_embed(is_global=event is None),
                         hidden=True,
-                        components=[button_row] if button_row else None
+                        components=[button_row]
                     )
 
+                if not existing_client:
+                    await start_registration(ctx)
+                else:
+                    buttons = create_yes_no_button_row(
+                        slash=slash,
+                        author_id=ctx.author_id,
+                        yes_callback=start_registration,
+                        no_message="Registration cancelled",
+                        hidden=True
+                    )
+                    await ctx.send(
+                        content=f'You are already registered for _{existing_client.get_event_string()}_.\n'
+                                f'Continuing the registration will delete your old data for _{existing_client.get_event_string()}_.\n'
+                                f'Do you want to proceed?',
+                        components=[buttons],
+                        hidden=True
+                    )
             else:
                 logger.error(f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
                 args_readable = ''
@@ -634,7 +668,7 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
             channel_id=ctx.channel_id
         )
 
-        def register():
+        def register(ctx):
             db.session.add(event)
             db.session.commit()
             event_manager.register(event)
@@ -665,12 +699,12 @@ async def unregister(ctx, guild: str = None):
 
     client = dbutils.get_client(ctx.author.id, guild)
 
-    def unregister_user():
+    def unregister_user(ctx):
         user_manager.remove_client(client)
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
 
     buttons = create_yes_no_button_row(
-        slash,
+        slash=slash,
         author_id=ctx.author.id,
         yes_callback=unregister_user,
         yes_message="You were succesfully unregistered!",
@@ -678,10 +712,8 @@ async def unregister(ctx, guild: str = None):
         hidden=True
     )
 
-    guild_name = ""
-    if guild:
-        guild_name = f' from {bot.get_guild(guild).name}'
-    await ctx.send(content=f'Do you really want to unregister{guild_name}? This will **delete all your data**.',
+    await ctx.send(content=f'Do you really want to unregister from {client.get_event_string()}? This will **delete all your data**.',
+                   embed=client.get_discord_embed(),
                    components=[buttons],
                    hidden=True)
 
@@ -694,7 +726,7 @@ async def unregister(ctx, guild: str = None):
 @utils.log_and_catch_user_input_errors()
 async def info(ctx, guild=None):
     user = dbutils.get_user(ctx.author_id)
-    await ctx.send(content='', embed=user.get_discord_embed(), hidden=True)
+    await ctx.send(content='', embeds=user.get_discord_embed(), hidden=True)
 
 
 @slash.slash(
@@ -721,7 +753,7 @@ async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, 
     if guild:
         guild = int(guild)
 
-    client = dbutils.get_client(ctx.author.id. ctx.guild_id)
+    client = dbutils.get_client(ctx.author_id, ctx.guild_id)
 
     from_to = ''
     if since:
@@ -729,7 +761,7 @@ async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, 
     if to:
         from_to += f' till **{to}**'
 
-    def clear_user():
+    def clear_user(ctx):
         user_manager.clear_client_data(client,
                                        start=since,
                                        end=to,
