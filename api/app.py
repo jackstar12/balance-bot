@@ -10,9 +10,13 @@ import flask_jwt_extended as flask_jwt
 from flask import request, jsonify
 from sqlalchemy import or_, and_
 
-from api.database import db, app
+from api.database import db, app, migrate
 from api.dbmodels.client import Client
 from api.dbmodels.user import User
+from api.dbmodels.discorduser import DiscordUser
+from api.dbmodels.trade import Trade
+from api.dbmodels.balance import Balance
+from api.dbmodels.event import Event
 
 # Create database connection object
 jwt = flask_jwt.JWTManager(app)
@@ -202,9 +206,9 @@ create_endpoint(
 )
 
 
-def init():
-    db.init_app(app)
-    db.create_all()
+db.init_app(app)
+migrate.init_app(app, db)
+db.create_all()
 
 
 def run():

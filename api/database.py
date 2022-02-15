@@ -14,4 +14,4 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:postgres@localhos
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app=app, session_options={'autoflush': False})
-migrate = Migrate(app, db)
+migrate = Migrate()
