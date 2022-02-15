@@ -3,6 +3,7 @@ import logging
 from functools import wraps
 
 import discord
+import inspect
 
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
@@ -96,7 +97,8 @@ def log_and_catch_user_input_errors(log_args=True):
                          f'Execute command {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} '
                          f'guild={ctx.guild} {f"{args=}, {kwargs=}" if log_args else ""}')
             try:
-                return await coro(ctx, *args, **kwargs)
+                await coro(ctx, *args, **kwargs)
+                logging.info(f'Done executing command {coro.__name__}')
             except UserInputError as e:
                 if e.user_id:
                     if ctx.guild:
@@ -443,13 +445,17 @@ def create_yes_no_button_row(slash: SlashCommand,
         @slash.component_callback(components=[custom_id])
         async def wrapper(ctx: ComponentContext):
 
-            if callable(callback):
-                callback()
-            await ctx.edit_origin(components=[])
-            if message:
-                await ctx.send(content=message, hidden=hidden)
             for button in buttons:
                 slash.remove_component_callback(custom_id=button['custom_id'])
+
+            await ctx.edit_origin(components=[])
+            if callable(callback):
+                if inspect.iscoroutinefunction(callback):
+                    await callback(ctx)
+                else:
+                    callback(ctx)
+            if message:
+                await ctx.send(content=message, hidden=hidden)
 
     wrap_callback(yes_id, yes_callback, yes_message)
     wrap_callback(no_id, no_callback, no_message)

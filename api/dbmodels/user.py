@@ -10,8 +10,8 @@ class User(db.Model, Serializer):
     salt = db.Column(db.String, nullable=False)
     clients = db.relationship('Client', backref='user', lazy=True)
 
-    def serialize(self):
-        s = super().serialize()
+    def serialize(self, data=False, full=True):
+        s = super().serialize(data, full)
         del s['password']
         del s['salt']
         return s

@@ -4,8 +4,24 @@ from api.database import db
 
 class Serializer:
 
-    def serialize(self):
-        return {c: getattr(self, c) for c in inspect(self).attrs.keys()}
+    def is_data(self):
+        return False
+
+    # The full flag is needed to avoid cyclic serializations
+    def serialize(self, data=True, full=True):
+        if data or not self.is_data():
+            s = {}
+            for k in inspect(self).attrs.keys():
+                v = getattr(self, k)
+                if issubclass(type(v), list):
+                    v = Serializer.serialize_list(v, data, full)
+                elif issubclass(type(v), Serializer):
+                    if full:
+                        v = v.serialize(full=False, data=data)
+                    else:
+                        continue
+                s[k] = v
+            return s
 
     @staticmethod
     def serialize_list(l):

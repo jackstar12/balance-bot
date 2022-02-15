@@ -70,8 +70,9 @@ class UserManager(Singleton):
                 del worker
 
     def remove_client(self, client: Client):
-        self._remove_worker(self._get_worker(client))
-        Client.query.filter_by(id=client.id).all().delete(synchronize_session=True)
+        self._remove_worker(self._get_worker(client, create_if_missing=False))
+        Client.query.filter_by(id=client.id).delete()
+        db.session.commit()
 
     def start_fetching(self):
         """
@@ -134,20 +135,25 @@ class UserManager(Singleton):
 
         for client in clients:
             if client.is_global or client.is_active:
-                client_cls = self._exchanges[client.exchange]
-                if issubclass(client_cls, ClientWorker):
-                    worker = client_cls(client)
-                    self._add_worker(worker)
-                else:
-                    logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
+                self.add_client(client)
             else:
-                worker = self._get_worker(client)
-                if worker:
-                    self._remove_worker(worker)
+                self._remove_worker(self._get_worker(client, create_if_missing=False))
 
-    def _get_worker(self, client: Client) -> ClientWorker:
+    def add_client(self, client):
+        client_cls = self._exchanges[client.exchange]
+        if issubclass(client_cls, ClientWorker):
+            worker = client_cls(client)
+            self._add_worker(worker)
+        else:
+            logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
+
+    def _get_worker(self, client: Client, create_if_missing=True) -> ClientWorker:
         with self._worker_lock:
-            return self._workers_by_client_id.get(client.id)
+            worker = self._workers_by_client_id.get(client.id)
+            if not worker and create_if_missing:
+                self.add_client(client)
+                worker = self._workers_by_client_id.get(client.id)
+            return worker
 
     def _get_worker_event(self, user_id, guild_id):
         with self._worker_lock:

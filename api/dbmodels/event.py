@@ -15,8 +15,8 @@ association = db.Table('association',
 class Event(db.Model, Serializer):
     __tablename__ = 'event'
     id = db.Column(db.Integer, primary_key=True)
-    guild_id = db.Column(db.Integer, nullable=False)
-    channel_id = db.Column(db.Integer, nullable=False)
+    guild_id = db.Column(db.BigInteger, nullable=False)
+    channel_id = db.Column(db.BigInteger, nullable=False)
     registration_start = db.Column(db.DateTime, nullable=False)
     registration_end = db.Column(db.DateTime, nullable=False)
     start = db.Column(db.DateTime, nullable=False)

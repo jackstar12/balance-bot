@@ -7,7 +7,7 @@ from api.dbmodels.serializer import Serializer
 
 class Balance(db.Model, Serializer):
     id = db.Column(db.Integer, primary_key=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
     time = db.Column(db.DateTime, nullable=False)
     amount = db.Column(db.Float, nullable=False)
     currency = db.Column(db.String, nullable=False)
