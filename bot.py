@@ -453,7 +453,7 @@ async def register(ctx: SlashContext,
                 else:
                     if event:
                         for client in event.registrations:
-                            if client.discord_user_id == ctx.author_id:
+                            if client.discorduser.user_id == ctx.author_id:
                                 existing_client = client
                                 break
                     else:
