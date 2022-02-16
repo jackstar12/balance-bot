@@ -15,7 +15,6 @@ from api.database import db
 from api.dbmodels.discorduser import DiscordUser, add_user_from_json
 from api.dbmodels.balance import Balance, balance_from_json
 from api.dbmodels.client import Client
-from api.dbmodels.event import Event
 from clientworker import ClientWorker
 
 

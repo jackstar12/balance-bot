@@ -2,14 +2,11 @@ import abc
 import logging
 from datetime import datetime, timedelta
 from typing import List, Callable
-from urllib.request import Request
+
 from requests import Request, Response, Session
 
-import api.database as db
-from api.dbmodels.trade import Trade
-from api.dbmodels.balance import Balance
-from api.dbmodels.event import Event
 from api.dbmodels.client import Client
+from api.dbmodels.trade import Trade
 
 
 class ClientWorker:
