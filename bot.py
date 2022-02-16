@@ -1030,7 +1030,7 @@ api_thread.start()
     name="summary",
     description="Show event summary"
 )
-@utils.log_and_catch_user_input_errors
+@utils.log_and_catch_user_input_errors()
 @utils.admin_only
 async def summary(ctx: SlashContext):
     await ctx.defer()
