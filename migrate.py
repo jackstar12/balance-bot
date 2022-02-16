@@ -3,10 +3,10 @@ import json
 import logging
 from datetime import datetime, timedelta
 
+from api.app import app
 from api.database import db
 from api.dbmodels.balance import balance_from_json
 from api.dbmodels.client import Client
-from api.dbmodels.trade import Trade
 from api.dbmodels.discorduser import add_user_from_json, DiscordUser
 from api.dbmodels.event import Event
 from config import DATA_PATH
