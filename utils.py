@@ -168,10 +168,10 @@ def create_history(to_graph: List[Tuple[Client, str]],
         total_gain = calc_percentage(ys[0], ys[len(ys) - 1])
 
         if first:
-            title = f'History for {name} (Total: {total_gain}%)'
+            title = f'History for {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
             first = False
         else:
-            title += f' vs. {name} (Total: {total_gain}%)'
+            title += f' vs. {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
 
         plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
 

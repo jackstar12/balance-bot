@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from api.database import db
 from api.dbmodels.balance import balance_from_json
 from api.dbmodels.client import Client
+from api.dbmodels.trade import Trade
 from api.dbmodels.discorduser import add_user_from_json, DiscordUser
 from api.dbmodels.event import Event
 from config import DATA_PATH
@@ -14,7 +15,6 @@ parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-e", "--event", action="store_true", help="Specifying this creates an dev event which can be used")
 parser.add_argument("-u", "--users", action="store_true", help="Specifying this puts the users.json the database.")
 parser.add_argument("-d", "--data", action="store_true", help="Specifying this puts the current data into a database.")
-parser.add_subparsers()
 
 args = parser.parse_args()
 
@@ -76,8 +76,8 @@ if args.event:
     event = Event(
         name="Dev",
         description="dev event",
-        guild_id=715507174167806042,
-        channel_id=715507174167806045,
+        guild_id=798957933135790091,
+        channel_id=942495607015227502,
         registrations=Client.query.all(),
         start=datetime.fromtimestamp(0),
         end=datetime.now() + timedelta(days=23),
