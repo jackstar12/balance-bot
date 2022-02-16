@@ -1,8 +1,6 @@
 from datetime import datetime
 
-from api.database import db
 from api.dbmodels.client import Client
-from api.dbmodels.balance import Balance
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.event import Event
 from typing import Optional
@@ -22,8 +20,8 @@ def get_client(user_id: int,
                         return client
                 if throw_exceptions:
                     raise UserInputError("User {name} is not registered for this event", user_id)
-        if user.global_client_id:
-            return Client.query.filter_by(id=user.global_client_id).first()
+        if user.global_client:
+            return user.global_client
         elif throw_exceptions:
             raise UserInputError("User {name} does not have a global registration", user_id)
     elif throw_exceptions:

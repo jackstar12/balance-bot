@@ -3,7 +3,8 @@ requests~=2.26.0
 discord-py-slash-command~=3.0.1
 discord.py>=1.6.0
 pytest-shutil
-websocket-client~=0.53.0
 SQLAlchemy~=1.4.25
 Flask~=2.0.2
 flask_migrate
+flask_sqlalchemy
+prettytable

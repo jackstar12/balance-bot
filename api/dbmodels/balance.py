@@ -2,10 +2,9 @@ from datetime import datetime
 
 from api.database import db
 from config import CURRENCY_PRECISION
-from api.dbmodels.serializer import Serializer
 
 
-class Balance(db.Model, Serializer):
+class Balance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
     time = db.Column(db.DateTime, nullable=False)
