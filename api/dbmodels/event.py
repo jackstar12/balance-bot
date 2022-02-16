@@ -1,9 +1,10 @@
-#import utils
+import utils
+import numpy
 from api.database import db
 from api.dbmodels.serializer import Serializer
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
-import numpy
+from config import DATA_PATH
 import discord
 
 association = db.Table('association',
@@ -57,14 +58,19 @@ class Event(db.Model, Serializer):
         awards = discord.Embed(title=f'Awards')
         description = ''
 
-        #gains = utils.calc_gains(self.registrations, self.guild_id)
-        #gains.sort(lambda x: x[1][0], reverse=True)
-#
-        #description += f'**Best Trader :crown:**\n' \
-        #               f'{gains[0][0].discorduser.name}\n'
-#
-        #description += f'**Worst Trader :disappointed_relieved:**\n' \
-        #               f'{gains[len(gains) - 1][0].discorduser.name}'
+        gains = utils.calc_gains(self.registrations, self.guild_id, self.start)
+        gains.sort(key=lambda x: x[1][0], reverse=True)
+
+        description += f'**Best Trader :crown:**\n' \
+                       f'{gains[0][0].discorduser.id}\n'
+
+        description += f'\n**Worst Trader :disappointed_relieved:**\n' \
+                       f'{gains[len(gains) - 1][0].discorduser.id}\n'
+
+        gains.sort(key=lambda x: x[1][1], reverse=True)
+
+        description += f'\n**Highest Stakes :**\n' \
+                       f'{gains[0][0].discorduser.id}\n'
 
         # trade_counts = [len(client.trades) for client in self.registrations]
         # trade_counts.sort()
@@ -82,7 +88,7 @@ class Event(db.Model, Serializer):
                 client,
                 numpy.array(
                     non_null_balances(client.history)
-                ).std()
+                ).std() / client.history[0].amount
             )
             for client in self.registrations
         ]
@@ -95,5 +101,22 @@ class Event(db.Model, Serializer):
                        f'{volatility[len(volatility) - 1][0].discorduser.name}\n'
 
         description += '\n'
+        embed.description = description
 
         return embed
+
+    def create_complete_history(self):
+        utils.create_history(
+            custom_title=f'Complete history for {self.name}',
+            to_graph=[(client, client.id) for client in self.registrations],
+            guild_id=self.guild_id,
+            start=self.start,
+            end=self.end,
+            currency_display='%',
+            currency='$',
+            percentage=True,
+            path=DATA_PATH + "tmp.png"
+        )
+
+        file = discord.File(DATA_PATH + "tmp.png", "history.png")
+        return file
