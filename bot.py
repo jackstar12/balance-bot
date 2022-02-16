@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import random
+
+import datetime as datetime
 import discord
 import discord.errors
 import typing
@@ -48,7 +50,6 @@ from config import (DATA_PATH,
 
 import utils
 from utils import (de_emojify,
-                   add_guild_option,
                    calc_percentage,
                    calc_xs_ys,
                    create_yes_no_button_row)
@@ -240,7 +241,9 @@ async def history(ctx: SlashContext,
         registrations = [(registered_client, user)]
     else:
         registered_user = dbutils.get_user(user.id)
-        registrations = [(client, client.get_event_string()) for client in registered_user.clients]
+        registrations = [
+            (client, client.get_event_string()) for client in registered_user.clients
+        ]
 
     if compare:
         members_raw = compare.split(' ')
@@ -278,43 +281,19 @@ async def history(ctx: SlashContext,
     else:
         percentage = False
 
-    first = True
-    title = ''
-    for registered_client, name in registrations:
+    await ctx.defer()
 
-        user_manager.get_client_balance(registered_client, currency=currency)
-        user_data = user_manager.get_client_history(registered_client,
-                                                    guild_id=ctx.guild_id,
-                                                    start=since,
-                                                    end=to,
-                                                    currency=currency)
+    utils.create_history(
+        to_graph=registrations,
+        guild_id=ctx.guild_id,
+        start=since,
+        end=to,
+        currency_display=currency_raw,
+        currency=currency,
+        percentage=percentage,
+        path=DATA_PATH + "tmp.png"
+    )
 
-        if len(user_data) == 0:
-            raise UserInputError(f'Got no data for {name}!')
-
-        xs, ys = calc_xs_ys(user_data, percentage)
-
-        total_gain = calc_percentage(user_data[0].amount, user_data[len(ys) - 1].amount)
-
-        if first:
-            title = f'History for {name} (Total: {total_gain}%)'
-            first = False
-        else:
-            title += f' vs. {name} (Total: {total_gain}%)'
-
-        plt.plot(xs, ys, label=f"{name}'s {currency_raw} Balance")
-
-    plt.gcf().autofmt_xdate()
-    plt.gcf().set_dpi(100)
-    plt.gcf().set_size_inches(8 + len(registrations), 5.5 + len(registrations) * (5.5 / 8))
-    plt.title(title)
-    plt.ylabel(currency_raw)
-    plt.xlabel('Time')
-    plt.grid()
-    plt.legend(loc="best")
-
-    plt.savefig(DATA_PATH + "tmp.png")
-    plt.close()
     file = discord.File(DATA_PATH + "tmp.png", "history.png")
 
     await ctx.send(content='', file=file)
@@ -633,58 +612,54 @@ async def event_show(ctx: SlashContext):
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime, registration_start: datetime, registration_end: datetime):
 
-    if ctx.author.guild_permissions.administrator:
+    # now = datetime.now()
+    # start = now + timedelta(seconds=20)
+    # registration_start = now + timedelta(seconds=10)
+    # registration_end = now + timedelta(seconds=30)
+    # end = now + timedelta(seconds=40)
 
-        # now = datetime.now()
-        # start = now + timedelta(seconds=20)
-        # registration_start = now + timedelta(seconds=10)
-        # registration_end = now + timedelta(seconds=30)
-        # end = now + timedelta(seconds=40)
+    if start >= end:
+        await ctx.send("Start time can't be after end time.", hidden=True)
+        return
+    if registration_start >= registration_end:
+        await ctx.send("Registration start can't be after registration end", hidden=True)
+        return
+    if registration_end < start:
+        await ctx.send("Registration end should be after or at event start", hidden=True)
+        return
+    if registration_end > end:
+        await ctx.send("Registration end can't be after event end.", hidden=True)
+        return
+    if registration_start > start:
+        await ctx.send("Registration start should be before event start.", hidden=True)
+        return
 
-        if start >= end:
-            await ctx.send("Start time can't be after end time.", hidden=True)
-            return
-        if registration_start >= registration_end:
-            await ctx.send("Registration start can't be after registration end", hidden=True)
-            return
-        if registration_end < start:
-            await ctx.send("Registration end should be after or at event start", hidden=True)
-            return
-        if registration_end > end:
-            await ctx.send("Registration end can't be after event end.", hidden=True)
-            return
-        if registration_start > start:
-            await ctx.send("Registration start should be before event start.", hidden=True)
-            return
+    event = Event(
+        name=name,
+        description=description,
+        start=start,
+        end=end,
+        registration_start=registration_start,
+        registration_end=registration_end,
+        guild_id=ctx.guild_id,
+        channel_id=ctx.channel_id
+    )
 
-        event = Event(
-            name=name,
-            description=description,
-            start=start,
-            end=end,
-            registration_start=registration_start,
-            registration_end=registration_end,
-            guild_id=ctx.guild_id,
-            channel_id=ctx.channel_id
-        )
+    def register(ctx):
+        db.session.add(event)
+        db.session.commit()
+        event_manager.register(event)
 
-        def register(ctx):
-            db.session.add(event)
-            db.session.commit()
-            event_manager.register(event)
+    row = create_yes_no_button_row(
+        slash=slash,
+        author_id=ctx.author_id,
+        yes_callback=register,
+        yes_message="Event was successfully created",
+        no_message="Event creation cancelled",
+        hidden=True
+    )
 
-        row = create_yes_no_button_row(
-            slash=slash,
-            author_id=ctx.author_id,
-            yes_callback=register,
-            yes_message="Event was successfully created",
-            no_message="Event creation cancelled",
-            hidden=True
-        )
-
-        await ctx.send(embed=event.get_discord_embed(), components=[row], hidden=True)
-    else:
-        await ctx.send('You are not allowed to do this.', hidden=True)
+    await ctx.send(embed=event.get_discord_embed(), components=[row], hidden=True)
 
 
 @slash.slash(
@@ -701,6 +676,10 @@ async def unregister(ctx, guild: str = None):
 
     def unregister_user(ctx):
         user_manager.remove_client(client)
+        clients_remaining = Client.query.filter_by(discord_user_id=ctx.author_id).first()
+        if not clients_remaining:
+            DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
+            db.session.commit()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
 
     buttons = create_yes_no_button_row(
@@ -917,6 +896,27 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
 
 
 @slash.slash(
+    name="daily",
+    description="Shows your daily gains.",
+    options=[
+        create_option(
+            name="amount",
+            description="Amount of days",
+            option_type=SlashCommandOptionType.INTEGER,
+            required=False
+        )
+    ],
+    guild_ids=[798957933135790091]
+)
+@utils.log_and_catch_user_input_errors()
+async def daily(ctx: SlashContext, amount: int = None):
+    await ctx.defer()
+    client = dbutils.get_client(ctx.author_id, ctx.guild_id)
+    daily_gains = utils.calc_daily(client, amount, ctx.guild_id, string=True)
+    await ctx.send(embed=discord.Embed(title=f'Daily gains for {ctx.author.display_name}', description=f'```\n{daily_gains}```'))
+
+
+@slash.slash(
     name="exchanges",
     description="Shows available exchanges"
 )
@@ -1004,8 +1004,6 @@ async def on_rekt_async(user: DiscordUser):
 
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
-parser.add_argument("-m", "--migrate", action="store_true", help="Specifying this puts the current data into a database.")
-parser.add_argument("-d", "--dev", action="store_true", help="Whether to run in development mode.")
 
 args = parser.parse_args()
 
@@ -1030,53 +1028,18 @@ api_thread = Thread(target=api.run)
 api_thread.daemon = True
 api_thread.start()
 
-if args.migrate:
 
-    def load_registered_users():
-        try:
-            with open(DATA_PATH + 'users.json', 'r') as f:
-                users_json = json.load(fp=f)
-                for user_json in users_json:
-                    try:
-                        add_user_from_json(user_json)
-                    except KeyError as e:
-                        logging.error(f'{e} occurred while parsing user data {user_json} from users.json')
-        except FileNotFoundError:
-            logging.info(f'No user information found')
-        except json.decoder.JSONDecodeError:
-            pass
-
-
-    def load_user_data():
-        try:
-            with open(DATA_PATH + "user_data.json", "r") as f:
-                raw_json = json.load(fp=f)
-                if raw_json:
-                    for ts, data in raw_json:
-                        time = datetime.fromtimestamp(ts)
-                        for user_id in data:
-                            user = DiscordUser.query.filter_by(user_id=user_id).first()
-                            if user:
-                                for key in data[user_id].keys():
-                                    balance = balance_from_json(data[user_id][key], time)
-                                    user.global_client.history.append(balance)
-                                    db.session.add(balance)
-                                    break
-        except FileNotFoundError:
-            logging.info('No user data found')
-        except json.JSONDecodeError as e:
-            logging.error(f'{e}: Error while parsing user data.')
-
-        db.session.commit()
-
-
-    load_registered_users()
-    load_user_data()
-
-    print('Done migrating. Do not run this again.')
-
-    users = DiscordUser.query.all()
-    exit()
+@slash.slash(
+    name="summary",
+    description="Show event summary",
+    guild_ids=[798957933135790091]
+)
+@utils.log_and_catch_user_input_errors
+@utils.admin_only
+async def summary(ctx: SlashContext):
+    await ctx.defer()
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id)
+    await ctx.send(embed=event.get_summary_embed(), file=event.create_complete_history())
 
 
 user_manager = UserManager(exchanges=EXCHANGES,

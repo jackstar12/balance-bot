@@ -4,7 +4,10 @@ from functools import wraps
 
 import discord
 import inspect
+import api.dbutils
+import matplotlib.pyplot as plt
 
+from prettytable import PrettyTable
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError
@@ -39,7 +42,6 @@ def admin_only(coro):
             return await coro(ctx, *args, **kwargs)
         else:
             await ctx.send('This command can only be used by administrators', hidden=True)
-
     return wrapper
 
 
@@ -95,7 +97,7 @@ def log_and_catch_user_input_errors(log_args=True):
         async def wrapper(ctx: SlashContext, *args, **kwargs):
             logging.info(f'New Interaction: '
                          f'Execute command {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} '
-                         f'guild={ctx.guild} {f"{args=}, {kwargs=}" if log_args else ""}')
+                         f'guild={ctx.guild}{f" {args=}, {kwargs=}" if log_args else ""}')
             try:
                 await coro(ctx, *args, **kwargs)
                 logging.info(f'Done executing command {coro.__name__}')
@@ -106,51 +108,148 @@ def log_and_catch_user_input_errors(log_args=True):
                     else:
                         e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
-                logging.error(f'Failed because of UserInputError: {de_emojify(e.reason)}')
+                logging.error(f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}')
         return wrapper
     return decorator
 
 
+_regrex_pattern = re.compile("["
+                             u"\U0001F600-\U0001F64F"  # emoticons
+                             u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                             u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                             u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                             u"\U00002500-\U00002BEF"  # chinese char
+                             u"\U00002702-\U000027B0"
+                             u"\U00002702-\U000027B0"
+                             u"\U000024C2-\U0001F251"
+                             u"\U0001f926-\U0001f937"
+                             u"\U00010000-\U0010ffff"
+                             u"\u2640-\u2642"
+                             u"\u2600-\u2B55"
+                             u"\u200d"
+                             u"\u23cf"
+                             u"\u23e9"
+                             u"\u231a"
+                             u"\ufe0f"  # dingbats
+                             u"\u3030"
+                             "]+", re.UNICODE)
+
+
 # Thanks Stackoverflow
 def de_emojify(text):
-    regrex_pattern = re.compile("["
-                                u"\U0001F600-\U0001F64F"  # emoticons
-                                u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                                u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                                u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                                u"\U00002500-\U00002BEF"  # chinese char
-                                u"\U00002702-\U000027B0"
-                                u"\U00002702-\U000027B0"
-                                u"\U000024C2-\U0001F251"
-                                u"\U0001f926-\U0001f937"
-                                u"\U00010000-\U0010ffff"
-                                u"\u2640-\u2642"
-                                u"\u2600-\u2B55"
-                                u"\u200d"
-                                u"\u23cf"
-                                u"\u23e9"
-                                u"\u231a"
-                                u"\ufe0f"  # dingbats
-                                u"\u3030"
-                                "]+", re.UNICODE)
-    return regrex_pattern.sub(r'', text)
+    return _regrex_pattern.sub(r'', text)
 
 
-def add_guild_option(guilds, command: BaseCommandObject, description: str):
-    command.options.append(
-        create_option(
-            name="guild",
-            description=description,
-            required=False,
-            option_type=SlashCommandOptionType.STRING,
-            choices=[
-                create_choice(
-                    name=guild.name,
-                    value=str(guild.id)
-                ) for guild in guilds
-            ]
+def create_history(to_graph: List[Tuple[Client, str]],
+                   guild_id: int,
+                   start: datetime,
+                   end: datetime,
+                   currency_display: str,
+                   currency: str,
+                   percentage: bool,
+                   path: str,
+                   custom_title: str = None):
+    first = True
+    title = ''
+    UserManager().fetch_data([graph[0] for graph in to_graph])
+    for registered_client, name in to_graph:
+
+        user_data = UserManager().get_client_history(registered_client,
+                                                     guild_id=guild_id,
+                                                     start=start,
+                                                     end=end,
+                                                     currency=currency)
+
+        if len(user_data) == 0:
+            raise UserInputError(f'Got no data for {name}!')
+
+        xs, ys = calc_xs_ys(user_data, percentage)
+
+        total_gain = calc_percentage(ys[0], ys[len(ys) - 1])
+
+        if first:
+            title = f'History for {name} (Total: {total_gain}%)'
+            first = False
+        else:
+            title += f' vs. {name} (Total: {total_gain}%)'
+
+        plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
+
+    plt.gcf().autofmt_xdate()
+    plt.gcf().set_dpi(100)
+    plt.gcf().set_size_inches(8 + len(to_graph), 5.5 + len(to_graph) * (5.5 / 8))
+    if custom_title:
+        plt.title(custom_title)
+    else:
+        plt.title(title)
+    plt.ylabel(currency_display)
+    plt.xlabel('Time')
+    plt.grid()
+    plt.legend(loc="best")
+
+    plt.savefig(path)
+    plt.close()
+
+
+def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
+    if abs((prev.time - search).total_seconds()) < abs((after.time - search).total_seconds()):
+        return prev
+    else:
+        return after
+
+
+def calc_daily(client: Client,
+               amount: int,
+               guild_id: int = None,
+               currency: str = None,
+               string=False) -> Union[List[Tuple[datetime, float, float, float]], str]:
+
+    if len(client.history) == 0:
+        raise UserInputError(reason='Got no data for this user')
+
+    daily_end = datetime.now().replace(hour=0, minute=0, second=0)
+
+    if amount:
+        try:
+            daily_start = daily_end - timedelta(days=amount)
+        except OverflowError:
+            raise ValueError('Invalid daily amount given')
+    else:
+        daily_start = client.history[0].time.replace(hour=0, minute=0, second=0)
+
+    current_search = daily_start
+    prev_balance = client.history[0]
+    prev_daily = None
+
+    if string:
+        results = PrettyTable(
+            field_names=["Date", "Amount", "Diff", "Diff %"]
         )
-    )
+    else:
+        results = []
+    for balance in client.history:
+        if balance.time >= current_search:
+            daily = get_best_time_fit(current_search, prev_balance, balance)
+            daily.time = daily.time.replace(minute=0, second=0)
+
+            prev_daily = prev_daily or daily
+            values = (
+                        daily.time.strftime('%Y-%m-%d') if string else daily.time,
+                        daily.amount,
+                        round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+                        calc_percentage(prev_daily.amount, daily.amount, string=False)
+                     )
+            if string:
+                results.add_row([*values])
+            else:
+                results.append(values)
+            prev_daily = daily
+            current_search = daily.time + timedelta(days=1)
+        prev_balance = balance
+
+    print(results)
+
+    return results
 
 
 def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
@@ -203,7 +302,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
                 clients_missing.append(client)
     elif mode == 'gain':
 
-        description += f'Gain {readable_time(time)}\n\n'
+        description += f'Gain {utils.readable_time(time)}\n\n'
 
         client_gains = calc_gains(clients, guild.id, time)
 
@@ -391,7 +490,7 @@ def calc_xs_ys(data: List[Balance],
         xs.append(balance.time.replace(microsecond=0))
         if percentage:
             if data[0].amount > 0:
-                amount = 100 * (balance.amount - data[0][1].amount) / data[0][1].amount
+                amount = 100 * (balance.amount - data[0].amount) / data[0].amount
             else:
                 amount = 0.0
         else:
