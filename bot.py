@@ -80,16 +80,6 @@ EXCHANGES: Dict[str, Type[ClientWorker]] = {
 
 @bot.event
 async def on_ready():
-    #register_command: BaseCommandObject = slash.commands['register']
-    #unregister_command: BaseCommandObject = slash.commands['unregister']
-    #clear_command: BaseCommandObject = slash.commands['clear']
-    #add_guild_option(bot.guilds, register_command,
-    #                 'Guild to register this access for. If not given, it will be global.')
-    #add_guild_option(bot.guilds, unregister_command,
-    #                 'Which guild access to unregister. If not given, it will be global.')
-    #add_guild_option(bot.guilds, clear_command,
-    #                 'Which guild to clear your data for. If not given, it will be global.')
-
     user_manager.start_fetching()
     event_manager.initialize_events()
 
@@ -1031,7 +1021,7 @@ api_thread.start()
     description="Show event summary"
 )
 @utils.log_and_catch_user_input_errors()
-@utils.admin_only
+@utils.server_only
 async def summary(ctx: SlashContext):
     await ctx.defer()
     event = dbutils.get_event(ctx.guild_id, ctx.channel_id)
