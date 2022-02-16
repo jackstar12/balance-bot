@@ -4,7 +4,6 @@ from functools import wraps
 
 import discord
 import inspect
-import api.dbutils
 import matplotlib.pyplot as plt
 
 from prettytable import PrettyTable
@@ -17,8 +16,6 @@ from discord_slash import SlashCommand, ComponentContext, SlashContext
 from usermanager import UserManager
 from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
-from discord_slash.model import BaseCommandObject
-from discord_slash.utils.manage_commands import create_choice, create_option
 from typing import List, Tuple, Callable, Optional, Union
 from api.dbmodels.balance import Balance
 from config import CURRENCY_PRECISION

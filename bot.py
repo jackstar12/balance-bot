@@ -1,42 +1,35 @@
-import json
+import logging
+import argparse
+import datetime as datetime
 import logging
 import os
 import random
+import shutil
+import time
+import typing
+from datetime import datetime
+from typing import List, Dict, Type, Tuple
 
-import datetime as datetime
 import discord
 import discord.errors
-import typing
-import time
-import shutil
-from datetime import timedelta
-from threading import Thread
-
-import api.dbutils as dbutils
-import api.app as api
-from api.database import db
-from discord_slash.model import BaseCommandObject
+from discord.ext import commands
 from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_choice, create_option
-from discord.ext import commands
-from typing import List, Dict, Type, Tuple
-from datetime import datetime
-from errors import UserInputError
-
-from api.dbmodels.balance import balance_from_json
-from eventmanager import EventManager, FutureCallback
-
-import matplotlib.pyplot as plt
-import argparse
-
-from clientworker import ClientWorker
-from api.dbmodels.discorduser import DiscordUser, add_user_from_json
-from api.dbmodels.event import Event
-from api.dbmodels.client import Client
 from sqlalchemy import inspect
 
-from usermanager import UserManager
-from key import KEY
+import api.app as api
+import api.dbutils as dbutils
+import utils
+from Exchanges.binance.binance import BinanceFutures, BinanceSpot
+from Exchanges.bitmex import BitmexClient
+from Exchanges.bybit import BybitClient
+from Exchanges.ftx.ftx import FtxClient
+from Exchanges.kucoin import KuCoinClient
+from api.database import db
+from api.dbmodels.client import Client
+from api.dbmodels.discorduser import DiscordUser
+from api.dbmodels.event import Event
+from clientworker import ClientWorker
 from config import (DATA_PATH,
                     PREFIX,
                     FETCHING_INTERVAL_HOURS,
@@ -46,19 +39,12 @@ from config import (DATA_PATH,
                     CURRENCY_PRECISION,
                     REKT_THRESHOLD,
                     ARCHIVE_PATH)
-
-import utils
+from errors import UserInputError
+from eventmanager import EventManager
+from key import KEY
+from usermanager import UserManager
 from utils import (de_emojify,
-                   calc_percentage,
-                   calc_xs_ys,
                    create_yes_no_button_row)
-
-from Exchanges.binance.binance import BinanceFutures, BinanceSpot
-from Exchanges.bitmex import BitmexClient
-from Exchanges.ftx.ftx import FtxClient
-from Exchanges.kucoin import KuCoinClient
-from Exchanges.bybit import BybitClient
-
 
 intents = discord.Intents().default()
 intents.members = True
