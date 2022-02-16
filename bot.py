@@ -234,8 +234,6 @@ async def history(ctx: SlashContext,
                   to: datetime = None,
                   currency: str = None):
 
-    await ctx.defer()
-
     if ctx.guild:
         registered_client = dbutils.get_client(user.id, ctx.guild.id)
         registrations = [(registered_client, user)]
@@ -905,8 +903,7 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
             option_type=SlashCommandOptionType.INTEGER,
             required=False
         )
-    ],
-    guild_ids=[798957933135790091]
+    ]
 )
 @utils.log_and_catch_user_input_errors()
 async def daily(ctx: SlashContext, amount: int = None):
@@ -1031,8 +1028,7 @@ api_thread.start()
 
 @slash.slash(
     name="summary",
-    description="Show event summary",
-    guild_ids=[798957933135790091]
+    description="Show event summary"
 )
 @utils.log_and_catch_user_input_errors
 @utils.admin_only
