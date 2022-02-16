@@ -13,7 +13,7 @@ from api.app import app
 
 OAUTH2_CLIENT_ID = '939872409517953104'
 OAUTH2_CLIENT_SECRET = 'u0Hp5yCS9uDIMYElRMcWl1tzM9iTSIig'
-OAUTH2_REDIRECT_URI = 'http://localhost:5000/callback'
+OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT', 'http://localhost:5000/callback')
 
 API_BASE_URL = os.environ.get('API_BASE_URL', 'https://discordapp.com/api')
 AUTHORIZATION_BASE_URL = API_BASE_URL + '/oauth2/authorize'
