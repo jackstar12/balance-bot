@@ -82,7 +82,7 @@ class Event(db.Model, Serializer):
                 if balance.amount == 0.0:
                     break
             return balances
-        numpy.polyfit()
+
         volatility = [
             (
                 client,
