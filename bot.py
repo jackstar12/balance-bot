@@ -795,14 +795,15 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     rank_true = 1
 
     if len(user_scores) > 0:
-        bot.loop.create_task(
-            bot.change_presence(
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name=f'Best Trader {user_scores[0][0].discorduser.name}'
+        if mode == 'gain':
+            bot.loop.create_task(
+                bot.change_presence(
+                    activity=discord.Activity(
+                        type=discord.ActivityType.watching,
+                        name=f'Best Trader {user_scores[0][0].discorduser.name}'
+                    )
                 )
             )
-        )
         prev_score = None
         for client, score in user_scores:
             member = guild.get_member(client.discorduser.user_id)
