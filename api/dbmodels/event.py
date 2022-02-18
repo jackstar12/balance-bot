@@ -69,7 +69,7 @@ class Event(db.Model, Serializer):
 
         gains.sort(key=lambda x: x[1][1], reverse=True)
 
-        description += f'\n**Highest Stakes:**\n' \
+        description += f'\n**Highest Stakes :**\n' \
                        f'{gains[0][0].discorduser.name}\n'
 
         # trade_counts = [len(client.trades) for client in self.registrations]
@@ -82,7 +82,7 @@ class Event(db.Model, Serializer):
                 if balance.amount == 0.0:
                     break
             return balances
-
+        numpy.polyfit()
         volatility = [
             (
                 client,
@@ -94,11 +94,21 @@ class Event(db.Model, Serializer):
         ]
         volatility.sort(key=lambda x: x[1], reverse=True)
 
+        description += f'\n**Most Degen Trader :grimacing:**\n' \
+                       f'{volatility[0][0].discorduser.name}\n'
         description += f'**Most Degen Trader :grimacing:**\n' \
                        f'{volatility[0][0].discorduser.name}\n'
 
         description += f'\n**Still HODLing:sleeping:**\n' \
                        f'{volatility[len(volatility) - 1][0].discorduser.name}\n'
+
+        cumulative = (0, 0)
+        for gain in gains:
+            cumulative += gain[1]
+
+        description += f'\nLast but not least... ' \
+                       f'\nIn total you {"made" if cumulative[1] >= 0 else "lost"} {cumulative[1]}$!' \
+                       f'\nCumulative % performance: {cumulative[0]}%'
 
         description += '\n'
         embed.description = description
@@ -108,7 +118,7 @@ class Event(db.Model, Serializer):
     def create_complete_history(self):
         utils.create_history(
             custom_title=f'Complete history for {self.name}',
-            to_graph=[(client, client.id) for client in self.registrations],
+            to_graph=[(client, client.discorduser.name) for client in self.registrations],
             guild_id=self.guild_id,
             start=self.start,
             end=self.end,
