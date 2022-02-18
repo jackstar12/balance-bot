@@ -34,9 +34,7 @@ if args.users:
         pass
     db.session.commit()
 
-    print('Done migrating. Do not run this again to avoid duplication')
-    exit()
-
+    print('Done migrating users. Do not run this again to avoid duplication')
 if args.data:
 
     try:
@@ -69,7 +67,6 @@ if args.data:
     db.session.commit()
 
     print('Done migrating. Do not run this again to avoid duplication')
-    exit()
 
 
 if args.event:
@@ -88,4 +85,3 @@ if args.event:
     db.session.commit()
 
     print('Created dev event. Do not run this again to avoid duplication')
-    exit()
