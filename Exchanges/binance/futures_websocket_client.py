@@ -49,7 +49,7 @@ class FuturesWebsocketClient(WebsocketManager):
     def _keep_alive(self):
         with self._key_lock:
             if self._listenKey:
-                self._client.keep_alive(self._listenKey)
+                self._listenKey = self._client.start_user_stream()
                 keep_alive = Timer(timedelta(minutes=60).total_seconds(), self._keep_alive)
                 keep_alive.daemon = True
                 keep_alive.start()
