@@ -69,7 +69,7 @@ class Event(db.Model, Serializer):
 
         gains.sort(key=lambda x: x[1][1], reverse=True)
 
-        description += f'\n**Highest Stakes :**\n' \
+        description += f'\n**Highest Stakes :money::**\n' \
                        f'{gains[0][0].discorduser.name}\n'
 
         # trade_counts = [len(client.trades) for client in self.registrations]
@@ -95,8 +95,6 @@ class Event(db.Model, Serializer):
         volatility.sort(key=lambda x: x[1], reverse=True)
 
         description += f'\n**Most Degen Trader :grimacing:**\n' \
-                       f'{volatility[0][0].discorduser.name}\n'
-        description += f'**Most Degen Trader :grimacing:**\n' \
                        f'{volatility[0][0].discorduser.name}\n'
 
         description += f'\n**Still HODLing:sleeping:**\n' \
