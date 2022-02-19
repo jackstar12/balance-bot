@@ -112,7 +112,7 @@ async def ping(ctx: SlashContext):
     start_time = time.time()
     message = Embed(title="Testing Ping")
     end_time = time.time()
-    msg = await ctx.send(embeds=message)
+    msg = await ctx.send(embed=message)
 
     message2 = Embed(
         title=f"Pong!{round(bot.latency * 1000, ndigits=3)}ms\napi: {round((end_time - start_time), ndigits=3)}ms")
