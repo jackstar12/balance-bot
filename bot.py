@@ -110,7 +110,7 @@ async def on_guild_join(guild: discord.Guild):
 async def ping(ctx: SlashContext):
     """Get the bot's current websocket and api latency."""
     start_time = time.time()
-    message = discord.Embed(title="Testing Ping")
+    message = Embed(title="Testing Ping")
     end_time = time.time()
     msg = await ctx.send(embeds=message)
 
