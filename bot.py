@@ -115,7 +115,7 @@ async def ping(ctx: SlashContext):
     msg = await ctx.send(embed=message)
 
     message2 = Embed(
-        title=f":ping_pong:\n Intern:{round(bot.latency * 1000, ndigits=3)}ms\nApi: {round((end_time - start_time), ndigits=3)}ms")
+        title=f":ping_pong:\nExternal:{round(bot.latency * 1000, ndigits=3)}ms\nInternal: {round((end_time - start_time), ndigits=3)}ms")
     await msg.edit(embed=message2)
 
 
