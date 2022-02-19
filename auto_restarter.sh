@@ -3,7 +3,7 @@ counter=0
 last_crash_time=$(date +%s)
 echo "start auto_restarter"
 while true; do
-    python3.8 main.py -v
+    python3 bot.py
     counter=$((counter+1))
     echo "counter: $counter"
     sleep 2
