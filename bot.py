@@ -809,7 +809,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
             bot.change_presence(
                 activity=discord.Activity(
                     type=discord.ActivityType.watching,
-                    name=f'Best Trader {user_scores[0][0].name}'
+                    name=f'Best Trader: {user_scores[0][0].name}'
                 )
             )
         )
