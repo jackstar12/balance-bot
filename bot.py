@@ -111,9 +111,8 @@ async def ping(ctx: SlashContext):
     """Get the bot's current websocket and api latency."""
     start_time = time.time()
     message = Embed(title="Testing Ping...")
-    end_time = time.time()
     msg = await ctx.send(embed=message)
-
+    end_time = time.time()
     message2 = Embed(
         title=f":ping_pong:\nExternal:{round(bot.latency * 1000, ndigits=3)}ms\nInternal: {round((end_time - start_time), ndigits=3)}ms")
     await msg.edit(embed=message2)
