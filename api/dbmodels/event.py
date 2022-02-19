@@ -69,7 +69,7 @@ class Event(db.Model, Serializer):
 
         gains.sort(key=lambda x: x[1][1], reverse=True)
 
-        description += f'\n**Highest Stakes :money::**\n' \
+        description += f'\n**Highest Stakes :money:**\n' \
                        f'{gains[0][0].discorduser.name}\n'
 
         # trade_counts = [len(client.trades) for client in self.registrations]
