@@ -9,15 +9,23 @@ import bcrypt
 import flask_jwt_extended as flask_jwt
 from flask import request, jsonify
 from sqlalchemy import or_, and_
+from flask_cors import CORS
 
 from api.database import db, app, migrate
 from api.dbmodels.client import Client
 from api.dbmodels.user import User
 
-# Create database connection object
+
 jwt = flask_jwt.JWTManager(app)
 
+
 app.config['SECRET_KEY'] = os.environ.get('OAUTH2_CLIENT_SECRET')
+app.config['JWT_TOKEN_LOCATION'] = ['cookies']
+app.config['JWT_COOKIE_SECURE'] = False  # True in production
+#app.config['JWT_ACCESS_COOKIE_PATH'] = '/api/'
+app.config['JWT_COOKE_CSRF_PROTECT'] = True
+
+CORS(app)
 
 
 import api.discordauth
@@ -36,11 +44,8 @@ def refresh_expiring_jwts(response):
         now = datetime.now(timezone.utc)
         target_timestamp = datetime.timestamp(now + timedelta(minutes=30))
         if target_timestamp > exp_timestamp:
-            access_token = flask_jwt.create_access_token(identity=flask_jwt.get_jwt_identity())
-            data = response.get_json()
-            if type(data) is dict:
-                data["access_token"] = access_token
-                response.data = json.dumps(data)
+            flask_jwt.set_access_cookies(response, flask_jwt.create_access_token(identity=flask_jwt.get_jwt_identity()))
+            flask_jwt.set_refresh_cookies(response, flask_jwt.create_refresh_token(identity=flask_jwt.get_jwt_identity()))
         return response
     except (RuntimeError, KeyError):
         # Case where there is not a valid JWT. Just return the original respone
@@ -48,6 +53,7 @@ def refresh_expiring_jwts(response):
 
 
 def check_args_before_call(callback, arg_names, *args, **kwargs):
+    r = request
     for arg_name, required in arg_names:
         if request.json:
             value = request.json.get(arg_name)
@@ -55,7 +61,7 @@ def check_args_before_call(callback, arg_names, *args, **kwargs):
             if not value and required:
                 return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
         else:
-            return {'msg': f'Missing parameter {arg_name}'}
+            return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
     return callback(*args, **kwargs)
 
 
@@ -105,8 +111,11 @@ def register(email: str, password: str):
         )
         db.session.add(new_user)
         db.session.commit()
-        access_token = flask_jwt.create_access_token(identity=email)
-        return {'access_token': access_token}, HTTPStatus.CREATED
+        resp = jsonify({'login': True})
+        flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=new_user.email))
+        flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=new_user.email))
+        return resp
+
     else:
         return {'msg': f'Email is already used'}, HTTPStatus.BAD_REQUEST
 
@@ -117,8 +126,10 @@ def login(email: str, password: str):
     user = User.query.filter_by(email=email).first()
     if user:
         if bcrypt.hashpw(password.encode('utf-8'), user.salt.encode('utf-8')).decode('utf-8') == user.password:
-            access_token = flask_jwt.create_access_token(identity=email)
-            return {'access_token': access_token}
+            resp = jsonify({'login': True})
+            flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=user.email))
+            flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=user.email))
+            return resp
     return {'msg': 'Wrong Email or password'}, 401
 
 
