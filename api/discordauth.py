@@ -9,7 +9,7 @@ from api.database import db, app
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.user import User
 
-from api.app import app
+from api.app import app, flask_jwt
 
 OAUTH2_CLIENT_ID = '939872409517953104'
 OAUTH2_CLIENT_SECRET = 'u0Hp5yCS9uDIMYElRMcWl1tzM9iTSIig'
@@ -46,8 +46,9 @@ def make_session(token=None, state=None, scope=None):
 
 
 @app.route('/api/register/discord', methods=["GET"])
+@flask_jwt.jwt_required()
 def register_discord():
-    user = User.query.filter_by(email="jacksn@mail.com").first()
+    user = flask_jwt.current_user
     if user.discorduser:
         return {'msg': 'Discord is already connected'}, HTTPStatus.BAD_REQUEST
     else:
@@ -58,9 +59,9 @@ def register_discord():
 
 
 @app.route('/api/callback')
+@flask_jwt.jwt_required()
 def callback():
-    user = User.query.filter_by(email="jacksn@mail.com").first()
-
+    user = flask_jwt.current_user
     if request.values.get('error'):
         return request.values['error'], HTTPStatus.INTERNAL_SERVER_ERROR
     discord = make_session(state=session.get('oauth2_state'))
