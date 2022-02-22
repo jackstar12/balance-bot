@@ -3,8 +3,6 @@ from datetime import timedelta
 from flask_sqlalchemy import SQLAlchemy
 from flask import Flask
 from flask_migrate import Migrate
-from sqlalchemy.orm import scoped_session
-from sqlalchemy.orm import sessionmaker
 
 app = Flask(__name__)
 app.config['DEBUG'] = False

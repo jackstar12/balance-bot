@@ -11,14 +11,29 @@ from api.dbmodels.serializer import Serializer
 class DiscordUser(db.Model, Serializer):
     __tablename__ = 'discorduser'
     id = db.Column(db.Integer(), primary_key=True)
-    user_id = db.Column(db.BigInteger(), nullable=False)
+    discord_id = db.Column(db.BigInteger(), nullable=False)
     name = db.Column(db.String(), nullable=True)
     user = db.relationship('User', backref='discorduser', lazy=True, uselist=False)
+    avatar = db.Column(db.String(), nullable=True)
 
     global_client_id = db.Column(db.Integer(), db.ForeignKey('client.id', ondelete="SET NULL"), nullable=True)
-    global_client = db.relationship('Client', lazy=True, foreign_keys=global_client_id, post_update=True, uselist=False)
+    global_client = db.relationship(
+        'Client',
+        lazy=True,
+        foreign_keys=global_client_id,
+        post_update=True,
+        primaryjoin='Client.id == DiscordUser.global_client_id',
+        uselist=False
+    )
 
-    clients = db.relationship('Client', backref='discorduser', lazy=True, uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete-orphan')
+    clients = db.relationship(
+        'Client',
+        backref='discorduser',
+        lazy=True,
+        uselist=True,
+        foreign_keys='[Client.discord_user_id]',
+        cascade='all, delete-orphan'
+    )
 
     def get_discord_embed(self) -> List[discord.Embed]:
         return [client.get_discord_embed() for client in self.clients]

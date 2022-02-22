@@ -12,8 +12,11 @@ from sqlalchemy import or_, and_
 from flask_cors import CORS
 
 from api.database import db, app, migrate
+
+import api.dbutils
 from api.dbmodels.client import Client
 from api.dbmodels.user import User
+from api.dbmodels.event import Event
 
 
 jwt = flask_jwt.JWTManager(app)
@@ -24,8 +27,6 @@ app.config['JWT_TOKEN_LOCATION'] = ['cookies']
 app.config['JWT_COOKIE_SECURE'] = False  # True in production
 #app.config['JWT_ACCESS_COOKIE_PATH'] = '/api/'
 app.config['JWT_COOKE_CSRF_PROTECT'] = True
-
-CORS(app)
 
 
 import api.discordauth
@@ -53,14 +54,13 @@ def refresh_expiring_jwts(response):
 
 
 def check_args_before_call(callback, arg_names, *args, **kwargs):
-    r = request
     for arg_name, required in arg_names:
         if request.json:
             value = request.json.get(arg_name)
             kwargs[arg_name] = value
             if not value and required:
                 return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
-        else:
+        elif required:
             return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
     return callback(*args, **kwargs)
 
@@ -144,6 +144,7 @@ def logout():
 @flask_jwt.jwt_required()
 def info():
     user = flask_jwt.get_current_user()
+    print(user.discorduser)
     return jsonify(user.serialize(data=False)), 200
 
 
@@ -242,9 +243,18 @@ def get_client_query(user: User, client_id: int):
     )
 
 
-def get_client(id: int):
+def get_client(id: int = None):
     user = flask_jwt.current_user
-    client = get_client_query(user, id).first()
+
+    if id:
+        client = get_client_query(user, id).first()
+    elif len(user.clients) > 0:
+        client = user.clients[0]
+    elif user.discorduser:
+        client = user.discorduser.global_client
+    else:
+        client = None
+
     if client:
         return jsonify(client.serialize(full=False, data=True))
     else:
@@ -273,7 +283,7 @@ create_endpoint(
         },
         'GET': {
             'ARGS': [
-                ("id", True)
+                ("id", False)
             ],
             'CALLBACK': get_client
         },

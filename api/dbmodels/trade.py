@@ -3,6 +3,13 @@ from api.dbmodels.serializer import Serializer
 
 
 class Trade(db.Model, Serializer):
+    """
+    Init buy:
+    1 BTC@40k 12:00
+
+
+    """
+
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
 

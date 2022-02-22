@@ -9,7 +9,7 @@ class User(db.Model, Serializer):
     password = db.Column(db.String, unique=True, nullable=False)
     salt = db.Column(db.String, nullable=False)
     clients = db.relationship('Client', backref='user', lazy=True)
-    discord_user_id = db.Column(db.Integer(), db.ForeignKey('discorduser.id'), nullable=True)
+    discord_user_id = db.Column(db.Integer(), db.ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
 
     def serialize(self, data=False, full=True):
         s = super().serialize(data, full)

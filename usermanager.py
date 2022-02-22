@@ -104,7 +104,7 @@ class UserManager(Singleton):
         if currency is None:
             currency = '$'
 
-        data = self._db_fetch_data(workers=[self._get_worker_event(user.user_id, guild_id)], keep_errors=True, force_fetch=force_fetch)
+        data = self._db_fetch_data(workers=[self._get_worker_event(user.discord_id, guild_id)], keep_errors=True, force_fetch=force_fetch)
 
         result = data[0]
 

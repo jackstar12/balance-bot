@@ -8,8 +8,8 @@ from config import DATA_PATH
 import discord
 
 association = db.Table('association',
-                       db.Column('event_id', db.Integer, db.ForeignKey('event.id'), primary_key=True),
-                       db.Column('client_id', db.Integer, db.ForeignKey('client.id'), primary_key=True)
+                       db.Column('event_id', db.Integer, db.ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
+                       db.Column('client_id', db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
                        )
 
 
@@ -128,3 +128,6 @@ class Event(db.Model, Serializer):
 
         file = discord.File(DATA_PATH + "tmp.png", "history.png")
         return file
+
+    def is_data(self):
+        return True
