@@ -73,9 +73,9 @@ def callback():
 
     user_json = discord.get(API_BASE_URL + '/users/@me').json()
 
-    discord_user = DiscordUser.query.filter_by(discord_id=user_json['id']).first()
+    discord_user = DiscordUser.query.filter_by(user_id=user_json['id']).first()
     if not discord_user:
-        discord_user = DiscordUser(discord_id=user_json['id'])
+        discord_user = DiscordUser(user_id=user_json['id'])
 
     discord_user.name = user_json['username']
     discord_user.avatar = user_json['avatar']

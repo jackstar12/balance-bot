@@ -11,7 +11,7 @@ from api.dbmodels.serializer import Serializer
 class DiscordUser(db.Model, Serializer):
     __tablename__ = 'discorduser'
     id = db.Column(db.Integer(), primary_key=True)
-    discord_id = db.Column(db.BigInteger(), nullable=False)
+    user_id = db.Column(db.BigInteger(), nullable=False)
     name = db.Column(db.String(), nullable=True)
     user = db.relationship('User', backref='discorduser', lazy=True, uselist=False)
     avatar = db.Column(db.String(), nullable=True)

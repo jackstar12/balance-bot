@@ -429,16 +429,16 @@ async def register(ctx: SlashContext,
                 event = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
                 existing_client = None
 
-                discord_user = DiscordUser.query.filter_by(discord_id=ctx.author_id).first()
+                discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
                 if not discord_user:
                     discord_user = DiscordUser(
-                        discord_id=ctx.author.id,
+                        user_id=ctx.author.id,
                         name=ctx.author.name
                     )
                 else:
                     if event:
                         for client in event.registrations:
-                            if client.discorduser.discord_id == ctx.author_id:
+                            if client.discorduser.user_id == ctx.author_id:
                                 existing_client = client
                                 break
                     else:
@@ -662,9 +662,9 @@ async def unregister(ctx, guild: str = None):
 
     def unregister_user(ctx):
         user_manager.remove_client(client)
-        discord_user = DiscordUser.query.filter_by(discord_id=ctx.author_id).first()
+        discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
         if len(discord_user.clients) == 0 and not discord_user.user:
-            DiscordUser.query.filter_by(discord_id=ctx.author_id).delete()
+            DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
             db.session.commit()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
 
@@ -765,7 +765,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
         # All global clients
         users = DiscordUser.query.filter(DiscordUser.global_client_id is not None).all()
         for user in users:
-            member = guild.get_member(user.discord_id)
+            member = guild.get_member(user.user_id)
             if member:
                 clients.append(user.global_client)
 
@@ -819,7 +819,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
             )
         prev_score = None
         for client, score in user_scores:
-            member = guild.get_member(client.discorduser.discord_id)
+            member = guild.get_member(client.discorduser.user_id)
             if member:
                 if prev_score is not None and score < prev_score:
                     rank = rank_true
@@ -834,7 +834,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     if len(users_rekt) > 0:
         description += f'\n**Rekt**\n'
         for user_rekt in users_rekt:
-            member = guild.get_member(user_rekt.discorduser.discord_id)
+            member = guild.get_member(user_rekt.discorduser.user_id)
             if member:
                 description += f'{member.display_name}'
                 if user_rekt.rekt_on:
@@ -844,7 +844,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     if len(clients_missing) > 0:
         description += f'\n**Missing**\n'
         for client_missing in clients_missing:
-            member = guild.get_member(client_missing.discorduser.discord_id)
+            member = guild.get_member(client_missing.discorduser.user_id)
             if member:
                 description += f'{member.display_name}\n'
 
@@ -987,7 +987,7 @@ async def on_rekt_async(user: DiscordUser):
         try:
             guild: discord.guild.Guild = bot.get_guild(guild_data['guild_id'])
             channel = guild.get_channel(guild_data['guild_channel'])
-            member = guild.get_member(user.discord_id)
+            member = guild.get_member(user.user_id)
             if member:
                 message_replaced = message.replace("{name}", member.display_name)
                 embed = discord.Embed(description=message_replaced)

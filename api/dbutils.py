@@ -12,13 +12,13 @@ from errors import UserInputError
 def get_client(user_id: int,
                guild_id: int = None,
                throw_exceptions=True) -> Optional[Client]:
-    user = DiscordUser.query.filter_by(discord_id=user_id).first()
+    user = DiscordUser.query.filter_by(user_id=user_id).first()
     if user:
         if guild_id:
             event = get_event(guild_id, throw_exceptions=False)
             if event:
                 for client in event.registrations:
-                    if client.discorduser.discord_id == user_id:
+                    if client.discorduser.user_id == user_id:
                         return client
                 if throw_exceptions:
                     raise UserInputError("User {name} is not registered for this event", user_id)
@@ -59,7 +59,7 @@ def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
     :return:
     The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
     """
-    result = DiscordUser.query.filter_by(discord_id=user_id).first()
+    result = DiscordUser.query.filter_by(user_id=user_id).first()
     if not result and throw_exceptions:
         raise UserInputError("User {name} is not registered", user_id)
     if len(result.clients) == 0 and throw_exceptions:
