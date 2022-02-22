@@ -15,7 +15,7 @@ class Serializer:
                 v = getattr(self, k)
                 if issubclass(type(v), list):
                     if data or full:
-                        v = Serializer.serialize_list(v, data, full=False)
+                        v = Serializer.serialize_list(v, data=data, full=False)
                     else:
                         continue
                 elif issubclass(type(v), Serializer):
