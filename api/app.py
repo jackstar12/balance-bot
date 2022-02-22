@@ -9,7 +9,6 @@ import bcrypt
 import flask_jwt_extended as flask_jwt
 from flask import request, jsonify
 from sqlalchemy import or_, and_
-from flask_cors import CORS
 
 from api.database import db, app, migrate
 
