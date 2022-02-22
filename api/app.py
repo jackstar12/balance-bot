@@ -253,9 +253,10 @@ def get_client(id: int = None):
         client = user.discorduser.global_client
     else:
         client = None
-
     if client:
-        return jsonify(client.serialize(full=False, data=True))
+        s = client.serialize(full=False, data=True)
+        print(s)
+        return jsonify(s)
     else:
         return {'msg': f'Invalid client id'}, HTTPStatus.BAD_REQUEST
 
