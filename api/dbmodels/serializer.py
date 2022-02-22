@@ -14,7 +14,7 @@ class Serializer:
             for k in inspect(self).attrs.keys():
                 v = getattr(self, k)
                 if issubclass(type(v), list):
-                    v = Serializer.serialize_list(v, data, full)
+                    v = Serializer.serialize_list(v, data, full=False)
                 elif issubclass(type(v), Serializer):
                     if full:
                         v = v.serialize(full=False, data=data)
