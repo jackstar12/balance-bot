@@ -54,7 +54,6 @@ class Event(db.Model):
     def get_summary_embed(self):
         embed = discord.Embed(title=f'Summary')
 
-        awards = discord.Embed(title=f'Awards')
         description = ''
 
         gains = utils.calc_gains(self.registrations, self.guild_id, self.start)
@@ -70,9 +69,6 @@ class Event(db.Model):
 
         description += f'\n**Highest Stakes :moneybag:**\n' \
                        f'{gains[0][0].discorduser.name}\n'
-
-        # trade_counts = [len(client.trades) for client in self.registrations]
-        # trade_counts.sort()
 
         def non_null_balances(history):
             balances = []
@@ -96,23 +92,27 @@ class Event(db.Model):
         description += f'\n**Most Degen Trader :grimacing:**\n' \
                        f'{volatility[0][0].discorduser.name}\n'
 
-        description += f'\n**Still HODLing:sleeping:**\n' \
+        description += f'\n**Still HODLing :sleeping:**\n' \
                        f'{volatility[len(volatility) - 1][0].discorduser.name}\n'
 
-        cumulative = (0, 0)
+        cum_percent = 0.0
+        cum_dollar = 0.0
         for gain in gains:
-            cumulative += gain[1]
+            cum_percent += gain[1][0]
+            cum_dollar += gain[1][1]
+
+        cum_percent /= len(gains) or 1  # Avoid division by zero
 
         description += f'\nLast but not least... ' \
-                       f'\nIn total you {"made" if cumulative[1] >= 0 else "lost"} {cumulative[1]}$!' \
-                       f'\nCumulative % performance: {cumulative[0]}%'
+                       f'\nIn total you {"made" if cum_dollar >= 0.0 else "lost"} {round(cum_dollar, ndigits=2)}$!' \
+                       f'\nCumulative % performance: {round(cum_percent, ndigits=2)}%'
 
         description += '\n'
         embed.description = description
 
         return embed
 
-    def create_complete_history(self):
+    def create_complete_history(self, name='history.png'):
         utils.create_history(
             custom_title=f'Complete history for {self.name}',
             to_graph=[(client, client.discorduser.name) for client in self.registrations],
@@ -122,8 +122,8 @@ class Event(db.Model):
             currency_display='%',
             currency='$',
             percentage=True,
-            path=DATA_PATH + "tmp.png"
+            path=DATA_PATH + name
         )
 
-        file = discord.File(DATA_PATH + "tmp.png", "history.png")
+        file = discord.File(DATA_PATH + name, name)
         return file

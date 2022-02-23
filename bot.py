@@ -1026,7 +1026,9 @@ api.run()
 async def summary(ctx: SlashContext):
     await ctx.defer()
     event = dbutils.get_event(ctx.guild_id, ctx.channel_id)
-    await ctx.send(embed=event.get_summary_embed(), file=event.create_complete_history())
+    embed = event.get_summary_embed()
+    embed.set_image(url='attachment://history.png')
+    await ctx.send(embed=embed, file=event.create_complete_history())
 
 
 user_manager = UserManager(exchanges=EXCHANGES,
