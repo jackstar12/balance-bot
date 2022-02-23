@@ -254,9 +254,7 @@ def get_client(id: int = None):
     else:
         client = None
     if client:
-        s = client.serialize(full=False, data=True)
-        print(s)
-        return jsonify(s)
+        return jsonify(client.serialize(full=False, data=True))
     else:
         return {'msg': f'Invalid client id'}, HTTPStatus.BAD_REQUEST
 
