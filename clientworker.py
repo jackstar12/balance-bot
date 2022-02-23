@@ -2,7 +2,7 @@ import abc
 import logging
 from datetime import datetime, timedelta
 from typing import List, Callable
-from urllib.request import Request
+
 from requests import Request, Response, Session
 
 from api.dbmodels.client import Client

@@ -7,8 +7,8 @@ from config import DATA_PATH
 import discord
 
 association = db.Table('association',
-                       db.Column('event_id', db.Integer, db.ForeignKey('event.id'), primary_key=True),
-                       db.Column('client_id', db.Integer, db.ForeignKey('client.id'), primary_key=True)
+                       db.Column('event_id', db.Integer, db.ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
+                       db.Column('client_id', db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
                        )
 
 
@@ -68,7 +68,7 @@ class Event(db.Model):
 
         gains.sort(key=lambda x: x[1][1], reverse=True)
 
-        description += f'\n**Highest Stakes :**\n' \
+        description += f'\n**Highest Stakes :moneybag:**\n' \
                        f'{gains[0][0].discorduser.name}\n'
 
         # trade_counts = [len(client.trades) for client in self.registrations]
@@ -81,7 +81,7 @@ class Event(db.Model):
                 if balance.amount == 0.0:
                     break
             return balances
-        numpy.polyfit()
+
         volatility = [
             (
                 client,

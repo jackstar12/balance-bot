@@ -14,7 +14,6 @@ parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-e", "--event", action="store_true", help="Specifying this creates an dev event which can be used")
 parser.add_argument("-u", "--users", action="store_true", help="Specifying this puts the users.json the database.")
 parser.add_argument("-d", "--data", action="store_true", help="Specifying this puts the current data into a database.")
-parser.add_subparsers()
 
 args = parser.parse_args()
 

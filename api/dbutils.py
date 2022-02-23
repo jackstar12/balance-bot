@@ -60,6 +60,8 @@ def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
     result = DiscordUser.query.filter_by(user_id=user_id).first()
     if not result and throw_exceptions:
         raise UserInputError("User {name} is not registered", user_id)
+    if len(result.clients) == 0 and throw_exceptions:
+        raise UserInputError("User {name} does not have any registrations", user_id)
     return result
 
 

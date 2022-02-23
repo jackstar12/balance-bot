@@ -165,10 +165,10 @@ def create_history(to_graph: List[Tuple[Client, str]],
         total_gain = calc_percentage(ys[0], ys[len(ys) - 1])
 
         if first:
-            title = f'History for {name} (Total: {total_gain}%)'
+            title = f'History for {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
             first = False
         else:
-            title += f' vs. {name} (Total: {total_gain}%)'
+            title += f' vs. {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
 
         plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
 
@@ -332,7 +332,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
                     description += f'{rank}. **{member.display_name}** {value}\n'
                     rank_true += 1
                 else:
-                    logger.error(f'Missing value string for {client=} even though hes in user_scores')
+                    logging.error(f'Missing value string for {client=} even though hes in user_scores')
                 prev_score = score
 
     if len(users_rekt) > 0:
