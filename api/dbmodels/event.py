@@ -128,6 +128,3 @@ class Event(db.Model, Serializer):
 
         file = discord.File(DATA_PATH + "tmp.png", "history.png")
         return file
-
-    def is_data(self):
-        return True

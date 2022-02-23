@@ -549,6 +549,8 @@ async def register_existing(ctx: SlashContext):
         if user.global_client:
             if user.global_client not in event.registrations:
                 event.registrations.append(user.global_client)
+                user.global_client.append(event)
+                db.session.commit()
                 await ctx.send('Success', hidden=True)
             else:
                 await ctx.send('You are already registered for this event!', hidden=True)
