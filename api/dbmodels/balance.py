@@ -42,6 +42,14 @@ class Balance(db.Model, Serializer):
     def is_data(self):
         return True
 
+    def serialize(self, data=True, full=True):
+        s = super().serialize(data, full)
+        if s:
+            del s['id']
+            del s['client_id']
+            del s['error']
+            return s
+
 
 def balance_from_json(data: dict, time: datetime):
     currency = data.get('currency', '$')
