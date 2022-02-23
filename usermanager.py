@@ -1,12 +1,13 @@
 import json
 import logging
+import math
 import os
 import shutil
 from datetime import datetime, timedelta
 from threading import RLock, Timer, Thread
 from typing import List, Tuple, Dict, Callable, Optional, Any
 
-from api.dbmodels.trade import Trade
+from api.dbmodels.trade import Trade, trade_from_execution
 from models.singleton import Singleton
 from config import CURRENCY_ALIASES
 
@@ -15,6 +16,7 @@ from api.database import db
 from api.dbmodels.discorduser import DiscordUser, add_user_from_json
 from api.dbmodels.balance import Balance, balance_from_json
 from api.dbmodels.client import Client
+from api.dbmodels.execution import Execution
 from clientworker import ClientWorker
 
 
@@ -47,7 +49,8 @@ class UserManager(Singleton):
         self._last_full_fetch = {}
         self._saves_since_backup = 0
 
-        self._workers_by_id: Dict[Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
+        self._workers_by_id: Dict[
+            Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
         self.synch_workers()
@@ -104,7 +107,8 @@ class UserManager(Singleton):
         if currency is None:
             currency = '$'
 
-        data = self._db_fetch_data(workers=[self._get_worker_event(user.user_id, guild_id)], keep_errors=True, force_fetch=force_fetch)
+        data = self._db_fetch_data(workers=[self._get_worker_event(user.user_id, guild_id)], keep_errors=True,
+                                   force_fetch=force_fetch)
 
         result = data[0]
 
@@ -148,7 +152,7 @@ class UserManager(Singleton):
         client_cls = self._exchanges[client.exchange]
         if issubclass(client_cls, ClientWorker):
             worker = client_cls(client)
-            worker.set_on_trade_callback(self._on_trade)
+            worker.set_execution_callback(self._on_execution)
             self._add_worker(worker)
         else:
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
@@ -252,11 +256,55 @@ class UserManager(Singleton):
         logging.info(f'Done Fetching')
         return data
 
-    def _on_trade(self, client_id: int, trade: Trade):
-        client = Client.query.filter_by(id=client_id).first()
-        client.trades.append(trade)
+    def _on_execution(self, client_id: int, execution: Execution):
+
+        active_trade = Trade.query.filter(
+            Trade.symbol == execution.symbol,
+            Trade.client_id == client_id,
+            Trade.open_qty > 0.0
+        ).first()
+
+        def weighted_avg(values: Tuple[float, float], weights: Tuple[float, float]):
+            total = weights[0] + weights[1]
+            return values[0] * (weights[0] / total) + values[1] * (weights[1] / total)
+
+        if active_trade:
+            active_trade.executions.append(execution)
+            if execution.side == active_trade.initial.side:
+                active_trade.entry = weighted_avg((active_trade.entry, execution.price),
+                                                  (active_trade.qty, execution.qty))
+                active_trade.qty += execution.qty
+                active_trade.open_qty += execution.qty
+            else:
+                if execution.qty > active_trade.open_qty:
+                    new_execution = Execution(
+                        qty=execution.qty - active_trade.open_qty,
+                        symbol=execution.symbol,
+                        price=execution.price,
+                        side=execution.side,
+                        time=execution.time
+                    )
+                    execution.qty = active_trade.qty
+                    new_trade = trade_from_execution(new_execution)
+                    client = Client.query.filter_by(id=client_id).first()
+                    client.trades.append(new_trade)
+                if execution.qty <= active_trade.qty:
+                    if active_trade.exit is None:
+                        active_trade.exit = execution.price
+                    else:
+                        active_trade.exit = weighted_avg((active_trade.exit, execution.price),
+                                                         (active_trade.open_qty, execution.qty))
+                    if math.isclose(active_trade.open_qty, execution.qty, rel_tol=10e-6):
+                        active_trade.open_qty = 0.0
+                    else:
+                        active_trade.open_qty -= execution.qty
+                    realized_qty = active_trade.qty - active_trade.open_qty
+                    active_trade.realized_pnl = active_trade.exit * realized_qty - active_trade.entry * realized_qty * (1 if active_trade.initial.side == 'BUY' else -1)
+        else:
+            trade = trade_from_execution(execution)
+            client = Client.query.filter_by(id=client_id).first()
+            client.trades.append(trade)
         db.session.commit()
-        logging.info('Got new Trade')
 
     def db_match_balance_currency(self, balance: Balance, currency: str):
         result = None

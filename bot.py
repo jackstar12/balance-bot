@@ -10,6 +10,9 @@ import typing
 from datetime import datetime
 from typing import List, Dict, Type, Tuple
 
+import dotenv
+dotenv.load_dotenv()
+
 import discord
 import discord.errors
 from discord import Embed
@@ -500,7 +503,7 @@ async def register(ctx: SlashContext,
                         content=message,
                         embed=new_client.get_discord_embed(is_global=event is None),
                         hidden=True,
-                        components=[button_row]
+                        components=[button_row] if button_row else None
                     )
 
                 if not existing_client:

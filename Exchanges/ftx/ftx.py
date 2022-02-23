@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import List, Callable
 
-from api.dbmodels.trade import Trade
+from api.dbmodels.execution import Execution
 from api.dbmodels.balance import Balance
 from clientworker import ClientWorker
 import time
@@ -25,22 +25,21 @@ class FtxClient(ClientWorker):
                                      subaccount=self._subaccount,
                                      on_message_callback=self._on_message)
 
-    def set_on_trade_callback(self, callback: Callable[[int, Trade], None]):
-        super().set_on_trade_callback(callback)
+    def set_execution_callback(self, callback: Callable[[int, Execution], None]):
+        super().set_execution_callback(callback)
         self.ws.connect()
         self.ws.get_fills()
 
     def _on_message(self, ws, message):
         if message['channel'] == 'fills':
-            if callable(self._on_trade):
-                self._on_trade(
+            if callable(self._on_execution):
+                self._on_execution(
                     self.client_id,
-                    Trade(
+                    Execution(
                         symbol=message['market'],
                         side=message['side'],
                         price=float(message['price']),
                         qty=float(message['size']),
-                        type=message['type'],
                         time=datetime.now()
                     )
                 )

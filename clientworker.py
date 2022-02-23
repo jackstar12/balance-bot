@@ -6,7 +6,7 @@ from typing import List, Callable
 from requests import Request, Response, Session
 
 from api.dbmodels.client import Client
-from api.dbmodels.trade import Trade
+from api.dbmodels.execution import Execution
 
 
 class ClientWorker:
@@ -27,7 +27,7 @@ class ClientWorker:
         self._extra_kwargs = client.extra_kwargs
 
         self._session = Session()
-        self._on_trade = None
+        self._on_execution = None
         self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
 
@@ -48,8 +48,8 @@ class ClientWorker:
         logging.error(f'Exchange {self.exchange} does not implement _get_balance')
         raise NotImplementedError(f'Exchange {self.exchange} does not implement _get_balance')
 
-    def set_on_trade_callback(self, callback: Callable[[int, Trade], None]):
-        self._on_trade = callback
+    def set_execution_callback(self, callback: Callable[[int, Execution], None]):
+        self._on_execution = callback
 
     @abc.abstractmethod
     def _sign_request(self, request: Request):

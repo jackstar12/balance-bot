@@ -1,5 +1,7 @@
 from api.database import db
 from api.dbmodels.serializer import Serializer
+from sqlalchemy.ext.hybrid import hybrid_property
+from api.dbmodels.execution import Execution
 
 
 class Trade(db.Model, Serializer):
@@ -9,21 +11,50 @@ class Trade(db.Model, Serializer):
 
 
     """
-
+    __tablename__ = 'trade'
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
 
     symbol = db.Column(db.String, nullable=False)
-    price = db.Column(db.Float, nullable=False)
+    entry = db.Column(db.Float, nullable=False)
+
     qty = db.Column(db.Float, nullable=False)
-    side = db.Column(db.String, nullable=False)
-    type = db.Column(db.String, nullable=False)
+    open_qty = db.Column(db.Float, nullable=False)
+    exit = db.Column(db.Float, nullable=True)
+    realized_pnl = db.Column(db.Float, nullable=True)
+
+    executions = db.relationship('Execution', foreign_keys='[Execution.trade_id]', backref='trade', lazy=True,
+                                 cascade='all, delete')
+
+    initial_execution_id = db.Column(db.Integer, db.ForeignKey('execution.id'), nullable=True)
+
+    initial = db.relationship(
+        'Execution',
+        lazy=True,
+        foreign_keys=[initial_execution_id, symbol],
+        post_update=True,
+        primaryjoin='Execution.id == Trade.initial_execution_id',
+        backref='init_trade',
+        uselist=False
+    )
 
     label = db.Column(db.String, nullable=True)
     memo = db.Column(db.String, nullable=True)
 
-    time = db.Column(db.DateTime, nullable=False)
-
     def is_data(self):
         return True
 
+    @hybrid_property
+    def is_open(self):
+        return self.exit is not None
+
+
+def trade_from_execution(execution: Execution):
+    return Trade(
+        entry=execution.price,
+        qty=execution.qty,
+        open_qty=execution.qty,
+        initial=execution,
+        symbol=execution.symbol,
+        executions=[execution]
+    )

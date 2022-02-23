@@ -16,7 +16,7 @@ from clientworker import ClientWorker
 #from models.client import Client
 from api.dbmodels.client import Client
 from api.dbmodels.balance import Balance
-from api.dbmodels.trade import Trade
+from api.dbmodels.execution import Execution
 
 
 class _BinanceBaseClient(ClientWorker):
@@ -97,7 +97,7 @@ class BinanceFutures(_BinanceBaseClient):
         )
         self._request(request)
 
-    def set_on_trade_callback(self, callback: Callable[[Client, Trade], None]):
+    def set_execution_callback(self, callback: Callable[[Client, Execution], None]):
         self._callback = callback
         self._ws.start()
 
@@ -107,12 +107,11 @@ class BinanceFutures(_BinanceBaseClient):
         data = message['o']
         if event == 'ORDER_TRADE_UPDATE':
             if data['X'] == 'FILLED' or True:
-                trade = Trade(
+                trade = Execution(
                     symbol=data['s'],
-                    price=data['p'],
-                    qty=data['q'],
+                    price=float(data['p']),
+                    qty=float(data['q']),
                     side=data['S'],
-                    type='o',
                     time=datetime.now()
                 )
                 if callable(self._callback):
