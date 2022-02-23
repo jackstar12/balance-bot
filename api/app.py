@@ -16,6 +16,7 @@ import api.dbutils
 from api.dbmodels.client import Client
 from api.dbmodels.user import User
 from api.dbmodels.event import Event
+from api.dbmodels.execution import Execution
 
 
 jwt = flask_jwt.JWTManager(app)
