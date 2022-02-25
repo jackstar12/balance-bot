@@ -38,9 +38,9 @@ class Event(db.Model):
         embed.add_field(name="Name", value=self.name)
         embed.add_field(name="Description", value=self.description, inline=False)
         embed.add_field(name="Start", value=self.start)
-        embed.add_field(name="End", value=self.end, inline=False)
+        embed.add_field(name="End", value=self.end)
         embed.add_field(name="Registration Start", value=self.registration_start)
-        embed.add_field(name="Registration End", value=self.registration_end, inline=False)
+        embed.add_field(name="Registration End", value=self.registration_end)
 
         if registrations:
             value = ''
