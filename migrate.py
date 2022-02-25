@@ -1,6 +1,8 @@
 import argparse
 import json
 import logging
+import dotenv
+dotenv.load_dotenv()
 from datetime import datetime, timedelta
 
 from api.database import db
@@ -45,6 +47,7 @@ if args.data:
                     for user_id in data:
                         user = DiscordUser.query.filter_by(user_id=user_id).first()
                         if not user:
+                            print(f'Got no discorduser with id {user_id}, creating dummy')
                             user = add_user_from_json({
                                 'id': user_id,
                                 'api_key': 'api_key',
@@ -70,15 +73,15 @@ if args.data:
 
 if args.event:
     event = Event(
-        name="Dev",
-        description="dev event",
+        name="Challenge",
+        description="February challenge",
         guild_id=715507174167806042,
         channel_id=715507174167806045,
         registrations=Client.query.all(),
-        start=datetime.fromtimestamp(0),
-        end=datetime.now() + timedelta(days=23),
-        registration_start=datetime.fromtimestamp(0),
-        registration_end=datetime.now() + timedelta(days=24)
+        start=datetime(year=2022, month=2, day=1),
+        end=datetime(year=2022, month=3, day=1),
+        registration_start=datetime(year=2022, month=1, day=25),
+        registration_end=datetime(year=2022, month=2, day=5)
     )
     db.session.add(event)
     db.session.commit()
