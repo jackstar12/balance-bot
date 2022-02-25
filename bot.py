@@ -41,7 +41,6 @@ from config import (DATA_PATH,
                     ARCHIVE_PATH)
 from errors import UserInputError
 from eventmanager import EventManager
-from key import KEY
 from usermanager import UserManager
 from utils import (de_emojify,
                    create_yes_no_button_row)
@@ -1038,5 +1037,8 @@ user_manager = UserManager(exchanges=EXCHANGES,
                            on_rekt_callback=lambda user: bot.loop.create_task(on_rekt_async(user)))
 
 event_manager = EventManager(discord_client=bot)
+
+KEY = os.environ.get('BOT_KEY')
+assert KEY, 'Missing BOT_KEY environ'
 
 bot.run(KEY)
