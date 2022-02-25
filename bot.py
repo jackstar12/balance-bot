@@ -10,6 +10,9 @@ import typing
 from datetime import datetime
 from typing import List, Dict, Type, Tuple
 
+import dotenv
+dotenv.load_dotenv()
+
 import discord
 import discord.errors
 from discord.ext import commands
@@ -387,12 +390,11 @@ def get_available_exchanges() -> str:
 )
 @utils.log_and_catch_user_input_errors(log_args=False)
 async def register(ctx: SlashContext,
-                        exchange_name: str,
-                        api_key: str,
-                        api_secret: str,
-                        subaccount: typing.Optional[str] = None,
-                        args: str = None):
-
+                   exchange_name: str,
+                   api_key: str,
+                   api_secret: str,
+                   subaccount: typing.Optional[str] = None,
+                   args: str = None):
     await ctx.defer(hidden=True)
 
     kwargs = {}
@@ -490,7 +492,7 @@ async def register(ctx: SlashContext,
                         content=message,
                         embed=new_client.get_discord_embed(is_global=event is None),
                         hidden=True,
-                        components=[button_row]
+                        components=[button_row] if button_row else None
                     )
 
                 if not existing_client:

@@ -244,8 +244,6 @@ def calc_daily(client: Client,
             current_search = daily.time + timedelta(days=1)
         prev_balance = balance
 
-    print(results)
-
     return results
 
 

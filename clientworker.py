@@ -26,7 +26,6 @@ class ClientWorker:
         self._extra_kwargs = client.extra_kwargs
 
         self._session = Session()
-        self._on_trade = None
         self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
 
