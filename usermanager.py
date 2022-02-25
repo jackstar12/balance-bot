@@ -232,25 +232,29 @@ class UserManager(Singleton):
                 if not worker:
                     continue
                 client = Client.query.filter_by(id=worker.client_id).first()
-                # TODO: Think about non event members
                 if client.rekt_on and not force_fetch:
                     balance = Balance(0.0, '$', None)
                 else:
                     balance = worker.get_balance(time)
+                latest_balance = None if len(client.history) == 0 else client.history[len(client.history) - 1]
                 if balance:
                     if balance.error:
                         logging.error(f'Error while fetching user {worker} balance: {balance.error}')
                         if keep_errors:
                             data.append(balance)
                     else:
-                        client.history.append(balance)
-                        data.append(balance)
-                        if balance.amount <= self.rekt_threshold and not client.rekt_on:
-                            client.rekt_on = time
-                            if callable(self.on_rekt_callback):
-                                self.on_rekt_callback(worker)
+                        if balance.amount != latest_balance.amount if latest_balance else None:
+                            client.history.append(balance)
+                            data.append(balance)
+                            if balance.amount <= self.rekt_threshold and not client.rekt_on:
+                                client.rekt_on = time
+                                if callable(self.on_rekt_callback):
+                                    self.on_rekt_callback(worker)
+                        else:
+                            latest_balance.time = time
+                            data.append(latest_balance)
                 else:
-                    data.append(client.history[len(client.history) - 1])
+                    data.append(latest_balance)
             db.session.commit()
 
         logging.info(f'Done Fetching')
