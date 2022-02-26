@@ -9,14 +9,31 @@ from api.dbmodels.balance import balance_from_json
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import add_user_from_json, DiscordUser
 from api.dbmodels.event import Event
+from cryptography.fernet import Fernet
+import dotenv
+import os
 from config import DATA_PATH
+
+dotenv.load_dotenv()
 
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-e", "--event", action="store_true", help="Specifying this creates an dev event which can be used")
 parser.add_argument("-u", "--users", action="store_true", help="Specifying this puts the users.json the database.")
 parser.add_argument("-d", "--data", action="store_true", help="Specifying this puts the current data into a database.")
+parser.add_argument("-k", "--keys", action="store_true", help="Specifying this puts the current data into a database.")
 
 args = parser.parse_args()
+
+
+if args.keys:
+    clients = Client.query.all()
+    _key = os.environ.get('ENCRYPTION_SECRET')
+    assert _key, 'Missing ENCRYPTION_SECRET env'
+    fernet = Fernet(_key.encode('uft-8'))
+    for client in clients:
+        client.api_secret = fernet.encrypt(client.api_secret.encode('utf-8')).decode('utf-8')
+    db.session.commit()
+    print('Encrypted API Keys')
 
 
 if args.users:
