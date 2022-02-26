@@ -2,13 +2,16 @@ from typing import List
 
 import discord
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType
+from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType, FernetEngine
 from api.database import db
 from api.dbmodels.serializer import Serializer
 import os
+import dotenv
+
+dotenv.load_dotenv()
 
 _key = os.environ.get('ENCRYPTION_SECRET')
-assert _key
+assert _key, 'Missing ENCRYPTION_SECRET in env'
 
 
 class Client(db.Model, Serializer):
@@ -22,7 +25,8 @@ class Client(db.Model, Serializer):
 
     # User Information
     api_key = db.Column(db.String(), nullable=False)
-    api_secret = db.Column(StringEncryptedType(db.String(), _key), nullable=False)
+    #api_secret = db.Column(db.String(), nullable=False)
+    api_secret = db.Column(StringEncryptedType(db.String(), _key.encode('utf-8'), FernetEngine), nullable=False)
     exchange = db.Column(db.String, nullable=False)
     subaccount = db.Column(db.String, nullable=True)
     extra_kwargs = db.Column(db.PickleType, nullable=True)

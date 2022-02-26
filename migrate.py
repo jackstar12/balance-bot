@@ -10,6 +10,7 @@ from api.dbmodels.client import Client
 from api.dbmodels.discorduser import add_user_from_json, DiscordUser
 from api.dbmodels.event import Event
 from cryptography.fernet import Fernet
+from sqlalchemy_utils.types.encrypted.encrypted_type import FernetEngine, StringEncryptedType
 import dotenv
 import os
 from config import DATA_PATH
@@ -29,9 +30,12 @@ if args.keys:
     clients = Client.query.all()
     _key = os.environ.get('ENCRYPTION_SECRET')
     assert _key, 'Missing ENCRYPTION_SECRET env'
-    fernet = Fernet(_key.encode('uft-8'))
+
+    engine = FernetEngine()
+    engine._update_key(_key)
+
     for client in clients:
-        client.api_secret = fernet.encrypt(client.api_secret.encode('utf-8')).decode('utf-8')
+        client.api_secret = engine.encrypt(client.api_secret)
     db.session.commit()
     print('Encrypted API Keys')
 
