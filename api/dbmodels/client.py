@@ -21,7 +21,7 @@ class Client(db.Model, Serializer):
     discord_user_id = db.Column(db.Integer, db.ForeignKey('discorduser.id'), nullable=True)
 
     # User Information
-    api_key = db.Column(StringEncryptedType(db.String(), _key), nullable=False)
+    api_key = db.Column(db.String(), nullable=False)
     api_secret = db.Column(StringEncryptedType(db.String(), _key), nullable=False)
     exchange = db.Column(db.String, nullable=False)
     subaccount = db.Column(db.String, nullable=True)
