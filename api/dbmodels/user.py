@@ -4,6 +4,8 @@ from api.dbmodels.serializer import Serializer
 
 class User(db.Model, Serializer):
     __tablename__ = 'user'
+    __serializer_forbidden__ = ['password', 'salt']
+
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String, unique=True, nullable=False)
     password = db.Column(db.String, unique=True, nullable=False)
@@ -11,8 +13,3 @@ class User(db.Model, Serializer):
     clients = db.relationship('Client', backref='user', lazy=True)
     discord_user_id = db.Column(db.Integer(), db.ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
 
-    def serialize(self, data=False, full=True):
-        s = super().serialize(data, full)
-        del s['password']
-        del s['salt']
-        return s

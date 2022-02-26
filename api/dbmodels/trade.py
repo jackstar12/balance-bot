@@ -12,6 +12,8 @@ class Trade(db.Model, Serializer):
 
     """
     __tablename__ = 'trade'
+    __serializer_forbidden__ = ['client_id']
+
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
 
@@ -47,6 +49,12 @@ class Trade(db.Model, Serializer):
     @hybrid_property
     def is_open(self):
         return self.exit is not None
+
+    def serialize(self, data=True, full=True):
+        s = super().serialize(data, full)
+        if s:
+            s['status'] = 'open' if self.open_qty > 0 else 'win' if self.realized_pnl > 0.0 else 'loss'
+        return s
 
 
 def trade_from_execution(execution: Execution):

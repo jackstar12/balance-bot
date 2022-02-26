@@ -270,7 +270,7 @@ class UserManager(Singleton):
 
         def weighted_avg(values: Tuple[float, float], weights: Tuple[float, float]):
             total = weights[0] + weights[1]
-            return values[0] * (weights[0] / total) + values[1] * (weights[1] / total)
+            return round(values[0] * (weights[0] / total) + values[1] * (weights[1] / total), ndigits=3)
 
         if active_trade:
             active_trade.executions.append(execution)

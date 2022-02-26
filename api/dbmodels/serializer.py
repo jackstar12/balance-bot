@@ -5,6 +5,8 @@ from api.database import db
 class Serializer:
     __serializer_anti_recursion__ = False
 
+    __serializer_forbidden__ = []
+
     def is_data(self):
         return False
 
@@ -15,15 +17,16 @@ class Serializer:
             if data or not self.is_data():
                 s = {}
                 for k in inspect(self).attrs.keys():
-                    v = getattr(self, k)
-                    if issubclass(type(v), list):
-                        v = Serializer.serialize_list(v, data=data, full=False)
-                    elif issubclass(type(v), Serializer):
-                        if full:
-                            v = v.serialize(full=False, data=data)
-                        else:
-                            continue
-                    s[k] = v
+                    if k not in self.__serializer_forbidden__:
+                        v = getattr(self, k)
+                        if issubclass(type(v), list):
+                            v = Serializer.serialize_list(v, data=data, full=False)
+                        elif issubclass(type(v), Serializer):
+                            if full:
+                                v = v.serialize(full=False, data=data)
+                            else:
+                                continue
+                        s[k] = v
                 return s
             self.__serializer_anti_recursion__ = False
 

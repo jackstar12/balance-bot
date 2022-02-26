@@ -15,6 +15,7 @@ from api.database import db, app, migrate
 import api.dbutils
 from api.dbmodels.client import Client
 from api.dbmodels.user import User
+from api.dbmodels.trade import Trade
 from api.dbmodels.event import Event
 from api.dbmodels.execution import Execution
 
@@ -255,7 +256,21 @@ def get_client(id: int = None):
     else:
         client = None
     if client:
-        return jsonify(client.serialize(full=False, data=True))
+        s = client.serialize(full=False, data=True)
+        winners, losers = 0, 0
+        for trade in s['trades']:
+            if trade['status'] == 'win':
+                winners += 1
+            elif trade['status'] == 'loss':
+                losers += 1
+        ratio = winners / losers if losers > 0 else 1
+        s['win_ratio'] = ratio
+        s['winners'] = winners
+        s['losers'] = losers
+
+        print(s)
+
+        return jsonify(s)
     else:
         return {'msg': f'Invalid client id'}, HTTPStatus.BAD_REQUEST
 

@@ -13,6 +13,7 @@ assert _key
 
 class Client(db.Model, Serializer):
     __tablename__ = 'client'
+    __serializer_forbidden__ = ['api_secret']
 
     # Identification
     id = db.Column(db.Integer, primary_key=True)

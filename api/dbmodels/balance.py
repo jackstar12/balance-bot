@@ -6,6 +6,9 @@ from api.dbmodels.serializer import Serializer
 
 
 class Balance(db.Model, Serializer):
+    __tablename__ = 'balance'
+    __serializer_forbidden__ = ['id', 'error', 'client_id']
+
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
     time = db.Column(db.DateTime, nullable=False)
@@ -41,14 +44,6 @@ class Balance(db.Model, Serializer):
 
     def is_data(self):
         return True
-
-    def serialize(self, data=True, full=True):
-        s = super().serialize(data, full)
-        if s:
-            del s['id']
-            del s['client_id']
-            del s['error']
-            return s
 
 
 def balance_from_json(data: dict, time: datetime):
