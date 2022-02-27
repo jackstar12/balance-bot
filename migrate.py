@@ -4,7 +4,7 @@ import logging
 import dotenv
 dotenv.load_dotenv()
 from datetime import datetime, timedelta
-
+from api.app import app
 from api.database import db
 from api.dbmodels.balance import balance_from_json
 from api.dbmodels.client import Client

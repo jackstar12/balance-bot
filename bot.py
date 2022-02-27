@@ -592,27 +592,25 @@ async def event_show(ctx: SlashContext):
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
-    # now = datetime.now()
-    # start = now + timedelta(seconds=20)
-    # registration_start = now + timedelta(seconds=10)
-    # registration_end = now + timedelta(seconds=30)
-    # end = now + timedelta(seconds=40)
 
     if start >= end:
-        await ctx.send("Start time can't be after end time.", hidden=True)
-        return
+        raise UserInputError("Start time can't be after end time.")
     if registration_start >= registration_end:
-        await ctx.send("Registration start can't be after registration end", hidden=True)
-        return
+        raise UserInputError("Registration start can't be after registration end")
     if registration_end < start:
-        await ctx.send("Registration end should be after or at event start", hidden=True)
-        return
+        raise UserInputError("Registration end should be after or at event start")
     if registration_end > end:
-        await ctx.send("Registration end can't be after event end.", hidden=True)
-        return
+        raise UserInputError("Registration end can't be after event end.")
     if registration_start > start:
-        await ctx.send("Registration start should be before event start.", hidden=True)
-        return
+        raise UserInputError("Registration start should be before event start.")
+
+    active_event = dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
+
+    if active_event:
+        if start < active_event.end:
+            raise UserInputError(f"Event can't start while other event ({active_event.name}) is still active")
+        if registration_start < active_event.registration_end:
+            raise UserInputError(f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
     event = Event(
         name=name,
@@ -1041,6 +1039,6 @@ user_manager = UserManager(exchanges=EXCHANGES,
 event_manager = EventManager(discord_client=bot)
 
 KEY = os.environ.get('BOT_KEY')
-assert KEY, 'Missing BOT_KEY environ'
+assert KEY, 'BOT_KEY missing'
 
 bot.run(KEY)
