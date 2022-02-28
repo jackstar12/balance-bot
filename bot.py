@@ -110,10 +110,10 @@ async def on_guild_join(guild: discord.Guild):
 async def ping(ctx: SlashContext):
     """Get the bot's current websocket and api latency."""
     start_time = time.time()
-    message = Embed(title="Testing Ping...")
+    message = discord.Embed(title="Testing Ping...")
     msg = await ctx.send(embed=message)
     end_time = time.time()
-    message2 = Embed(
+    message2 = discord.Embed(
         title=f":ping_pong:\nExternal: {round(bot.latency * 1000, ndigits=3)}ms\nInternal: {round((end_time - start_time), ndigits=3)}s")
     await msg.edit(embed=message2)
 
@@ -543,7 +543,6 @@ async def register_existing(ctx: SlashContext):
         if user.global_client:
             if user.global_client not in event.registrations:
                 event.registrations.append(user.global_client)
-                user.global_client.append(event)
                 db.session.commit()
                 await ctx.send('Success', hidden=True)
             else:
@@ -784,7 +783,7 @@ async def leaderboard_balance(ctx: SlashContext):
 @utils.server_only
 async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     await ctx.defer()
-    await ctx.send(content='', embed=utils.create_leaderboard(dc_client=bot, guild=ctx.guild_id, mode='gain', time=time))
+    await ctx.send(content='', embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='gain', time=time))
 
 
 @slash.slash(
