@@ -42,7 +42,7 @@ class EventManager:
 
     async def _event_end(self, event: Event):
         await self._get_event_channel(event).send(
-            content=f'Event **{event.name}** just ended! Here\'s',
+            content=f'Event **{event.name}** just ended! Final standings:',
             embed=utils.create_leaderboard(self._dc_client, event.guild_id, mode='gain')
         )
 
