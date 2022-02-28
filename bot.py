@@ -669,7 +669,7 @@ async def unregister(ctx, guild: str = None):
     def unregister_user(ctx):
         user_manager.remove_client(client)
         discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
-        if len(discord_user.clients) == 0 and not discord_user.user:
+        if len(discord_user.clients) == 0:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
             db.session.commit()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')

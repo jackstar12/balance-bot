@@ -56,15 +56,15 @@ class UserManager(Singleton):
                 self._workers.append(worker)
                 for event in [None, *worker.client.events]:
                     if event not in self._workers_by_id:
-                        self._workers_by_id[event.id] = {}
-                    self._workers_by_id[event.id][worker.client.discorduser.id] = worker
+                        self._workers_by_id[event if event else None] = {}
+                    self._workers_by_id[event][worker.client.discorduser.id] = worker
                 self._workers_by_client_id[worker.client.id] = worker
 
     def _remove_worker(self, worker: ClientWorker):
         with self._worker_lock:
             if worker in self._workers:
                 for event in [None, *worker.client.events]:
-                    self._workers_by_id[event.id].pop(worker.client.discorduser.id)
+                    self._workers_by_id[event].pop(worker.client.discorduser.id)
                 self._workers_by_client_id.pop(worker.client.id)
                 self._workers.remove(worker)
                 del worker
@@ -158,7 +158,7 @@ class UserManager(Singleton):
     def _get_worker_event(self, user_id, guild_id):
         with self._worker_lock:
             event = dbutils.get_event(guild_id)
-            return self._workers_by_id[event.id if event else None].get(user_id)
+            return self._workers_by_id[event].get(user_id)
 
     def get_client_history(self,
                            client: Client,
@@ -222,24 +222,27 @@ class UserManager(Singleton):
                 if not worker:
                     continue
                 client = Client.query.filter_by(id=worker.client_id).first()
-                if client.rekt_on and not force_fetch:
-                    balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
-                else:
-                    balance = worker.get_balance(time)
-                if balance:
-                    if balance.error:
-                        logging.error(f'Error while fetching user {worker} balance: {balance.error}')
-                        if keep_errors:
-                            data.append(balance)
+                if client:
+                    if client.rekt_on and not force_fetch:
+                        balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
                     else:
-                        client.history.append(balance)
-                        data.append(balance)
-                        if balance.amount <= self.rekt_threshold and not client.rekt_on:
-                            client.rekt_on = time
-                            if callable(self.on_rekt_callback):
-                                self.on_rekt_callback(worker)
+                        balance = worker.get_balance(time)
+                    if balance:
+                        if balance.error:
+                            logging.error(f'Error while fetching user {worker} balance: {balance.error}')
+                            if keep_errors:
+                                data.append(balance)
+                        else:
+                            client.history.append(balance)
+                            data.append(balance)
+                            if balance.amount <= self.rekt_threshold and not client.rekt_on:
+                                client.rekt_on = time
+                                if callable(self.on_rekt_callback):
+                                    self.on_rekt_callback(worker)
+                    else:
+                        data.append(client.history[len(client.history) - 1])
                 else:
-                    data.append(client.history[len(client.history) - 1])
+                    logging.error(f'Worker with client_id {worker.client_id} does not have any client!!!')
             db.session.commit()
 
         logging.info(f'Done Fetching')

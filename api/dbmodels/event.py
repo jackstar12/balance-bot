@@ -127,3 +127,6 @@ class Event(db.Model):
 
         file = discord.File(DATA_PATH + name, name)
         return file
+
+    def __hash__(self):
+        return self.id.__hash__()
