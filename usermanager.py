@@ -222,9 +222,8 @@ class UserManager(Singleton):
                 if not worker:
                     continue
                 client = Client.query.filter_by(id=worker.client_id).first()
-                # TODO: Think about non event members
                 if client.rekt_on and not force_fetch:
-                    balance = Balance(0.0, '$', None)
+                    balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None)
                 else:
                     balance = worker.get_balance(time)
                 if balance:
