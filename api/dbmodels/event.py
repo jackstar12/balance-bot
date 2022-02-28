@@ -104,7 +104,7 @@ class Event(db.Model):
         cum_percent /= len(gains) or 1  # Avoid division by zero
 
         description += f'\nLast but not least... ' \
-                       f'\nIn total you {"made" if cum_dollar >= 0.0 else "lost"} {round(cum_dollar, ndigits=2)}$!' \
+                       f'\nIn total you {"made" if cum_dollar >= 0.0 else "lost"} {round(cum_dollar, ndigits=2)}$' \
                        f'\nCumulative % performance: {round(cum_percent, ndigits=2)}%'
 
         description += '\n'
@@ -112,7 +112,7 @@ class Event(db.Model):
 
         return embed
 
-    def create_complete_history(self, dc_client: discord.Client,  name='history.png'):
+    def create_complete_history(self, dc_client: discord.Client, name='history.png'):
         utils.create_history(
             custom_title=f'Complete history for {self.name}',
             to_graph=[(client, client.discorduser.get_display_name(dc_client, self.guild_id)) for client in self.registrations],

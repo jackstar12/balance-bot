@@ -5,6 +5,7 @@ from datetime import datetime
 from threading import Timer, RLock
 from api.dbmodels.event import Event
 from usermanager import UserManager
+import utils
 import logging
 from api.database import db
 import discord
@@ -40,7 +41,14 @@ class EventManager:
                                                   embed=event.get_discord_embed(registrations=True))
 
     async def _event_end(self, event: Event):
-        await self._get_event_channel(event).send(content=f'Event **{event.name}** just ended! Here\'s a little summary', embed=event.get_summary_embed())
+        await self._get_event_channel(event).send(
+            content=f'Event **{event.name}** just ended! Here\'s a little summary',
+            embeds=[
+                utils.create_leaderboard(self._dc_client, event.guild_id),
+                event.get_summary_embed()
+            ]
+        )
+
         self._um.synch_workers()
         Event.query.filter_by(id=event.id).delete()
         db.session.commit()

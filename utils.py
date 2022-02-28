@@ -9,16 +9,16 @@ import matplotlib.pyplot as plt
 from prettytable import PrettyTable
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
-from errors import UserInputError
+from errors import UserInputError, InternalError
 from discord_slash.utils.manage_components import create_button, create_actionrow
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
 from usermanager import UserManager
 from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
-from typing import List, Tuple, Callable, Optional, Union
+from typing import List, Tuple, Callable, Optional, Union, Dict
 from api.dbmodels.balance import Balance
-from config import CURRENCY_PRECISION
+from config import CURRENCY_PRECISION, REKT_THRESHOLD
 
 
 def dm_only(coro):
@@ -88,7 +88,7 @@ def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
     return decorator
 
 
-def log_and_catch_user_input_errors(log_args=True):
+def log_and_catch_errors(log_args=True):
     def decorator(coro):
         @wraps(coro)
         async def wrapper(ctx: SlashContext, *args, **kwargs):
@@ -105,7 +105,11 @@ def log_and_catch_user_input_errors(log_args=True):
                     else:
                         e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
-                logging.error(f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}')
+                logging.info(f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}')
+            except InternalError as e:
+                await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
+                logging.error(f'{coro.__name__} failed because of InternalError: {e.reason}')
+
         return wrapper
     return decorator
 
@@ -175,10 +179,7 @@ def create_history(to_graph: List[Tuple[Client, str]],
     plt.gcf().autofmt_xdate()
     plt.gcf().set_dpi(100)
     plt.gcf().set_size_inches(8 + len(to_graph), 5.5 + len(to_graph) * (5.5 / 8))
-    if custom_title:
-        plt.title(custom_title)
-    else:
-        plt.title(title)
+    plt.title(custom_title or title)
     plt.ylabel(currency_display)
     plt.xlabel('Time')
     plt.grid()
@@ -258,7 +259,7 @@ def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
     return result
 
 
-def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
+def create_leaderboard(dc_client: discord.Client, guild_id: int, mode: str, time: datetime = None) -> discord.Embed:
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
     users_rekt: List[DiscordUser] = []
@@ -267,6 +268,9 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     footer = ''
     description = ''
 
+    guild = dc_client.get_guild(guild_id)
+    if not guild:
+        raise InternalError(f'Provided guild_id is not valid!')
     event = dbutils.get_event(guild.id, throw_exceptions=False)
 
     if event:
@@ -274,12 +278,13 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     else:
         clients = []
         # All global clients
-        users = DiscordUser.query.filter(DiscordUser.global_client_id).all()
+        users = DiscordUser.query.filter(DiscordUser.global_client_id is not None).all()
         for user in users:
             member = guild.get_member(user.user_id)
             if member:
                 clients.append(user.global_client)
 
+    user_manager = UserManager()
     user_manager.fetch_data(clients=clients)
 
     if mode == 'balance':
@@ -297,7 +302,7 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
                 clients_missing.append(client)
     elif mode == 'gain':
 
-        description += f'Gain {utils.readable_time(time)}\n\n'
+        description += f'Gain {readable_time(time)}\n\n'
 
         client_gains = calc_gains(clients, guild.id, time)
 
@@ -319,6 +324,15 @@ def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
     rank_true = 1
 
     if len(user_scores) > 0:
+        if mode == 'gain':
+            dc_client.loop.create_task(
+                dc_client.change_presence(
+                    activity=discord.Activity(
+                        type=discord.ActivityType.watching,
+                        name=f'Best Trader: {user_scores[0][0].discorduser.name}'
+                    )
+                )
+            )
         prev_score = None
         for client, score in user_scores:
             member = guild.get_member(client.discorduser.user_id)
