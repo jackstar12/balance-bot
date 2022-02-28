@@ -31,22 +31,28 @@ class EventManager:
         for event in events:
             self.register(event)
 
-    def _get_event_channel(self, event: Event):
+    def _get_event_channel(self, event: Event) -> discord.TextChannel:
         guild = self._dc_client.get_guild(event.guild_id)
         return guild.get_channel(event.channel_id)
 
     async def _event_start(self, event: Event):
         self._um.synch_workers()
         await self._get_event_channel(event).send(content=f'Event **{event.name}** just started!',
-                                                  embed=event.get_discord_embed(registrations=True))
+                                                  embed=event.get_discord_embed(dc_client=self._dc_client, registrations=True))
 
     async def _event_end(self, event: Event):
         await self._get_event_channel(event).send(
-            content=f'Event **{event.name}** just ended! Here\'s a little summary',
-            embeds=[
-                utils.create_leaderboard(self._dc_client, event.guild_id, mode='gain'),
-                event.get_summary_embed()
-            ]
+            content=f'Event **{event.name}** just ended! Here\'s',
+            embed=utils.create_leaderboard(self._dc_client, event.guild_id, mode='gain')
+        )
+
+        name = f'FINAL_{event.name}_{event.id}.png'
+        total_history = event.create_complete_history(dc_client=self._dc_client, name=name)
+        summary = event.get_summary_embed(dc_client=self._dc_client)
+        summary.set_image(f'attachment://{name}')
+        await self._get_event_channel(event).send(
+            embed=event.get_summary_embed(dc_client=self._dc_client),
+            file=total_history
         )
 
         self._um.synch_workers()

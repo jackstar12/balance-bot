@@ -7,6 +7,8 @@ import inspect
 import matplotlib.pyplot as plt
 
 from prettytable import PrettyTable
+
+from api import dbutils
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError, InternalError

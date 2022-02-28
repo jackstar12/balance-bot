@@ -564,6 +564,7 @@ async def event_show(ctx: SlashContext):
     if len(events) == 0:
         await ctx.send(content='There are no events', hidden=True)
     else:
+        await ctx.defer()
         for event in events:
             if event.is_active:
                 await ctx.send(content='Current Event:', embed=event.get_discord_embed(bot, registrations=True))
@@ -928,7 +929,7 @@ api.run()
 async def summary(ctx: SlashContext):
     await ctx.defer()
     event = dbutils.get_event(ctx.guild_id, ctx.channel_id)
-    embed = event.get_summary_embed()
+    embed = event.get_summary_embed(dc_client=bot)
     embed.set_image(url='attachment://history.png')
     await ctx.send(embed=embed, file=event.create_complete_history())
 
