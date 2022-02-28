@@ -75,8 +75,8 @@ if args.event:
     event = Event(
         name="Challenge",
         description="February challenge",
-        guild_id=715507174167806042,
-        channel_id=715507174167806045,
+        guild_id=443583326507499520,
+        channel_id=704403630375305317,
         registrations=Client.query.all(),
         start=datetime(year=2022, month=2, day=1),
         end=datetime(year=2022, month=3, day=1),

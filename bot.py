@@ -589,6 +589,7 @@ async def event_show(ctx: SlashContext):
 @utils.log_and_catch_user_input_errors()
 @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
                  allow_future=True)
+@utils.admin_only
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
