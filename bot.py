@@ -544,7 +544,7 @@ async def register_existing(ctx: SlashContext):
             if user.global_client not in event.registrations:
                 event.registrations.append(user.global_client)
                 db.session.commit()
-                await ctx.send('Success', hidden=True)
+                await ctx.send(f'You are now registered for _{event.name}_!', hidden=True)
             else:
                 raise UserInputError('You are already registered for this event!')
         else:
@@ -568,7 +568,7 @@ async def event_show(ctx: SlashContext):
         for event in events:
             if event.is_active:
                 await ctx.send(content='Current Event:', embed=event.get_discord_embed(bot, registrations=True))
-            elif event.is_free_for_registration:
+            else:
                 await ctx.send(content='Upcoming Event:', embed=event.get_discord_embed(bot, registrations=True))
 
 
