@@ -931,7 +931,7 @@ async def summary(ctx: SlashContext):
     event = dbutils.get_event(ctx.guild_id, ctx.channel_id)
     embed = event.get_summary_embed(dc_client=bot)
     embed.set_image(url='attachment://history.png')
-    await ctx.send(embed=embed, file=event.create_complete_history())
+    await ctx.send(embed=embed, file=event.create_complete_history(dc_client=bot))
 
 
 user_manager = UserManager(exchanges=EXCHANGES,
