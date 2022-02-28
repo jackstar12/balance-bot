@@ -56,15 +56,15 @@ class UserManager(Singleton):
                 self._workers.append(worker)
                 for event in [None, *worker.client.events]:
                     if event not in self._workers_by_id:
-                        self._workers_by_id[event] = {}
-                    self._workers_by_id[event][worker.client.discorduser.id] = worker
+                        self._workers_by_id[event.id] = {}
+                    self._workers_by_id[event.id][worker.client.discorduser.id] = worker
                 self._workers_by_client_id[worker.client.id] = worker
 
     def _remove_worker(self, worker: ClientWorker):
         with self._worker_lock:
             if worker in self._workers:
                 for event in [None, *worker.client.events]:
-                    self._workers_by_id[event].pop(worker.client.discorduser.id)
+                    self._workers_by_id[event.id].pop(worker.client.discorduser.id)
                 self._workers_by_client_id.pop(worker.client.id)
                 self._workers.remove(worker)
                 del worker
