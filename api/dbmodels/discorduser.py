@@ -21,6 +21,12 @@ class DiscordUser(db.Model):
     def get_discord_embed(self) -> List[discord.Embed]:
         return [client.get_discord_embed() for client in self.clients]
 
+    def get_display_name(self, dc_client: discord.Client, guild_id: int):
+        try:
+            return dc_client.get_guild(guild_id).get_member(self.user_id).display_name
+        except AttributeError:
+            return None
+
 
 def add_user_from_json(user_json) -> DiscordUser:
     exchange_name = user_json['exchange'].lower()

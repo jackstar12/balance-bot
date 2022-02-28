@@ -33,7 +33,7 @@ class Event(db.Model):
     def is_free_for_registration(self):
         return self.registration_start <= datetime.now() <= self.registration_end
 
-    def get_discord_embed(self, registrations=False):
+    def get_discord_embed(self, dc_client: discord.Client, registrations=False):
         embed = discord.Embed(title=f'Event')
         embed.add_field(name="Name", value=self.name)
         embed.add_field(name="Description", value=self.description, inline=False)
@@ -45,13 +45,13 @@ class Event(db.Model):
         if registrations:
             value = ''
             for registration in self.registrations:
-                value += f'{registration.discorduser.name}\n'
+                value += f'{registration.discorduser.get_display_name(dc_client, self.guild_id)}\n'
             if value:
                 embed.add_field(name="Registrations", value=value, inline=False)
 
         return embed
 
-    def get_summary_embed(self):
+    def get_summary_embed(self, dc_client: discord.Client):
         embed = discord.Embed(title=f'Summary')
 
         description = ''
@@ -60,15 +60,15 @@ class Event(db.Model):
         gains.sort(key=lambda x: x[1][0], reverse=True)
 
         description += f'**Best Trader :crown:**\n' \
-                       f'{gains[0][0].discorduser.name}\n'
+                       f'{gains[0][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         description += f'\n**Worst Trader :disappointed_relieved:**\n' \
-                       f'{gains[len(gains) - 1][0].discorduser.name}\n'
+                       f'{gains[len(gains) - 1][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         gains.sort(key=lambda x: x[1][1], reverse=True)
 
         description += f'\n**Highest Stakes :moneybag:**\n' \
-                       f'{gains[0][0].discorduser.name}\n'
+                       f'{gains[0][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         def non_null_balances(history):
             balances = []
@@ -90,10 +90,10 @@ class Event(db.Model):
         volatility.sort(key=lambda x: x[1], reverse=True)
 
         description += f'\n**Most Degen Trader :grimacing:**\n' \
-                       f'{volatility[0][0].discorduser.name}\n'
+                       f'{volatility[0][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         description += f'\n**Still HODLing :sleeping:**\n' \
-                       f'{volatility[len(volatility) - 1][0].discorduser.name}\n'
+                       f'{volatility[len(volatility) - 1][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         cum_percent = 0.0
         cum_dollar = 0.0
@@ -112,10 +112,10 @@ class Event(db.Model):
 
         return embed
 
-    def create_complete_history(self, name='history.png'):
+    def create_complete_history(self, dc_client: discord.Client,  name='history.png'):
         utils.create_history(
             custom_title=f'Complete history for {self.name}',
-            to_graph=[(client, client.discorduser.name) for client in self.registrations],
+            to_graph=[(client, client.discorduser.get_display_name(dc_client, self.guild_id)) for client in self.registrations],
             guild_id=self.guild_id,
             start=self.start,
             end=self.end,

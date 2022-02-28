@@ -214,7 +214,7 @@ async def history(ctx: SlashContext,
                   currency: str = None):
     if ctx.guild:
         registered_client = dbutils.get_client(user.id, ctx.guild.id)
-        registrations = [(registered_client, user)]
+        registrations = [(registered_client, user.display_name)]
     else:
         registered_user = dbutils.get_user(user.id)
         registrations = [
@@ -562,7 +562,7 @@ async def register_existing(ctx: SlashContext):
 async def event_show(ctx: SlashContext):
     event = dbutils.get_event(ctx.guild_id, channel_id=ctx.channel_id)
     await ctx.defer()
-    await ctx.send(embed=event.get_discord_embed(registrations=True))
+    await ctx.send(embed=event.get_discord_embed(bot, registrations=True))
 
 
 @slash.slash(
@@ -589,6 +589,7 @@ async def event_show(ctx: SlashContext):
 @utils.log_and_catch_user_input_errors()
 @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
                  allow_future=True)
+@utils.admin_only
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
@@ -611,6 +612,12 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
             raise UserInputError(f"Event can't start while other event ({active_event.name}) is still active")
         if registration_start < active_event.registration_end:
             raise UserInputError(f"Event registration can't start while other event ({active_event.name}) is still open for registration")
+
+    active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
+
+    if active_registration:
+        if registration_start < active_registration.registration_end:
+            raise UserInputError(f"Event registration can't start while other event ({active_registration.name}) is open for registration")
 
     event = Event(
         name=name,
