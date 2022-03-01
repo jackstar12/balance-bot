@@ -5,6 +5,7 @@ from datetime import datetime
 from threading import Timer, RLock
 from api.dbmodels.event import Event
 from usermanager import UserManager
+import utils
 import logging
 from api.database import db
 import discord
@@ -30,17 +31,27 @@ class EventManager:
         for event in events:
             self.register(event)
 
-    def _get_event_channel(self, event: Event):
+    def _get_event_channel(self, event: Event) -> discord.TextChannel:
         guild = self._dc_client.get_guild(event.guild_id)
         return guild.get_channel(event.channel_id)
 
     async def _event_start(self, event: Event):
         self._um.synch_workers()
         await self._get_event_channel(event).send(content=f'Event **{event.name}** just started!',
-                                                  embed=event.get_discord_embed(registrations=True))
+                                                  embed=event.get_discord_embed(dc_client=self._dc_client, registrations=True))
 
     async def _event_end(self, event: Event):
-        await self._get_event_channel(event).send(content=f'Event **{event.name}** just ended! Here\'s a little summary', embed=event.get_summary_embed())
+        await self._get_event_channel(event).send(
+            content=f'Event **{event.name}** just ended! Final standings:',
+            embed=utils.create_leaderboard(self._dc_client, event.guild_id, mode='gain')
+        )
+
+        name = f'FINAL_{event.name}_{event.id}.png'
+        await self._get_event_channel(event).send(
+            embed=event.get_summary_embed(dc_client=self._dc_client).set_image(url=f'attachment://{name}'),
+            file=event.create_complete_history(dc_client=self._dc_client, name=name)
+        )
+
         self._um.synch_workers()
         Event.query.filter_by(id=event.id).delete()
         db.session.commit()

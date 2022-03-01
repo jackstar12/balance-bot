@@ -30,7 +30,7 @@ class Client(db.Model):
     name = db.Column(db.String, nullable=True)
     rekt_on = db.Column(db.DateTime, nullable=True)
     history = db.relationship('Balance', backref='client_history',
-                              cascade="all, delete", lazy=True, order_by="Balance.time")
+                              cascade="all, delete", lazy=True, order_by='Balance.time')
 
     required_extra_args: List[str] = []
 
