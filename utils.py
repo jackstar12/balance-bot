@@ -151,17 +151,20 @@ def create_history(to_graph: List[Tuple[Client, str]],
                    currency: str,
                    percentage: bool,
                    path: str,
-                   custom_title: str = None):
+                   custom_title: str = None,
+                   archived=False):
     first = True
     title = ''
-    UserManager().fetch_data([graph[0] for graph in to_graph])
+    um = UserManager()
+    um.fetch_data([graph[0] for graph in to_graph])
     for registered_client, name in to_graph:
 
-        user_data = UserManager().get_client_history(registered_client,
-                                                     guild_id=guild_id,
-                                                     start=start,
-                                                     end=end,
-                                                     currency=currency)
+        user_data = um.get_client_history(registered_client,
+                                          guild_id=guild_id,
+                                          start=start,
+                                          end=end,
+                                          currency=currency,
+                                          archived=archived)
 
         if len(user_data) == 0:
             raise UserInputError(f'Got no data for {name}!')
@@ -261,7 +264,11 @@ def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
     return result
 
 
-def create_leaderboard(dc_client: discord.Client, guild_id: int, mode: str, time: datetime = None) -> discord.Embed:
+def create_leaderboard(dc_client: discord.Client,
+                       guild_id: int,
+                       mode: str,
+                       time: datetime = None,
+                       archived=False) -> discord.Embed:
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
     users_rekt: List[DiscordUser] = []
@@ -273,7 +280,7 @@ def create_leaderboard(dc_client: discord.Client, guild_id: int, mode: str, time
     guild = dc_client.get_guild(guild_id)
     if not guild:
         raise InternalError(f'Provided guild_id is not valid!')
-    event = dbutils.get_event(guild.id, throw_exceptions=False)
+    event = dbutils.get_event(guild.id, state='archived' if archived else 'active', throw_exceptions=False)
 
     if event:
         clients = event.registrations
@@ -286,8 +293,9 @@ def create_leaderboard(dc_client: discord.Client, guild_id: int, mode: str, time
             if member:
                 clients.append(user.global_client)
 
-    user_manager = UserManager()
-    user_manager.fetch_data(clients=clients)
+    if not archived:
+        user_manager = UserManager()
+        user_manager.fetch_data(clients=clients)
 
     if mode == 'balance':
         for client in clients:
@@ -306,7 +314,7 @@ def create_leaderboard(dc_client: discord.Client, guild_id: int, mode: str, time
 
         description += f'Gain {readable_time(time)}\n\n'
 
-        client_gains = calc_gains(clients, guild.id, time)
+        client_gains = calc_gains(clients, guild.id, time, archived=archived)
 
         for client, client_gain in client_gains:
             if client_gain is not None:
@@ -326,12 +334,12 @@ def create_leaderboard(dc_client: discord.Client, guild_id: int, mode: str, time
     rank_true = 1
 
     if len(user_scores) > 0:
-        if mode == 'gain':
+        if mode == 'gain' and not archived:
             dc_client.loop.create_task(
                 dc_client.change_presence(
                     activity=discord.Activity(
                         type=discord.ActivityType.watching,
-                        name=f'Best Trader: {user_scores[0][0].discorduser.name}'
+                        name=f'Best Trader: {user_scores[0][0].discorduser.get_display_name(dc_client, guild_id)}'
                     )
                 )
             )
@@ -378,7 +386,8 @@ def create_leaderboard(dc_client: discord.Client, guild_id: int, mode: str, time
 def calc_gains(clients: List[Client],
                guild_id: int,
                search: datetime,
-               currency: str = None) -> List[Tuple[Client, Tuple[float, float]]]:
+               currency: str = None,
+               archived=False) -> List[Tuple[Client, Tuple[float, float]]]:
     """
     :param guild_id:
     :param clients: users to calculate gain for
@@ -396,7 +405,7 @@ def calc_gains(clients: List[Client],
     results = []
     user_manager = UserManager()
     for client in clients:
-        data = user_manager.get_client_history(client, guild_id, start=search)
+        data = user_manager.get_client_history(client, guild_id, start=search, archived=archived)
         if len(data) > 0:
             balance_then = user_manager.db_match_balance_currency(data[0], currency)
             balance_now = user_manager.db_match_balance_currency(data[len(data) - 1], currency)

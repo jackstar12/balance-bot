@@ -56,7 +56,10 @@ class Event(db.Model):
 
         description = ''
 
-        gains = utils.calc_gains(self.registrations, self.guild_id, self.start)
+        if len(self.registrations) == 0:
+            return embed
+
+        gains = utils.calc_gains(self.registrations, self.guild_id, self.start, archived=datetime.now() > self.end)
         gains.sort(key=lambda x: x[1][0], reverse=True)
 
         description += f'**Best Trader :crown:**\n' \
@@ -112,7 +115,7 @@ class Event(db.Model):
 
         return embed
 
-    def create_complete_history(self, dc_client: discord.Client, name='history.png'):
+    def create_complete_history(self, dc_client: discord.Client, path='history.png'):
         utils.create_history(
             custom_title=f'Complete history for {self.name}',
             to_graph=[(client, client.discorduser.get_display_name(dc_client, self.guild_id)) for client in self.registrations],
@@ -122,10 +125,11 @@ class Event(db.Model):
             currency_display='%',
             currency='$',
             percentage=True,
-            path=DATA_PATH + name
+            path=DATA_PATH + path,
+            archived=self.end < datetime.now()
         )
 
-        file = discord.File(DATA_PATH + name, name)
+        file = discord.File(DATA_PATH + path, path)
         return file
 
     def __hash__(self):

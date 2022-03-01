@@ -32,7 +32,7 @@ class ClientWorker:
     def get_balance(self, time: datetime = None):
         if not time:
             time = datetime.now()
-        if time - self._last_fetch < timedelta(seconds=45):
+        if time - self._last_fetch < timedelta(seconds=30):
             return None
         else:
             self._last_fetch = time

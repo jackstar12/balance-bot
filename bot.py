@@ -7,10 +7,11 @@ import random
 import shutil
 import time
 import typing
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Type, Tuple
 
 import dotenv
+
 dotenv.load_dotenv()
 
 import discord
@@ -391,11 +392,11 @@ def get_available_exchanges() -> str:
 )
 @utils.log_and_catch_errors(log_args=False)
 async def register_new(ctx: SlashContext,
-                   exchange_name: str,
-                   api_key: str,
-                   api_secret: str,
-                   subaccount: typing.Optional[str] = None,
-                   args: str = None):
+                       exchange_name: str,
+                       api_key: str,
+                       api_secret: str,
+                       subaccount: typing.Optional[str] = None,
+                       args: str = None):
     await ctx.defer(hidden=True)
 
     kwargs = {}
@@ -459,7 +460,10 @@ async def register_new(ctx: SlashContext,
                             message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
 
                             def register_user(ctx):
-                                if not event or not discord_user.global_client:
+                                if existing_client:
+                                    user_manager.remove_client(existing_client)
+
+                                if not event:
                                     discord_user.global_client = new_client
                                     discord_user.global_client_id = new_client.id
                                 else:
@@ -471,9 +475,6 @@ async def register_new(ctx: SlashContext,
                                 if inspect(discord_user).transient:
                                     db.session.add(discord_user)
                                 db.session.add(new_client)
-
-                                if existing_client:
-                                    user_manager.remove_client(existing_client)
                                 db.session.commit()
                                 logger.info(f'Registered new user')
 
@@ -600,7 +601,6 @@ async def event_show(ctx: SlashContext):
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
-
     if start >= end:
         raise UserInputError("Start time can't be after end time.")
     if registration_start >= registration_end:
@@ -618,13 +618,15 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
         if start < active_event.end:
             raise UserInputError(f"Event can't start while other event ({active_event.name}) is still active")
         if registration_start < active_event.registration_end:
-            raise UserInputError(f"Event registration can't start while other event ({active_event.name}) is still open for registration")
+            raise UserInputError(
+                f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
     active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
 
     if active_registration:
         if registration_start < active_registration.registration_end:
-            raise UserInputError(f"Event registration can't start while other event ({active_registration.name}) is open for registration")
+            raise UserInputError(
+                f"Event registration can't start while other event ({active_registration.name}) is open for registration")
 
     event = Event(
         name=name,
@@ -660,14 +662,15 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
     options=[]
 )
 @utils.log_and_catch_errors()
-async def unregister(ctx, guild: str = None):
-    if guild:
-        guild = int(guild)
-
+async def unregister(ctx):
     client = dbutils.get_client(ctx.author.id, ctx.guild_id)
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
 
     def unregister_user(ctx):
-        user_manager.remove_client(client)
+        if event:
+            client.events.remove(event)
+        else:
+            user_manager.remove_client(client)
         discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
         if len(discord_user.clients) == 0:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
@@ -684,7 +687,7 @@ async def unregister(ctx, guild: str = None):
     )
 
     await ctx.send(
-        content=f'Do you really want to unregister from {client.get_event_string()}? This will **delete all your data**.',
+        content=f'Do you really want to unregister from {event.name if event else client.get_event_string()}? This will **delete all your data**.',
         embed=client.get_discord_embed(),
         components=[buttons],
         hidden=True)
@@ -696,7 +699,7 @@ async def unregister(ctx, guild: str = None):
     options=[]
 )
 @utils.log_and_catch_errors()
-async def info(ctx, guild=None):
+async def info(ctx):
     user = dbutils.get_user(ctx.author_id)
     await ctx.send(content='', embeds=user.get_discord_embed(), hidden=True)
 
@@ -763,7 +766,8 @@ async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, 
 @utils.server_only
 async def leaderboard_balance(ctx: SlashContext):
     await ctx.defer()
-    await ctx.send(content='', embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance', time=None))
+    await ctx.send(content='',
+                   embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance', time=None))
 
 
 @slash.subcommand(
@@ -784,7 +788,8 @@ async def leaderboard_balance(ctx: SlashContext):
 @utils.server_only
 async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     await ctx.defer()
-    await ctx.send(content='', embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='gain', time=time))
+    await ctx.send(content='',
+                   embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='gain', time=time))
 
 
 @slash.slash(
@@ -916,7 +921,6 @@ if args.reset and os.path.exists(DATA_PATH):
     except FileNotFoundError as e:
         logger.info(f'Error while archiving data: {e}')
 
-
 api.run()
 
 
@@ -927,12 +931,28 @@ api.run()
 @utils.log_and_catch_errors()
 @utils.server_only
 async def summary(ctx: SlashContext):
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='archived', throw_exceptions=False)
+    if not event:
+        event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
+    if not event:
+        raise UserInputError('Got no event to show summary for')
     await ctx.defer()
-    event = dbutils.get_event(ctx.guild_id, ctx.channel_id)
-    embed = event.get_summary_embed(dc_client=bot)
-    embed.set_image(url='attachment://history.png')
-    embed.set_image(url='attachment://history.png')
-    await ctx.send(embed=embed, file=event.create_complete_history(dc_client=bot, name='history.png'))
+    await ctx.send(
+        embeds=[
+            utils.create_leaderboard(bot, ctx.guild_id, mode='gain', archived=True),
+            event.get_summary_embed(dc_client=bot).set_image(url='attachment://history.png'),
+        ],
+        file=event.create_complete_history(dc_client=bot, path='history.png')
+    )
+
+
+# @slash.slash(
+#    name="archive",
+#    description="Shows summary of archived event"
+# )
+# @utils.log_and_catch_errors()
+# @utils.server_only
+# async def archvive(ctx: SlashContext):
 
 
 user_manager = UserManager(exchanges=EXCHANGES,

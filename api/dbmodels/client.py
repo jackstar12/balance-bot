@@ -57,7 +57,6 @@ class Client(db.Model):
         embed.add_field(name='Event', value=self.get_event_string(is_global), inline=False)
         embed.add_field(name='Exchange', value=self.exchange)
         embed.add_field(name='Api Key', value=self.api_key)
-        embed.add_field(name='Api Secret', value=self.api_secret)
 
         if self.subaccount:
             embed.add_field(name='Subaccount', value=self.subaccount)

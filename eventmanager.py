@@ -49,7 +49,7 @@ class EventManager:
         name = f'FINAL_{event.name}_{event.id}.png'
         await self._get_event_channel(event).send(
             embed=event.get_summary_embed(dc_client=self._dc_client).set_image(url=f'attachment://{name}'),
-            file=event.create_complete_history(dc_client=self._dc_client, name=name)
+            file=event.create_complete_history(dc_client=self._dc_client, path=name)
         )
 
         self._um.synch_workers()

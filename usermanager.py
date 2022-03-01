@@ -47,16 +47,13 @@ class UserManager(Singleton):
 
         self.synch_workers()
 
-    def set_flask_app(self, app):
-        self._app = app
-
     def _add_worker(self, worker: ClientWorker):
         with self._worker_lock:
             if worker not in self._workers:
                 self._workers.append(worker)
                 for event in [None, *worker.client.events]:
                     if event not in self._workers_by_id:
-                        self._workers_by_id[event if event else None] = {}
+                        self._workers_by_id[event] = {}
                     self._workers_by_id[event][worker.client.discorduser.id] = worker
                 self._workers_by_client_id[worker.client.id] = worker
 
@@ -165,9 +162,10 @@ class UserManager(Singleton):
                            guild_id: int,
                            start: datetime = None,
                            end: datetime = None,
-                           currency: str = None) -> List[Balance]:
+                           currency: str = None,
+                           archived = False) -> List[Balance]:
 
-        start, end = dbutils.get_guild_start_end_times(guild_id, start, end)
+        start, end = dbutils.get_guild_start_end_times(guild_id, start, end, archived=archived)
         if currency is None:
             currency = '$'
 
@@ -227,6 +225,7 @@ class UserManager(Singleton):
                         balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
                     else:
                         balance = worker.get_balance(time)
+                    latest_balance = None if len(client.history) == 0 else client.history[len(client.history) - 1]
                     if balance:
                         if balance.error:
                             logging.error(f'Error while fetching user {worker} balance: {balance.error}')
@@ -240,9 +239,10 @@ class UserManager(Singleton):
                                 if callable(self.on_rekt_callback):
                                     self.on_rekt_callback(worker)
                     else:
-                        data.append(client.history[len(client.history) - 1])
+                        latest_balance.time = time
+                        data.append(latest_balance)
                 else:
-                    logging.error(f'Worker with client_id {worker.client_id} does not have any client!!!')
+                    logging.error(f'Worker with {worker.client_id=} got no client object!')
             db.session.commit()
 
         logging.info(f'Done Fetching')
