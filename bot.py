@@ -1,13 +1,12 @@
 import logging
 import argparse
-import datetime as datetime
 import logging
 import os
 import random
 import shutil
 import time
 import typing
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Type, Tuple
 
 import dotenv
@@ -567,9 +566,11 @@ async def event_show(ctx: SlashContext):
         await ctx.defer()
         for event in events:
             if event.is_active:
-                await ctx.send(content='Current Event:', embed=event.get_discord_embed(bot, registrations=True))
+                await ctx.send(content='Current:', embed=event.get_discord_embed(bot, registrations=True))
+            elif event.start > datetime.now():
+                await ctx.send(content='Upcoming:', embed=event.get_discord_embed(bot, registrations=True))
             else:
-                await ctx.send(content='Upcoming Event:', embed=event.get_discord_embed(bot, registrations=True))
+                await ctx.send(content='Archived:', embed=event.get_discord_embed(bot, registrations=True))
 
 
 @slash.subcommand(
@@ -617,14 +618,20 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
     if active_event:
         if start < active_event.end:
             raise UserInputError(f"Event can't start while other event ({active_event.name}) is still active")
+        if start - active_event.end < timedelta(minutes=1):
+            raise UserInputError(
+                f"Please there is at least 1 minute between "
+                f"start of new and end of current event ({active_event.name}).")
         if registration_start < active_event.registration_end:
-            raise UserInputError(f"Event registration can't start while other event ({active_event.name}) is still open for registration")
+            raise UserInputError(
+                f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
     active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
 
     if active_registration:
         if registration_start < active_registration.registration_end:
-            raise UserInputError(f"Event registration can't start while other event ({active_registration.name}) is open for registration")
+            raise UserInputError(
+                f"Event registration can't start while other event ({active_registration.name}) is open for registration")
 
     event = Event(
         name=name,
@@ -669,7 +676,7 @@ async def unregister(ctx, guild: str = None):
     def unregister_user(ctx):
         user_manager.remove_client(client)
         discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
-        if len(discord_user.clients) == 0:
+        if len(discord_user.clients) == 0 and not discord_user.global_client:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
             db.session.commit()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
@@ -931,7 +938,8 @@ async def summary(ctx: SlashContext):
     event = dbutils.get_event(ctx.guild_id, ctx.channel_id)
     embed = event.get_summary_embed(dc_client=bot)
     embed.set_image(url='attachment://history.png')
-    await ctx.send(embed=embed, file=event.create_complete_history())
+    embed.set_image(url='attachment://history.png')
+    await ctx.send(embed=embed, file=event.create_complete_history(dc_client=bot, name='history.png'))
 
 
 user_manager = UserManager(exchanges=EXCHANGES,

@@ -28,7 +28,8 @@ def get_client(user_id: int,
         raise UserInputError("User {name} is not registered", user_id)
 
 
-def get_event(guild_id: int, channel_id: int = None, registration=False, throw_exceptions=True) -> Optional[Event]:
+def get_event(guild_id: int, channel_id: int = None, registration=False, state: str = 'active',
+              throw_exceptions=True) -> Optional[Event]:
     events = Event.query.filter(
         Event.guild_id == guild_id
     ).all()
@@ -36,6 +37,8 @@ def get_event(guild_id: int, channel_id: int = None, registration=False, throw_e
         if registration and event.is_free_for_registration:
             return event
         elif not registration and event.is_active:
+            return event
+        elif state == 'archived' and event.end < datetime.now():
             return event
 
     if throw_exceptions:
