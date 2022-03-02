@@ -45,10 +45,13 @@ class Client(db.Model):
     def get_event_string(self, is_global=False):
         events = ''
         if self.is_global or is_global:
-            events += 'Global'
+            events += 'Global, '
         for event in self.events:
+            first = True
             if event.is_active or event.is_free_for_registration:
-                events += f', {event.name}'
+                if not first:
+                    events += f', '
+                events += event.name
         return events
 
     def get_discord_embed(self, is_global=False):
