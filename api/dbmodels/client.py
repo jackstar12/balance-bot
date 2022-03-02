@@ -45,11 +45,11 @@ class Client(db.Model):
     def get_event_string(self, is_global=False):
         events = ''
         if self.is_global or is_global:
-            events += 'Global, '
+            events += 'Global'
         for event in self.events:
             first = True
             if event.is_active or event.is_free_for_registration:
-                if not first:
+                if not first or self.is_global or is_global:
                     events += f', '
                 events += event.name
         return events
