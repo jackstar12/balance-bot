@@ -52,6 +52,7 @@ class Client(db.Model):
                 if not first or self.is_global or is_global:
                     events += f', '
                 events += event.name
+                first = False
         return events
 
     def get_discord_embed(self, is_global=False):
