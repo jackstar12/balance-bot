@@ -12,13 +12,14 @@ from api import dbutils
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError, InternalError
-from discord_slash.utils.manage_components import create_button, create_actionrow
+from discord_slash.utils.manage_components import create_button, create_actionrow, create_select, create_select_option
+import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
 from usermanager import UserManager
 from datetime import datetime, timedelta
 from discord_slash import SlashContext, SlashCommandOptionType
-from typing import List, Tuple, Callable, Optional, Union, Dict
+from typing import List, Tuple, Callable, Optional, Union, Dict, Any
 from api.dbmodels.balance import Balance
 from config import CURRENCY_PRECISION, REKT_THRESHOLD
 
@@ -519,6 +520,14 @@ def calc_xs_ys(data: List[Balance],
     return xs, ys
 
 
+async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
+    if callable(fn):
+        if inspect.iscoroutinefunction(fn):
+            return await fn(*args, **kwargs)
+        else:
+            return fn(*args, **kwargs)
+
+
 def create_yes_no_button_row(slash: SlashCommand,
                              author_id: int,
                              yes_callback: Callable = None,
@@ -568,11 +577,7 @@ def create_yes_no_button_row(slash: SlashCommand,
                 slash.remove_component_callback(custom_id=button['custom_id'])
 
             await ctx.edit_origin(components=[])
-            if callable(callback):
-                if inspect.iscoroutinefunction(callback):
-                    await callback(ctx)
-                else:
-                    callback(ctx)
+            await call_unknown_function(callback, ctx)
             if message:
                 await ctx.send(content=message, hidden=hidden)
 
@@ -582,8 +587,39 @@ def create_yes_no_button_row(slash: SlashCommand,
     return create_actionrow(*buttons)
 
 
-def create_event_selection(custom_id: str, callback: Callable[[str], None] = None, message=None):
-    pass
+def create_selection(slash: SlashCommand,
+                     author_id: int,
+                     options: List[Dict],
+                     callback: Callable[[Any], None] = None,
+                     message=None):
+
+    custom_id = f'selection_{author_id}'
+
+    objects_by_label = {}
+
+    for option in options:
+        objects_by_label[option["label"]] = option["value"]
+
+    selection = discord_components.create_select(
+        options=[
+            create_select_option(
+                label=option["name"],
+                value=option["name"]
+            )
+            for option in options
+        ],
+        custom_id=custom_id,
+        min_values=1
+    )
+
+    @slash.component_callback(components=[custom_id])
+    async def on_select(ctx: ComponentContext):
+        values = ctx.data["values"]
+        objects = [objects_by_label.get(value) for value in values]
+
+        await call_unknown_function(callback, ctx, objects)
+
+    return create_actionrow(selection)
 
 
 def readable_time(time: datetime):
