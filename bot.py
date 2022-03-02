@@ -461,19 +461,20 @@ async def register_new(ctx: SlashContext,
 
                             def register_user(ctx):
                                 if existing_client:
-                                    user_manager.remove_client(existing_client)
+                                    user_manager.delete_client(existing_client)
 
-                                if not event:
+                                if not discord_user.global_client:
                                     discord_user.global_client = new_client
                                     discord_user.global_client_id = new_client.id
-                                else:
-                                    discord_user.clients.append(new_client)
+
+                                discord_user.clients.append(new_client)
 
                                 new_client.history.append(init_balance)
                                 user_manager.add_client(new_client)
 
                                 if inspect(discord_user).transient:
                                     db.session.add(discord_user)
+
                                 db.session.add(new_client)
                                 db.session.commit()
                                 logger.info(f'Registered new user')
@@ -669,8 +670,10 @@ async def unregister(ctx):
     def unregister_user(ctx):
         if event:
             client.events.remove(event)
+            if len(client.events) == 0:
+                user_manager.delete_client(client)
         else:
-            user_manager.remove_client(client)
+            user_manager.delete_client(client)
         discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
         if len(discord_user.clients) == 0:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
@@ -936,6 +939,7 @@ async def summary(ctx: SlashContext):
         event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
     if not event:
         raise UserInputError('Got no event to show summary for')
+    path = 'FINAL_'
     await ctx.defer()
     await ctx.send(
         embeds=[

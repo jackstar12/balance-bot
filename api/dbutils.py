@@ -28,8 +28,12 @@ def get_client(user_id: int,
         raise UserInputError("User {name} is not registered", user_id)
 
 
-def get_event(guild_id: int, channel_id: int = None, registration=False, state: str = 'active',
+def get_event(guild_id: int, channel_id: int = None, registration=False, state: str = None,
               throw_exceptions=True) -> Optional[Event]:
+
+    if not state:
+        state = 'active'
+
     now = datetime.now()
 
     filters = [Event.guild_id == guild_id]

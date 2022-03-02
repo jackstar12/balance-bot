@@ -66,7 +66,7 @@ class UserManager(Singleton):
                 self._workers.remove(worker)
                 del worker
 
-    def remove_client(self, client: Client):
+    def delete_client(self, client: Client):
         self._remove_worker(self._get_worker(client, create_if_missing=False))
         Client.query.filter_by(id=client.id).delete()
         db.session.commit()

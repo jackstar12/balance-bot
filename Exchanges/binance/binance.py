@@ -84,7 +84,7 @@ class BinanceSpot(_BinanceBaseClient):
             data = response['balances']
             for balance in data:
                 currency = balance['asset']
-                amount = float(balance['free'])
+                amount = float(balance['free'] + balance['locked'])
                 price = 0
                 if currency == 'USDT':
                     price = 1
