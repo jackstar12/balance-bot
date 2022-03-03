@@ -1,6 +1,7 @@
 import utils
 import numpy
 from api.database import db
+from api.dbmodels.archive import Archive
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 from config import DATA_PATH
@@ -23,7 +24,9 @@ class Event(db.Model):
     end = db.Column(db.DateTime, nullable=False)
     name = db.Column(db.String, nullable=False)
     description = db.Column(db.String, nullable=False)
+
     registrations = db.relationship('Client', secondary=association, backref='events')
+    archive = db.relationship('Archive', backref='event', uselist=False, cascade="all, delete")
 
     @hybrid_property
     def is_active(self):
@@ -48,6 +51,7 @@ class Event(db.Model):
                 value += f'{registration.discorduser.get_display_name(dc_client, self.guild_id)}\n'
             if value:
                 embed.add_field(name="Registrations", value=value, inline=False)
+            self._archive.registrations = registrations
 
         return embed
 
@@ -112,13 +116,20 @@ class Event(db.Model):
 
         description += '\n'
         embed.description = description
+        self._archive.summary = description
 
         return embed
 
-    def create_complete_history(self, dc_client: discord.Client, path='history.png'):
+    def create_complete_history(self, dc_client: discord.Client):
+
+        path = f'HISTORY_{self.guild_id}_{self.channel_id}_{self.start.timestamp()}.png'
+
         utils.create_history(
             custom_title=f'Complete history for {self.name}',
-            to_graph=[(client, client.discorduser.get_display_name(dc_client, self.guild_id)) for client in self.registrations],
+            to_graph=[
+                (client, client.discorduser.get_display_name(dc_client, self.guild_id))
+                for client in self.registrations
+            ],
             guild_id=self.guild_id,
             start=self.start,
             end=self.end,
@@ -130,7 +141,16 @@ class Event(db.Model):
         )
 
         file = discord.File(DATA_PATH + path, path)
+        self._archive.history_path = path
+
         return file
+
+    @property
+    def _archive(self):
+        if not self.archive:
+            self.archive = Archive(event_id=self.id)
+            db.session.add(self.archive)
+        return self.archive
 
     def __hash__(self):
         return self.id.__hash__()

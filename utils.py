@@ -590,8 +590,7 @@ def create_yes_no_button_row(slash: SlashCommand,
 def create_selection(slash: SlashCommand,
                      author_id: int,
                      options: List[Dict],
-                     callback: Callable[[Any], None] = None,
-                     message=None):
+                     callback: Callable[[Any], None] = None):
 
     custom_id = f'selection_{author_id}'
 
@@ -612,11 +611,13 @@ def create_selection(slash: SlashCommand,
         min_values=1
     )
 
+    if slash.get_component_callback(custom_id=custom_id) is not None:
+        slash.remove_component_callback(custom_id=custom_id)
+
     @slash.component_callback(components=[custom_id])
     async def on_select(ctx: ComponentContext):
         values = ctx.data["values"]
         objects = [objects_by_label.get(value) for value in values]
-
         await call_unknown_function(callback, ctx, objects)
 
     return create_actionrow(selection)

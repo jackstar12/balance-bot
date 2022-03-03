@@ -33,6 +33,7 @@ from api.database import db
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.event import Event
+from api.dbmodels.archive import Archive
 from clientworker import ClientWorker
 from config import (DATA_PATH,
                     PREFIX,
@@ -950,14 +951,15 @@ async def summary(ctx: SlashContext):
     )
 
 
-# @slash.slash(
-#    name="archive",
-#    description="Shows summary of archived event"
-# )
-# @utils.log_and_catch_errors()
-# @utils.server_only
-# async def archvive(ctx: SlashContext):
+@slash.slash(
+   name="archive",
+   description="Shows summary of archived event"
+)
+@utils.log_and_catch_errors()
+@utils.server_only
+async def archvive(ctx: SlashContext):
 
+    pass
 
 user_manager = UserManager(exchanges=EXCHANGES,
                            fetching_interval_hours=FETCHING_INTERVAL_HOURS,
