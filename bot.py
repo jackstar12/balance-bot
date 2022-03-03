@@ -33,6 +33,7 @@ from api.database import db
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.event import Event
+from api.dbmodels.archive import Archive
 from clientworker import ClientWorker
 from config import (DATA_PATH,
                     PREFIX,
@@ -43,7 +44,7 @@ from config import (DATA_PATH,
                     CURRENCY_PRECISION,
                     REKT_THRESHOLD,
                     ARCHIVE_PATH)
-from errors import UserInputError
+from errors import UserInputError, InternalError
 from eventmanager import EventManager
 from usermanager import UserManager
 from utils import (de_emojify,
@@ -108,24 +109,16 @@ async def on_guild_join(guild: discord.Guild):
     name="ping",
     description="Ping"
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 async def ping(ctx: SlashContext):
     """Get the bot's current websocket and api latency."""
     start_time = time.time()
-    message = Embed(title="Testing Ping...")
+    message = discord.Embed(title="Testing Ping...")
     msg = await ctx.send(embed=message)
     end_time = time.time()
-    message2 = Embed(
+    message2 = discord.Embed(
         title=f":ping_pong:\nExternal: {round(bot.latency * 1000, ndigits=3)}ms\nInternal: {round((end_time - start_time), ndigits=3)}s")
     await msg.edit(embed=message2)
-
-
-# start_time = time.time()
-#  message = await ctx.send("Testing Ping...")
-# end_time = time.time()
-
-# await message.edit(
-#     content=f"Pong! {round(bot.latency * 1000, ndigits=3)}ms\napi: {round((end_time - start_time), ndigits=3)}ms")
 
 
 @slash.slash(
@@ -146,7 +139,7 @@ async def ping(ctx: SlashContext):
         )
     ]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.set_author_default(name='user')
 async def balance(ctx: SlashContext, user: discord.Member = None, currency: str = None):
     if currency is None:
@@ -213,7 +206,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         )
     ]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.set_author_default(name='user')
 @utils.time_args(names=[('since', None), ('to', None)])
 async def history(ctx: SlashContext,
@@ -224,7 +217,7 @@ async def history(ctx: SlashContext,
                   currency: str = None):
     if ctx.guild:
         registered_client = dbutils.get_client(user.id, ctx.guild.id)
-        registrations = [(registered_client, user)]
+        registrations = [(registered_client, user.display_name)]
     else:
         registered_user = dbutils.get_user(user.id)
         registrations = [
@@ -309,7 +302,7 @@ async def history(ctx: SlashContext,
         )
     ]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.time_args(names=[('time', None)])
 @utils.set_author_default(name='user')
 async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, currency: str = None):
@@ -356,8 +349,9 @@ def get_available_exchanges() -> str:
     return exchange_list
 
 
-@slash.slash(
-    name="register",
+@slash.subcommand(
+    base="register",
+    name="new",
     description="Register you for tracking.",
     options=[
         create_option(
@@ -398,13 +392,13 @@ def get_available_exchanges() -> str:
         )
     ]
 )
-@utils.log_and_catch_user_input_errors(log_args=False)
-async def register(ctx: SlashContext,
-                   exchange_name: str,
-                   api_key: str,
-                   api_secret: str,
-                   subaccount: typing.Optional[str] = None,
-                   args: str = None):
+@utils.log_and_catch_errors(log_args=False)
+async def register_new(ctx: SlashContext,
+                       exchange_name: str,
+                       api_key: str,
+                       api_secret: str,
+                       subaccount: typing.Optional[str] = None,
+                       args: str = None):
     await ctx.defer(hidden=True)
 
     kwargs = {}
@@ -468,11 +462,14 @@ async def register(ctx: SlashContext,
                             message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
 
                             def register_user(ctx):
-                                if not event:
+                                if existing_client:
+                                    user_manager.delete_client(existing_client)
+
+                                if not discord_user.global_client:
                                     discord_user.global_client = new_client
                                     discord_user.global_client_id = new_client.id
-                                else:
-                                    discord_user.clients.append(new_client)
+
+                                discord_user.clients.append(new_client)
 
                                 new_client.history.append(init_balance)
                                 user_manager.add_client(new_client)
@@ -480,9 +477,6 @@ async def register(ctx: SlashContext,
                                 if inspect(discord_user).transient:
                                     db.session.add(discord_user)
                                 db.session.add(new_client)
-
-                                if existing_client:
-                                    user_manager.remove_client(existing_client)
                                 db.session.commit()
                                 logger.info(f'Registered new user')
 
@@ -531,17 +525,18 @@ async def register(ctx: SlashContext,
                 raise UserInputError(
                     f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}')
         else:
-            logger.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
+            raise InternalError(f'Class {exchange_cls} is no subclass of ClientWorker!')
     except KeyError:
         raise UserInputError(f'Exchange {exchange_name} unknown')
 
 
-@slash.slash(
-    name="register_existing",
+@slash.subcommand(
+    base="register",
+    name="existing",
     description="Registers your global access to an ongoing event.",
     options=[]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.server_only
 async def register_existing(ctx: SlashContext):
     event = dbutils.get_event(guild_id=ctx.guild_id, registration=True)
@@ -551,33 +546,38 @@ async def register_existing(ctx: SlashContext):
         if user.global_client:
             if user.global_client not in event.registrations:
                 event.registrations.append(user.global_client)
-                user.global_client.append(event)
                 db.session.commit()
-                await ctx.send('Success', hidden=True)
+                await ctx.send(f'You are now registered for _{event.name}_!', hidden=True)
             else:
-                await ctx.send('You are already registered for this event!', hidden=True)
+                raise UserInputError('You are already registered for this event!')
         else:
-            await ctx.send('You do not have a global access to use', hidden=True)
+            raise UserInputError('You do not have a global access to use')
     else:
-        await ctx.send(f'Event {event.name} is not available for registration', hidden=True)
+        raise UserInputError(f'Event {event.name} is not available for registration')
 
 
-@slash.slash(
-    name="event_show",
-    description="Shows you all ongoing events",
-    options=[]
+@slash.subcommand(
+    base='event',
+    subcommand_group='show'
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.server_only
 async def event_show(ctx: SlashContext):
-    event = dbutils.get_event(ctx.guild_id, channel_id=ctx.channel_id)
-    await ctx.defer()
-    await ctx.send(embed=event.get_discord_embed(registrations=True))
+    events = Event.query.filter_by(guild_id=ctx.guild_id).all()
+    if len(events) == 0:
+        await ctx.send(content='There are no events', hidden=True)
+    else:
+        await ctx.defer()
+        for event in events:
+            if event.is_active:
+                await ctx.send(content='Current Event:', embed=event.get_discord_embed(bot, registrations=True))
+            else:
+                await ctx.send(content='Upcoming Event:', embed=event.get_discord_embed(bot, registrations=True))
 
 
-@slash.slash(
-    name='event',
-    description='Register an event for this guild.',
+@slash.subcommand(
+    base="event",
+    name="register",
     options=[
         create_option(
             name=name,
@@ -596,9 +596,10 @@ async def event_show(ctx: SlashContext):
         ]
     ]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
                  allow_future=True)
+@utils.admin_only
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
@@ -609,20 +610,31 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
     # end = now + timedelta(seconds=40)
 
     if start >= end:
-        await ctx.send("Start time can't be after end time.", hidden=True)
-        return
+        raise UserInputError("Start time can't be after end time.")
     if registration_start >= registration_end:
-        await ctx.send("Registration start can't be after registration end", hidden=True)
-        return
+        raise UserInputError("Registration start can't be after registration end")
     if registration_end < start:
-        await ctx.send("Registration end should be after or at event start", hidden=True)
-        return
+        raise UserInputError("Registration end should be after or at event start")
     if registration_end > end:
-        await ctx.send("Registration end can't be after event end.", hidden=True)
-        return
+        raise UserInputError("Registration end can't be after event end.")
     if registration_start > start:
-        await ctx.send("Registration start should be before event start.", hidden=True)
-        return
+        raise UserInputError("Registration start should be before event start.")
+
+    active_event = dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
+
+    if active_event:
+        if start < active_event.end:
+            raise UserInputError(f"Event can't start while other event ({active_event.name}) is still active")
+        if registration_start < active_event.registration_end:
+            raise UserInputError(
+                f"Event registration can't start while other event ({active_event.name}) is still open for registration")
+
+    active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
+
+    if active_registration:
+        if registration_start < active_registration.registration_end:
+            raise UserInputError(
+                f"Event registration can't start while other event ({active_registration.name}) is open for registration")
 
     event = Event(
         name=name,
@@ -649,7 +661,7 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
         hidden=True
     )
 
-    await ctx.send(embed=event.get_discord_embed(), components=[row], hidden=True)
+    await ctx.send(embed=event.get_discord_embed(dc_client=bot), components=[row], hidden=True)
 
 
 @slash.slash(
@@ -657,11 +669,8 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
     description="Unregisters you from tracking",
     options=[]
 )
-@utils.log_and_catch_user_input_errors()
-async def unregister(ctx, guild: str = None):
-    if guild:
-        guild = int(guild)
-
+@utils.log_and_catch_errors()
+async def unregister(ctx):
     client = dbutils.get_client(ctx.author.id, ctx.guild_id)
 
     def unregister_user(ctx):
@@ -682,7 +691,7 @@ async def unregister(ctx, guild: str = None):
     )
 
     await ctx.send(
-        content=f'Do you really want to unregister from {client.get_event_string()}? This will **delete all your data**.',
+        content=f'Do you really want to unregister from {event.name if event else client.get_event_string()}? This will **delete all your data**.',
         embed=client.get_discord_embed(),
         components=[buttons],
         hidden=True)
@@ -693,8 +702,8 @@ async def unregister(ctx, guild: str = None):
     description="Shows your stored information",
     options=[]
 )
-@utils.log_and_catch_user_input_errors()
-async def info(ctx, guild=None):
+@utils.log_and_catch_errors()
+async def info(ctx):
     user = dbutils.get_user(ctx.author_id)
     await ctx.send(content='', embeds=user.get_discord_embed(), hidden=True)
 
@@ -717,7 +726,7 @@ async def info(ctx, guild=None):
         )
     ]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.time_args(names=[('since', None), ('to', None)])
 async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, guild: str = None):
     if guild:
@@ -751,127 +760,18 @@ async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, 
                    hidden=True)
 
 
-def create_leaderboard(guild: discord.Guild, mode: str, time: datetime = None):
-    user_scores: List[Tuple[DiscordUser, float]] = []
-    value_strings: Dict[DiscordUser, str] = {}
-    users_rekt: List[DiscordUser] = []
-    clients_missing: List[DiscordUser] = []
-
-    footer = ''
-    description = ''
-
-    event = dbutils.get_event(guild.id, throw_exceptions=False)
-
-    if event:
-        clients = event.registrations
-    else:
-        clients = []
-        # All global clients
-        users = DiscordUser.query.filter(DiscordUser.global_client_id is not None).all()
-        for user in users:
-            member = guild.get_member(user.user_id)
-            if member:
-                clients.append(user.global_client)
-
-    user_manager.fetch_data(clients=clients)
-
-    if mode == 'balance':
-        for client in clients:
-            if client.rekt_on:
-                users_rekt.append(client)
-            elif len(client.history) > 0:
-                balance = client.history[len(client.history) - 1]
-                if balance.amount > REKT_THRESHOLD:
-                    user_scores.append((client, balance.amount))
-                    value_strings[client] = balance.to_string(display_extras=False)
-                else:
-                    users_rekt.append(client)
-            else:
-                clients_missing.append(client)
-    elif mode == 'gain':
-
-        description += f'Gain {utils.readable_time(time)}\n\n'
-
-        client_gains = utils.calc_gains(clients, guild.id, time)
-
-        for client, client_gain in client_gains:
-            if client_gain is not None:
-                if client.rekt_on:
-                    users_rekt.append(client)
-                else:
-                    user_gain_rel, user_gain_abs = client_gain
-                    user_scores.append((client, user_gain_rel))
-                    value_strings[client] = f'{user_gain_rel}% ({user_gain_abs}$)'
-            else:
-                clients_missing.append(client)
-    else:
-        raise UserInputError(f'Unknown mode {mode} was passed in')
-
-    user_scores.sort(key=lambda x: x[1], reverse=True)
-    rank = 1
-    rank_true = 1
-
-    if len(user_scores) > 0:
-        if mode == 'gain':
-            bot.loop.create_task(
-                bot.change_presence(
-                    activity=discord.Activity(
-                        type=discord.ActivityType.watching,
-                        name=f'Best Trader: {user_scores[0][0].discorduser.name}'
-                    )
-                )
-            )
-        prev_score = None
-        for client, score in user_scores:
-            member = guild.get_member(client.discorduser.user_id)
-            if member:
-                if prev_score is not None and score < prev_score:
-                    rank = rank_true
-                if client in value_strings:
-                    value = value_strings[client]
-                    description += f'{rank}. **{member.display_name}** {value}\n'
-                    rank_true += 1
-                else:
-                    logger.error(f'Missing value string for {client=} even though hes in user_scores')
-                prev_score = score
-
-    if len(users_rekt) > 0:
-        description += f'\n**Rekt**\n'
-        for user_rekt in users_rekt:
-            member = guild.get_member(user_rekt.discorduser.user_id)
-            if member:
-                description += f'{member.display_name}'
-                if user_rekt.rekt_on:
-                    description += f' since {user_rekt.rekt_on.replace(microsecond=0)}'
-                description += '\n'
-
-    if len(clients_missing) > 0:
-        description += f'\n**Missing**\n'
-        for client_missing in clients_missing:
-            member = guild.get_member(client_missing.discorduser.user_id)
-            if member:
-                description += f'{member.display_name}\n'
-
-    description += f'\n{footer}'
-
-    logger.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
-    return discord.Embed(
-        title='Leaderboard :medal:',
-        description=description
-    )
-
-
 @slash.subcommand(
     base="leaderboard",
     name="balance",
     description="Shows you the highest ranked users by $ balance",
     options=[]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.server_only
 async def leaderboard_balance(ctx: SlashContext):
     await ctx.defer()
-    await ctx.send(content='', embed=create_leaderboard(guild=ctx.guild, mode='balance', time=None))
+    await ctx.send(content='',
+                   embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance', time=None))
 
 
 @slash.subcommand(
@@ -887,12 +787,13 @@ async def leaderboard_balance(ctx: SlashContext):
         )
     ]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.time_args(names=[('time', None)])
 @utils.server_only
 async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     await ctx.defer()
-    await ctx.send(content='', embed=create_leaderboard(guild=ctx.guild, mode='gain', time=time))
+    await ctx.send(content='',
+                   embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='gain', time=time))
 
 
 @slash.slash(
@@ -907,10 +808,10 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
         )
     ]
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 async def daily(ctx: SlashContext, amount: int = None):
-    await ctx.defer()
     client = dbutils.get_client(ctx.author_id, ctx.guild_id)
+    await ctx.defer()
     daily_gains = utils.calc_daily(client, amount, ctx.guild_id, string=True)
     await ctx.send(
         embed=discord.Embed(title=f'Daily gains for {ctx.author.display_name}', description=f'```\n{daily_gains}```'))
@@ -1033,15 +934,77 @@ api_thread.start()
     name="summary",
     description="Show event summary"
 )
-@utils.log_and_catch_user_input_errors()
+@utils.log_and_catch_errors()
 @utils.server_only
 async def summary(ctx: SlashContext):
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active')
     await ctx.defer()
-    event = dbutils.get_event(ctx.guild_id, ctx.channel_id)
-    embed = event.get_summary_embed()
-    embed.set_image(url='attachment://history.png')
-    await ctx.send(embed=embed, file=event.create_complete_history())
+    history = event.create_complete_history(dc_client=bot)
+    await ctx.send(
+        embeds=[
+            event.create_leaderboard(bot),
+            event.get_summary_embed(dc_client=bot).set_image(url=f'attachment://{history.filename}'),
+        ],
+        file=history
+    )
 
+
+@slash.slash(
+   name="archive",
+   description="Shows summary of archived event"
+)
+@utils.log_and_catch_errors()
+@utils.server_only
+async def archive(ctx: SlashContext):
+
+    now = datetime.now()
+    #archives = Archive.query.filter(
+    #    Archive.event.guild_id == ctx.guild_id,
+    #)
+    archives = Archive.query.all()
+
+    async def show_events(ctx, selection: List[Archive]):
+
+        for archive in selection:
+            history = discord.File(DATA_PATH + archive.history_path, "history.png")
+
+            info = archive.event.get_discord_embed(
+                bot, registrations=False
+            ).set_field(name="Registrations", value=archive.registrations)
+
+            summary = discord.Embed(
+                title="Summary",
+                description=archive.summary,
+            ).set_image(url='attachment://history.png')
+
+            leaderboard = discord.Embed(
+                title="Leaderboard :medal:",
+                description=archive.leaderboard
+            )
+
+            await ctx.send(
+                content=f'Archived results for {archive.event.name}',
+                embeds=[
+                    info, leaderboard, summary
+                ],
+                file=history
+            )
+
+    selection_row = utils.create_selection(
+        slash,
+        author_id=ctx.author_id,
+        options=[
+            {
+                "name": archive.event.name,
+                "description": f'Went from {archive.event.start} to {archive.event.end}',
+                "value": archive,
+            }
+            for archive in archives
+        ],
+        callback=show_events
+    )
+
+    await ctx.send(content='Which events do you want to display', hidden=True, components=[selection_row])
 
 user_manager = UserManager(exchanges=EXCHANGES,
                            fetching_interval_hours=FETCHING_INTERVAL_HOURS,

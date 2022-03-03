@@ -50,7 +50,7 @@ class Trade(db.Model, Serializer):
     def is_open(self):
         return self.exit is not None
 
-    def serialize(self, data=True, full=True):
+    def serialize(self, data=True, full=True, *args, **kwargs):
         s = super().serialize(data, full)
         if s:
             s['status'] = 'open' if self.open_qty > 0 else 'win' if self.realized_pnl > 0.0 else 'loss'

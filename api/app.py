@@ -56,12 +56,13 @@ def refresh_expiring_jwts(response):
 
 def check_args_before_call(callback, arg_names, *args, **kwargs):
     for arg_name, required in arg_names:
+        value = None
         if request.json:
             value = request.json.get(arg_name)
             kwargs[arg_name] = value
-            if not value and required:
-                return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
-        elif required:
+        if not value and request.args:
+            kwargs[arg_name] = request.args.get(arg_name)
+        if not value and required:
             return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
     return callback(*args, **kwargs)
 
@@ -85,7 +86,7 @@ def create_endpoint(
             arg_names = methods[request.method]['ARGS']
             callback = methods[request.method]['CALLBACK']
         else:
-            return {'msg': f'This is a bug in the server.'}, HTTPStatus.INTERNAL_SERVER_ERROR
+            return {'msg': f'This is a bug in the API.'}, HTTPStatus.INTERNAL_SERVER_ERROR
         return check_args_before_call(callback, arg_names, *args, **kwargs)
 
     if jwt_auth:
@@ -244,8 +245,11 @@ def get_client_query(user: User, client_id: int):
     )
 
 
-def get_client(id: int = None):
+def get_client(id: int = None, currency: str = None):
     user = flask_jwt.current_user
+
+    if not currency:
+        currency = '$'
 
     if id:
         client = get_client_query(user, id).first()
@@ -256,7 +260,7 @@ def get_client(id: int = None):
     else:
         client = None
     if client:
-        s = client.serialize(full=False, data=True)
+        s = client.serialize(full=False, data=True, currency=currency)
         winners, losers = 0, 0
         for trade in s['trades']:
             if trade['status'] == 'win':
@@ -267,8 +271,6 @@ def get_client(id: int = None):
         s['win_ratio'] = ratio
         s['winners'] = winners
         s['losers'] = losers
-
-        print(s)
 
         return jsonify(s)
     else:
@@ -297,7 +299,8 @@ create_endpoint(
         },
         'GET': {
             'ARGS': [
-                ("id", False)
+                ("id", False),
+                ("currency", False)
             ],
             'CALLBACK': get_client
         },

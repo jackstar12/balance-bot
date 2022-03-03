@@ -49,14 +49,10 @@ class UserManager(Singleton):
         self._last_full_fetch = {}
         self._saves_since_backup = 0
 
-        self._workers_by_id: Dict[
-            Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
+        self._workers_by_id: Dict[Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
         self.synch_workers()
-
-    def set_flask_app(self, app):
-        self._app = app
 
     def _add_worker(self, worker: ClientWorker):
         with self._worker_lock:
@@ -168,16 +164,17 @@ class UserManager(Singleton):
     def _get_worker_event(self, user_id, guild_id):
         with self._worker_lock:
             event = dbutils.get_event(guild_id)
-            return self._workers_by_id[event.id if event else None].get(user_id)
+            return self._workers_by_id[event].get(user_id)
 
     def get_client_history(self,
                            client: Client,
                            guild_id: int,
                            start: datetime = None,
                            end: datetime = None,
-                           currency: str = None) -> List[Balance]:
+                           currency: str = None,
+                           archived = False) -> List[Balance]:
 
-        start, end = dbutils.get_guild_start_end_times(guild_id, start, end)
+        start, end = dbutils.get_guild_start_end_times(guild_id, start, end, archived=archived)
         if currency is None:
             currency = '$'
 
@@ -232,29 +229,29 @@ class UserManager(Singleton):
                 if not worker:
                     continue
                 client = Client.query.filter_by(id=worker.client_id).first()
-                if client.rekt_on and not force_fetch:
-                    balance = Balance(0.0, '$', None)
-                else:
-                    balance = worker.get_balance(time)
-                latest_balance = None if len(client.history) == 0 else client.history[len(client.history) - 1]
-                if balance:
-                    if balance.error:
-                        logging.error(f'Error while fetching user {worker} balance: {balance.error}')
-                        if keep_errors:
-                            data.append(balance)
+                if client:
+                    if client.rekt_on and not force_fetch:
+                        balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
                     else:
-                        if balance.amount != latest_balance.amount if latest_balance else None:
+                        balance = worker.get_balance(time)
+                    latest_balance = None if len(client.history) == 0 else client.history[len(client.history) - 1]
+                    if balance:
+                        if balance.error:
+                            logging.error(f'Error while fetching user {worker} balance: {balance.error}')
+                            if keep_errors:
+                                data.append(balance)
+                        else:
                             client.history.append(balance)
                             data.append(balance)
                             if balance.amount <= self.rekt_threshold and not client.rekt_on:
                                 client.rekt_on = time
                                 if callable(self.on_rekt_callback):
                                     self.on_rekt_callback(worker)
-                        else:
-                            latest_balance.time = time
-                            data.append(latest_balance)
+                    else:
+                        latest_balance.time = time
+                        data.append(latest_balance)
                 else:
-                    data.append(latest_balance)
+                    logging.error(f'Worker with {worker.client_id=} got no client object!')
             db.session.commit()
 
         logging.info(f'Done Fetching')
@@ -311,10 +308,11 @@ class UserManager(Singleton):
         db.session.commit()
 
     def db_match_balance_currency(self, balance: Balance, currency: str):
-        result = None
 
         if balance is None:
             return None
+
+        result = balance
 
         if balance.currency != currency:
             if balance.extra_currencies:
@@ -322,9 +320,10 @@ class UserManager(Singleton):
                 if not result_currency:
                     result_currency = balance.extra_currencies.get(CURRENCY_ALIASES.get(currency))
                 if result_currency:
-                    result.amount = result_currency
-                    result.currency = currency
-        else:
-            result = balance
+                    result = Balance(
+                        amount=result_currency,
+                        currency=currency,
+                        time=balance.time
+                    )
 
         return result

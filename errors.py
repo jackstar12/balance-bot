@@ -3,3 +3,9 @@ class UserInputError(Exception):
         super().__init__(*args, **kwargs)
         self.reason = reason
         self.user_id = user_id
+
+
+class InternalError(Exception):
+    def __init__(self, reason: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reason = reason

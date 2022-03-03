@@ -45,6 +45,21 @@ class Balance(db.Model, Serializer):
     def is_data(self):
         return True
 
+    def serialize(self, data=True, full=True, *args, **kwargs):
+        currency = kwargs.get('currency', '$')
+        if data:
+            if currency == '$':
+                amount = self.amount
+            elif self.extra_currencies:
+                amount = self.extra_currencies.get(currency)
+            else:
+                amount = None
+            if amount:
+                return (
+                    round(amount, ndigits=CURRENCY_PRECISION.get(currency, 3)),
+                    round(self.time.timestamp() * 1000)
+                )
+
 
 def balance_from_json(data: dict, time: datetime):
     currency = data.get('currency', '$')

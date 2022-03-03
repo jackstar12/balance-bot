@@ -67,6 +67,7 @@ if args.data:
                     for user_id in data:
                         user = DiscordUser.query.filter_by(user_id=user_id).first()
                         if not user:
+                            print(f'Got no discorduser with id {user_id}, creating dummy')
                             user = add_user_from_json({
                                 'id': user_id,
                                 'api_key': 'api_key',
