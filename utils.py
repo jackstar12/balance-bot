@@ -24,17 +24,6 @@ from api.dbmodels.balance import Balance
 from config import CURRENCY_PRECISION, REKT_THRESHOLD
 
 
-def dm_only(coro):
-    @wraps(coro)
-    async def wrapper(ctx, *args, **kwargs):
-        if ctx.guild:
-            await ctx.send('This command can only be used via a Private Message.', hidden=True)
-            return
-        return await coro(ctx, *args, **kwargs)
-
-    return wrapper
-
-
 def admin_only(coro):
     @wraps(coro)
     async def wrapper(ctx: SlashContext, *args, **kwargs):
@@ -92,7 +81,16 @@ def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
 
 
 def log_and_catch_errors(log_args=True):
+    """
+    Decorator which handles logging/errors for all commands.
+    It takes care of:
+    - UserInputErrors
+    - InternalErrors
+    - Any other type of exceptions
 
+    :param log_args: whether the args passed in should be logged (e.g. disabled when sensitive data is passed).
+    :return:
+    """
     def decorator(coro):
         @wraps(coro)
         async def wrapper(ctx: SlashContext, *args, **kwargs):
@@ -158,6 +156,21 @@ def create_history(to_graph: List[Tuple[Client, str]],
                    path: str,
                    custom_title: str = None,
                    archived=False):
+    """
+    Creates a history image for a given list of clients and stores it in the given path.
+
+    :param to_graph: List of Clients to graph.
+    :param guild_id: Current guild id (determines event context)
+    :param start: Start time of the history
+    :param end: End time of the history
+    :param currency_display: Currency which will be shown to the user
+    :param currency: Currency which will be used internally
+    :param percentage: Whether to display the balance absolute or in % relative to the first balance of the graph (default True if multiple clients are drawn)
+    :param path: Path to store image file at
+    :param custom_title: Custom Title to replace default title with
+    :param archived: Whether the data to search for is archived
+    """
+
     first = True
     title = ''
     um = UserManager()
@@ -211,7 +224,15 @@ def calc_daily(client: Client,
                guild_id: int = None,
                currency: str = None,
                string=False) -> Union[List[Tuple[datetime, float, float, float]], str]:
-
+    """
+    Calculates daily balance changes for a given client.
+    :param client: Client to calculate changes
+    :param amount: Amount of days to calculate
+    :param guild_id:
+    :param currency: Currency that will be used
+    :param string: Whether the created table should be stored as a string using prettytable or as an array containing each row as a Tuple of the Cols
+    :return:
+    """
     if len(client.history) == 0:
         raise UserInputError(reason='Got no data for this user')
 
@@ -274,6 +295,7 @@ def create_leaderboard(dc_client: discord.Client,
                        mode: str,
                        time: datetime = None,
                        archived=False) -> discord.Embed:
+
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
     users_rekt: List[DiscordUser] = []
@@ -595,7 +617,14 @@ def create_selection(slash: SlashCommand,
                      author_id: int,
                      options: List[Dict],
                      callback: Callable = None):
-
+    """
+    Utility method for creating a discord selection component
+    :param slash: SlashCommand handler to use
+    :param author_id: ID of the author invoking the call (used for settings custom_id)
+    :param options: List of dicts describing the options.
+    :param callback: Function to call when an item is selected
+    :return:
+    """
     custom_id = f'selection_{author_id}'
 
     objects_by_label = {}
@@ -627,7 +656,13 @@ def create_selection(slash: SlashCommand,
     return create_actionrow(selection)
 
 
-def readable_time(time: datetime):
+def readable_time(time: datetime) -> str:
+    """
+    Utility for converting a date to a readable format, only showing the date if it's not equal to the current one.
+    If None is passed in, the default value 'since start' will be returned
+    :param time: Time to convert
+    :return: Converted String
+    """
     now = datetime.now()
     if time is None:
         time_str = 'since start'
