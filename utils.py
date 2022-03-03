@@ -92,6 +92,7 @@ def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
 
 
 def log_and_catch_errors(log_args=True):
+
     def decorator(coro):
         @wraps(coro)
         async def wrapper(ctx: SlashContext, *args, **kwargs):
@@ -110,8 +111,11 @@ def log_and_catch_errors(log_args=True):
                 await ctx.send(e.reason, hidden=True)
                 logging.info(f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}')
             except InternalError as e:
-                await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
+                await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
                 logging.error(f'{coro.__name__} failed because of InternalError: {e.reason}')
+            except Exception as e:
+                await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
+                logging.critical(f'{coro.__name__} failed because of an uncaught exception:\n{e}')
 
         return wrapper
     return decorator
@@ -590,14 +594,14 @@ def create_yes_no_button_row(slash: SlashCommand,
 def create_selection(slash: SlashCommand,
                      author_id: int,
                      options: List[Dict],
-                     callback: Callable[[Any], None] = None):
+                     callback: Callable = None):
 
     custom_id = f'selection_{author_id}'
 
     objects_by_label = {}
 
     for option in options:
-        objects_by_label[option["label"]] = option["value"]
+        objects_by_label[option["name"]] = option["value"]
 
     selection = discord_components.create_select(
         options=[

@@ -51,7 +51,8 @@ class Event(db.Model):
                 value += f'{registration.discorduser.get_display_name(dc_client, self.guild_id)}\n'
             if value:
                 embed.add_field(name="Registrations", value=value, inline=False)
-            self._archive.registrations = registrations
+            self._archive.registrations = value
+            db.session.commit()
 
         return embed
 
@@ -122,8 +123,7 @@ class Event(db.Model):
 
     def create_complete_history(self, dc_client: discord.Client):
 
-        path = f'HISTORY_{self.guild_id}_{self.channel_id}_{self.start.timestamp()}.png'
-
+        path = f'HISTORY_{self.guild_id}_{self.channel_id}_{int(self.start.timestamp())}.png'
         utils.create_history(
             custom_title=f'Complete history for {self.name}',
             to_graph=[
@@ -142,8 +142,15 @@ class Event(db.Model):
 
         file = discord.File(DATA_PATH + path, path)
         self._archive.history_path = path
+        db.session.commit()
 
         return file
+
+    def create_leaderboard(self, dc_client: discord.Client, mode='gain', time: datetime = None) -> discord.Embed:
+        leaderboard = utils.create_leaderboard(dc_client, self.guild_id, mode, time)
+        self._archive.leaderboard = leaderboard.description
+
+        return leaderboard
 
     @property
     def _archive(self):

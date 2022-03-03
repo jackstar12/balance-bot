@@ -17,7 +17,7 @@ dotenv.load_dotenv()
 import discord
 import discord.errors
 from discord.ext import commands
-from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
+from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType, ComponentContext
 from discord_slash.utils.manage_commands import create_choice, create_option
 from sqlalchemy import inspect
 
@@ -935,19 +935,15 @@ api.run()
 @utils.log_and_catch_errors()
 @utils.server_only
 async def summary(ctx: SlashContext):
-    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='archived', throw_exceptions=False)
-    if not event:
-        event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
-    if not event:
-        raise UserInputError('Got no event to show summary for')
-    path = 'FINAL_'
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active')
     await ctx.defer()
+    history = event.create_complete_history(dc_client=bot)
     await ctx.send(
         embeds=[
-            utils.create_leaderboard(bot, ctx.guild_id, mode='gain', archived=True),
-            event.get_summary_embed(dc_client=bot).set_image(url='attachment://history.png'),
+            event.create_leaderboard(bot),
+            event.get_summary_embed(dc_client=bot).set_image(url=f'attachment://{history.filename}'),
         ],
-        file=event.create_complete_history(dc_client=bot, path='history.png')
+        file=history
     )
 
 
@@ -957,9 +953,56 @@ async def summary(ctx: SlashContext):
 )
 @utils.log_and_catch_errors()
 @utils.server_only
-async def archvive(ctx: SlashContext):
+async def archive(ctx: SlashContext):
 
-    pass
+    now = datetime.now()
+    #archives = Archive.query.filter(
+    #    Archive.event.guild_id == ctx.guild_id,
+    #)
+    archives = Archive.query.all()
+
+    async def show_events(ctx, selection: List[Archive]):
+
+        for archive in selection:
+            history = discord.File(DATA_PATH + archive.history_path, "history.png")
+
+            info = archive.event.get_discord_embed(
+                bot, registrations=False
+            ).set_field(name="Registrations", value=archive.registrations)
+
+            summary = discord.Embed(
+                title="Summary",
+                description=archive.summary,
+            ).set_image(url='attachment://history.png')
+
+            leaderboard = discord.Embed(
+                title="Leaderboard :medal:",
+                description=archive.leaderboard
+            )
+
+            await ctx.send(
+                content=f'Archived results for {archive.event.name}',
+                embeds=[
+                    info, leaderboard, summary
+                ],
+                file=history
+            )
+
+    selection_row = utils.create_selection(
+        slash,
+        author_id=ctx.author_id,
+        options=[
+            {
+                "name": archive.event.name,
+                "description": f'Went from {archive.event.start} to {archive.event.end}',
+                "value": archive,
+            }
+            for archive in archives
+        ],
+        callback=show_events
+    )
+
+    await ctx.send(content='Which events do you want to display', hidden=True, components=[selection_row])
 
 user_manager = UserManager(exchanges=EXCHANGES,
                            fetching_interval_hours=FETCHING_INTERVAL_HOURS,
