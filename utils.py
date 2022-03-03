@@ -616,9 +616,21 @@ def create_yes_no_button_row(slash: SlashCommand,
 def create_selection(slash: SlashCommand,
                      author_id: int,
                      options: List[Dict],
-                     callback: Callable = None):
+                     callback: Callable = None) -> Dict:
     """
-    Utility method for creating a discord selection component
+    Utility method for creating a discord selection component.
+    It provides functionality to return user-defined objects associated with the selected option on callback
+
+    Options must be given like the following:
+    options=[
+        {
+            'name': Name of the Option,
+            'value': Object which will be provided on callback if the option is selected,
+            'description': Optional description of the option
+        },
+        ...
+    ]
+
     :param slash: SlashCommand handler to use
     :param author_id: ID of the author invoking the call (used for settings custom_id)
     :param options: List of dicts describing the options.
@@ -630,13 +642,14 @@ def create_selection(slash: SlashCommand,
     objects_by_label = {}
 
     for option in options:
-        objects_by_label[option["name"]] = option["value"]
+        objects_by_label[option['name']] = option['value']
 
     selection = discord_components.create_select(
         options=[
             create_select_option(
-                label=option["name"],
-                value=option["name"]
+                label=option['name'],
+                value=option['name'],
+                description=option['description']
             )
             for option in options
         ],
@@ -649,7 +662,7 @@ def create_selection(slash: SlashCommand,
 
     @slash.component_callback(components=[custom_id])
     async def on_select(ctx: ComponentContext):
-        values = ctx.data["values"]
+        values = ctx.data['values']
         objects = [objects_by_label.get(value) for value in values]
         await call_unknown_function(callback, ctx, objects)
 
