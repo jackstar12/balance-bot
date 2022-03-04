@@ -622,6 +622,8 @@ def create_selection(slash: SlashCommand,
     It provides functionality to return user-defined objects associated with the selected option on callback
 
     Options must be given like the following:
+
+    ```{code-block} python
     options=[
         {
             'name': Name of the Option,
@@ -630,6 +632,8 @@ def create_selection(slash: SlashCommand,
         },
         ...
     ]
+    ```
+
 
     :param slash: SlashCommand handler to use
     :param author_id: ID of the author invoking the call (used for settings custom_id)
