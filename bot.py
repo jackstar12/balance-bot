@@ -995,7 +995,7 @@ async def archive(ctx: SlashContext):
         options=[
             {
                 "name": event.name,
-                "description": f'Went from {event.start} to {event.end}',
+                "description": f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
                 "value": event,
             }
             for event in archived
