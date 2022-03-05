@@ -1,6 +1,8 @@
 import argparse
 import json
 import logging
+import shutil
+
 import dotenv
 dotenv.load_dotenv()
 from datetime import datetime, timedelta
@@ -10,14 +12,87 @@ from api.dbmodels.balance import balance_from_json
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import add_user_from_json, DiscordUser
 from api.dbmodels.event import Event
+from api.dbmodels.archive import Archive
 from config import DATA_PATH
 
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-e", "--event", action="store_true", help="Specifying this creates an dev event which can be used")
 parser.add_argument("-u", "--users", action="store_true", help="Specifying this puts the users.json the database.")
 parser.add_argument("-d", "--data", action="store_true", help="Specifying this puts the current data into a database.")
+parser.add_argument("-a", "--archive", action="store_true", help="Create archive for old events")
 
 args = parser.parse_args()
+
+
+if args.archive:
+    shutil.move("HISTORY_443583326507499520_704403630375305317_1643670000.png", DATA_PATH + "HISTORY_443583326507499520_704403630375305317_1643670000.png")
+    now = datetime.now()
+    event = Event.query.first()
+    archive = Archive(
+        event_id=event.id,
+        registrations=
+        """
+loopy
+jacksn
+Arygon
+Moket ⚡
+CryptoBRO
+0xOase13
+None
+Knockkek
+Redslim
+beat
+Escaliert
+Bitcoin_Gamer_21
+1893
+undercover
+Mr888 | ∆ L∑X
+        """,
+        leaderboard=
+        """
+Gain since start
+
+1. 1893 133.97% (42.95$)
+2. Knockkek 59.74% (59.74$)
+3. Redslim 42.36% (42.36$)
+4. jacksn 37.06% (18.53$)
+5. undercover 30.76% (30.76$)
+6. Bitcoin_Gamer_21 18.88% (16.23$)
+7. loopy 8.56% (18.72$)
+8. Mr888 | ∆ L∑X -3.01% (-301.44$)
+9. Moket ⚡ -59.18% (-110.67$)
+10. beat -94.35% (-94.35$)
+
+Rekt
+CryptoBRO since 2022-02-19 00:00:00
+Escaliert since 2022-02-18 02:00:00
+Arygon since 2022-03-01 16:35:12
+        """,
+        summary=
+        """
+Best Trader :crown:
+1893
+
+Worst Trader :disappointed_relieved:
+Escaliert
+
+Highest Stakes :moneybag:
+Knockkek
+
+Most Degen Trader :grimacing:
+CryptoBRO
+
+Still HODLing :sleeping:
+loopy
+
+Last but not least...
+In total you lost -535.92$
+Cumulative % performance: -10.39%
+        """,
+        history_path="HISTORY_443583326507499520_704403630375305317_1643670000.png"
+    )
+    db.session.add(archive)
+    db.session.commit()
 
 
 if args.users:

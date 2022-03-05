@@ -39,8 +39,8 @@ class Event(db.Model):
     def get_discord_embed(self, dc_client: discord.Client, registrations=False):
         embed = discord.Embed(title=f'Event')
         embed.add_field(name="Name", value=self.name)
-        embed.add_field(name="Description", value=self.description, inline=False)
-        embed.add_field(name="Start", value=self.start)
+        embed.add_field(name="Description", value=self.description)
+        embed.add_field(name="Start", value=self.start, inline=False)
         embed.add_field(name="End", value=self.end)
         embed.add_field(name="Registration Start", value=self.registration_start)
         embed.add_field(name="Registration End", value=self.registration_end)

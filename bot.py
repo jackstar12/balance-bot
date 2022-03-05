@@ -968,7 +968,7 @@ async def archive(ctx: SlashContext):
 
             info = archive.event.get_discord_embed(
                 bot, registrations=False
-            ).set_field(name="Registrations", value=archive.registrations)
+            ).add_field(name="Registrations", value=archive.registrations, inline=False)
 
             summary = discord.Embed(
                 title="Summary",
