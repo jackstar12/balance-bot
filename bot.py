@@ -956,10 +956,9 @@ async def summary(ctx: SlashContext):
 async def archive(ctx: SlashContext):
 
     now = datetime.now()
-    #archives = Archive.query.filter(
-    #    Archive.event.guild_id == ctx.guild_id,
-    #)
-    archives = Archive.query.all()
+    archives = Archive.query.filter(
+        Archive.event.guild_id == ctx.guild_id,
+    )
 
     async def show_events(ctx, selection: List[Archive]):
 
