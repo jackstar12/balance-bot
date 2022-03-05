@@ -9,6 +9,7 @@ db.init_app(app)
 migrate.init_app(app, db)
 db.create_all(app=app)
 
+
 def run():
     db.init_app(app)
     migrate.init_app(app, db)

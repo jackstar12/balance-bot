@@ -77,7 +77,7 @@ Worst Trader :disappointed_relieved:
 Escaliert
 
 Highest Stakes :moneybag:
-Knockkek
+Mr888 | ∆ L∑X
 
 Most Degen Trader :grimacing:
 CryptoBRO
