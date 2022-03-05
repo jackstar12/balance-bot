@@ -95,8 +95,6 @@ class UserManager(Singleton):
 
     def get_client_balance(self, client: Client, currency: str = None, force_fetch=False) -> Balance:
 
-        raise TypeError('haha')
-
         if currency is None:
             currency = '$'
 
