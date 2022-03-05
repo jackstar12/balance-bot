@@ -155,7 +155,6 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         else:
             await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
     else:
-
         user = dbutils.get_user(ctx.author_id)
         await ctx.defer()
 
@@ -451,6 +450,7 @@ async def register_new(ctx: SlashContext,
                     new_client.events.append(event)
                 worker = exchange_cls(new_client)
 
+
                 async def start_registration(ctx):
                     init_balance = worker.get_balance(datetime.now())
                     if init_balance.error is None:
@@ -462,7 +462,7 @@ async def register_new(ctx: SlashContext,
 
                             def register_user(ctx):
                                 if existing_client:
-                                    user_manager.delete_client(existing_client)
+                                    user_manager.delete_client(existing_client, commit=False)
 
                                 if not discord_user.global_client:
                                     discord_user.global_client = new_client

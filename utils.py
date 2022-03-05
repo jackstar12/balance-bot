@@ -1,7 +1,7 @@
 import re
 import logging
 from functools import wraps
-
+import traceback
 import discord
 import inspect
 import matplotlib.pyplot as plt
@@ -107,13 +107,13 @@ def log_and_catch_errors(log_args=True):
                     else:
                         e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
-                logging.info(f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}')
+                logging.info(f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
             except InternalError as e:
                 await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
-                logging.error(f'{coro.__name__} failed because of InternalError: {e.reason}')
-            except Exception as e:
+                logging.error(f'{coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
+            except Exception:
                 await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
-                logging.critical(f'{coro.__name__} failed because of an uncaught exception:\n{e}')
+                logging.critical(f'{coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
 
         return wrapper
     return decorator
