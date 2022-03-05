@@ -956,13 +956,15 @@ async def summary(ctx: SlashContext):
 async def archive(ctx: SlashContext):
 
     now = datetime.now()
-    archives = Archive.query.filter(
-        Archive.event.guild_id == ctx.guild_id,
+    archived = Event.query.filter(
+        Event.guild_id == ctx.guild_id,
+        Event.end < now
     )
 
     async def show_events(ctx, selection: List[Archive]):
 
-        for archive in selection:
+        for event in selection:
+            archive = event.archive
             history = discord.File(DATA_PATH + archive.history_path, "history.png")
 
             info = archive.event.get_discord_embed(
@@ -992,11 +994,11 @@ async def archive(ctx: SlashContext):
         author_id=ctx.author_id,
         options=[
             {
-                "name": archive.event.name,
-                "description": f'Went from {archive.event.start} to {archive.event.end}',
-                "value": archive,
+                "name": event.name,
+                "description": f'Went from {event.start} to {event.end}',
+                "value": event,
             }
-            for archive in archives
+            for event in archived
         ],
         callback=show_events
     )
