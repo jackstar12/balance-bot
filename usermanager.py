@@ -73,10 +73,11 @@ class UserManager(Singleton):
                 self._workers.remove(worker)
                 del worker
 
-    def remove_client(self, client: Client):
+    def delete_client(self, client: Client, commit=True):
         self._remove_worker(self._get_worker(client, create_if_missing=False))
         Client.query.filter_by(id=client.id).delete()
-        db.session.commit()
+        if commit:
+            db.session.commit()
 
     def start_fetching(self):
         """
@@ -97,25 +98,6 @@ class UserManager(Singleton):
     def fetch_data(self, clients: List[Client] = None, guild_id: int = None):
         workers = [self._get_worker(client) for client in clients]
         self._db_fetch_data(workers, guild_id)
-
-    def get_user_balance(self, user: DiscordUser, guild_id: int, currency: str = None, force_fetch=False) -> Balance:
-
-        if currency is None:
-            currency = '$'
-
-        data = self._db_fetch_data(workers=[self._get_worker_event(user.user_id, guild_id)], keep_errors=True,
-                                   force_fetch=force_fetch)
-
-        result = data[0]
-
-        if result.error is None or result.error == '':
-            matched_balance = self.db_match_balance_currency(result, currency)
-            if matched_balance:
-                result = matched_balance
-            else:
-                result.error = f'User balance does not contain currency {currency}'
-
-        return result
 
     def get_client_balance(self, client: Client, currency: str = None, force_fetch=False) -> Balance:
 
@@ -308,11 +290,10 @@ class UserManager(Singleton):
         db.session.commit()
 
     def db_match_balance_currency(self, balance: Balance, currency: str):
-
         if balance is None:
             return None
 
-        result = balance
+        result = None
 
         if balance.currency != currency:
             if balance.extra_currencies:
@@ -325,5 +306,7 @@ class UserManager(Singleton):
                         currency=currency,
                         time=balance.time
                     )
+        else:
+            result = balance
 
         return result

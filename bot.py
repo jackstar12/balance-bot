@@ -156,7 +156,6 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         else:
             await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
     else:
-
         user = dbutils.get_user(ctx.author_id)
         await ctx.defer()
 
@@ -452,6 +451,7 @@ async def register_new(ctx: SlashContext,
                     new_client.events.append(event)
                 worker = exchange_cls(new_client)
 
+
                 async def start_registration(ctx):
                     init_balance = worker.get_balance(datetime.now())
                     if init_balance.error is None:
@@ -463,7 +463,7 @@ async def register_new(ctx: SlashContext,
 
                             def register_user(ctx):
                                 if existing_client:
-                                    user_manager.delete_client(existing_client)
+                                    user_manager.delete_client(existing_client, commit=False)
 
                                 if not discord_user.global_client:
                                     discord_user.global_client = new_client
@@ -476,6 +476,7 @@ async def register_new(ctx: SlashContext,
 
                                 if inspect(discord_user).transient:
                                     db.session.add(discord_user)
+
                                 db.session.add(new_client)
                                 db.session.commit()
                                 logger.info(f'Registered new user')
@@ -603,12 +604,6 @@ async def event_show(ctx: SlashContext):
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
-    # now = datetime.now()
-    # start = now + timedelta(seconds=20)
-    # registration_start = now + timedelta(seconds=10)
-    # registration_end = now + timedelta(seconds=30)
-    # end = now + timedelta(seconds=40)
-
     if start >= end:
         raise UserInputError("Start time can't be after end time.")
     if registration_start >= registration_end:
@@ -672,9 +667,15 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
 @utils.log_and_catch_errors()
 async def unregister(ctx):
     client = dbutils.get_client(ctx.author.id, ctx.guild_id)
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
 
     def unregister_user(ctx):
-        user_manager.remove_client(client)
+        if event:
+            client.events.remove(event)
+            if len(client.events) == 0:
+                user_manager.delete_client(client)
+        else:
+            user_manager.delete_client(client)
         discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
         if len(discord_user.clients) == 0 and not discord_user.user:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
@@ -958,19 +959,20 @@ async def summary(ctx: SlashContext):
 async def archive(ctx: SlashContext):
 
     now = datetime.now()
-    #archives = Archive.query.filter(
-    #    Archive.event.guild_id == ctx.guild_id,
-    #)
-    archives = Archive.query.all()
+    archived = Event.query.filter(
+        Event.guild_id == ctx.guild_id,
+        Event.end < now
+    )
 
     async def show_events(ctx, selection: List[Archive]):
 
-        for archive in selection:
+        for event in selection:
+            archive = event.archive
             history = discord.File(DATA_PATH + archive.history_path, "history.png")
 
             info = archive.event.get_discord_embed(
                 bot, registrations=False
-            ).set_field(name="Registrations", value=archive.registrations)
+            ).add_field(name="Registrations", value=archive.registrations, inline=False)
 
             summary = discord.Embed(
                 title="Summary",
@@ -995,11 +997,11 @@ async def archive(ctx: SlashContext):
         author_id=ctx.author_id,
         options=[
             {
-                "name": archive.event.name,
-                "description": f'Went from {archive.event.start} to {archive.event.end}',
-                "value": archive,
+                "name": event.name,
+                "description": f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
+                "value": event,
             }
-            for archive in archives
+            for event in archived
         ],
         callback=show_events
     )
