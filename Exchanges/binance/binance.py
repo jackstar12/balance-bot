@@ -88,7 +88,7 @@ class BinanceSpot(_BinanceBaseClient):
                 price = 0
                 if currency == 'USDT':
                     price = 1
-                elif amount > 0 and currency != 'LDUSDT':
+                elif amount > 0 and currency != 'LDUSDT' and currency != 'LDSRM':
                     request = Request(
                         'GET',
                         self.ENDPOINT + 'ticker/price',
