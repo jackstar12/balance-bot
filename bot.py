@@ -327,6 +327,7 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
         if ctx.guild:
             gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
         else:
+            
             gain_message = f"Your gain ({cur_client.get_event_string()}): " if not guild else f"Your gain on {guild}: "
         if user_gain is None:
             logger.info(

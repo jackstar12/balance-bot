@@ -14,6 +14,7 @@ association = db.Table('association',
 
 
 class Event(db.Model, Serializer):
+
     __tablename__ = 'event'
     id = db.Column(db.Integer, primary_key=True)
     guild_id = db.Column(db.BigInteger, nullable=False)

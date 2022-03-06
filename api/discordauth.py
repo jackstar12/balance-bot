@@ -8,6 +8,7 @@ from requests_oauthlib import OAuth2Session
 from api.database import db, app
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.user import User
+import api.apiutils as apiutils
 
 from api.app import app, flask_jwt
 
@@ -45,7 +46,7 @@ def make_session(token=None, state=None, scope=None):
         token_updater=token_updater)
 
 
-@app.route('/api/register/discord', methods=["GET"])
+@app.route('/api/discord/connect', methods=["GET"])
 @flask_jwt.jwt_required()
 def register_discord():
     user = flask_jwt.current_user
@@ -56,6 +57,19 @@ def register_discord():
         authorization_url, state = discord.authorization_url(AUTHORIZATION_BASE_URL)
         session['oauth2_state'] = state
         return {'authorization': authorization_url}, HTTPStatus.OK
+
+
+@app.route('/api/discord/disconnect', methods=["GET"])
+@flask_jwt.jwt_required()
+def disconnect_discord():
+    user = flask_jwt.current_user
+    if not user.discorduser:
+        return {'msg': 'Discord is not connected'}, HTTPStatus.BAD_REQUEST
+    else:
+        user.discord_user_id = None
+        user.discord_user = None
+        db.session.commit()
+        return {'disconnect': True}, HTTPStatus.OK
 
 
 @app.route('/api/callback')

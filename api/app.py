@@ -13,11 +13,14 @@ from sqlalchemy import or_, and_
 from api.database import db, app, migrate
 
 import api.dbutils
+import api.apiutils as apiutils
 from api.dbmodels.client import Client
 from api.dbmodels.user import User
 from api.dbmodels.trade import Trade
+from api.dbmodels.label import Label
 from api.dbmodels.event import Event
 from api.dbmodels.execution import Execution
+import api.discordauth
 
 
 jwt = flask_jwt.JWTManager(app)
@@ -28,9 +31,6 @@ app.config['JWT_TOKEN_LOCATION'] = ['cookies']
 app.config['JWT_COOKIE_SECURE'] = False  # True in production
 #app.config['JWT_ACCESS_COOKIE_PATH'] = '/api/'
 app.config['JWT_COOKE_CSRF_PROTECT'] = True
-
-
-import api.discordauth
 
 
 @jwt.user_lookup_loader
@@ -54,55 +54,9 @@ def refresh_expiring_jwts(response):
         return response
 
 
-def check_args_before_call(callback, arg_names, *args, **kwargs):
-    for arg_name, required in arg_names:
-        value = None
-        if request.json:
-            value = request.json.get(arg_name)
-            kwargs[arg_name] = value
-        if not value and request.args:
-            kwargs[arg_name] = request.args.get(arg_name)
-        if not value and required:
-            return {'msg': f'Missing parameter {arg_name}'}, HTTPStatus.BAD_REQUEST
-    return callback(*args, **kwargs)
-
-
-def require_json_args(arg_names: List[Tuple[str, bool]]):
-    def decorator(fn):
-        @wraps(fn)
-        def wrapper(*args, **kwargs):
-            return check_args_before_call(fn, arg_names, *args, **kwargs)
-        return wrapper
-    return decorator
-
-
-def create_endpoint(
-        route: str,
-        methods: Dict[str, Dict[str, Union[List[Tuple[str, bool]], Callable]]],
-        jwt_auth=False):
-
-    def wrapper(*args, **kwargs):
-        if request.method in methods:
-            arg_names = methods[request.method]['ARGS']
-            callback = methods[request.method]['CALLBACK']
-        else:
-            return {'msg': f'This is a bug in the API.'}, HTTPStatus.INTERNAL_SERVER_ERROR
-        return check_args_before_call(callback, arg_names, *args, **kwargs)
-
-    if jwt_auth:
-        app.route(route, methods=list(methods.keys()))(
-            flask_jwt.jwt_required()(wrapper)
-        )
-    else:
-        app.route(route, methods=list(methods.keys()))(
-            wrapper
-        )
-
-
 @app.route('/api/register', methods=["POST"])
-@require_json_args(arg_names=[('email', True), ('password', True)])
+@apiutils.require_args(arg_names=[('email', True), ('password', True)])
 def register(email: str, password: str):
-
     user = User.query.filter_by(email=email).first()
     if not user:
         salt = bcrypt.gensalt()
@@ -117,13 +71,12 @@ def register(email: str, password: str):
         flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=new_user.email))
         flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=new_user.email))
         return resp
-
     else:
         return {'msg': f'Email is already used'}, HTTPStatus.BAD_REQUEST
 
 
 @app.route('/api/login', methods=["POST"])
-@require_json_args(arg_names=[('email', True), ('password', True)])
+@apiutils.require_args(arg_names=[('email', True), ('password', True)])
 def login(email: str, password: str):
     user = User.query.filter_by(email=email).first()
     if user:
@@ -238,10 +191,8 @@ def get_client_query(user: User, client_id: int):
     if user.discorduser:
         user_checks.append(Client.discord_user_id == user.discorduser.id)
     return Client.query.filter(
-        and_(
-            Client.id == client_id,
-            or_(*user_checks)
-        )
+        Client.id == client_id,
+        or_(*user_checks)
     )
 
 
@@ -284,31 +235,175 @@ def delete_client(id: int):
     return {'msg': 'Success'}
 
 
-create_endpoint(
+apiutils.create_endpoint(
     route='/api/client',
     methods={
         'POST': {
-            'ARGS': [
+            'args': [
                 ("exchange", True),
                 ("api_key", True),
                 ("api_secret", True),
                 ("subaccount", False),
                 ("extra_kwargs", False)
             ],
-            'CALLBACK': register_client
+            'callback': register_client
         },
         'GET': {
-            'ARGS': [
+            'args': [
                 ("id", False),
                 ("currency", False)
             ],
-            'CALLBACK': get_client
+            'callback': get_client
         },
         'DELETE': {
-            'ARGS': [
+            'args': [
                 ("id", True)
             ],
-            'CALLBACK': delete_client
+            'callback': delete_client
+        }
+    },
+    jwt_auth=True
+)
+
+
+def get_label(id: int):
+    label = Label.query.filter_by(id=id).first()
+    if label:
+        client = get_client_query(flask_jwt.current_user, label.client_id).first()
+        if client:
+            return label
+        else:
+            return {'msg': 'You are not allowed to delete this Label'}, HTTPStatus.UNAUTHORIZED
+    else:
+        return {'msg': 'Invalid ID'}, HTTPStatus.BAD_REQUEST
+
+
+def create_label(clientId: int, name: str, color: str):
+    client = get_client_query(flask_jwt.current_user, clientId).first()
+    if client:
+        label = Label(name=name, color=color, client_id=client.id)
+        client.labels.append(label)
+        db.session.commit()
+        return jsonify(label.serialize()), HTTPStatus.OK
+    else:
+        return {'msg': 'Invalid clientId'}, HTTPStatus.BAD_REQUEST
+
+
+def delete_label(id: int):
+    result = get_label(id)
+    if isinstance(result, Label):
+        Label.query.filter_by(id=id).delete()
+        db.session.commit()
+    else:
+        return result
+
+
+def update_label(id: int, name: str = None, color: str = None):
+    result = get_label(id)
+    if isinstance(result, Label):
+        if name:
+            result.name = name
+        if color:
+            result.color = color
+        db.session.commit()
+    else:
+        return result
+
+
+apiutils.create_endpoint(
+    route='/api/label',
+    methods={
+        'POST': {
+            'args': [
+                ("clientId", True),
+                ("name", True),
+                ("color", True)
+            ],
+            'callback': create_label
+        },
+        'PATCH': {
+            'args': [
+                ("id", True),
+                ("name", False),
+                ("color", False)
+            ],
+            'callback': update_label
+        },
+        'DELETE': {
+            'args': [
+                ("id", True),
+            ],
+            'callback': delete_label
+        }
+    },
+    jwt_auth=True
+)
+
+
+def get_trade_query(client_id: int, trade_id: int, label_id: int=None):
+    client = get_client_query(flask_jwt.current_user, client_id)
+    if client:
+        return Trade.query.filter(
+            Trade.id == trade_id,
+            Trade.client_id == client_id,
+            Trade.label_id == label_id if label_id else True
+        )
+
+
+def add_label(client_id: int, trade_id: int, label_id: int):
+    trade = get_trade_query(client_id, trade_id, label_id).first()
+    if trade:
+        label = Label.query.filter(
+            Label.id == label_id,
+            Label.client_id == client_id
+        ).first()
+        if label:
+            if label not in trade.labels:
+                trade.labels.append(label)
+            else:
+                return {'msg': 'Trade already has this label'}, HTTPStatus.BAD_REQUEST
+        else:
+            return {'msg': 'Invalid Label ID'}, HTTPStatus.BAD_REQUEST
+    else:
+        return {'msg': 'Invalid Client ID'}, HTTPStatus.UNAUTHORIZED
+
+
+def remove_label(client_id: int, trade_id: int, label_id: int):
+    trade = get_trade_query(client_id, trade_id, label_id).first()
+    if trade:
+        label = Label.query.filter(
+            Label.id == label_id,
+            Label.client_id == client_id
+        ).first()
+        if label:
+            if label in trade.labels:
+                trade.labels.remove(label)
+            else:
+                return {'msg': 'Trade already has this label'}, HTTPStatus.BAD_REQUEST
+        else:
+            return {'msg': 'Invalid Label ID'}, HTTPStatus.BAD_REQUEST
+    else:
+        return {'msg': 'Invalid Client ID'}, HTTPStatus.UNAUTHORIZED
+
+
+apiutils.create_endpoint(
+    route='/api/label/trade',
+    methods={
+        'POST': {
+            'args': [
+                ("client_id", True),
+                ("trade_id", True),
+                ("label_id", True)
+            ],
+            'callback': add_label
+        },
+        'DELETE': {
+            'args': [
+                ("client_id", True),
+                ("trade_id", True),
+                ("label_id", True)
+            ],
+            'callback': remove_label
         }
     },
     jwt_auth=True

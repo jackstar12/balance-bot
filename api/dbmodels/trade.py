@@ -4,18 +4,20 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from api.dbmodels.execution import Execution
 
 
+trade_association = db.Table('trade_association',
+                             db.Column('trade_id', db.ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
+                             db.Column('label_id', db.ForeignKey('label.id', ondelete="CASCADE"), primary_key=True)
+                             )
+
+
 class Trade(db.Model, Serializer):
-    """
-    Init buy:
-    1 BTC@40k 12:00
 
-
-    """
     __tablename__ = 'trade'
     __serializer_forbidden__ = ['client_id']
 
     id = db.Column(db.Integer, primary_key=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
+    labels = db.relationship('Label', secondary=trade_association, backref='trades')
 
     symbol = db.Column(db.String, nullable=False)
     entry = db.Column(db.Float, nullable=False)
