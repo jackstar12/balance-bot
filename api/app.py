@@ -278,15 +278,11 @@ def get_label(id: int):
         return {'msg': 'Invalid ID'}, HTTPStatus.BAD_REQUEST
 
 
-def create_label(clientId: int, name: str, color: str):
-    client = get_client_query(flask_jwt.current_user, clientId).first()
-    if client:
-        label = Label(name=name, color=color, client_id=client.id)
-        client.labels.append(label)
-        db.session.commit()
-        return jsonify(label.serialize()), HTTPStatus.OK
-    else:
-        return {'msg': 'Invalid clientId'}, HTTPStatus.BAD_REQUEST
+def create_label(name: str, color: str):
+    label = Label(name=name, color=color, user_id=flask_jwt.current_user.id)
+    db.session.add(label)
+    db.session.commit()
+    return jsonify(label.serialize()), HTTPStatus.OK
 
 
 def delete_label(id: int):
@@ -315,7 +311,6 @@ apiutils.create_endpoint(
     methods={
         'POST': {
             'args': [
-                ("clientId", True),
                 ("name", True),
                 ("color", True)
             ],

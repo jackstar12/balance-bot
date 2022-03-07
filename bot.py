@@ -319,6 +319,8 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
     since_start = time is None
     time_str = utils.readable_time(time)
 
+    await ctx.defer()
+
     user_manager.fetch_data(clients=clients)
     user_gains = utils.calc_gains(clients, ctx.guild_id, time, currency)
 

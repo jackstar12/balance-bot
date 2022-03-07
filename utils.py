@@ -1,5 +1,6 @@
 import re
 import logging
+import traceback
 from functools import wraps
 
 import discord
@@ -8,6 +9,8 @@ import api.dbutils
 import matplotlib.pyplot as plt
 
 from prettytable import PrettyTable
+
+import utils
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError, InternalError
@@ -79,7 +82,7 @@ def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
     return decorator
 
 
-def log_and_catch_errors(log_args=True):
+def log_and_catch_errors(log_args=True, type: str = "command"):
     """
     Decorator which handles logging/errors for all commands.
     It takes care of:
@@ -94,11 +97,11 @@ def log_and_catch_errors(log_args=True):
         @wraps(coro)
         async def wrapper(ctx: SlashContext, *args, **kwargs):
             logging.info(f'New Interaction: '
-                         f'Execute command {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} '
+                         f'Execute {type} {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} ({ctx.author_id}) '
                          f'guild={ctx.guild}{f" {args=}, {kwargs=}" if log_args else ""}')
             try:
                 await coro(ctx, *args, **kwargs)
-                logging.info(f'Done executing command {coro.__name__}')
+                logging.info(f'Done executing {type} {coro.__name__}')
             except UserInputError as e:
                 if e.user_id:
                     if ctx.guild:
@@ -596,7 +599,8 @@ def create_yes_no_button_row(slash: SlashCommand,
             slash.remove_component_callback(custom_id=custom_id)
 
         @slash.component_callback(components=[custom_id])
-        async def wrapper(ctx: ComponentContext):
+        @utils.log_and_catch_errors(type="component callback")
+        async def yes_no_wrapper(ctx: ComponentContext):
 
             for button in buttons:
                 slash.remove_component_callback(custom_id=button['custom_id'])
@@ -664,6 +668,7 @@ def create_selection(slash: SlashCommand,
         slash.remove_component_callback(custom_id=custom_id)
 
     @slash.component_callback(components=[custom_id])
+    @utils.log_and_catch_errors(type="component callback")
     async def on_select(ctx: ComponentContext):
         values = ctx.data['values']
         objects = [objects_by_label.get(value) for value in values]

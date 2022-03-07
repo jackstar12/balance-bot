@@ -4,7 +4,6 @@ from api.database import db
 
 class Serializer:
     __serializer_anti_recursion__ = False
-
     __serializer_forbidden__ = []
 
     def is_data(self):
