@@ -222,7 +222,7 @@ class UserManager(Singleton):
                                 client.rekt_on = time
                                 if callable(self.on_rekt_callback):
                                     self.on_rekt_callback(worker)
-                    else:
+                    elif latest_balance:
                         latest_balance.time = time
                         data.append(latest_balance)
                 else:
