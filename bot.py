@@ -805,16 +805,25 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     description="Shows your daily gains.",
     options=[
         create_option(
+            name="user",
+            description="User to display daily gains for (Author default)"
+        ),
+        create_option(
             name="amount",
             description="Amount of days",
             option_type=SlashCommandOptionType.INTEGER,
             required=False
+        ),
+        create_option(
+            name="currency",
+            description="Currency to use"
         )
     ]
 )
 @utils.log_and_catch_errors()
-async def daily(ctx: SlashContext, amount: int = None):
-    client = dbutils.get_client(ctx.author_id, ctx.guild_id)
+@utils.set_author_default(name="user")
+async def daily(ctx: SlashContext, user: discord.Member, amount: int = None, currency: str = None ):
+    client = dbutils.get_client(user.id, ctx.guild_id)
     await ctx.defer()
     daily_gains = utils.calc_daily(client, amount, ctx.guild_id, string=True)
     await ctx.send(
@@ -967,7 +976,7 @@ async def archive(ctx: SlashContext):
         Event.end < now
     )
 
-    async def show_events(ctx, selection: List[Archive]):
+    async def show_events(ctx, selection: List[Event]):
 
         for event in selection:
             archive = event.archive
