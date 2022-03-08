@@ -12,6 +12,7 @@ from prettytable import PrettyTable
 
 import api.dbmodels.client as client
 from api import dbutils
+from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError, InternalError
 from discord_slash.utils.manage_components import create_button, create_actionrow, create_select, create_select_option
