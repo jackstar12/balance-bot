@@ -21,6 +21,7 @@ from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_choice, create_option
 from sqlalchemy import inspect
 
+import api.dbmodels.client
 import api.dbutils as dbutils
 import api.app as api
 import utils
