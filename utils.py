@@ -262,7 +262,7 @@ def calc_daily(client: client.Client,
 
     current_search = daily_start
     prev_balance = um.db_match_balance_currency(client.history[0], currency)
-    prev_daily = None
+    prev_daily = client.history[0]
 
     if string:
         results = PrettyTable(
@@ -277,7 +277,8 @@ def calc_daily(client: client.Client,
 
             prev_daily = prev_daily or daily
             values = (
-                        daily.time.strftime('%Y-%m-%d') if string else daily.time,
+                        prev_daily.time.strftime('%Y-%m-%d') if current_search else
+                        prev_daily.time.replace(hour=0, minute=0, second=0).time,
                         daily.amount,
                         round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
                         calc_percentage(prev_daily.amount, daily.amount, string=False)
