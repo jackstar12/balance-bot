@@ -5,7 +5,7 @@ from typing import List, Callable
 
 from requests import Request, Response, Session
 
-from api.dbmodels.client import Client
+import api.dbmodels.client as api_client
 from api.dbmodels.execution import Execution
 
 
@@ -15,7 +15,7 @@ class ClientWorker:
     exchange: str = ''
     required_extra_args: List[str] = []
 
-    def __init__(self, client: Client):
+    def __init__(self, client: api_client.Client):
         self.client = client
         self.client_id = client.id
         self.exchange = client.exchange
