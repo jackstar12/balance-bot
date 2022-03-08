@@ -15,7 +15,7 @@ class ClientWorker:
     exchange: str = ''
     required_extra_args: List[str] = []
 
-    def __init__(self, client: api_client.Client):
+    def __init__(self, client):
         self.client = client
         self.client_id = client.id
         self.exchange = client.exchange
