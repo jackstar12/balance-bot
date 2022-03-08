@@ -240,6 +240,9 @@ def calc_daily(client: client.Client,
     if len(client.history) == 0:
         raise UserInputError(reason='Got no data for this user')
 
+    if currency is None:
+        currency = '$'
+
     daily_end = datetime.now().replace(hour=0, minute=0, second=0)
 
     if amount:
