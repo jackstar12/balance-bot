@@ -807,7 +807,9 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     options=[
         create_option(
             name="user",
-            description="User to display daily gains for (Author default)"
+            description="User to display daily gains for (Author default)",
+            option_type=SlashCommandOptionType.USER,
+            required=False
         ),
         create_option(
             name="amount",
@@ -817,16 +819,18 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
         ),
         create_option(
             name="currency",
-            description="Currency to use"
+            description="Currency to use",
+            option_type=SlashCommandOptionType.STRING,
+            required=False
         )
     ]
 )
 @utils.log_and_catch_errors()
 @utils.set_author_default(name="user")
-async def daily(ctx: SlashContext, user: discord.Member, amount: int = None, currency: str = None ):
+async def daily(ctx: SlashContext, user: discord.Member, amount: int = None, currency: str = None):
     client = dbutils.get_client(user.id, ctx.guild_id)
     await ctx.defer()
-    daily_gains = utils.calc_daily(client, amount, ctx.guild_id, string=True)
+    daily_gains = utils.calc_daily(client, amount, ctx.guild_id, string=True, currency=currency)
     await ctx.send(
         embed=discord.Embed(title=f'Daily gains for {ctx.author.display_name}', description=f'```\n{daily_gains}```'))
 
