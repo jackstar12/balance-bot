@@ -15,7 +15,7 @@ import api.dbutils as dbutils
 from api.database import db
 from api.dbmodels.discorduser import DiscordUser, add_user_from_json
 from api.dbmodels.balance import Balance, balance_from_json
-from api.dbmodels.client import Client
+import api.dbmodels.client as api_client
 from api.dbmodels.execution import Execution
 from clientworker import ClientWorker
 
@@ -73,9 +73,9 @@ class UserManager(Singleton):
                 self._workers.remove(worker)
                 del worker
 
-    def delete_client(self, client: Client, commit=True):
+    def delete_client(self, client: api_client.Client, commit=True):
         self._remove_worker(self._get_worker(client, create_if_missing=False))
-        Client.query.filter_by(id=client.id).delete()
+        api_client.Client.query.filter_by(id=client.id).delete()
         if commit:
             db.session.commit()
 
@@ -95,11 +95,11 @@ class UserManager(Singleton):
         timer.daemon = True
         timer.start()
 
-    def fetch_data(self, clients: List[Client] = None, guild_id: int = None):
+    def fetch_data(self, clients: List[api_client.Client] = None, guild_id: int = None):
         workers = [self._get_worker(client) for client in clients]
         self._db_fetch_data(workers, guild_id)
 
-    def get_client_balance(self, client: Client, currency: str = None, force_fetch=False) -> Balance:
+    def get_client_balance(self, client: api_client.Client, currency: str = None, force_fetch=False) -> Balance:
 
         if currency is None:
             currency = '$'
@@ -118,7 +118,7 @@ class UserManager(Singleton):
         return result
 
     def synch_workers(self):
-        clients = Client.query.all()
+        clients = api_client.Client.query.all()
 
         for client in clients:
             if client.is_global or client.is_active:
@@ -135,7 +135,7 @@ class UserManager(Singleton):
         else:
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
-    def _get_worker(self, client: Client, create_if_missing=True) -> ClientWorker:
+    def _get_worker(self, client: api_client.Client, create_if_missing=True) -> ClientWorker:
         with self._worker_lock:
             worker = self._workers_by_client_id.get(client.id)
             if not worker and create_if_missing:
@@ -149,7 +149,7 @@ class UserManager(Singleton):
             return self._workers_by_id[event].get(user_id)
 
     def get_client_history(self,
-                           client: Client,
+                           client: api_client.Client,
                            guild_id: int,
                            start: datetime = None,
                            end: datetime = None,
@@ -172,7 +172,7 @@ class UserManager(Singleton):
         return results
 
     def clear_client_data(self,
-                          client: Client,
+                          client: api_client.Client,
                           start: datetime = None,
                           end: datetime = None,
                           update_initial_balance=False):
@@ -210,7 +210,7 @@ class UserManager(Singleton):
             for worker in workers:
                 if not worker:
                     continue
-                client = Client.query.filter_by(id=worker.client_id).first()
+                client = api_client.Client.query.filter_by(id=worker.client_id).first()
                 if client:
                     if client.rekt_on and not force_fetch:
                         balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
@@ -269,7 +269,7 @@ class UserManager(Singleton):
                     )
                     execution.qty = active_trade.qty
                     new_trade = trade_from_execution(new_execution)
-                    client = Client.query.filter_by(id=client_id).first()
+                    client = api_client.Client.query.filter_by(id=client_id).first()
                     client.trades.append(new_trade)
                 if execution.qty <= active_trade.qty:
                     if active_trade.exit is None:
@@ -285,7 +285,7 @@ class UserManager(Singleton):
                     active_trade.realized_pnl = active_trade.exit * realized_qty - active_trade.entry * realized_qty * (1 if active_trade.initial.side == 'BUY' else -1)
         else:
             trade = trade_from_execution(execution)
-            client = Client.query.filter_by(id=client_id).first()
+            client = api_client.Client.query.filter_by(id=client_id).first()
             client.trades.append(trade)
         db.session.commit()
 
