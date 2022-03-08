@@ -240,14 +240,21 @@ def calc_daily(client: Client,
 
     if amount:
         try:
-            daily_start = daily_end - timedelta(days=amount)
+            daily_start = daily_end - timedelta(days=amount - 1)
         except OverflowError:
             raise ValueError('Invalid daily amount given')
     else:
         daily_start = client.history[0].time.replace(hour=0, minute=0, second=0)
 
+    if guild_id:
+        event = dbutils.get_event(guild_id)
+        if event and event.start > daily_start:
+            daily_start = event.start
+
+    um = UserManager()
+
     current_search = daily_start
-    prev_balance = client.history[0]
+    prev_balance = um.db_match_balance_currency(client.history[0], currency)
     prev_daily = None
 
     if string:
@@ -258,7 +265,7 @@ def calc_daily(client: Client,
         results = []
     for balance in client.history:
         if balance.time >= current_search:
-            daily = get_best_time_fit(current_search, prev_balance, balance)
+            daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
             daily.time = daily.time.replace(minute=0, second=0)
 
             prev_daily = prev_daily or daily
