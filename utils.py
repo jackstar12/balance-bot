@@ -12,7 +12,7 @@ from prettytable import PrettyTable
 
 import utils
 from api import dbutils
-from api.dbmodels.client import Client
+import api.dbmodels.client as client
 from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError, InternalError
 from discord_slash.utils.manage_components import create_button, create_actionrow, create_select, create_select_option
@@ -149,7 +149,7 @@ def de_emojify(text):
     return _regrex_pattern.sub(r'', text)
 
 
-def create_history(to_graph: List[Tuple[Client, str]],
+def create_history(to_graph: List[Tuple[client.Client, str]],
                    guild_id: int,
                    start: datetime,
                    end: datetime,
@@ -222,7 +222,7 @@ def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
         return after
 
 
-def calc_daily(client: Client,
+def calc_daily(client: client.Client,
                amount: int = None,
                guild_id: int = None,
                currency: str = None,

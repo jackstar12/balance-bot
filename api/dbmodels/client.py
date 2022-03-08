@@ -4,7 +4,7 @@ import discord
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType, FernetEngine
 
-from utils import calc_daily
+import utils
 from api.database import db
 from api.dbmodels.serializer import Serializer
 import os
@@ -82,7 +82,7 @@ class Client(db.Model, Serializer):
             winners, losers = 0, 0
 
             history = []
-            s['daily'] = calc_daily(
+            s['daily'] = utils.calc_daily(
                 client=self,
                 forEach=lambda balance: history.append(balance.serialize(full=True, data=True, *args, **kwargs))
             )
