@@ -273,8 +273,8 @@ def calc_daily(client: client.Client,
     else:
         results = []
     for balance in client.history:
-        print(str(current_search))
         if balance.time >= current_search:
+            print(str(current_search))
             daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
             daily.time = daily.time.replace(minute=0, second=0)
 
@@ -289,6 +289,7 @@ def calc_daily(client: client.Client,
                 results.add_row([*values])
             else:
                 results.append(values)
+            print(results)
             prev_daily = daily
             current_day = current_search
             current_search = daily.time + timedelta(days=1)
