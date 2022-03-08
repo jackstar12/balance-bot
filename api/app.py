@@ -212,17 +212,6 @@ def get_client(id: int = None, currency: str = None):
         client = None
     if client:
         s = client.serialize(full=False, data=True, currency=currency)
-        winners, losers = 0, 0
-        for trade in s['trades']:
-            if trade['status'] == 'win':
-                winners += 1
-            elif trade['status'] == 'loss':
-                losers += 1
-        ratio = winners / losers if losers > 0 else 1
-        s['win_ratio'] = ratio
-        s['winners'] = winners
-        s['losers'] = losers
-
         return jsonify(s)
     else:
         return {'msg': f'Invalid client id'}, HTTPStatus.BAD_REQUEST

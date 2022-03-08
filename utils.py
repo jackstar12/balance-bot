@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from prettytable import PrettyTable
 
 import utils
+from api import dbutils
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError, InternalError
@@ -222,10 +223,11 @@ def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
 
 
 def calc_daily(client: Client,
-               amount: int,
+               amount: int = None,
                guild_id: int = None,
                currency: str = None,
-               string=False) -> Union[List[Tuple[datetime, float, float, float]], str]:
+               string=False,
+               forEach: Callable[[Balance], Any] = None) -> Union[List[Tuple[datetime, float, float, float]], str]:
     """
     Calculates daily balance changes for a given client.
     :param client: Client to calculate changes
@@ -284,6 +286,8 @@ def calc_daily(client: Client,
             prev_daily = daily
             current_search = daily.time + timedelta(days=1)
         prev_balance = balance
+        if callable(forEach):
+            forEach(balance)
 
     return results
 
