@@ -4,7 +4,7 @@ from typing import List
 from api.database import db
 import discord
 
-from api.dbmodels.client import Client
+import api.dbmodels.client as client
 from api.dbmodels.serializer import Serializer
 
 
@@ -39,7 +39,7 @@ def add_user_from_json(user_json) -> DiscordUser:
     rekt_on = user_json.get('rekt_on', None)
     if rekt_on:
         rekt_on = datetime.fromtimestamp(rekt_on)
-    exchange: Client = Client(
+    exchange: client.Client = client.Client(
         api_key=user_json['api_key'],
         api_secret=user_json['api_secret'],
         subaccount=user_json['subaccount'],
