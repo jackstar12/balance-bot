@@ -10,6 +10,7 @@ import flask_jwt_extended as flask_jwt
 from flask import request, jsonify
 from sqlalchemy import or_, and_
 
+import utils
 from api.database import db, app, migrate
 
 import api.dbutils
@@ -211,7 +212,30 @@ def get_client(id: int = None, currency: str = None):
     else:
         client = None
     if client:
-        s = client.serialize(full=False, data=True, currency=currency)
+        s = client.serialize(full=True, data=False)
+        winners, losers = 0, 0
+
+        history = []
+        s['daily'] = utils.calc_daily(
+            client=client,
+            forEach=lambda balance: history.append(balance.serialize(full=True, data=True, currency=currency))
+        )
+        s['history'] = history
+
+        trades = []
+        for trade in client.trades:
+            trade = trade.serialize(full=True, data=True)
+            if trade['status'] == 'win':
+                winners += 1
+            elif trade['status'] == 'loss':
+                losers += 1
+            trades.append(trade)
+        s['trades'] = trades
+
+        ratio = winners / losers if losers > 0 else 1
+        s['win_ratio'] = ratio
+        s['winners'] = winners
+        s['losers'] = losers
         return jsonify(s)
     else:
         return {'msg': f'Invalid client id'}, HTTPStatus.BAD_REQUEST

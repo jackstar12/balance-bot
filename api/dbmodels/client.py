@@ -4,7 +4,6 @@ import discord
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType, FernetEngine
 
-import utils
 from api.database import db
 from api.dbmodels.serializer import Serializer
 import os
@@ -75,34 +74,3 @@ class Client(db.Model, Serializer):
             embed.add_field(name='Initial Balance', value=self.history[0].to_string())
 
         return embed
-
-    def serialize(self, data=True, full=True, *args, **kwargs):
-        if data:
-            s = super().serialize(full=full, data=False, *args, **kwargs)
-            winners, losers = 0, 0
-
-            history = []
-            s['daily'] = utils.calc_daily(
-                client=self,
-                forEach=lambda balance: history.append(balance.serialize(full=True, data=True, *args, **kwargs))
-            )
-            s['history'] = history
-
-            trades = []
-            for trade in self.trades:
-                trade = trade.serialize(full=True, data=True, *args, **kwargs)
-                if trade['status'] == 'win':
-                    winners += 1
-                elif trade['status'] == 'loss':
-                    losers += 1
-                trades.append(trade)
-            s['trades'] = trades
-
-            ratio = winners / losers if losers > 0 else 1
-            s['win_ratio'] = ratio
-            s['winners'] = winners
-            s['losers'] = losers
-
-            return s
-        else:
-            return super().serialize(data=data, full=full, *args, **kwargs)
