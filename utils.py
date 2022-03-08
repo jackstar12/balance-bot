@@ -10,9 +10,8 @@ import matplotlib.pyplot as plt
 
 from prettytable import PrettyTable
 
-import utils
-from api import dbutils
 import api.dbmodels.client as client
+from api import dbutils
 from api.dbmodels.discorduser import DiscordUser
 from errors import UserInputError, InternalError
 from discord_slash.utils.manage_components import create_button, create_actionrow, create_select, create_select_option
