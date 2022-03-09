@@ -230,6 +230,7 @@ def calc_daily(client: client.Client,
                forEach: Callable[[Balance], Any] = None) -> Union[List[Tuple[datetime, float, float, float]], str]:
     """
     Calculates daily balance changes for a given client.
+    :param forEach: function to be performed for each balance
     :param client: Client to calculate changes
     :param amount: Amount of days to calculate
     :param guild_id:
@@ -274,7 +275,7 @@ def calc_daily(client: client.Client,
         results = []
     for balance in client.history:
         if balance.time >= current_search:
-            print(str(current_search))
+
             daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
             daily.time = daily.time.replace(minute=0, second=0)
 
@@ -289,13 +290,24 @@ def calc_daily(client: client.Client,
                 results.add_row([*values])
             else:
                 results.append(values)
-            print(results)
             prev_daily = daily
             current_day = current_search
-            current_search = daily.time + timedelta(days=1)
+            current_search = current_search + timedelta(days=1)
         prev_balance = balance
         if callable(forEach):
             forEach(balance)
+
+    if prev_balance.time < current_search:
+        values = (
+            current_day.strftime('%Y-%m-%d'),
+            prev_balance.amount,
+            round(prev_balance.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+            calc_percentage(prev_daily.amount, prev_balance.amount, string=False)
+        )
+        if string:
+            results.add_row([*values])
+        else:
+            results.append(values)
 
     return results
 
@@ -687,7 +699,7 @@ def create_selection(slash: SlashCommand,
         slash.remove_component_callback(custom_id=custom_id)
 
     @slash.component_callback(components=[custom_id])
-    @utils.log_and_catch_errors(type="component callback")
+    @log_and_catch_errors(type="component callback")
     async def on_select(ctx: ComponentContext):
         values = ctx.data['values']
         objects = [objects_by_label.get(value) for value in values]
