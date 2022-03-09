@@ -106,14 +106,16 @@ class UserManager(Singleton):
 
         data = self._db_fetch_data(workers=[self._get_worker(client)], keep_errors=True, force_fetch=force_fetch)
 
-        result = data[0]
+        result = None
+        if data:
+            result = data[0]
 
-        if result.error is None or result.error == '':
-            matched_balance = self.db_match_balance_currency(result, currency)
-            if matched_balance:
-                result = matched_balance
-            else:
-                result.error = f'User balance does not contain currency {currency}'
+            if result.error is None or result.error == '':
+                matched_balance = self.db_match_balance_currency(result, currency)
+                if matched_balance:
+                    result = matched_balance
+                else:
+                    result.error = f'User balance does not contain currency {currency}'
 
         return result
 
@@ -181,14 +183,16 @@ class UserManager(Singleton):
         if end is None:
             end = datetime.now()
 
-        for balance in client.history:
-            if start <= balance.time <= end:
-                client.history.remove(balance)
-
-        if len(client.history) > 0 and update_initial_balance:
-            self.get_client_balance(client)
+        Balance.query.filter(
+            Balance.client_id == client.id,
+            Balance.time >= start,
+            Balance.time <= end
+        ).delete()
 
         db.session.commit()
+
+        if len(client.history) == 0 and update_initial_balance:
+            self.get_client_balance(client, force_fetch=True)
 
     def _db_fetch_data(self, workers: List[ClientWorker] = None, guild_id: int = None, keep_errors: bool = False,
                        set_full_fetch=False, force_fetch=False) -> List[Balance]:
@@ -215,7 +219,7 @@ class UserManager(Singleton):
                     if client.rekt_on and not force_fetch:
                         balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
                     else:
-                        balance = worker.get_balance(time)
+                        balance = worker.get_balance(time, force=force_fetch)
                     latest_balance = None if len(client.history) == 0 else client.history[len(client.history) - 1]
                     if balance:
                         if balance.error:

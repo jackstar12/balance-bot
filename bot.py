@@ -152,7 +152,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
 
         await ctx.defer()
         usr_balance = user_manager.get_client_balance(registered_user, currency)
-        if usr_balance.error is None:
+        if usr_balance and usr_balance.error is None:
             await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
         else:
             await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
@@ -733,9 +733,7 @@ async def info(ctx):
 )
 @utils.log_and_catch_errors()
 @utils.time_args(names=[('since', None), ('to', None)])
-async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, guild: str = None):
-    if guild:
-        guild = int(guild)
+async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None):
 
     client = dbutils.get_client(ctx.author_id, ctx.guild_id)
 

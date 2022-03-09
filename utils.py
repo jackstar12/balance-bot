@@ -630,7 +630,7 @@ def create_yes_no_button_row(slash: SlashCommand,
             slash.remove_component_callback(custom_id=custom_id)
 
         @slash.component_callback(components=[custom_id])
-        @utils.log_and_catch_errors(type="component callback")
+        @log_and_catch_errors(type="component callback")
         async def yes_no_wrapper(ctx: ComponentContext):
 
             for button in buttons:
