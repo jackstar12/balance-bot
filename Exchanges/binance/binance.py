@@ -106,7 +106,8 @@ class BinanceFutures(_BinanceBaseClient):
         event = message['e']
         data = message['o']
         if event == 'ORDER_TRADE_UPDATE':
-            if data['X'] == 'FILLED' or True:
+            if data['X'] == 'FILLED':
+                print(data)
                 trade = Execution(
                     symbol=data['s'],
                     price=float(data['p']),

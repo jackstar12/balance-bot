@@ -52,7 +52,7 @@ class FuturesWebsocketClient(WebsocketManager):
             if self._listenKey:
                 logging.info('Trying to reconnect binance websocket')
                 self._listenKey = self._client.start_user_stream()
-                keep_alive = Timer(timedelta(minutes=6).total_seconds(), self._keep_alive)
+                keep_alive = Timer(timedelta(minutes=45).total_seconds(), self._keep_alive)
                 keep_alive.daemon = True
                 keep_alive.start()
 

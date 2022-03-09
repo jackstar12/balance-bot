@@ -232,8 +232,8 @@ def get_client(id: int = None, currency: str = None):
             trades.append(trade)
         s['trades'] = trades
 
-        ratio = winners / losers if losers > 0 else 1
-        s['win_ratio'] = ratio
+        ratio = winners / (winners + losers) if winners + losers > 0 else 0.5
+        s['win_ratio'] = round(ratio, ndigits=3)
         s['winners'] = winners
         s['losers'] = losers
         return jsonify(s)

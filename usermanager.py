@@ -257,12 +257,14 @@ class UserManager(Singleton):
 
         if active_trade:
             active_trade.executions.append(execution)
+
             if execution.side == active_trade.initial.side:
                 active_trade.entry = weighted_avg((active_trade.entry, execution.price),
                                                   (active_trade.qty, execution.qty))
                 active_trade.qty += execution.qty
                 active_trade.open_qty += execution.qty
             else:
+
                 if execution.qty > active_trade.open_qty:
                     new_execution = Execution(
                         qty=execution.qty - active_trade.open_qty,
@@ -271,7 +273,7 @@ class UserManager(Singleton):
                         side=execution.side,
                         time=execution.time
                     )
-                    execution.qty = active_trade.qty
+                    execution.qty = active_trade.open_qty
                     new_trade = trade_from_execution(new_execution)
                     client = api_client.Client.query.filter_by(id=client_id).first()
                     client.trades.append(new_trade)
@@ -286,7 +288,8 @@ class UserManager(Singleton):
                     else:
                         active_trade.open_qty -= execution.qty
                     realized_qty = active_trade.qty - active_trade.open_qty
-                    active_trade.realized_pnl = active_trade.exit * realized_qty - active_trade.entry * realized_qty * (1 if active_trade.initial.side == 'BUY' else -1)
+
+                    active_trade.realized_pnl = (active_trade.exit * realized_qty - active_trade.entry * realized_qty) * (1 if active_trade.initial.side == 'BUY' else -1)
         else:
             trade = trade_from_execution(execution)
             client = api_client.Client.query.filter_by(id=client_id).first()
