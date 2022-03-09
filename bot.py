@@ -1031,10 +1031,6 @@ event_manager = EventManager(discord_client=bot)
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
-user_manager.start_fetching()
-event_manager.initialize_events()
-api.run()
-
 api_thread = Thread(target=api.run)
 api_thread.daemon = True
 api_thread.start()
