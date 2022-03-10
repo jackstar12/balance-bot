@@ -7,22 +7,25 @@ import random
 import shutil
 import time
 import typing
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Type, Tuple
 
 import dotenv
+
+import config
 
 dotenv.load_dotenv()
 
 import discord
 import discord.errors
 from discord.ext import commands
-from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType, ComponentContext
+from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_choice, create_option
 from sqlalchemy import inspect
 
-import api.app as api
+import api.dbmodels.client
 import api.dbutils as dbutils
+import api.app as api
 import utils
 from Exchanges.binance.binance import BinanceFutures, BinanceSpot
 from Exchanges.bitmex import BitmexClient
@@ -49,6 +52,7 @@ from eventmanager import EventManager
 from usermanager import UserManager
 from utils import (de_emojify,
                    create_yes_no_button_row)
+from threading import Thread
 
 intents = discord.Intents().default()
 intents.members = True
@@ -150,7 +154,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
 
         await ctx.defer()
         usr_balance = user_manager.get_client_balance(registered_user, currency)
-        if usr_balance.error is None:
+        if usr_balance and usr_balance.error is None:
             await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
         else:
             await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
@@ -318,6 +322,8 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
     since_start = time is None
     time_str = utils.readable_time(time)
 
+    await ctx.defer()
+
     user_manager.fetch_data(clients=clients)
     user_gains = utils.calc_gains(clients, ctx.guild_id, time, currency)
 
@@ -326,6 +332,7 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
         if ctx.guild:
             gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
         else:
+            
             gain_message = f"Your gain ({cur_client.get_event_string()}): " if not guild else f"Your gain on {guild}: "
         if user_gain is None:
             logger.info(
@@ -450,12 +457,13 @@ async def register_new(ctx: SlashContext,
                     new_client.events.append(event)
                 worker = exchange_cls(new_client)
 
-
                 async def start_registration(ctx):
                     init_balance = worker.get_balance(datetime.now())
                     if init_balance.error is None:
-                        if round(init_balance.amount, ndigits=2) == 0.0:
-                            message = f'You do not have any balance in your account. Please fund your account before registering.'
+                        if init_balance.amount < config.REGISTRATION_MINIMUM:
+                            message = f'You do not have enough balance in your account ' \
+                                      f'(Minimum: {config.REGISTRATION_MINIMUM}$, Your Balance: {init_balance.amount}$).\n' \
+                                      f'Please fund your account before registering.'
                             button_row = None
                         else:
                             message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
@@ -676,7 +684,7 @@ async def unregister(ctx):
         else:
             user_manager.delete_client(client)
         discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
-        if len(discord_user.clients) == 0:
+        if len(discord_user.clients) == 0 and not discord_user.user:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
             db.session.commit()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
@@ -728,9 +736,7 @@ async def info(ctx):
 )
 @utils.log_and_catch_errors()
 @utils.time_args(names=[('since', None), ('to', None)])
-async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None, guild: str = None):
-    if guild:
-        guild = int(guild)
+async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None):
 
     client = dbutils.get_client(ctx.author_id, ctx.guild_id)
 
@@ -802,7 +808,9 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     options=[
         create_option(
             name="user",
-            description="User to display daily gains for (Author default)"
+            description="User to display daily gains for (Author default)",
+            option_type=SlashCommandOptionType.USER,
+            required=False
         ),
         create_option(
             name="amount",
@@ -812,16 +820,18 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
         ),
         create_option(
             name="currency",
-            description="Currency to use"
+            description="Currency to use",
+            option_type=SlashCommandOptionType.STRING,
+            required=False
         )
     ]
 )
 @utils.log_and_catch_errors()
 @utils.set_author_default(name="user")
-async def daily(ctx: SlashContext, user: discord.Member, amount: int = None, currency: str = None ):
+async def daily(ctx: SlashContext, user: discord.Member, amount: int = None, currency: str = None):
     client = dbutils.get_client(user.id, ctx.guild_id)
     await ctx.defer()
-    daily_gains = utils.calc_daily(client, amount, ctx.guild_id, string=True)
+    daily_gains = utils.calc_daily(client, amount, ctx.guild_id, string=True, currency=currency)
     await ctx.send(
         embed=discord.Embed(title=f'Daily gains for {ctx.author.display_name}', description=f'```\n{daily_gains}```'))
 
@@ -933,9 +943,6 @@ if args.reset and os.path.exists(DATA_PATH):
         os.remove(DATA_PATH + "users.json")
     except FileNotFoundError as e:
         logger.info(f'Error while archiving data: {e}')
-
-api.run()
-
 
 @slash.slash(
     name="summary",
