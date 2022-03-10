@@ -11,6 +11,9 @@ from datetime import datetime
 from typing import List, Dict, Type, Tuple
 
 import dotenv
+
+import config
+
 dotenv.load_dotenv()
 
 import discord
@@ -455,12 +458,13 @@ async def register_new(ctx: SlashContext,
                     new_client.events.append(event)
                 worker = exchange_cls(new_client)
 
-
                 async def start_registration(ctx):
                     init_balance = worker.get_balance(datetime.now())
                     if init_balance.error is None:
-                        if round(init_balance.amount, ndigits=2) == 0.0:
-                            message = f'You do not have any balance in your account. Please fund your account before registering.'
+                        if init_balance.amount < config.REGISTRATION_MINIMUM:
+                            message = f'You do not have enough balance in your account ' \
+                                      f'(Minimum: {config.REGISTRATION_MINIMUM}$, Your Balance: {init_balance.amount}$).\n' \
+                                      f'Please fund your account before registering.'
                             button_row = None
                         else:
                             message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
