@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 from datetime import datetime, timedelta
 from threading import RLock, Timer
 from typing import List, Dict, Callable, Optional, Any
@@ -136,7 +137,7 @@ class UserManager(Singleton):
                 worker = self._workers_by_client_id.get(client.id)
             return worker
 
-    def _get_worker_event(self, user_id, guild_id):
+    def _get_worker_event(self, user_id: int, guild_id: int):
         with self._worker_lock:
             event = dbutils.get_event(guild_id)
             return self._workers_by_id[event].get(user_id)
@@ -199,7 +200,7 @@ class UserManager(Singleton):
                 workers = self._workers
 
             data = []
-            logging.info(f'Fetching data for {len(workers)} users {keep_errors=}')
+            logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
             for worker in workers:
                 if not worker:
                     continue
@@ -211,19 +212,23 @@ class UserManager(Singleton):
                         balance = worker.get_balance(time)
                     latest_balance = None if len(client.history) == 0 else client.history[len(client.history) - 1]
                     if balance:
-                        if balance.error:
-                            logging.error(f'Error while fetching user {worker} balance: {balance.error}')
-                            if keep_errors:
+                        # If balance hasn't changed at all, why bother keeping it?
+                        if latest_balance and not math.isclose(latest_balance.amount, balance.amount, rel_tol=1e-06):
+                            if balance.error:
+                                logging.error(f'Error while fetching user {worker} balance: {balance.error}')
+                                if keep_errors:
+                                    data.append(balance)
+                            else:
+                                client.history.append(balance)
                                 data.append(balance)
+                                if balance.amount <= self.rekt_threshold and not client.rekt_on:
+                                    client.rekt_on = time
+                                    if callable(self.on_rekt_callback):
+                                        self.on_rekt_callback(worker)
                         else:
-                            client.history.append(balance)
-                            data.append(balance)
-                            if balance.amount <= self.rekt_threshold and not client.rekt_on:
-                                client.rekt_on = time
-                                if callable(self.on_rekt_callback):
-                                    self.on_rekt_callback(worker)
+                            latest_balance.time = time
+                            data.append(latest_balance)
                     elif latest_balance:
-                        latest_balance.time = time
                         data.append(latest_balance)
                 else:
                     logging.error(f'Worker with {worker.client_id=} got no client object!')
