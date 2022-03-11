@@ -29,10 +29,10 @@ class ClientWorker:
         self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
 
-    def get_balance(self, time: datetime = None):
+    def get_balance(self, time: datetime = None, force=False):
         if not time:
             time = datetime.now()
-        if time - self._last_fetch < timedelta(seconds=30):
+        if time - self._last_fetch < timedelta(seconds=30) and not force:
             return None
         else:
             self._last_fetch = time
