@@ -467,6 +467,7 @@ def calc_gains(clients: List[Client],
     for client in clients:
         if not client:
             logging.info('calc_gains: A none client was passed in?')
+            continue
         data = user_manager.get_client_history(client, guild_id, start=search, archived=archived)
         if len(data) > 0:
             balance_then = user_manager.db_match_balance_currency(data[0], currency)
