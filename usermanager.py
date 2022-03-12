@@ -139,11 +139,12 @@ class UserManager(Singleton):
 
     def _get_worker(self, client: api_client.Client, create_if_missing=True) -> ClientWorker:
         with self._worker_lock:
-            worker = self._workers_by_client_id.get(client.id)
-            if not worker and create_if_missing:
-                self.add_client(client)
+            if client:
                 worker = self._workers_by_client_id.get(client.id)
-            return worker
+                if not worker and create_if_missing:
+                    self.add_client(client)
+                    worker = self._workers_by_client_id.get(client.id)
+                return worker
 
     def _get_worker_event(self, user_id, guild_id):
         with self._worker_lock:
