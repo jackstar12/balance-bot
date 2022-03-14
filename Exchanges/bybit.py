@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 
 from clientworker import ClientWorker
-from api.dbmodels.balance import Balance
+import api.dbmodels.balance as balance
 from requests import Request, Response, Session, HTTPError
 from typing import List, Tuple, Dict
 
@@ -54,7 +54,7 @@ class BybitClient(ClientWorker):
         else:
             err_msg = response['ret_msg']
 
-        return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
+        return balance.balanceBalance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
     def _sign_request(self, request):

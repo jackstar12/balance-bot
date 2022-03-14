@@ -8,7 +8,7 @@ import urllib.parse
 import time
 import logging
 from clientworker import ClientWorker
-from api.dbmodels.balance import Balance
+import api.dbmodels.balance as balance
 
 
 class KuCoinClient(ClientWorker):
@@ -24,11 +24,11 @@ class KuCoinClient(ClientWorker):
         request = Request('GET', self.ENDPOINT + 'api/v1/account-overview', params={'currency': 'USDT'})
         response = self._request(request)
         if response['code'] != '200000':
-            balance = Balance(0, '$', response['msg'])
+            result = balance.Balance(amount=0, currency='$', time=time, error=response['msg'])
         else:
             data = response['data']
-            balance = Balance(amount=data['accountEquity'], currency='$', error=None)
-        return balance
+            result = balance.Balance(amount=data['accountEquity'], time=time, currency='$', error=None)
+        return result
 
     # https://docs.kucoin.com/#authentication
     def _sign_request(self, request: Request):

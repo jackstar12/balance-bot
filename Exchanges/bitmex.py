@@ -1,6 +1,6 @@
 import hmac
 from requests import Request, Response, Session, HTTPError
-from api.dbmodels.balance import Balance
+import api.dbmodels.balance as balance
 import urllib.parse
 import time
 import logging
@@ -60,7 +60,7 @@ class BitmexClient(ClientWorker):
         else:
             err_msg = response['error']
 
-        return Balance(amount=total_balance,
+        return balance.Balance(amount=total_balance,
                        currency='$',
                        extra_currencies=extra_currencies,
                        error=err_msg)

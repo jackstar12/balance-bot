@@ -1,16 +1,20 @@
 import json
+import logging
 import os
 from datetime import timezone, datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
 from typing import List, Tuple, Union, Dict, Callable
+from config import EXCHANGES
 
 import bcrypt
 import flask_jwt_extended as flask_jwt
+import jwt
 from flask import request, jsonify
 from sqlalchemy import or_, and_
 
 import utils
+from api import dbutils
 from api.database import db, app, migrate
 
 import api.dbutils
@@ -22,19 +26,19 @@ from api.dbmodels.label import Label
 from api.dbmodels.event import Event
 from api.dbmodels.execution import Execution
 import api.discordauth
+from clientworker import ClientWorker
+from usermanager import UserManager
 
+jwt_manager = flask_jwt.JWTManager(app)
 
-jwt = flask_jwt.JWTManager(app)
-
-
-app.config['SECRET_KEY'] = os.environ.get('OAUTH2_CLIENT_SECRET')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET')
 app.config['JWT_TOKEN_LOCATION'] = ['cookies']
-app.config['JWT_COOKIE_SECURE'] = False  # True in production
-#app.config['JWT_ACCESS_COOKIE_PATH'] = '/api/'
-app.config['JWT_COOKE_CSRF_PROTECT'] = True
+app.config['JWT_CSRF_METHODS'] = []
+app.config['JWT_COOKIE_CSRF_PROTECT'] = True
+app.config['JWT_COOKIE_SECURE'] = True  # True in production
 
 
-@jwt.user_lookup_loader
+@jwt_manager.user_lookup_loader
 def callback(token, payload):
     email = payload.get('sub')
     return User.query.filter_by(email=email).first()
@@ -55,7 +59,7 @@ def refresh_expiring_jwts(response):
         return response
 
 
-@app.route('/api/register', methods=["POST"])
+@app.route('/api/v1/register', methods=["POST"])
 @apiutils.require_args(arg_names=[('email', True), ('password', True)])
 def register(email: str, password: str):
     user = User.query.filter_by(email=email).first()
@@ -76,7 +80,7 @@ def register(email: str, password: str):
         return {'msg': f'Email is already used'}, HTTPStatus.BAD_REQUEST
 
 
-@app.route('/api/login', methods=["POST"])
+@app.route('/api/v1/login', methods=["POST"])
 @apiutils.require_args(arg_names=[('email', True), ('password', True)])
 def login(email: str, password: str):
     user = User.query.filter_by(email=email).first()
@@ -89,102 +93,66 @@ def login(email: str, password: str):
     return {'msg': 'Wrong Email or password'}, 401
 
 
-@app.route('/api/logout', methods=["POST"])
+@app.route('/api/v1/logout', methods=["POST"])
 def logout():
     response = jsonify({"msg": "logout successful"})
     flask_jwt.unset_jwt_cookies(response)
     return response
 
 
-@app.route('/api/info')
+@app.route('/api/v1/info')
 @flask_jwt.jwt_required()
 def info():
-    user = flask_jwt.get_current_user()
-    print(user.discorduser)
-    return jsonify(user.serialize(data=False)), 200
+    return jsonify(flask_jwt.current_user.serialize(data=False)), 200
 
 
 def register_client(exchange: str,
                     api_key: str,
                     api_secret: str,
                     subaccount: str = None,
-                    extra_kwargs: str = None):
-    pass
-#    try:
-#        exchange_name = exchange_name.lower()
-#        exchange_cls = EXCHANGES[exchange_name]
-#        if issubclass(exchange_cls, ClientWorker):
-#            # Check if required keyword args are given
-#            if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
-#                    all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
-#                client: Client = Client(
-#                    api_key=api_key,
-#                    api_secret=api_secret,
-#                    subaccount=subaccount,
-#                    extra_kwargs=kwargs,
-#                    exchange=exchange_name
-#                )
-#                worker = exchange_cls(client)
-#                existing_user = dbutils.get_client(user_id=ctx.author.id, guild_id=ctx.guild_id, throw_exceptions=False)
-#                if existing_user:
-#                    existing_user.api = client
-#                    await ctx.send(embed=existing_user.get_discord_embed(client.get_guild(guild)), hidden=True)
-#                    logger.info(f'Updated user')
-#                    # user_manager.save_registered_users()
-#                else:
-#                    new_user = DiscordUser(
-#                        user_id=ctx.author.id,
-#                        name=ctx.author.name,
-#                        clients=[client],
-#                        global_client=client
-#                    )
-#                    init_balance = worker.get_balance(datetime.now())
-#                    if init_balance.error is None:
-#                        if round(init_balance.amount, ndigits=2) == 0.0:
-#                            message = f'You do not have any balance in your account. Please fund your account before registering.'
-#                            button_row = None
-#                        else:
-#                            message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
-#
-#                            def register_user():
-#                                new_user.clients[0].history.append(init_balance)
-#                                user_manager._add_worker(worker)
-#                                db.session.add(new_user)
-#                                db.session.add(client)
-#                                db.session.commit()
-#                                logger.info(f'Registered new user')
-#
-#                            button_row = create_yes_no_button_row(
-#                                slash,
-#                                author_id=ctx.author.id,
-#                                yes_callback=register_user,
-#                                yes_message="You were successfully registered!",
-#                                no_message="Registration cancelled",
-#                                hidden=True
-#                            )
-#                    else:
-#                        message = f'An error occured while getting your balance: {init_balance.error}.'
-#                        button_row = None
-#
-#                    await ctx.send(
-#                        content=message,
-#                        embed=new_user.get_discord_embed(),
-#                        hidden=True,
-#                        components=[button_row] if button_row else None
-#                    )
-#
-#            else:
-#                logger.error(
-#                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
-#                args_readable = ''
-#                for arg in exchange_cls.required_extra_args:
-#                    args_readable += f'{arg}\n'
-#                raise UserInputError(
-#                    f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}')
-#        else:
-#            logger.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
-#    except KeyError:
-#        raise UserInputError(f'Exchange {exchange_name} unknown')
+                    **kwargs):
+    try:
+        exchange_cls = EXCHANGES[exchange]
+        if issubclass(exchange_cls, ClientWorker):
+            # Check if required keyword args are given
+            if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
+                    all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
+                client = Client(
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    subaccount=subaccount,
+                    extra_kwargs=kwargs,
+                    exchange=exchange
+                )
+                worker = exchange_cls(client)
+                init_balance = worker.get_balance(datetime.now())
+                if init_balance.error is None:
+                    if round(init_balance.amount, ndigits=2) == 0.0:
+                        return {'msg': f'You do not have any balance in your account. Please fund your account before registering.'}
+                    else:
+                        payload = client.serialize(full=True, data=True)
+                        # TODO: CHANGE THIS
+                        payload['api_key'] = client.api_key
+                        return {
+                            'msg': 'Success',
+                            'token': jwt.encode(payload, app.config['JWT_SECRET_KEY']),
+                            'balance': init_balance.amount
+                        }, HTTPStatus.OK
+                else:
+                    return {'msg': f'An error occured while getting your balance: {init_balance.error}.'}, HTTPStatus.BAD_REQUEST
+            else:
+                logging.error(
+                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
+                args_readable = '\n'.join(exchange_cls.required_extra_args)
+                return {
+                    'msg': f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}',
+                    'code': 40100
+                }, HTTPStatus.BAD_REQUEST
+
+        else:
+            logging.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
+    except KeyError:
+        return {'msg': f'Exchange {exchange} unknown'}, HTTPStatus.BAD_REQUEST
 
 
 def get_client_query(user: User, client_id: int):
@@ -249,7 +217,7 @@ def delete_client(id: int):
 
 
 apiutils.create_endpoint(
-    route='/api/client',
+    route='/api/v1/client',
     methods={
         'POST': {
             'args': [
@@ -277,6 +245,19 @@ apiutils.create_endpoint(
     },
     jwt_auth=True
 )
+
+
+@app.route('/api/v1/client/confirm', methods=["POST"])
+def confirm_client(token: str):
+    client_json = jwt.decode(token, app.config['JWT_SECRET_KEY'])
+    try:
+        client = Client(**client_json)
+        flask_jwt.current_user.clients.append(client)
+        db.session.add(client)
+        db.session.commit()
+        return {'msg': 'Success'}, HTTPStatus.OK
+    except TypeError:
+        return {'msg': 'Internal Error'}, HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 def get_label(id: int):
@@ -320,7 +301,7 @@ def update_label(id: int, name: str = None, color: str = None):
 
 
 apiutils.create_endpoint(
-    route='/api/label',
+    route='/api/v1/label',
     methods={
         'POST': {
             'args': [
@@ -395,7 +376,7 @@ def remove_label(client_id: int, trade_id: int, label_id: int):
 
 
 apiutils.create_endpoint(
-    route='/api/label/trade',
+    route='/api/v1/label/trade',
     methods={
         'POST': {
             'args': [

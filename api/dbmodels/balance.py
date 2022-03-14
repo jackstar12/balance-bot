@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from api.database import db
-from config import CURRENCY_PRECISION
+import config
 from api.dbmodels.serializer import Serializer
 
 
@@ -30,12 +30,12 @@ class Balance(db.Model, Serializer):
         return json
 
     def to_string(self, display_extras=True):
-        string = f'{round(self.amount, ndigits=CURRENCY_PRECISION.get(self.currency, 3))}{self.currency}'
+        string = f'{round(self.amount, ndigits=config.CURRENCY_PRECISION.get(self.currency, 3))}{self.currency}'
 
         if self.extra_currencies and display_extras:
             first = True
             for currency in self.extra_currencies:
-                string += f'{" (" if first else "/"}{round(self.extra_currencies[currency], ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency}'
+                string += f'{" (" if first else "/"}{round(self.extra_currencies[currency], ndigits=config.CURRENCY_PRECISION.get(currency, 3))}{currency}'
                 first = False
             if not first:
                 string += ')'
@@ -56,7 +56,7 @@ class Balance(db.Model, Serializer):
                 amount = None
             if amount:
                 return (
-                    round(amount, ndigits=CURRENCY_PRECISION.get(currency, 3)),
+                    round(amount, ndigits=config.CURRENCY_PRECISION.get(currency, 3)),
                     round(self.time.timestamp() * 1000)
                 )
 
@@ -64,7 +64,7 @@ class Balance(db.Model, Serializer):
 def balance_from_json(data: dict, time: datetime):
     currency = data.get('currency', '$')
     return Balance(
-        amount=round(data.get('amount', 0), ndigits=CURRENCY_PRECISION.get(currency, 3)),
+        amount=round(data.get('amount', 0), ndigits=config.CURRENCY_PRECISION.get(currency, 3)),
         currency=currency,
         extra_currencies=data.get('extra_currencies', None),
         time=time

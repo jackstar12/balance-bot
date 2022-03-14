@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Callable
 
 from api.dbmodels.execution import Execution
-from api.dbmodels.balance import Balance
+import api.dbmodels.balance as balance
 from clientworker import ClientWorker
 import time
 import requests
@@ -55,7 +55,7 @@ class FtxClient(ClientWorker):
             amount = response['result']['totalAccountValue']
         else:
             amount = 0
-        return Balance(amount=amount, currency='$', error=response.get('error'), time=time)
+        return balance.Balance(amount=amount, currency='$', error=response.get('error'), time=time)
 
     def _sign_request(self, request: Request) -> None:
         ts = int(time.time() * 1000)

@@ -9,30 +9,17 @@ import time
 import typing
 from datetime import datetime
 from typing import List, Dict, Type, Tuple
-
 import dotenv
-
-import config
-
 dotenv.load_dotenv()
-
 import discord
 import discord.errors
-from discord import Embed
 from discord.ext import commands
 from discord_slash import SlashCommand, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_choice, create_option
 from sqlalchemy import inspect
-
 import api.dbmodels.client
 import api.dbutils as dbutils
-import api.app as api
 import utils
-from Exchanges.binance.binance import BinanceFutures, BinanceSpot
-from Exchanges.bitmex import BitmexClient
-from Exchanges.bybit import BybitClient
-from Exchanges.ftx.ftx import FtxClient
-from Exchanges.kucoin import KuCoinClient
 from api.database import db
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
@@ -47,13 +34,15 @@ from config import (DATA_PATH,
                     REKT_GUILDS,
                     CURRENCY_PRECISION,
                     REKT_THRESHOLD,
-                    ARCHIVE_PATH)
+                    ARCHIVE_PATH,
+                    EXCHANGES)
 from errors import UserInputError, InternalError
 from eventmanager import EventManager
 from usermanager import UserManager
 from utils import (de_emojify,
                    create_yes_no_button_row)
 from threading import Thread
+import api.app as api
 
 intents = discord.Intents().default()
 intents.members = True
@@ -61,15 +50,6 @@ intents.guilds = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 slash = SlashCommand(bot)
-
-EXCHANGES: Dict[str, Type[ClientWorker]] = {
-    'binance-futures': BinanceFutures,
-    'binance-spot': BinanceSpot,
-    'bitmex': BitmexClient,
-    'ftx': FtxClient,
-    'kucoin': KuCoinClient,
-    'bybit': BybitClient
-}
 
 
 @bot.event

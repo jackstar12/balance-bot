@@ -59,6 +59,9 @@ class Event(db.Model, Serializer):
         description = ''
 
         gains = utils.calc_gains(self.registrations, self.guild_id, self.start)
+
+
+
         gains.sort(key=lambda x: x[1][0], reverse=True)
 
         description += f'**Best Trader :crown:**\n' \

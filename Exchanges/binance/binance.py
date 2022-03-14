@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hmac
 import hmac
 import json
@@ -10,12 +11,9 @@ from typing import Dict, Callable
 import requests
 from requests import Request, HTTPError
 from Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
-
-#from models.balance import Balance
 from clientworker import ClientWorker
-#from models.client import Client
 from api.dbmodels.client import Client
-from api.dbmodels.balance import Balance
+import api.dbmodels.balance as balance
 from api.dbmodels.execution import Execution
 
 
@@ -77,7 +75,7 @@ class BinanceFutures(_BinanceBaseClient):
         request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
         response = self._request(request)
 
-        return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', time=time if time else datetime.now(), error=response.get('msg', None))
+        return balance.Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', time=time if time else datetime.now(), error=response.get('msg', None))
 
     def start_user_stream(self):
         request = Request(
@@ -155,4 +153,4 @@ class BinanceSpot(_BinanceBaseClient):
         else:
             err_msg = response['msg']
 
-        return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
+        return balance.Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)

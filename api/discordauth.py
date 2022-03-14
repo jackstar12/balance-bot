@@ -12,16 +12,13 @@ import api.apiutils as apiutils
 
 from api.app import app, flask_jwt
 
-OAUTH2_CLIENT_ID = '939872409517953104'
-OAUTH2_CLIENT_SECRET = 'u0Hp5yCS9uDIMYElRMcWl1tzM9iTSIig'
-OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT', 'http://localhost/api/callback')
+OAUTH2_CLIENT_ID = os.environ.get('OAUTH2_CLIENT_ID')
+OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET')
+OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT', 'http://localhost/api/v1/callback')
 
 API_BASE_URL = os.environ.get('API_BASE_URL', 'https://discordapp.com/api')
 AUTHORIZATION_BASE_URL = API_BASE_URL + '/oauth2/authorize'
 TOKEN_URL = API_BASE_URL + '/oauth2/token'
-
-app.config['SECRET_KEY'] = 'u0Hp5yCS9uDIMYElRMcWl1tzM9iTSIig'
-
 
 if 'http://' in OAUTH2_REDIRECT_URI:
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = 'true'
@@ -46,7 +43,7 @@ def make_session(token=None, state=None, scope=None):
         token_updater=token_updater)
 
 
-@app.route('/api/discord/connect', methods=["GET"])
+@app.route('/api/v1/discord/connect', methods=["GET"])
 @flask_jwt.jwt_required()
 def register_discord():
     user = flask_jwt.current_user
@@ -59,7 +56,7 @@ def register_discord():
         return {'authorization': authorization_url}, HTTPStatus.OK
 
 
-@app.route('/api/discord/disconnect', methods=["GET"])
+@app.route('/api/v1/discord/disconnect', methods=["GET"])
 @flask_jwt.jwt_required()
 def disconnect_discord():
     user = flask_jwt.current_user
@@ -72,7 +69,7 @@ def disconnect_discord():
         return {'disconnect': True}, HTTPStatus.OK
 
 
-@app.route('/api/callback')
+@app.route('/api/v1/callback')
 @flask_jwt.jwt_required()
 def callback():
     user = flask_jwt.current_user
