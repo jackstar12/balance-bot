@@ -3,6 +3,7 @@ import hmac
 import hmac
 import json
 import logging
+import sys
 import time
 import urllib.parse
 from datetime import datetime
@@ -105,10 +106,10 @@ class BinanceFutures(_BinanceBaseClient):
         data = message['o']
         if event == 'ORDER_TRADE_UPDATE':
             if data['X'] == 'FILLED':
-                print(data)
+                json.dump(data, fp=sys.stdout, indent=3)
                 trade = Execution(
                     symbol=data['s'],
-                    price=float(data['p']),
+                    price=float(data['ap']) or float(data['p']),
                     qty=float(data['q']),
                     side=data['S'],
                     time=datetime.now()
