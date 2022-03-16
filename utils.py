@@ -227,7 +227,8 @@ def calc_daily(client: client.Client,
                guild_id: int = None,
                currency: str = None,
                string=False,
-               forEach: Callable[[Balance], Any] = None) -> Union[List[Tuple[datetime, float, float, float]], str]:
+               forEach: Callable[[Balance], Any] = None,
+               throw_exceptions=True) -> Union[List[Tuple[datetime, float, float, float]], str]:
     """
     Calculates daily balance changes for a given client.
     :param forEach: function to be performed for each balance
@@ -239,7 +240,10 @@ def calc_daily(client: client.Client,
     :return:
     """
     if len(client.history) == 0:
-        raise UserInputError(reason='Got no data for this user')
+        if throw_exceptions:
+            raise UserInputError(reason='Got no data for this user')
+        else:
+            return []
 
     if currency is None:
         currency = '$'

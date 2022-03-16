@@ -132,10 +132,10 @@ def register_client(exchange: str,
                     else:
                         payload = client.serialize(full=True, data=True)
                         # TODO: CHANGE THIS
-                        payload['api_key'] = client.api_key
+                        payload['api_secret'] = client.api_secret
                         return {
                             'msg': 'Success',
-                            'token': jwt.encode(payload, app.config['JWT_SECRET_KEY']),
+                            'token': jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm='HS256'),
                             'balance': init_balance.amount
                         }, HTTPStatus.OK
                 else:
@@ -186,8 +186,10 @@ def get_client(id: int = None, currency: str = None):
         history = []
         s['daily'] = utils.calc_daily(
             client=client,
-            forEach=lambda balance: history.append(balance.serialize(full=True, data=True, currency=currency))
+            forEach=lambda balance: history.append(balance.serialize(full=True, data=True, currency=currency)),
+            throw_exceptions=False
         )
+
         s['history'] = history
 
         trades = []
@@ -213,7 +215,7 @@ def delete_client(id: int):
     user = flask_jwt.current_user
     get_client_query(user, id).delete()
     db.session.commit()
-    return {'msg': 'Success'}
+    return {'msg': 'Success'}, HTTPStatus.OK
 
 
 apiutils.create_endpoint(
@@ -248,8 +250,11 @@ apiutils.create_endpoint(
 
 
 @app.route('/api/v1/client/confirm', methods=["POST"])
+@flask_jwt.jwt_required()
+@apiutils.require_args(arg_names=[('token', True)])
 def confirm_client(token: str):
-    client_json = jwt.decode(token, app.config['JWT_SECRET_KEY'])
+    client_json = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
+    print(client_json)
     try:
         client = Client(**client_json)
         flask_jwt.current_user.clients.append(client)
@@ -261,10 +266,10 @@ def confirm_client(token: str):
 
 
 def get_label(id: int):
-    label = Label.query.filter_by(id=id).first()
+    label: Label = Label.query.filter_by(id=id).first()
+    user: User = flask_jwt.current_user
     if label:
-        client = get_client_query(flask_jwt.current_user, label.client_id).first()
-        if client:
+        if label.user_id == user.id:
             return label
         else:
             return {'msg': 'You are not allowed to delete this Label'}, HTTPStatus.UNAUTHORIZED
@@ -284,6 +289,7 @@ def delete_label(id: int):
     if isinstance(result, Label):
         Label.query.filter_by(id=id).delete()
         db.session.commit()
+        return {'msg': 'Success'}, HTTPStatus.OK
     else:
         return result
 
@@ -296,6 +302,7 @@ def update_label(id: int, name: str = None, color: str = None):
         if color:
             result.color = color
         db.session.commit()
+        return {'msg': 'Success'}, HTTPStatus.OK
     else:
         return result
 

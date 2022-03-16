@@ -2,7 +2,7 @@ import os
 
 from http import HTTPStatus
 
-from flask import request, session
+from flask import request, session, redirect
 from requests_oauthlib import OAuth2Session
 
 from api.database import db, app
@@ -14,11 +14,12 @@ from api.app import app, flask_jwt
 
 OAUTH2_CLIENT_ID = os.environ.get('OAUTH2_CLIENT_ID')
 OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET')
-OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT', 'http://localhost/api/v1/callback')
+OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT', 'http://localhost/api/v1/discord/callback')
 
 API_BASE_URL = os.environ.get('API_BASE_URL', 'https://discordapp.com/api')
 AUTHORIZATION_BASE_URL = API_BASE_URL + '/oauth2/authorize'
 TOKEN_URL = API_BASE_URL + '/oauth2/token'
+app.config['SECRET_KEY'] = OAUTH2_CLIENT_SECRET
 
 if 'http://' in OAUTH2_REDIRECT_URI:
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = 'true'
@@ -69,7 +70,7 @@ def disconnect_discord():
         return {'disconnect': True}, HTTPStatus.OK
 
 
-@app.route('/api/v1/callback')
+@app.route('/api/v1/discord/callback')
 @flask_jwt.jwt_required()
 def callback():
     user = flask_jwt.current_user
@@ -95,4 +96,4 @@ def callback():
     user.discorduser = discord_user
 
     db.session.commit()
-    return {'msg': f'Successfully connected'}, HTTPStatus.OK
+    return redirect('/profile')
