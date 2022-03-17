@@ -42,7 +42,7 @@ class Client(db.Model, Serializer):
 
     @hybrid_property
     def is_global(self):
-        return  self.discorduser.global_client_id == self.id if self.discorduser else False
+        return self.discorduser.global_client_id == self.id if self.discorduser else False
 
     @hybrid_property
     def is_active(self):

@@ -103,7 +103,7 @@ def logout():
 @app.route('/api/v1/info')
 @flask_jwt.jwt_required()
 def info():
-    return jsonify(flask_jwt.current_user.serialize(data=False)), 200
+    return jsonify(flask_jwt.current_user.serialize(full=True, data=False)), 200
 
 
 def register_client(exchange: str,
@@ -194,7 +194,7 @@ def get_client(id: int = None, currency: str = None):
 
         trades = []
         for trade in client.trades:
-            trade = trade.serialize(full=True, data=True)
+            trade = trade.serialize(data=True)
             if trade['status'] == 'win':
                 winners += 1
             elif trade['status'] == 'loss':
