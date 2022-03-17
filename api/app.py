@@ -208,7 +208,7 @@ def get_client(id: int = None, currency: str = None):
         s['losers'] = losers
         return jsonify(s)
     else:
-        return {'msg': f'Invalid client id'}, HTTPStatus.BAD_REQUEST
+        return {'msg': f'Invalid client id', 'code': 40000}, HTTPStatus.BAD_REQUEST
 
 
 def delete_client(id: int):
