@@ -8,3 +8,10 @@ class Label(db.Model, Serializer):
     name: str = db.Column(db.String, nullable=False)
     color: str = db.Column(db.String, nullable=False)
 
+    def serialize(self, full=True, data=True, *args, **kwargs):
+        if data:
+            return self.id
+        else:
+            return super().serialize(full, data, *args, **kwargs)
+
+

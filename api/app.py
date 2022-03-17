@@ -344,11 +344,13 @@ def get_trade_query(client_id: int, trade_id: int, label_id: int=None):
             Trade.client_id == client_id,
             Trade.label_id == label_id if label_id else True
         )
+    else:
+        return {'msg': 'Invalid Client ID'}, HTTPStatus.UNAUTHORIZED
 
 
 def add_label(client_id: int, trade_id: int, label_id: int):
     trade = get_trade_query(client_id, trade_id, label_id).first()
-    if trade:
+    if isinstance(trade, Trade):
         label = Label.query.filter(
             Label.id == label_id,
             Label.client_id == client_id
@@ -361,12 +363,12 @@ def add_label(client_id: int, trade_id: int, label_id: int):
         else:
             return {'msg': 'Invalid Label ID'}, HTTPStatus.BAD_REQUEST
     else:
-        return {'msg': 'Invalid Client ID'}, HTTPStatus.UNAUTHORIZED
+        return trade
 
 
 def remove_label(client_id: int, trade_id: int, label_id: int):
     trade = get_trade_query(client_id, trade_id, label_id).first()
-    if trade:
+    if isinstance(trade, Trade):
         label = Label.query.filter(
             Label.id == label_id,
             Label.client_id == client_id
@@ -379,7 +381,25 @@ def remove_label(client_id: int, trade_id: int, label_id: int):
         else:
             return {'msg': 'Invalid Label ID'}, HTTPStatus.BAD_REQUEST
     else:
-        return {'msg': 'Invalid Client ID'}, HTTPStatus.UNAUTHORIZED
+        return trade
+
+
+def set_labels(client_id: int, trade_id: int, label_ids: List[int]):
+    trade = get_trade_query(client_id, trade_id).first()
+    if isinstance(trade, Trade):
+        if len(label_ids) > 0:
+            trade.labels = Label.query.filter(
+                or_(
+                    Label.id == label_id for label_id in label_ids
+                ),
+                Label.user_id == flask_jwt.current_user.id
+            ).all()
+        else:
+            trade.labels = []
+        db.session.commit()
+        return {'msg': 'Success'}, HTTPStatus.OK
+    else:
+        return trade
 
 
 apiutils.create_endpoint(
@@ -400,6 +420,14 @@ apiutils.create_endpoint(
                 ("label_id", True)
             ],
             'callback': remove_label
+        },
+        'PATCH': {
+            'args': [
+                ("client_id", True),
+                ("trade_id", True),
+                ("label_ids", True)
+            ],
+            'callback': set_labels
         }
     },
     jwt_auth=True

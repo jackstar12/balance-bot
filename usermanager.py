@@ -221,24 +221,27 @@ class UserManager(Singleton):
                         balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
                     else:
                         balance = worker.get_balance(time, force=force_fetch)
-                    latest_balance = None if len(client.history) == 0 else client.history[len(client.history) - 1]
+                    history_len = len(client.history)
+                    latest_balance = None if history_len == 0 else client.history[history_len - 1]
                     if balance:
-                        # If balance hasn't changed at all, why bother keeping it?
-                        if latest_balance and not math.isclose(latest_balance.amount, balance.amount, rel_tol=1e-06):
-                            if balance.error:
-                                logging.error(f'Error while fetching user {worker} balance: {balance.error}')
-                                if keep_errors:
-                                    data.append(balance)
-                            else:
-                                client.history.append(balance)
+                        if history_len > 2:
+                            # If balance hasn't changed at all, why bother keeping it?
+                            if math.isclose(latest_balance.amount, balance.amount, rel_tol=1e-06) \
+                                    and math.isclose(client.history[history_len - 2].amount, balance.amount, rel_tol=1e-06):
+                                latest_balance.time = time
+                                data.append(latest_balance)
+                                continue
+                        if balance.error:
+                            logging.error(f'Error while fetching user {worker} balance: {balance.error}')
+                            if keep_errors:
                                 data.append(balance)
-                                if balance.amount <= self.rekt_threshold and not client.rekt_on:
-                                    client.rekt_on = time
-                                    if callable(self.on_rekt_callback):
-                                        self.on_rekt_callback(worker)
                         else:
-                            latest_balance.time = time
-                            data.append(latest_balance)
+                            client.history.append(balance)
+                            data.append(balance)
+                            if balance.amount <= self.rekt_threshold and not client.rekt_on:
+                                client.rekt_on = time
+                                if callable(self.on_rekt_callback):
+                                    self.on_rekt_callback(worker)
                     elif latest_balance:
                         data.append(latest_balance)
                 else:

@@ -13,7 +13,7 @@ trade_association = db.Table('trade_association',
 class Trade(db.Model, Serializer):
 
     __tablename__ = 'trade'
-    __serializer_forbidden__ = ['client_id']
+    __serializer_forbidden__ = ['client', 'initial']
 
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
@@ -42,7 +42,6 @@ class Trade(db.Model, Serializer):
         uselist=False
     )
 
-    label = db.Column(db.String, nullable=True)
     memo = db.Column(db.String, nullable=True)
 
     def is_data(self):
@@ -53,7 +52,7 @@ class Trade(db.Model, Serializer):
         return self.exit is not None
 
     def serialize(self, data=True, full=True, *args, **kwargs):
-        s = super().serialize(data, full)
+        s = super().serialize(data, full, *args, **kwargs)
         if s:
             s['status'] = 'open' if self.open_qty > 0 else 'win' if self.realized_pnl > 0.0 else 'loss'
         return s
