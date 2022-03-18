@@ -104,8 +104,9 @@ class BinanceFutures(_BinanceBaseClient):
         message = json.loads(message)
         event = message['e']
         data = message['o']
+        json.dump(message, fp=sys.stdout, indent=3)
         if event == 'ORDER_TRADE_UPDATE':
-            if data['X'] == 'FILLED' or True:
+            if data['X'] == 'FILLED':
                 json.dump(data, fp=sys.stdout, indent=3)
                 trade = Execution(
                     symbol=data['s'],

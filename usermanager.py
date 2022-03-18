@@ -213,12 +213,14 @@ class UserManager(Singleton):
             data = []
             logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
             for worker in workers:
+
                 if not worker:
                     continue
                 client = api_client.Client.query.filter_by(id=worker.client_id).first()
+
                 if client:
                     if client.rekt_on and not force_fetch:
-                        balance = Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
+                        balance = Balance(amount=0.0, currency='$', extra_currencies={}, time=time)
                     else:
                         balance = worker.get_balance(time, force=force_fetch)
                     history_len = len(client.history)
