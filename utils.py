@@ -229,9 +229,12 @@ def calc_daily(client: client.Client,
                currency: str = None,
                string=False,
                forEach: Callable[[Balance], Any] = None,
-               throw_exceptions=True) -> Union[List[Tuple[datetime, float, float, float]], str]:
+               throw_exceptions=True,
+               since: datetime = None,
+               to: datetime = None) -> Union[List[Tuple[datetime, float, float, float]], str]:
     """
     Calculates daily balance changes for a given client.
+    :param throw_exceptions:
     :param forEach: function to be performed for each balance
     :param client: Client to calculate changes
     :param amount: Amount of days to calculate
@@ -249,7 +252,15 @@ def calc_daily(client: client.Client,
     if currency is None:
         currency = '$'
 
-    daily_end = datetime.now().replace(hour=0, minute=0, second=0)
+    if since is None:
+        since = datetime.fromtimestamp(0)
+
+    now = datetime.now()
+
+    if to is None:
+        to = now
+
+    daily_end = min(now, to)
 
     if amount:
         try:
@@ -257,7 +268,9 @@ def calc_daily(client: client.Client,
         except OverflowError:
             raise ValueError('Invalid daily amount given')
     else:
-        daily_start = client.history[0].time.replace(hour=0, minute=0, second=0)
+        daily_start = client.history[0].time
+
+    daily_start = max(since, daily_start).replace(hour=0, minute=0, second=0)
 
     if guild_id:
         event = dbutils.get_event(guild_id)
@@ -279,28 +292,29 @@ def calc_daily(client: client.Client,
     else:
         results = []
     for balance in client.history:
-        if balance.time >= current_search:
+        if since <= balance.time <= to:
+            if balance.time >= current_search:
 
-            daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
-            daily.time = daily.time.replace(minute=0, second=0)
+                daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
+                daily.time = daily.time.replace(minute=0, second=0)
 
-            prev_daily = prev_daily or daily
-            values = (
-                        current_day.strftime('%Y-%m-%d'),
-                        daily.amount,
-                        round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-                        calc_percentage(prev_daily.amount, daily.amount, string=False)
-                     )
-            if string:
-                results.add_row([*values])
-            else:
-                results.append(values)
-            prev_daily = daily
-            current_day = current_search
-            current_search = current_search + timedelta(days=1)
-        prev_balance = balance
-        if callable(forEach):
-            forEach(balance)
+                prev_daily = prev_daily or daily
+                values = (
+                            current_day.strftime('%Y-%m-%d'),
+                            daily.amount,
+                            round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+                            calc_percentage(prev_daily.amount, daily.amount, string=False)
+                         )
+                if string:
+                    results.add_row([*values])
+                else:
+                    results.append(values)
+                prev_daily = daily
+                current_day = current_search
+                current_search = current_search + timedelta(days=1)
+            prev_balance = balance
+            if callable(forEach):
+                forEach(balance)
 
     if prev_balance.time < current_search:
         values = (

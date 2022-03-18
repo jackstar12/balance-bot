@@ -18,6 +18,7 @@ class ClientWorker:
     def __init__(self, client):
         self.client = client
         self.client_id = client.id
+        self.in_position = True
         self.exchange = client.exchange
 
         # Client information has to be stored locally because SQL Objects aren't allowed to live in multiple threads
@@ -30,12 +31,11 @@ class ClientWorker:
         self._on_execution = None
         self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
-        self._in_position = True
 
     def get_balance(self, time: datetime = None, force=False):
         if not time:
             time = datetime.now()
-        if (time - self._last_fetch < timedelta(seconds=30) or not self._in_position) and not force:
+        if (time - self._last_fetch < timedelta(seconds=30) or not self.in_position) and not force:
             return None
         else:
             self._last_fetch = time

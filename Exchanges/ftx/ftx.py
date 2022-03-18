@@ -29,6 +29,7 @@ class FtxClient(ClientWorker):
         super().set_execution_callback(callback)
         self.ws.connect()
         self.ws.get_fills()
+        self.ws.get_ticker('BTC')
 
     def _on_message(self, ws, message):
         print('FTX MESSAGE!!!')

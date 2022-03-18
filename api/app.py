@@ -4,7 +4,7 @@ import os
 from datetime import timezone, datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
-from typing import List, Tuple, Union, Dict, Callable
+from typing import List, Tuple, Union, Dict, Callable, Optional
 from config import EXCHANGES
 
 import bcrypt
@@ -52,7 +52,8 @@ def refresh_expiring_jwts(response):
         target_timestamp = datetime.timestamp(now + timedelta(minutes=30))
         if target_timestamp > exp_timestamp:
             flask_jwt.set_access_cookies(response, flask_jwt.create_access_token(identity=flask_jwt.get_jwt_identity()))
-            flask_jwt.set_refresh_cookies(response, flask_jwt.create_refresh_token(identity=flask_jwt.get_jwt_identity()))
+            flask_jwt.set_refresh_cookies(response,
+                                          flask_jwt.create_refresh_token(identity=flask_jwt.get_jwt_identity()))
         return response
     except (RuntimeError, KeyError):
         # Case where there is not a valid JWT. Just return the original respone
@@ -128,26 +129,28 @@ def register_client(exchange: str,
                 init_balance = worker.get_balance(datetime.now())
                 if init_balance.error is None:
                     if round(init_balance.amount, ndigits=2) == 0.0:
-                        return {'msg': f'You do not have any balance in your account. Please fund your account before registering.'}
+                        return {
+                            'msg': f'You do not have any balance in your account. Please fund your account before registering.'}
                     else:
                         payload = client.serialize(full=True, data=True)
                         # TODO: CHANGE THIS
                         payload['api_secret'] = client.api_secret
                         return {
-                            'msg': 'Success',
-                            'token': jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm='HS256'),
-                            'balance': init_balance.amount
-                        }, HTTPStatus.OK
+                                   'msg': 'Success',
+                                   'token': jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm='HS256'),
+                                   'balance': init_balance.amount
+                               }, HTTPStatus.OK
                 else:
-                    return {'msg': f'An error occured while getting your balance: {init_balance.error}.'}, HTTPStatus.BAD_REQUEST
+                    return {
+                               'msg': f'An error occured while getting your balance: {init_balance.error}.'}, HTTPStatus.BAD_REQUEST
             else:
                 logging.error(
                     f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
                 args_readable = '\n'.join(exchange_cls.required_extra_args)
                 return {
-                    'msg': f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}',
-                    'code': 40100
-                }, HTTPStatus.BAD_REQUEST
+                           'msg': f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}',
+                           'code': 40100
+                       }, HTTPStatus.BAD_REQUEST
 
         else:
             logging.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
@@ -165,48 +168,79 @@ def get_client_query(user: User, client_id: int):
     )
 
 
-def get_client(id: int = None, currency: str = None):
+def get_client(id: int = None, currency: str = None, since: datetime = None, to: datetime = None):
     user = flask_jwt.current_user
 
     if not currency:
         currency = '$'
 
     if id:
-        client = get_client_query(user, id).first()
+        client: Optional[Client] = get_client_query(user, id).first()
     elif len(user.clients) > 0:
-        client = user.clients[0]
+        client: Optional[Client] = user.clients[0]
     elif user.discorduser:
-        client = user.discorduser.global_client
+        client: Optional[Client] = user.discorduser.global_client
     else:
         client = None
     if client:
         s = client.serialize(full=True, data=False)
-        winners, losers = 0, 0
+
+        if not since:
+            since = request.cookies.get('client-last-fetch', datetime.fromtimestamp(0))
+
+        if not to:
+            to = datetime.now()
 
         history = []
         s['daily'] = utils.calc_daily(
             client=client,
             forEach=lambda balance: history.append(balance.serialize(full=True, data=True, currency=currency)),
-            throw_exceptions=False
+            throw_exceptions=False,
+            since=since,
+            to=to
         )
-
         s['history'] = history
 
-        trades = []
-        for trade in client.trades:
-            trade = trade.serialize(data=True)
-            if trade['status'] == 'win':
-                winners += 1
-            elif trade['status'] == 'loss':
-                losers += 1
-            trades.append(trade)
-        s['trades'] = trades
+        def ratio(a: float, b: float):
+            return round(a / (a + b), ndigits=3) if a + b > 0 else 0.5
 
-        ratio = winners / (winners + losers) if winners + losers > 0 else 0.5
-        s['win_ratio'] = round(ratio, ndigits=3)
+        winning_days, losing_days = 0, 0
+        for day in s['daily']:
+            if day[2] > 0:
+                winning_days += 1
+            elif day[2] < 0:
+                losing_days += 1
+
+        s['daily_win_ratio'] = ratio(winning_days, losing_days)
+        s['winning_days'] = winning_days
+        s['losing_days'] = losing_days
+
+        trades = []
+        winners, losers = 0, 0
+        avg_win, avg_loss = 0.0, 0.0
+        for trade in client.trades:
+            if since <= trade.initial.time <= to:
+                trade = trade.serialize(data=True)
+                if trade['status'] == 'win':
+                    winners += 1
+                    avg_win += trade['realized_pnl']
+                elif trade['status'] == 'loss':
+                    losers += 1
+                    avg_loss += trade['realized_pnl']
+                trades.append(trade)
+
+        s['trades'] = trades
+        s['win_ratio'] = ratio(winners, losers)
         s['winners'] = winners
         s['losers'] = losers
-        return jsonify(s)
+        s['avg_win'] = avg_win
+        s['avg_loss'] = avg_loss
+
+        response = jsonify(s)
+
+        response.set_cookie('client-last-fetch', value=str(datetime.now().timestamp()), expires='session')
+
+        return response
     else:
         return {'msg': f'Invalid client id', 'code': 40000}, HTTPStatus.BAD_REQUEST
 
@@ -234,7 +268,9 @@ apiutils.create_endpoint(
         'GET': {
             'args': [
                 ("id", False),
-                ("currency", False)
+                ("currency", False),
+                ("since", False),
+                ("to", False)
             ],
             'callback': get_client
         },
@@ -336,7 +372,7 @@ apiutils.create_endpoint(
 )
 
 
-def get_trade_query(client_id: int, trade_id: int, label_id: int=None):
+def get_trade_query(client_id: int, trade_id: int, label_id: int = None):
     client = get_client_query(flask_jwt.current_user, client_id)
     if client:
         return Trade.query.filter(
@@ -432,7 +468,6 @@ apiutils.create_endpoint(
     },
     jwt_auth=True
 )
-
 
 db.init_app(app)
 migrate.init_app(app, db)

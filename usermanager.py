@@ -255,7 +255,7 @@ class UserManager(Singleton):
 
     def _on_execution(self, client_id: int, execution: Execution):
 
-        active_trade = Trade.query.filter(
+        active_trade: Trade = Trade.query.filter(
             Trade.symbol == execution.symbol,
             Trade.client_id == client_id,
             Trade.open_qty > 0.0
@@ -285,8 +285,9 @@ class UserManager(Singleton):
                     )
                     execution.qty = active_trade.open_qty
                     new_trade = trade_from_execution(new_execution)
-                    client = api_client.Client.query.filter_by(id=client_id).first()
-                    client.trades.append(new_trade)
+                    api_client.Client.query.filter_by(
+                        id=client_id
+                    ).first().trades.append(new_trade)
                 if execution.qty <= active_trade.qty:
                     if active_trade.exit is None:
                         active_trade.exit = execution.price
@@ -295,6 +296,11 @@ class UserManager(Singleton):
                                                          (active_trade.open_qty, execution.qty))
                     if math.isclose(active_trade.open_qty, execution.qty, rel_tol=10e-6):
                         active_trade.open_qty = 0.0
+                        worker = self._get_worker(active_trade.client)
+                        if worker:
+                            worker.in_position = False
+                        else:
+                            logging.critical(f'on_execution callback: {active_trade.client=} for trade {active_trade} got no worker???')
                     else:
                         active_trade.open_qty -= execution.qty
                     realized_qty = active_trade.qty - active_trade.open_qty
@@ -304,6 +310,12 @@ class UserManager(Singleton):
             trade = trade_from_execution(execution)
             client = api_client.Client.query.filter_by(id=client_id).first()
             client.trades.append(trade)
+            worker = self._get_worker(client)
+            if worker:
+                worker.in_position = True
+            else:
+                logging.critical(f'on_execution callback: {active_trade.client=} for trade {active_trade} got no worker???')
+
         db.session.commit()
 
     def db_match_balance_currency(self, balance: Balance, currency: str):
