@@ -31,6 +31,8 @@ class FtxClient(ClientWorker):
         self.ws.get_fills()
 
     def _on_message(self, ws, message):
+        print('FTX MESSAGE!!!')
+        logging.info(f'FTX MESSAGE! {message}')
         if message['channel'] == 'fills':
             if callable(self._on_execution):
                 self._on_execution(

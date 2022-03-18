@@ -1,6 +1,7 @@
 import re
 import logging
 import traceback
+from models.gain import Gain
 from functools import wraps
 
 import discord
@@ -380,16 +381,15 @@ def create_leaderboard(dc_client: discord.Client,
 
         client_gains = calc_gains(clients, guild.id, time, archived=archived)
 
-        for client, client_gain in client_gains:
-            if client_gain is not None:
-                if client.rekt_on:
-                    users_rekt.append(client)
+        for gain in client_gains:
+            if gain.relative is not None:
+                if gain.client.rekt_on:
+                    users_rekt.append(gain.client)
                 else:
-                    user_gain_rel, user_gain_abs = client_gain
-                    user_scores.append((client, user_gain_rel))
-                    value_strings[client] = f'{user_gain_rel}% ({user_gain_abs}$)'
+                    user_scores.append((gain.client, gain.relative))
+                    value_strings[gain.client] = f'{gain.relative}% ({gain.absolute}$)'
             else:
-                clients_missing.append(client)
+                clients_missing.append(gain.client)
     else:
         raise UserInputError(f'Unknown mode {mode} was passed in')
 
@@ -451,7 +451,7 @@ def calc_gains(clients: List[Client],
                guild_id: int,
                search: datetime,
                currency: str = None,
-               archived=False) -> List[Tuple[Client, Tuple[float, float]]]:
+               archived=False) -> List[Gain]:
     """
     :param guild_id:
     :param clients: users to calculate gain for
@@ -479,13 +479,20 @@ def calc_gains(clients: List[Client],
             diff = round(balance_now.amount - balance_then.amount,
                          ndigits=CURRENCY_PRECISION.get(currency, 3))
             if balance_then.amount > 0:
-                results.append((client,
-                                (round(100 * (diff / balance_then.amount),
-                                       ndigits=CURRENCY_PRECISION.get('%', 2)), diff)))
+                results.append(
+                    Gain(
+                        client,
+                        relative=round(100 * (diff / balance_then.amount), ndigits=CURRENCY_PRECISION.get('%', 2)),
+                        absolute=diff
+                    )
+                )
+
             else:
-                results.append((client, (0.0, diff)))
+                results.append(
+                    Gain(client, 0.0, diff)
+                )
         else:
-            results.append((client, None))
+            results.append(Gain(client, None, None))
 
     return results
 
