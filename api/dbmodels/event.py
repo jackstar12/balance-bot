@@ -1,5 +1,6 @@
 import utils
 import numpy
+from models.gain import Gain
 from api.database import db
 from api.dbmodels.archive import Archive
 from datetime import datetime
@@ -67,25 +68,25 @@ class Event(db.Model):
         now = datetime.now()
         gains = utils.calc_gains(self.registrations, self.guild_id, self.start, archived=now > self.end)
 
-        def key(x):
-            if x[0].rekt_on:
+        def key(x: Gain):
+            if x.client.rekt_on:
                 # Trick to make the sort rank the first rekt last
-                return -(now - x[0].rekt_on).total_seconds() * 100
+                return -(now - x.client.rekt_on).total_seconds() * 100
             else:
-                return x[1][0]
+                return x.relative
 
         gains.sort(key=key, reverse=True)
 
         description += f'**Best Trader :crown:**\n' \
-                       f'{gains[0][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{gains[0].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         description += f'\n**Worst Trader :disappointed_relieved:**\n' \
-                       f'{gains[len(gains) - 1][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{gains[len(gains) - 1].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
-        gains.sort(key=lambda x: x[1][1], reverse=True)
+        gains.sort(key=lambda x: x.absolute, reverse=True)
 
         description += f'\n**Highest Stakes :moneybag:**\n' \
-                       f'{gains[0][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{gains[0].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         def non_null_balances(history):
             balances = []
