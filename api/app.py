@@ -186,7 +186,8 @@ def get_client(id: int = None, currency: str = None, since: datetime = None, to:
         s = client.serialize(full=True, data=False)
 
         if not since:
-            since = datetime.fromtimestamp(float(request.cookies.get('client-last-fetch', '0')))
+            pass
+            #since = datetime.fromtimestamp(float(request.cookies.get('client-last-fetch', '0')))
 
         if not to:
             to = datetime.now()
