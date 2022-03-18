@@ -64,8 +64,17 @@ class Event(db.Model):
         if len(self.registrations) == 0:
             return embed
 
-        gains = utils.calc_gains(self.registrations, self.guild_id, self.start, archived=datetime.now() > self.end)
-        gains.sort(key=lambda x: x[1][0], reverse=True)
+        now = datetime.now()
+        gains = utils.calc_gains(self.registrations, self.guild_id, self.start, archived=now > self.end)
+
+        def key(x):
+            if x[0].rekt_on:
+                # Trick to make the sort rank the first rekt last
+                return -(now - x[0].rekt_on).total_seconds() * 100
+            else:
+                return x[1][0]
+
+        gains.sort(key=key, reverse=True)
 
         description += f'**Best Trader :crown:**\n' \
                        f'{gains[0][0].discorduser.get_display_name(dc_client, self.guild_id)}\n'
