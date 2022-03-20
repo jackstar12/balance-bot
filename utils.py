@@ -1,6 +1,8 @@
 import re
 import logging
 import traceback
+
+
 from models.gain import Gain
 from functools import wraps
 
@@ -359,6 +361,7 @@ def create_leaderboard(dc_client: discord.Client,
     guild = dc_client.get_guild(guild_id)
     if not guild:
         raise InternalError(f'Provided guild_id is not valid!')
+
     event = dbutils.get_event(guild.id, state='archived' if archived else 'active', throw_exceptions=False)
 
     if event:
@@ -421,6 +424,7 @@ def create_leaderboard(dc_client: discord.Client,
                     )
                 )
             )
+
         prev_score = None
         for client, score in user_scores:
             member = guild.get_member(client.discorduser.user_id)
@@ -659,6 +663,7 @@ def create_yes_no_button_row(slash: SlashCommand,
 
         @slash.component_callback(components=[custom_id])
         @log_and_catch_errors(type="component callback")
+        @wraps(callback)
         async def yes_no_wrapper(ctx: ComponentContext):
 
             for button in buttons:

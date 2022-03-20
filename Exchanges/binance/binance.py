@@ -80,24 +80,24 @@ class BinanceSpot(_BinanceBaseClient):
         err_msg = None
         if response.get('msg') is None:
             data = response['balances']
-            for currency in data:
-                currency = currency['asset']
-                amount = float(currency['free']) + float(currency['locked'])
-
+            tickers = self._request(
+                Request(
+                    'GET',
+                    self.ENDPOINT + 'ticker/price'
+                ),
+                sign=False
+            )
+            ticker_prices = {
+                ticker['symbol']: ticker['price'] for ticker in tickers
+            }
+            for cur_balance in data:
+                currency = cur_balance['asset']
+                amount = float(cur_balance['free']) + float(cur_balance['locked'])
                 price = 0
                 if currency == 'USDT':
                     price = 1
                 elif amount > 0 and currency != 'LDUSDT' and currency != 'LDSRM':
-                    request = Request(
-                        'GET',
-                        self.ENDPOINT + 'ticker/price',
-                        params={
-                            'symbol': f'{currency}USDT'
-                        }
-                    )
-                    response_price = self._request(request, sign=False)
-                    if response_price.get('msg') is None:
-                        price = float(response_price['price'])
+                    price = float(ticker_prices.get(f'{currency}USDT', 0))
                 if amount * price > 0.05:
                     total_balance += amount * price
         else:

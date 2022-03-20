@@ -62,19 +62,10 @@ intents.guilds = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 slash = SlashCommand(bot)
 
-EXCHANGES: Dict[str, Type[ClientWorker]] = {
-    'binance-futures': BinanceFutures,
-    'binance-spot': BinanceSpot,
-    'bitmex': BitmexClient,
-    'ftx': FtxClient,
-    'kucoin': KuCoinClient,
-    'bybit': BybitClient
-}
-
 
 @bot.event
 async def on_ready():
-    user_manager.start_fetching()
+    #user_manager.start_fetching()
     event_manager.initialize_events()
 
     logger.info('Bot Ready')
@@ -417,7 +408,7 @@ async def register_new(ctx: SlashContext,
                     kwargs[name] = value
                 except UserInputError:
                     await ctx.send(
-                        f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...',
+                        f'Invalid keyword argument: {arg}\nSyntax for keyword arguments: key1=value1 key2=value2 ...',
                         hidden=True)
                     logging.error(f'Invalid Keyword Arg {arg} passed in')
 
@@ -428,7 +419,7 @@ async def register_new(ctx: SlashContext,
             # Check if required keyword args are given
             if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
                     all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
-                event = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
+                event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False)
                 existing_client = None
 
                 discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
@@ -446,20 +437,30 @@ async def register_new(ctx: SlashContext,
                     else:
                         existing_client = discord_user.global_client
 
-                new_client: Client = Client(
-                    api_key=api_key,
-                    api_secret=api_secret,
-                    subaccount=subaccount,
-                    extra_kwargs=kwargs,
-                    exchange=exchange_name,
-                    discorduser=discord_user
-                )
-                if event:
-                    new_client.events.append(event)
-                worker = exchange_cls(new_client)
+                def get_new_client() -> Client:
+                    new_client = Client(
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        subaccount=subaccount,
+                        extra_kwargs=kwargs,
+                        exchange=exchange_name,
+                        discorduser=discord_user
+                    )
+                    if event:
+                        new_client.events.append(event)
+                    return new_client
 
                 async def start_registration(ctx):
+
+                    new_client = get_new_client()
+                    worker = exchange_cls(new_client)
                     init_balance = worker.get_balance(datetime.now())
+
+                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
+                    # if the registration is cancelled, causing bugs
+                    db.session.expunge(new_client)
+                    db.session.commit()
+
                     if init_balance.error is None:
                         if init_balance.amount < config.REGISTRATION_MINIMUM:
                             message = f'You do not have enough balance in your account ' \
@@ -473,7 +474,9 @@ async def register_new(ctx: SlashContext,
                                 if existing_client:
                                     user_manager.delete_client(existing_client, commit=False)
 
-                                if not discord_user.global_client:
+                                new_client = get_new_client()
+
+                                if not discord_user.global_client or event is None:
                                     discord_user.global_client = new_client
                                     discord_user.global_client_id = new_client.id
 
@@ -532,7 +535,7 @@ async def register_new(ctx: SlashContext,
                 for arg in exchange_cls.required_extra_args:
                     args_readable += f'{arg}\n'
                 raise UserInputError(
-                    f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}')
+                    f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n{args_readable}')
         else:
             raise InternalError(f'Class {exchange_cls} is no subclass of ClientWorker!')
     except KeyError:
@@ -548,7 +551,7 @@ async def register_new(ctx: SlashContext,
 @utils.log_and_catch_errors()
 @utils.server_only
 async def register_existing(ctx: SlashContext):
-    event = dbutils.get_event(guild_id=ctx.guild_id, registration=True)
+    event = dbutils.get_event(guild_id=ctx.guild_id, state='registration')
     user = dbutils.get_user(ctx.author_id)
 
     if event.is_free_for_registration:
@@ -572,7 +575,13 @@ async def register_existing(ctx: SlashContext):
 @utils.log_and_catch_errors()
 @utils.server_only
 async def event_show(ctx: SlashContext):
-    events: List[Event] = Event.query.filter_by(guild_id=ctx.guild_id).all()
+    now = datetime.now()
+
+    events: List[Event] = Event.query.filter(
+        Event.guild_id == ctx.guild_id,
+        Event.end > now
+    ).all()
+
     if len(events) == 0:
         await ctx.send(content='There are no events', hidden=True)
     else:
@@ -612,6 +621,7 @@ async def event_show(ctx: SlashContext):
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
+
     if start >= end:
         raise UserInputError("Start time can't be after end time.")
     if registration_start >= registration_end:
@@ -632,7 +642,7 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
             raise UserInputError(
                 f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
-    active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
+    active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False)
 
     if active_registration:
         if registration_start < active_registration.registration_end:
@@ -675,17 +685,19 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
 @utils.log_and_catch_errors()
 async def unregister(ctx):
     client = dbutils.get_client(ctx.author.id, ctx.guild_id)
-    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
+
+    await ctx.defer(hidden=True)
 
     def unregister_user(ctx):
         if event:
             client.events.remove(event)
-            if len(client.events) == 0:
+            if not client.is_active and not client.is_global:
                 user_manager.delete_client(client)
         else:
             user_manager.delete_client(client)
-        discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
-        if len(discord_user.clients) == 0 and not discord_user.user:
+        discord_user: DiscordUser = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
+        if len(discord_user.clients) == 0:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
             db.session.commit()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
@@ -973,10 +985,14 @@ async def summary(ctx: SlashContext):
 async def archive(ctx: SlashContext):
 
     now = datetime.now()
+
     archived = Event.query.filter(
         Event.guild_id == ctx.guild_id,
         Event.end < now
-    )
+    ).all()
+
+    if len(archived) == 0:
+        raise UserInputError('There are no archived events')
 
     async def show_events(ctx, selection: List[Event]):
 

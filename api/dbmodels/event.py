@@ -37,6 +37,10 @@ class Event(db.Model):
     def is_free_for_registration(self):
         return self.registration_start <= datetime.now() <= self.registration_end
 
+    @hybrid_property
+    def is_archived(self):
+        return self.end < datetime.now()
+
     def get_discord_embed(self, dc_client: discord.Client, registrations=False):
         embed = discord.Embed(title=f'Event')
         embed.add_field(name="Name", value=self.name)
@@ -83,10 +87,14 @@ class Event(db.Model):
         description += f'\n**Worst Trader :disappointed_relieved:**\n' \
                        f'{gains[len(gains) - 1].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
-        gains.sort(key=lambda x: x.absolute, reverse=True)
+        initials = [client.initial for client in self.registrations]
+        initials.sort(reverse=True)
 
         description += f'\n**Highest Stakes :moneybag:**\n' \
-                       f'{gains[0].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{initials[0].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
+
+        description += f'\n**Lowest Stakes :yawning_face:**\n' \
+                       f'{initials[len(initials) - 1].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         def non_null_balances(history):
             balances = []
@@ -96,15 +104,24 @@ class Event(db.Model):
                     break
             return balances
 
+        def calc_volatility(client):
+            result = 0.0
+            prev_balance = client.initial
+            for balance in client.history:
+                result += (abs(balance.amount - prev_balance.amount) if prev_balance else 0.0)
+                if balance.amount == 0.0:
+                    break
+                prev_balance = balance
+            return result / client.initial.amount
+
         volatility = [
             (
                 client,
-                numpy.array(
-                    non_null_balances(client.history)
-                ).std() / client.history[0].amount
+                calc_volatility(client.history)
             )
             for client in self.registrations
         ]
+
         volatility.sort(key=lambda x: x[1], reverse=True)
 
         description += f'\n**Most Degen Trader :grimacing:**\n' \
@@ -116,13 +133,13 @@ class Event(db.Model):
         cum_percent = 0.0
         cum_dollar = 0.0
         for gain in gains:
-            cum_percent += gain[1][0]
-            cum_dollar += gain[1][1]
+            cum_percent += gain.relative
+            cum_dollar += gain.absolute
 
         cum_percent /= len(gains) or 1  # Avoid division by zero
 
         description += f'\nLast but not least... ' \
-                       f'\nIn total you {"made" if cum_dollar >= 0.0 else "lost"} {round(cum_dollar, ndigits=2)}$' \
+                       f'\nIn total you {"made" if cum_dollar >= 0.0 else "lost"} {abs(round(cum_dollar, ndigits=2))}$' \
                        f'\nCumulative % performance: {round(cum_percent, ndigits=2)}%'
 
         description += '\n'

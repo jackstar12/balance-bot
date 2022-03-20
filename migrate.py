@@ -6,6 +6,7 @@ import shutil
 import dotenv
 dotenv.load_dotenv()
 from datetime import datetime, timedelta
+import config
 from api.app import app
 from api.database import db
 from api.dbmodels.balance import balance_from_json
@@ -25,7 +26,7 @@ args = parser.parse_args()
 
 
 if args.archive:
-    shutil.move("HISTORY_443583326507499520_704403630375305317_1643670000.png", DATA_PATH + "HISTORY_443583326507499520_704403630375305317_1643670000.png")
+    shutil.copy("HISTORY_443583326507499520_704403630375305317_1643670000.png", DATA_PATH + "HISTORY_443583326507499520_704403630375305317_1643670000.png")
     now = datetime.now()
     event = Event.query.first()
     archive = Archive(

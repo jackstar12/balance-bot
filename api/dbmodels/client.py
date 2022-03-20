@@ -6,17 +6,22 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 from api.database import db
 import os
 import dotenv
+import config
+
+from api.dbmodels import balance
+
 dotenv.load_dotenv()
 
 _key = os.environ.get('ENCRYPTION_SECRET')
 assert _key, 'Missing ENCRYPTION_SECRET in env'
+
 
 class Client(db.Model):
     __tablename__ = 'client'
 
     # Identification
     id = db.Column(db.Integer, primary_key=True)
-    discord_user_id = db.Column(db.Integer, db.ForeignKey('discorduser.id'), nullable=True)
+    discord_user_id = db.Column(db.Integer, db.ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
 
     # User Information
     api_key = db.Column(db.String(), nullable=False)
@@ -41,6 +46,13 @@ class Client(db.Model):
     @hybrid_property
     def is_active(self):
         return not all(not event.is_active for event in self.events)
+
+    @hybrid_property
+    def initial(self):
+        try:
+            return self.history[0]
+        except ValueError:
+            return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
     def get_event_string(self, is_global=False):
         events = ''
