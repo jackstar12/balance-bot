@@ -133,9 +133,10 @@ class BinanceSpot(_BinanceBaseClient):
         err_msg = None
         if response.get('msg') is None:
             data = response['balances']
-            for balance in data:
-                currency = balance['asset']
-                amount = float(balance['free']) + float(balance['locked'])
+            for currency in data:
+                currency = currency['asset']
+                amount = float(currency['free']) + float(currency['locked'])
+
                 price = 0
                 if currency == 'USDT':
                     price = 1

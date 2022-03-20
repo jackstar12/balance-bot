@@ -36,12 +36,16 @@ app.config['JWT_TOKEN_LOCATION'] = ['cookies']
 app.config['JWT_CSRF_METHODS'] = []
 app.config['JWT_COOKIE_CSRF_PROTECT'] = True
 app.config['JWT_COOKIE_SECURE'] = True  # True in production
+app.config['JWT_COOKIE_MAX_AGE'] = timedelta(hours=48).total_seconds()
+app.config['JWT_SECRET_KEY'] = 'owcBrtneZ-AgIfGFS3Wel8KXQUjJDr7mA1grv1u7Ra0'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=48)
+app.config['JWT_SESSION_COOKIE'] = False
 
 
 @jwt_manager.user_lookup_loader
 def callback(token, payload):
-    email = payload.get('sub')
-    return User.query.filter_by(email=email).first()
+    id = payload.get('sub')
+    return User.query.filter_by(id=id).first()
 
 
 @app.after_request
@@ -51,9 +55,10 @@ def refresh_expiring_jwts(response):
         now = datetime.now(timezone.utc)
         target_timestamp = datetime.timestamp(now + timedelta(minutes=30))
         if target_timestamp > exp_timestamp:
-            flask_jwt.set_access_cookies(response, flask_jwt.create_access_token(identity=flask_jwt.get_jwt_identity()))
+            flask_jwt.set_access_cookies(response,
+                                         flask_jwt.create_access_token(identity=flask_jwt.current_user.id))
             flask_jwt.set_refresh_cookies(response,
-                                          flask_jwt.create_refresh_token(identity=flask_jwt.get_jwt_identity()))
+                                          flask_jwt.create_refresh_token(identity=flask_jwt.current_user.id))
         return response
     except (RuntimeError, KeyError):
         # Case where there is not a valid JWT. Just return the original respone
@@ -74,8 +79,8 @@ def register(email: str, password: str):
         db.session.add(new_user)
         db.session.commit()
         resp = jsonify({'login': True})
-        flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=new_user.email))
-        flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=new_user.email))
+        flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=new_user.id), app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
+        flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=new_user.id), app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
         return resp
     else:
         return {'msg': f'Email is already used'}, HTTPStatus.BAD_REQUEST
@@ -88,10 +93,18 @@ def login(email: str, password: str):
     if user:
         if bcrypt.hashpw(password.encode('utf-8'), user.salt.encode('utf-8')).decode('utf-8') == user.password:
             resp = jsonify({'login': True})
-            flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=user.email))
-            flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=user.email))
+            flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=user.id), max_age=app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
+            flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=user.id), app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
             return resp
     return {'msg': 'Wrong Email or password'}, 401
+
+
+@app.route('/api/v1/delete', methods=["POST"])
+@flask_jwt.jwt_required()
+def delete():
+    user: User = flask_jwt.current_user
+    User.query.filter_by(id=user.id).delete()
+    return {'msg': 'Success'}, HTTPStatus.OK
 
 
 @app.route('/api/v1/logout', methods=["POST"])
@@ -168,7 +181,7 @@ def get_client_query(user: User, client_id: int):
     )
 
 
-def get_client(id: int = None, currency: str = None, since: datetime = None, to: datetime = None):
+def get_client(id: int = None, currency: str = None, since: str = None, to: str = None):
     user = flask_jwt.current_user
 
     if not currency:
@@ -183,67 +196,91 @@ def get_client(id: int = None, currency: str = None, since: datetime = None, to:
     else:
         client = None
     if client:
-        s = client.serialize(full=True, data=False)
 
-        if not since:
-            since = datetime.fromtimestamp(0)
-            #since = datetime.fromtimestamp(float(request.cookies.get('client-last-fetch', '0')))
+        # Has selected timeframe changed?
+        #tf_update = since != request.cookies.get('client-since') or to != request.cookies.get('client-to')
+        tf_update = True
+
+        now = datetime.now()
 
         if not to:
-            to = datetime.now()
+            to_date = now
+        else:
+            to_date = datetime.fromtimestamp(int(to))
 
-        history = []
-        s['daily'] = utils.calc_daily(
-            client=client,
-            forEach=lambda balance: history.append(balance.serialize(full=True, data=True, currency=currency)),
-            throw_exceptions=False,
-            since=since,
-            to=to
-        )
-        s['history'] = history
+        if not since:
+            since_date = datetime.fromtimestamp(0)
+            since = '0'
+        else:
+            since_date = datetime.fromtimestamp(int(since))
 
-        def ratio(a: float, b: float):
-            return round(a / (a + b), ndigits=3) if a + b > 0 else 0.5
+        last_fetch = datetime.fromtimestamp(float(request.cookies.get('client-last-fetch', 0)))
+        latest_balance = client.history[len(client.history) - 1] if client.history else None
 
-        winning_days, losing_days = 0, 0
-        for day in s['daily']:
-            if day[2] > 0:
-                winning_days += 1
-            elif day[2] < 0:
-                losing_days += 1
+        if tf_update or (latest_balance and latest_balance.time > last_fetch < to_date):
+            s = client.serialize(full=True, data=False)
 
-        s['daily_win_ratio'] = ratio(winning_days, losing_days)
-        s['winning_days'] = winning_days
-        s['losing_days'] = losing_days
+            history = []
+            s['daily'] = utils.calc_daily(
+                client=client,
+                forEach=lambda balance: history.append(balance.serialize(full=True, data=True, currency=currency)),
+                throw_exceptions=False,
+                since=since_date,
+                to=to_date
+            )
+            s['history'] = history
 
-        trades = []
-        winners, losers = 0, 0
-        avg_win, avg_loss = 0.0, 0.0
-        for trade in client.trades:
-            if since <= trade.initial.time <= to:
-                trade = trade.serialize(data=True)
-                if trade['status'] == 'win':
-                    winners += 1
-                    avg_win += trade['realized_pnl']
-                elif trade['status'] == 'loss':
-                    losers += 1
-                    avg_loss += trade['realized_pnl']
-                trades.append(trade)
+            def ratio(a: float, b: float):
+                return round(a / (a + b), ndigits=3) if a + b > 0 else 0.5
 
-        s['trades'] = trades
-        s['win_ratio'] = ratio(winners, losers)
-        s['winners'] = winners
-        s['losers'] = losers
-        s['avg_win'] = avg_win
-        s['avg_loss'] = avg_loss
+            winning_days, losing_days = 0, 0
+            for day in s['daily']:
+                if day[2] > 0:
+                    winning_days += 1
+                elif day[2] < 0:
+                    losing_days += 1
 
-        response = jsonify(s)
+            s['daily_win_ratio'] = ratio(winning_days, losing_days)
+            s['winning_days'] = winning_days
+            s['losing_days'] = losing_days
 
-        response.set_cookie('client-last-fetch', value=str(datetime.now().timestamp()), expires='session')
+            trades = []
+            winners, losers = 0, 0
+            avg_win, avg_loss = 0.0, 0.0
+            for trade in client.trades:
+                if since <= trade.initial.time <= to:
+                    trade = trade.serialize(data=True)
+                    if trade['status'] == 'win':
+                        winners += 1
+                        avg_win += trade['realized_pnl']
+                    elif trade['status'] == 'loss':
+                        losers += 1
+                        avg_loss += trade['realized_pnl']
+                    trades.append(trade)
 
-        return response
+            s['trades'] = trades
+            s['win_ratio'] = ratio(winners, losers)
+            s['winners'] = winners
+            s['losers'] = losers
+            s['avg_win'] = avg_win / (winners or 1)
+            s['avg_loss'] = avg_loss / (losers or 1)
+            s['action'] = 'NEW'
+
+            response = jsonify(s)
+
+            response.set_cookie('client-last-fetch', value=str(now.timestamp()), expires='session')
+            #response.set_cookie('client-since', value=since, expires='session')
+            #response.set_cookie('client-to', value=to, expires='session')
+
+            return response
+        else:
+            return {'msg': 'No changes', 'code': 20000}, HTTPStatus.OK
     else:
         return {'msg': f'Invalid client id', 'code': 40000}, HTTPStatus.BAD_REQUEST
+
+
+def get_client_analytics(id: int = None, currency: str = None, since: str = None, str = None):
+    pass
 
 
 def delete_client(id: int):
@@ -271,7 +308,7 @@ apiutils.create_endpoint(
                 ("id", False),
                 ("currency", False),
                 ("since", False),
-                ("to", False)
+                ("to", False),
             ],
             'callback': get_client
         },

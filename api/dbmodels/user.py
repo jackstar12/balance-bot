@@ -14,7 +14,7 @@ class User(db.Model, Serializer):
     discord_user_id = db.Column(db.Integer(), db.ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
 
     # Data
-    clients = db.relationship('Client', backref='user', lazy=True)
+    clients = db.relationship('Client', backref='user', lazy=True, cascade="all, delete")
     labels = db.relationship('Label', backref='client', lazy=True, cascade="all, delete")
 
 

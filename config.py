@@ -3,6 +3,7 @@ from Exchanges.bitmex import BitmexClient
 from Exchanges.bybit import BybitClient
 from Exchanges.ftx.ftx import FtxClient
 from Exchanges.kucoin import KuCoinClient
+from Exchanges.okx.okx import OkxClient
 
 PREFIX = "c "
 DATA_PATH = "data/"
@@ -47,7 +48,8 @@ EXCHANGES = {
     'bitmex': BitmexClient,
     'ftx': FtxClient,
     'kucoin': KuCoinClient,
-    'bybit': BybitClient
+    'bybit': BybitClient,
+    'okx': OkxClient
 }
 
 LOG_OUTPUT_DIR = "LOGS/"
