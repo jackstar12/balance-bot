@@ -1,13 +1,17 @@
 import re
 import logging
-from functools import wraps
 import traceback
+from models.gain import Gain
+from functools import wraps
+
 import discord
 import inspect
+import api.dbutils
 import matplotlib.pyplot as plt
 
 from prettytable import PrettyTable
 
+import api.dbmodels.client as client
 from api import dbutils
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
@@ -80,7 +84,7 @@ def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
     return decorator
 
 
-def log_and_catch_errors(log_args=True):
+def log_and_catch_errors(log_args=True, type: str = "command"):
     """
     Decorator which handles logging/errors for all commands.
     It takes care of:
@@ -95,11 +99,11 @@ def log_and_catch_errors(log_args=True):
         @wraps(coro)
         async def wrapper(ctx: SlashContext, *args, **kwargs):
             logging.info(f'New Interaction: '
-                         f'Execute command {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} '
+                         f'Execute {type} {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} ({ctx.author_id}) '
                          f'guild={ctx.guild}{f" {args=}, {kwargs=}" if log_args else ""}')
             try:
                 await coro(ctx, *args, **kwargs)
-                logging.info(f'Done executing command {coro.__name__}')
+                logging.info(f'Done executing {type} {coro.__name__}')
             except UserInputError as e:
                 if e.user_id:
                     if ctx.guild:
@@ -220,12 +224,18 @@ def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
 
 
 def calc_daily(client: Client,
-               amount: int,
+               amount: int = None,
                guild_id: int = None,
                currency: str = None,
-               string=False) -> Union[List[Tuple[datetime, float, float, float]], str]:
+               string=False,
+               forEach: Callable[[Balance], Any] = None,
+               throw_exceptions=True,
+               since: datetime = None,
+               to: datetime = None) -> Union[List[Tuple[datetime, float, float, float]], str]:
     """
     Calculates daily balance changes for a given client.
+    :param throw_exceptions:
+    :param forEach: function to be performed for each balance
     :param client: Client to calculate changes
     :param amount: Amount of days to calculate
     :param guild_id:
@@ -234,9 +244,23 @@ def calc_daily(client: Client,
     :return:
     """
     if len(client.history) == 0:
-        raise UserInputError(reason='Got no data for this user')
+        if throw_exceptions:
+            raise UserInputError(reason='Got no data for this user')
+        else:
+            return []
 
-    daily_end = datetime.now().replace(hour=0, minute=0, second=0)
+    if currency is None:
+        currency = '$'
+
+    if since is None:
+        since = datetime.fromtimestamp(0)
+
+    now = datetime.now()
+
+    if to is None:
+        to = now
+
+    daily_end = min(now, to)
 
     if amount:
         try:
@@ -244,7 +268,9 @@ def calc_daily(client: Client,
         except OverflowError:
             raise ValueError('Invalid daily amount given')
     else:
-        daily_start = client.history[0].time.replace(hour=0, minute=0, second=0)
+        daily_start = client.history[0].time
+
+    daily_start = max(since, daily_start).replace(hour=0, minute=0, second=0)
 
     if guild_id:
         event = dbutils.get_event(guild_id)
@@ -253,9 +279,11 @@ def calc_daily(client: Client,
 
     um = UserManager()
 
-    current_search = daily_start
+    current_day = daily_start
+    current_search = daily_start + timedelta(days=1)
     prev_balance = um.db_match_balance_currency(client.history[0], currency)
-    prev_daily = None
+    prev_daily = client.history[0]
+    prev_daily.time = prev_daily.time.replace(hour=0, minute=0, second=0)
 
     if string:
         results = PrettyTable(
@@ -264,24 +292,41 @@ def calc_daily(client: Client,
     else:
         results = []
     for balance in client.history:
-        if balance.time >= current_search:
-            daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
-            daily.time = daily.time.replace(minute=0, second=0)
+        if since <= balance.time <= to:
+            if balance.time >= current_search:
 
-            prev_daily = prev_daily or daily
-            values = (
-                        daily.time.strftime('%Y-%m-%d') if string else daily.time,
-                        daily.amount,
-                        round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-                        calc_percentage(prev_daily.amount, daily.amount, string=False)
-                     )
-            if string:
-                results.add_row([*values])
-            else:
-                results.append(values)
-            prev_daily = daily
-            current_search = daily.time + timedelta(days=1)
-        prev_balance = balance
+                daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
+                daily.time = daily.time.replace(minute=0, second=0)
+
+                prev_daily = prev_daily or daily
+                values = (
+                            current_day.strftime('%Y-%m-%d'),
+                            daily.amount,
+                            round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+                            calc_percentage(prev_daily.amount, daily.amount, string=False)
+                         )
+                if string:
+                    results.add_row([*values])
+                else:
+                    results.append(values)
+                prev_daily = daily
+                current_day = current_search
+                current_search = current_search + timedelta(days=1)
+            prev_balance = balance
+            if callable(forEach):
+                forEach(balance)
+
+    if prev_balance.time < current_search:
+        values = (
+            current_day.strftime('%Y-%m-%d'),
+            prev_balance.amount,
+            round(prev_balance.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+            calc_percentage(prev_daily.amount, prev_balance.amount, string=False)
+        )
+        if string:
+            results.add_row([*values])
+        else:
+            results.append(values)
 
     return results
 
@@ -350,16 +395,15 @@ def create_leaderboard(dc_client: discord.Client,
 
         client_gains = calc_gains(clients, guild.id, time, archived=archived)
 
-        for client, client_gain in client_gains:
-            if client_gain is not None:
-                if client.rekt_on:
-                    users_rekt.append(client)
+        for gain in client_gains:
+            if gain.relative is not None:
+                if gain.client.rekt_on:
+                    users_rekt.append(gain.client)
                 else:
-                    user_gain_rel, user_gain_abs = client_gain
-                    user_scores.append((client, user_gain_rel))
-                    value_strings[client] = f'{user_gain_rel}% ({user_gain_abs}$)'
+                    user_scores.append((gain.client, gain.relative))
+                    value_strings[gain.client] = f'{gain.relative}% ({gain.absolute}$)'
             else:
-                clients_missing.append(client)
+                clients_missing.append(gain.client)
     else:
         raise UserInputError(f'Unknown mode {mode} was passed in')
 
@@ -421,7 +465,7 @@ def calc_gains(clients: List[Client],
                guild_id: int,
                search: datetime,
                currency: str = None,
-               archived=False) -> List[Tuple[Client, Tuple[float, float]]]:
+               archived=False) -> List[Gain]:
     """
     :param guild_id:
     :param clients: users to calculate gain for
@@ -439,6 +483,9 @@ def calc_gains(clients: List[Client],
     results = []
     user_manager = UserManager()
     for client in clients:
+        if not client:
+            logging.info('calc_gains: A none client was passed in?')
+            continue
         data = user_manager.get_client_history(client, guild_id, start=search, archived=archived)
         if len(data) > 0:
             balance_then = user_manager.db_match_balance_currency(data[0], currency)
@@ -446,13 +493,20 @@ def calc_gains(clients: List[Client],
             diff = round(balance_now.amount - balance_then.amount,
                          ndigits=CURRENCY_PRECISION.get(currency, 3))
             if balance_then.amount > 0:
-                results.append((client,
-                                (round(100 * (diff / balance_then.amount),
-                                       ndigits=CURRENCY_PRECISION.get('%', 2)), diff)))
+                results.append(
+                    Gain(
+                        client,
+                        relative=round(100 * (diff / balance_then.amount), ndigits=CURRENCY_PRECISION.get('%', 2)),
+                        absolute=diff
+                    )
+                )
+
             else:
-                results.append((client, (0.0, diff)))
+                results.append(
+                    Gain(client, 0.0, diff)
+                )
         else:
-            results.append((client, None))
+            results.append(Gain(client, None, None))
 
     return results
 
@@ -604,7 +658,8 @@ def create_yes_no_button_row(slash: SlashCommand,
             slash.remove_component_callback(custom_id=custom_id)
 
         @slash.component_callback(components=[custom_id])
-        async def wrapper(ctx: ComponentContext):
+        @log_and_catch_errors(type="component callback")
+        async def yes_no_wrapper(ctx: ComponentContext):
 
             for button in buttons:
                 slash.remove_component_callback(custom_id=button['custom_id'])
@@ -672,6 +727,7 @@ def create_selection(slash: SlashCommand,
         slash.remove_component_callback(custom_id=custom_id)
 
     @slash.component_callback(components=[custom_id])
+    @log_and_catch_errors(type="component callback")
     async def on_select(ctx: ComponentContext):
         values = ctx.data['values']
         objects = [objects_by_label.get(value) for value in values]

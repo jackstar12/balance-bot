@@ -46,7 +46,8 @@ from config import (DATA_PATH,
                     REKT_GUILDS,
                     CURRENCY_PRECISION,
                     REKT_THRESHOLD,
-                    ARCHIVE_PATH)
+                    ARCHIVE_PATH,
+                    EXCHANGES)
 from errors import UserInputError, InternalError
 from eventmanager import EventManager
 from usermanager import UserManager
@@ -327,24 +328,24 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
     user_manager.fetch_data(clients=clients)
     user_gains = utils.calc_gains(clients, ctx.guild_id, time, currency)
 
-    for cur_client, user_gain in user_gains:
+    for user_gain in user_gains:
         guild = bot.get_guild(ctx.guild_id)
         if ctx.guild:
             gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
         else:
             
-            gain_message = f"Your gain ({cur_client.get_event_string()}): " if not guild else f"Your gain on {guild}: "
-        if user_gain is None:
+            gain_message = f"Your gain ({user_gain.client.get_event_string()}): " if not guild else f"Your gain on {guild}: "
+        if user_gain.relative is None:
             logger.info(
                 f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
             if ctx.guild:
                 await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
             else:
-                await ctx.send(f'Not enough data for calculating your gain ({cur_client.get_event_string()})')
+                await ctx.send(f'Not enough data for calculating your gain ({user_gain.client.get_event_string()})')
         else:
             user_gain_rel, user_gain_abs = user_gain
             await ctx.send(
-                f'{gain_message}{round(user_gain_rel, ndigits=3)}% ({round(user_gain_abs, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
+                f'{gain_message}{round(user_gain.relative, ndigits=3)}% ({round(user_gain.absolute, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
 
 
 def get_available_exchanges() -> str:
@@ -571,7 +572,7 @@ async def register_existing(ctx: SlashContext):
 @utils.log_and_catch_errors()
 @utils.server_only
 async def event_show(ctx: SlashContext):
-    events = Event.query.filter_by(guild_id=ctx.guild_id).all()
+    events: List[Event] = Event.query.filter_by(guild_id=ctx.guild_id).all()
     if len(events) == 0:
         await ctx.send(content='There are no events', hidden=True)
     else:

@@ -1,3 +1,10 @@
+from Exchanges.binance.binance import BinanceFutures, BinanceSpot
+from Exchanges.bitmex import BitmexClient
+from Exchanges.bybit import BybitClient
+from Exchanges.ftx.ftx import FtxClient
+from Exchanges.kucoin import KuCoinClient
+from Exchanges.okx.okx import OkxClient
+
 PREFIX = "c "
 DATA_PATH = "data/"
 ARCHIVE_PATH = "archive/"
@@ -35,5 +42,15 @@ CURRENCY_ALIASES = {
     'XBT': 'BTC',
     'USD': '$'
 }
+EXCHANGES = {
+    'binance-futures': BinanceFutures,
+    'binance-spot': BinanceSpot,
+    'bitmex': BitmexClient,
+    'ftx': FtxClient,
+    'kucoin': KuCoinClient,
+    'bybit': BybitClient,
+    'okx': OkxClient
+}
+
 LOG_OUTPUT_DIR = "LOGS/"
 

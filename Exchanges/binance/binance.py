@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hmac
 import hmac
 import json
@@ -9,12 +10,9 @@ from typing import Dict, Callable
 
 import requests
 from requests import Request, HTTPError
-
-#from models.balance import Balance
 from clientworker import ClientWorker
-#from models.client import Client
 from api.dbmodels.client import Client
-from api.dbmodels.balance import Balance
+import api.dbmodels.balance as balance
 
 
 class _BinanceBaseClient(ClientWorker):
@@ -65,7 +63,7 @@ class BinanceFutures(_BinanceBaseClient):
         request = Request('GET', self.ENDPOINT + 'fapi/v2/account')
         response = self._request(request)
 
-        return Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', time=time if time else datetime.now(), error=response.get('msg', None))
+        return balance.Balance(amount=float(response.get('totalMarginBalance', 0)), currency='$', time=time if time else datetime.now(), error=response.get('msg', None))
 
 
 class BinanceSpot(_BinanceBaseClient):
@@ -82,9 +80,10 @@ class BinanceSpot(_BinanceBaseClient):
         err_msg = None
         if response.get('msg') is None:
             data = response['balances']
-            for balance in data:
-                currency = balance['asset']
-                amount = float(balance['free']) + float(balance['locked'])
+            for currency in data:
+                currency = currency['asset']
+                amount = float(currency['free']) + float(currency['locked'])
+
                 price = 0
                 if currency == 'USDT':
                     price = 1
@@ -104,4 +103,4 @@ class BinanceSpot(_BinanceBaseClient):
         else:
             err_msg = response['msg']
 
-        return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
+        return balance.Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
