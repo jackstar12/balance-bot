@@ -601,12 +601,12 @@ def calc_xs_ys(data: List[Balance],
     ys = []
 
     if data:
-        relative_to = relative_to or data[0]
+        relative_to: Balance = relative_to or data[0]
         for balance in data:
             xs.append(balance.time.replace(microsecond=0))
             if percentage:
-                if relative_to > 0:
-                    amount = 100 * (balance.amount - relative_to) / relative_to
+                if relative_to.amount > 0:
+                    amount = 100 * (balance.amount - relative_to.amount) / relative_to.amount
                 else:
                     amount = 0.0
             else:
