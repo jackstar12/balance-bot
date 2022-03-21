@@ -498,19 +498,21 @@ def calc_gains(clients: List[Client],
         if not client:
             logging.info('calc_gains: A none client was passed in?')
             continue
-        history = user_manager.get_client_history(client, guild_id, since=search, archived=archived)
 
-        search, _ = dbutils.get_guild_start_end_times(guild_id, search, None, archived=archived)
+        #search, _ = dbutils.get_guild_start_end_times(guild_id, search, None, archived=archived)
+#
+        #balance_then = user_manager.db_match_balance_currency(
+        #    Balance.query.filter(
+        #        Balance.client_id == client.id,
+        #        Balance.time >= search
+        #    ).first(),
+        #    currency
+        #)
 
-        balance_then = user_manager.db_match_balance_currency(
-            Balance.query.filter(
-                Balance.client_id == client.id,
-                Balance.time >= search
-            ).first(),
-            currency
-        )
+        history = user_manager.get_client_history(client, guild_id, since=search, currency=currency)
 
-        if balance_then:
+        if history.data:
+            balance_then = history.data[0]
             balance_now = user_manager.db_match_balance_currency(history.data[len(history.data) - 1], currency)
             diff = round(balance_now.amount - balance_then.amount,
                          ndigits=CURRENCY_PRECISION.get(currency, 3))

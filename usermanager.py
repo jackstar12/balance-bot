@@ -154,25 +154,36 @@ class UserManager(Singleton):
                            currency: str = None,
                            archived = False) -> History:
 
-        history_start, history_end = dbutils.get_guild_start_end_times(guild_id, since, to, archived=archived)
+        since = since or datetime.fromtimestamp(0)
+        to = to or datetime.now()
+        event = dbutils.get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
+
+        if event:
+            # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
+            since = max(since, event.start)
+            to = min(to, event.end)
+
         if currency is None:
             currency = '$'
 
         results = []
         initial = None
 
-        for balance in client.history:
-            if history_start <= balance.time <= history_end:
-                if currency != '$':
-                    balance = self.db_match_balance_currency(balance, currency)
-                if balance:
-                    results.append(balance)
-            elif since and since <= balance.time:
-                initial = balance
+        if event:
+            for balance in client.history:
+                if since <= balance.time <= to:
+                    if currency != '$':
+                        balance = self.db_match_balance_currency(balance, currency)
+                    if balance:
+                        results.append(balance)
+                elif event.start <= balance.time and not initial:
+                    initial = balance
+        else:
+            results = client.history
 
         if not initial:
             try:
-                initial = client.history[0]
+                initial = results[0]
             except ValueError:
                 pass
 
