@@ -12,6 +12,7 @@ from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from clientworker import ClientWorker
 from config import CURRENCY_ALIASES
+from models.history import History
 from models.singleton import Singleton
 
 
@@ -148,25 +149,37 @@ class UserManager(Singleton):
     def get_client_history(self,
                            client: Client,
                            guild_id: int,
-                           start: datetime = None,
-                           end: datetime = None,
+                           since: datetime = None,
+                           to: datetime = None,
                            currency: str = None,
-                           archived = False) -> List[Balance]:
+                           archived = False) -> History:
 
-        start, end = dbutils.get_guild_start_end_times(guild_id, start, end, archived=archived)
+        history_start, history_end = dbutils.get_guild_start_end_times(guild_id, since, to, archived=archived)
         if currency is None:
             currency = '$'
 
         results = []
+        initial = None
 
         for balance in client.history:
-            if start <= balance.time <= end:
+            if history_start <= balance.time <= history_end:
                 if currency != '$':
                     balance = self.db_match_balance_currency(balance, currency)
                 if balance:
                     results.append(balance)
+            elif since and since <= balance.time:
+                initial = balance
 
-        return results
+        if not initial:
+            try:
+                initial = client.history[0]
+            except ValueError:
+                pass
+
+        return History(
+            data=results,
+            initial=initial
+        )
 
     def clear_client_data(self,
                           client: Client,
