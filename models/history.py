@@ -5,4 +5,4 @@ from api.dbmodels.balance import Balance
 
 class History(NamedTuple):
     data: List[Balance]
-    initial: Optional[float]
+    initial: Optional[Balance]

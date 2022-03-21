@@ -204,7 +204,7 @@ def create_history(to_graph: List[Tuple[Client, str]],
 
         xs, ys = calc_xs_ys(history.data, percentage, relative_to=history.initial)
 
-        total_gain = calc_percentage(history.initial, ys[len(ys) - 1])
+        total_gain = calc_percentage(history.initial.amount, ys[len(ys) - 1])
 
         if first:
             title = f'History for {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
