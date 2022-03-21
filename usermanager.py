@@ -92,7 +92,7 @@ class UserManager(Singleton):
 
     def fetch_data(self, clients: List[Client] = None, guild_id: int = None):
         workers = [self._get_worker(client) for client in clients]
-        #self._db_fetch_data(workers, guild_id)
+        self._db_fetch_data(workers, guild_id)
 
     def get_client_balance(self, client: Client, currency: str = None, force_fetch=False) -> Balance:
 
