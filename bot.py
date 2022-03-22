@@ -65,7 +65,8 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
-    user_manager.start_fetching()
+    #user_manager.start_fetching()
+    bot.loop.create_task(user_manager.async_start_fetching())
     event_manager.initialize_events()
 
     logger.info('Bot Ready')
@@ -145,7 +146,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         registered_user = dbutils.get_client(user.id, ctx.guild.id)
 
         await ctx.defer()
-        usr_balance = user_manager.get_client_balance(registered_user, currency)
+        usr_balance = await user_manager.get_client_balance(registered_user, currency)
         if usr_balance and usr_balance.error is None:
             await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
         else:
@@ -155,7 +156,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         await ctx.defer()
 
         for user_client in user.clients:
-            usr_balance = user_manager.get_client_balance(user_client, currency)
+            usr_balance = await user_manager.get_client_balance(user_client, currency)
             balance_message = f'Your balance ({user_client.get_event_string()}): '
             if usr_balance.error is None:
                 await ctx.send(f'{balance_message}{usr_balance.to_string()}')
@@ -256,7 +257,7 @@ async def history(ctx: SlashContext,
 
     await ctx.defer()
 
-    utils.create_history(
+    await utils.create_history(
         to_graph=registrations,
         guild_id=ctx.guild_id,
         start=since,
@@ -316,7 +317,7 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
 
     await ctx.defer()
 
-    user_manager.fetch_data(clients=clients)
+    await user_manager.fetch_data(clients=clients)
     user_gains = utils.calc_gains(clients, ctx.guild_id, time, currency)
 
     for user_gain in user_gains:
@@ -1045,7 +1046,14 @@ user_manager = UserManager(exchanges=EXCHANGES,
 
 event_manager = EventManager(discord_client=bot)
 
+
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
-bot.run(KEY)
+
+def run():
+    bot.run(KEY)
+
+
+if __name__ == '__main__':
+    run()

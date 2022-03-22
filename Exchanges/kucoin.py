@@ -3,6 +3,7 @@ import base64
 import hmac
 from datetime import datetime
 
+from aiohttp import ClientResponse, ClientResponseError
 from requests import Request, Response, Session, HTTPError
 import urllib.parse
 import time
@@ -31,49 +32,48 @@ class KuCoinClient(ClientWorker):
         return balance
 
     # https://docs.kucoin.com/#authentication
-    def _sign_request(self, request: Request):
+    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
-        prepared = request.prepare()
-        signature_payload = f'{ts}{request.method}{prepared.path_url}'
-        if prepared.body is not None:
-            signature_payload += prepared.body
+        signature_payload = f'{ts}{method}{url}'
+        if data is not None:
+            signature_payload += data
         signature = base64.b64encode(
             hmac.new(self._api_secret.encode('utf-8'), signature_payload.encode('utf-8'), 'sha256').digest()
         )
         passphrase = base64.b64encode(
             hmac.new(self._api_secret.encode('utf-8'), self._extra_kwargs['passphrase'].encode('utf-8'), 'sha256').digest()
         )
-        request.headers['KC-API-KEY'] = self._api_key
-        request.headers['KC-API-TIMESTAMP'] = str(ts)
-        request.headers['KC-API-SIGN'] = signature
-        request.headers['KC-API-PASSPHRASE'] = passphrase
-        request.headers['KC-API-KEY-VERSION'] = '2'
+        headers['KC-API-KEY'] = self._api_key
+        headers['KC-API-TIMESTAMP'] = str(ts)
+        headers['KC-API-SIGN'] = signature
+        headers['KC-API-PASSPHRASE'] = passphrase
+        headers['KC-API-KEY-VERSION'] = '2'
 
     # https://docs.kucoin.com/#request
-    def _process_response(self, response: Response) -> dict:
-        response_json = response.json()
+    async def _process_response(self, response: ClientResponse) -> dict:
+        response_json = await response.json()
         try:
             response.raise_for_status()
-        except HTTPError as e:
+        except ClientResponseError as e:
             logging.error(f'{e}\n{response_json}')
 
             error = ''
-            if response.status_code == 400:
+            if response.status == 400:
                 error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
-            elif response.status_code == 401:
+            elif response.status == 401:
                 error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your api access"
-            elif response.status_code == 403:
+            elif response.status == 403:
                 error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your api access"
-            elif response.status_code == 404:
+            elif response.status == 404:
                 error = "404 Not Found. This is probably a bug in the bot, please contact dev"
-            elif response.status_code == 429:
+            elif response.status == 429:
                 error = "429 Rate Limit violated. Try again later"
-            elif 500 <= response.status_code < 600:
-                error = f"{response.status_code} Problem or Maintenance on {self.exchange} servers."
+            elif 500 <= response.status < 600:
+                error = f"{response.status} Problem or Maintenance on {self.exchange} servers."
 
             response_json['msg'] = error
             return response_json
 
         # OK
-        if response.status_code == 200:
+        if response.status == 200:
             return response_json

@@ -6,6 +6,8 @@ import json
 import sys
 from datetime import datetime
 
+from aiohttp import ClientResponse, ClientResponseError
+
 from clientworker import ClientWorker
 from api.dbmodels.balance import Balance
 from requests import Request, Response, Session, HTTPError
@@ -57,33 +59,34 @@ class BybitClient(ClientWorker):
         return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
-    def _sign_request(self, request):
+    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
-        request.params['api_key'] = self._api_key
-        request.params['timestamp'] = str(ts)
-        query_string = urllib.parse.urlencode(request.params)
+        params['api_key'] = self._api_key
+        params['timestamp'] = str(ts)
+        query_string = urllib.parse.urlencode(params)
         sign = hmac.new(self._api_secret.encode('utf-8'), query_string.encode('utf-8'), 'sha256').hexdigest()
-        request.params['sign'] = sign
+        params['sign'] = sign
 
-    def _process_response(self, response: Response):
+    async def _process_response(self, response: ClientResponse):
+        response_json = await response.json()
         try:
             response.raise_for_status()
-        except HTTPError as e:
+        except ClientResponseError as e:
             logging.error(f'{e}\n{response.reason}')
 
             error = ''
-            if response.status_code == 400:
+            if response.status == 400:
                 error = f"400 Bad Request ({response.reason}). This is probably a bug in the bot, please contact dev"
-            elif response.status_code == 401:
+            elif response.status == 401:
                 error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
-            elif response.status_code == 403:
+            elif response.status == 403:
                 error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
-            elif response.status_code == 404:
+            elif response.status == 404:
                 error = "404 Not Found. This is probably a bug in the bot, please contact dev"
-            elif response.status_code == 429:
+            elif response.status == 429:
                 error = "429 Rate Limit violated. Try again later"
-            elif 500 <= response.status_code < 600:
-                error = f"{response.status_code} Problem or Maintenance on {self.exchange} servers."
+            elif 500 <= response.status < 600:
+                error = f"{response.status} Problem or Maintenance on {self.exchange} servers."
 
             # Return standard HTTP error message if status code isnt specified
             if error == '':
@@ -93,5 +96,5 @@ class BybitClient(ClientWorker):
             return response_json
 
         # OK
-        if response.status_code == 200:
-            return response.json()
+        if response.status == 200:
+            return response_json

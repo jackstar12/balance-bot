@@ -160,16 +160,16 @@ def de_emojify(text):
     return _regrex_pattern.sub(r'', text)
 
 
-def create_history(to_graph: List[Tuple[Client, str]],
-                   guild_id: int,
-                   start: datetime,
-                   end: datetime,
-                   currency_display: str,
-                   currency: str,
-                   percentage: bool,
-                   path: str,
-                   custom_title: str = None,
-                   archived=False):
+async def create_history(to_graph: List[Tuple[Client, str]],
+                         guild_id: int,
+                         start: datetime,
+                         end: datetime,
+                         currency_display: str,
+                         currency: str,
+                         percentage: bool,
+                         path: str,
+                         custom_title: str = None,
+                         archived=False):
     """
     Creates a history image for a given list of clients and stores it in the given path.
 
@@ -187,8 +187,8 @@ def create_history(to_graph: List[Tuple[Client, str]],
 
     first = True
     title = ''
+
     um = UserManager()
-    um.fetch_data([graph[0] for graph in to_graph])
 
     for registered_client, name in to_graph:
 

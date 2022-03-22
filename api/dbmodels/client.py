@@ -40,6 +40,13 @@ class Client(db.Model):
     required_extra_args: List[str] = []
 
     @hybrid_property
+    def latest(self):
+        try:
+            return self.history[len(self.history) - 1]
+        except ValueError:
+            return None
+
+    @hybrid_property
     def is_global(self):
         return self.discorduser.global_client_id == self.id
 
