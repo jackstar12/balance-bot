@@ -12,6 +12,7 @@ from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from clientworker import ClientWorker
 from config import CURRENCY_ALIASES
+from models.history import History
 from models.singleton import Singleton
 
 
@@ -92,7 +93,7 @@ class UserManager(Singleton):
 
     def fetch_data(self, clients: List[Client] = None, guild_id: int = None):
         workers = [self._get_worker(client) for client in clients]
-        #self._db_fetch_data(workers, guild_id)
+        self._db_fetch_data(workers, guild_id)
 
     def get_client_balance(self, client: Client, currency: str = None, force_fetch=False) -> Balance:
 
@@ -148,25 +149,48 @@ class UserManager(Singleton):
     def get_client_history(self,
                            client: Client,
                            guild_id: int,
-                           start: datetime = None,
-                           end: datetime = None,
+                           since: datetime = None,
+                           to: datetime = None,
                            currency: str = None,
-                           archived = False) -> List[Balance]:
+                           archived = False) -> History:
 
-        start, end = dbutils.get_guild_start_end_times(guild_id, start, end, archived=archived)
+        since = since or datetime.fromtimestamp(0)
+        to = to or datetime.now()
+        event = dbutils.get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
+
+        if event:
+            # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
+            since = max(since, event.start)
+            to = min(to, event.end)
+
         if currency is None:
             currency = '$'
 
         results = []
+        initial = None
 
-        for balance in client.history:
-            if start <= balance.time <= end:
-                if currency != '$':
-                    balance = self.db_match_balance_currency(balance, currency)
-                if balance:
-                    results.append(balance)
+        if event:
+            for balance in client.history:
+                if since <= balance.time <= to:
+                    if currency != '$':
+                        balance = self.db_match_balance_currency(balance, currency)
+                    if balance:
+                        results.append(balance)
+                elif event.start <= balance.time and not initial:
+                    initial = balance
+        else:
+            results = client.history
 
-        return results
+        if not initial:
+            try:
+                initial = results[0]
+            except ValueError:
+                pass
+
+        return History(
+            data=results,
+            initial=initial
+        )
 
     def clear_client_data(self,
                           client: Client,

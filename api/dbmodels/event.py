@@ -88,7 +88,7 @@ class Event(db.Model):
                        f'{gains[len(gains) - 1].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
         initials = [client.initial for client in self.registrations]
-        initials.sort(reverse=True)
+        initials.sort(key=lambda x: x.amount, reverse=True)
 
         description += f'\n**Highest Stakes :moneybag:**\n' \
                        f'{initials[0].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
@@ -117,7 +117,7 @@ class Event(db.Model):
         volatility = [
             (
                 client,
-                calc_volatility(client.history)
+                calc_volatility(client)
             )
             for client in self.registrations
         ]

@@ -81,9 +81,11 @@ def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
 
 
 def get_guild_start_end_times(guild_id, start, end, archived=False):
+
     start = datetime.fromtimestamp(0) if not start else start
     end = datetime.now() if not end else end
     event = get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
+
     if event:
         # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
         return max(start, event.start), min(end, event.end)

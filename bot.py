@@ -65,7 +65,7 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
-    #user_manager.start_fetching()
+    user_manager.start_fetching()
     event_manager.initialize_events()
 
     logger.info('Bot Ready')
@@ -334,7 +334,6 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
             else:
                 await ctx.send(f'Not enough data for calculating your gain ({user_gain.client.get_event_string()})')
         else:
-            user_gain_rel, user_gain_abs = user_gain
             await ctx.send(
                 f'{gain_message}{round(user_gain.relative, ndigits=3)}% ({round(user_gain.absolute, ndigits=CURRENCY_PRECISION.get(currency, 3))}{currency})')
 
