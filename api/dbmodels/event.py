@@ -173,8 +173,8 @@ class Event(db.Model):
 
         return file
 
-    def create_leaderboard(self, dc_client: discord.Client, mode='gain', time: datetime = None) -> discord.Embed:
-        leaderboard = utils.create_leaderboard(dc_client, self.guild_id, mode, time)
+    async def create_leaderboard(self, dc_client: discord.Client, mode='gain', time: datetime = None) -> discord.Embed:
+        leaderboard = await utils.create_leaderboard(dc_client, self.guild_id, mode, time)
         self._archive.leaderboard = leaderboard.description
 
         return leaderboard

@@ -88,7 +88,7 @@ class UserManager(Singleton):
         Start fetching data at specified interval
         """
         while True:
-            asyncio.create_task(self._async_fetch_data(set_full_fetch=True))
+            asyncio.create_task(self._async_fetch_data())
             time = datetime.now()
             next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
                                 microsecond=0) + timedelta(hours=self.interval_hours)
@@ -251,16 +251,15 @@ class UserManager(Singleton):
                     if history_len > 2:
                         # If balance hasn't changed at all, why bother keeping it?
                         if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
-                                and math.isclose(client.history[history_len - 2].amount, result.amount,
-                                                 rel_tol=1e-06):
+                                and math.isclose(client.history[history_len - 2].amount, result.amount, rel_tol=1e-06):
                             latest_balance.time = time
                             data.append(latest_balance)
-                            db.session.expunge(result)
                             continue
                     if result.error:
                         logging.error(f'Error while fetching {client.id=} balance: {result.error}')
                         if keep_errors:
                             data.append(result)
+
                     else:
                         client.history.append(result)
                         data.append(result)
@@ -272,8 +271,6 @@ class UserManager(Singleton):
                     logging.error(f'Worker with {result.client_id=} got no client object!')
 
         db.session.commit()
-
-        #print(self._session.connector)
 
         logging.info(f'Done Fetching')
         return data

@@ -63,7 +63,6 @@ class _TickerCache(NamedTuple):
     time: datetime
 
 
-
 class BinanceFutures(_BinanceBaseClient):
     ENDPOINT = 'https://fapi.binance.com/'
     exchange = 'binance-futures'

@@ -790,7 +790,7 @@ async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None):
 async def leaderboard_balance(ctx: SlashContext):
     await ctx.defer()
     await ctx.send(content='',
-                   embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance', time=None))
+                   embed=await utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance', time=None))
 
 
 @slash.subcommand(
@@ -812,7 +812,7 @@ async def leaderboard_balance(ctx: SlashContext):
 async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     await ctx.defer()
     await ctx.send(content='',
-                   embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='gain', time=time))
+                   embed=await utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='gain', time=time))
 
 
 @slash.slash(
@@ -969,7 +969,7 @@ async def summary(ctx: SlashContext):
     history = event.create_complete_history(dc_client=bot)
     await ctx.send(
         embeds=[
-            event.create_leaderboard(bot),
+            await event.create_leaderboard(bot),
             event.get_summary_embed(dc_client=bot).set_image(url=f'attachment://{history.filename}'),
         ],
         file=history
