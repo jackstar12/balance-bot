@@ -39,7 +39,6 @@ class UserManager(Singleton):
         self._exchanges = exchanges
 
         self._workers: List[ClientWorker] = []
-        self._worker_lock = RLock()
 
         self._user_lock = RLock()
         self._data_lock = RLock()
@@ -47,7 +46,8 @@ class UserManager(Singleton):
         self._last_full_fetch = {}
         self._saves_since_backup = 0
 
-        self._workers_by_id: Dict[Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
+        self._workers_by_id: Dict[
+            Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
         self._session = aiohttp.ClientSession()
@@ -55,23 +55,21 @@ class UserManager(Singleton):
         self.synch_workers()
 
     def _add_worker(self, worker: ClientWorker):
-        with self._worker_lock:
-            if worker not in self._workers:
-                self._workers.append(worker)
-                for event in [None, *worker.client.events]:
-                    if event not in self._workers_by_id:
-                        self._workers_by_id[event] = {}
-                    self._workers_by_id[event][worker.client.discorduser.id] = worker
-                self._workers_by_client_id[worker.client.id] = worker
+        if worker not in self._workers:
+            self._workers.append(worker)
+            for event in [None, *worker.client.events]:
+                if event not in self._workers_by_id:
+                    self._workers_by_id[event] = {}
+                self._workers_by_id[event][worker.client.discorduser.id] = worker
+            self._workers_by_client_id[worker.client.id] = worker
 
     def _remove_worker(self, worker: ClientWorker):
-        with self._worker_lock:
-            if worker in self._workers:
-                for event in [None, *worker.client.events]:
-                    self._workers_by_id[event].pop(worker.client.discorduser.id)
-                self._workers_by_client_id.pop(worker.client.id)
-                self._workers.remove(worker)
-                del worker
+        if worker in self._workers:
+            for event in [None, *worker.client.events]:
+                self._workers_by_id[event].pop(worker.client.discorduser.id)
+            self._workers_by_client_id.pop(worker.client.id)
+            self._workers.remove(worker)
+            del worker
 
     def delete_client(self, client: Client, commit=True):
         self._remove_worker(self._get_worker(client, create_if_missing=False))
@@ -137,18 +135,18 @@ class UserManager(Singleton):
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
     def _get_worker(self, client: Client, create_if_missing=True) -> ClientWorker:
-        with self._worker_lock:
-            if client:
+
+        if client:
+            worker = self._workers_by_client_id.get(client.id)
+            if not worker and create_if_missing:
+                self.add_client(client)
                 worker = self._workers_by_client_id.get(client.id)
-                if not worker and create_if_missing:
-                    self.add_client(client)
-                    worker = self._workers_by_client_id.get(client.id)
-                return worker
+            return worker
 
     def _get_worker_event(self, user_id, guild_id):
-        with self._worker_lock:
-            event = dbutils.get_event(guild_id)
-            return self._workers_by_id[event].get(user_id)
+
+        event = dbutils.get_event(guild_id)
+        return self._workers_by_id[event].get(user_id)
 
     def get_client_history(self,
                            client: Client,
@@ -156,7 +154,7 @@ class UserManager(Singleton):
                            since: datetime = None,
                            to: datetime = None,
                            currency: str = None,
-                           archived = False) -> History:
+                           archived=False) -> History:
 
         since = since or datetime.fromtimestamp(0)
         to = to or datetime.now()
@@ -228,7 +226,6 @@ class UserManager(Singleton):
         if set_full_fetch:
             self._last_full_fetch[guild_id] = time
 
-        with self._worker_lock:
             if workers is None:
                 workers = self._workers
 
@@ -249,7 +246,8 @@ class UserManager(Singleton):
                         if history_len > 2:
                             # If balance hasn't changed at all, why bother keeping it?
                             if math.isclose(latest_balance.amount, balance.amount, rel_tol=1e-06) \
-                                    and math.isclose(client.history[history_len - 2].amount, balance.amount, rel_tol=1e-06):
+                                    and math.isclose(client.history[history_len - 2].amount, balance.amount,
+                                                     rel_tol=1e-06):
                                 latest_balance.time = time
                                 data.append(latest_balance)
                                 continue
@@ -273,8 +271,9 @@ class UserManager(Singleton):
         logging.info(f'Done Fetching')
         return data
 
-    async def _async_fetch_data(self, workers: List[ClientWorker] = None, guild_id: int = None, keep_errors: bool = False,
-                       set_full_fetch=False, force_fetch=False) -> List[Balance]:
+    async def _async_fetch_data(self, workers: List[ClientWorker] = None, guild_id: int = None,
+                                keep_errors: bool = False,
+                                set_full_fetch=False, force_fetch=False) -> List[Balance]:
         """
         :return:
         Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
@@ -284,55 +283,53 @@ class UserManager(Singleton):
         if set_full_fetch:
             self._last_full_fetch[guild_id] = time
 
-        with self._worker_lock:
-            if workers is None:
-                workers = self._workers
+        if workers is None:
+            workers = self._workers
 
-            data = []
-            tasks = []
+        data = []
+        tasks = []
 
-            logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
-            for worker in workers:
-                if not worker:
-                    continue
-                tasks.append(
-                    asyncio.create_task(worker.get_balance(self._session, time, force=force_fetch))
-                )
+        logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
+        for worker in workers:
+            if not worker:
+                continue
+            tasks.append(
+                asyncio.create_task(worker.get_balance(self._session, time, force=force_fetch))
+            )
+        results = await asyncio.gather(*tasks)
 
-            results = await asyncio.gather(*tasks)
-            for result in results:
-                if isinstance(result, Balance):
-                    client = Client.query.filter_by(id=result.client_id).first()
-                    if client:
-                        latest_balance = None if history_len == 0 else client.history[history_len - 1]
-                        history_len = len(client.history)
-                        if history_len > 2:
-                            # If balance hasn't changed at all, why bother keeping it?
-                            if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
-                                    and math.isclose(client.history[history_len - 2].amount, result.amount, rel_tol=1e-06):
-                                latest_balance.time = time
-                                data.append(latest_balance)
-                                db.session.expunge(result)
-                                continue
-                        if result.error:
-                            logging.error(f'Error while fetching user {worker} balance: {result.error}')
-                            if keep_errors:
-                                data.append(result)
-                        else:
-                            client.history.append(result)
+        for result in results:
+            if isinstance(result, Balance):
+                client = Client.query.filter_by(id=result.client_id).first()
+                if client:
+                    history_len = len(client.history)
+                    latest_balance = None if history_len == 0 else client.history[history_len - 1]
+                    if history_len > 2:
+                        # If balance hasn't changed at all, why bother keeping it?
+                        if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
+                                and math.isclose(client.history[history_len - 2].amount, result.amount,
+                                                 rel_tol=1e-06):
+                            latest_balance.time = time
+                            data.append(latest_balance)
+                            db.session.expunge(result)
+                            continue
+                    if result.error:
+                        logging.error(f'Error while fetching {client.id=} balance: {result.error}')
+                        if keep_errors:
                             data.append(result)
-                            if result.amount <= self.rekt_threshold and not client.rekt_on:
-                                client.rekt_on = time
-                                if callable(self.on_rekt_callback):
-                                    self.on_rekt_callback(worker)
                     else:
-                        logging.error(f'Worker with {worker.client_id=} got no client object!')
-            db.session.commit()
+                        client.history.append(result)
+                        data.append(result)
+                        if result.amount <= self.rekt_threshold and not client.rekt_on:
+                            client.rekt_on = time
+                            if callable(self.on_rekt_callback):
+                                self.on_rekt_callback(client)
+                else:
+                    logging.error(f'Worker with {result.client_id=} got no client object!')
+        db.session.commit()
 
         logging.info(f'Done Fetching')
         return data
-
-
 
     def db_match_balance_currency(self, balance: Balance, currency: str):
         result = None

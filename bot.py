@@ -1045,7 +1045,14 @@ user_manager = UserManager(exchanges=EXCHANGES,
 
 event_manager = EventManager(discord_client=bot)
 
+
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
-bot.run(KEY)
+
+def run():
+    bot.run(KEY)
+
+
+if __name__ is '__main__':
+    run()
