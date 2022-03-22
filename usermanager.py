@@ -1,4 +1,6 @@
 import json
+import asyncio
+import aiohttp
 import logging
 import math
 from datetime import datetime, timedelta
@@ -47,6 +49,8 @@ class UserManager(Singleton):
 
         self._workers_by_id: Dict[Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
+
+        self._session = aiohttp.ClientSession()
 
         self.synch_workers()
 
@@ -268,6 +272,67 @@ class UserManager(Singleton):
 
         logging.info(f'Done Fetching')
         return data
+
+    async def _async_fetch_data(self, workers: List[ClientWorker] = None, guild_id: int = None, keep_errors: bool = False,
+                       set_full_fetch=False, force_fetch=False) -> List[Balance]:
+        """
+        :return:
+        Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
+        """
+        time = datetime.now()
+
+        if set_full_fetch:
+            self._last_full_fetch[guild_id] = time
+
+        with self._worker_lock:
+            if workers is None:
+                workers = self._workers
+
+            data = []
+            tasks = []
+
+            logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
+            for worker in workers:
+                if not worker:
+                    continue
+                tasks.append(
+                    asyncio.create_task(worker.get_balance(self._session, time, force=force_fetch))
+                )
+
+            results = await asyncio.gather(*tasks)
+            for result in results:
+                if isinstance(result, Balance):
+                    client = Client.query.filter_by(id=result.client_id).first()
+                    if client:
+                        latest_balance = None if history_len == 0 else client.history[history_len - 1]
+                        history_len = len(client.history)
+                        if history_len > 2:
+                            # If balance hasn't changed at all, why bother keeping it?
+                            if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
+                                    and math.isclose(client.history[history_len - 2].amount, result.amount, rel_tol=1e-06):
+                                latest_balance.time = time
+                                data.append(latest_balance)
+                                db.session.expunge(result)
+                                continue
+                        if result.error:
+                            logging.error(f'Error while fetching user {worker} balance: {result.error}')
+                            if keep_errors:
+                                data.append(result)
+                        else:
+                            client.history.append(result)
+                            data.append(result)
+                            if result.amount <= self.rekt_threshold and not client.rekt_on:
+                                client.rekt_on = time
+                                if callable(self.on_rekt_callback):
+                                    self.on_rekt_callback(worker)
+                    else:
+                        logging.error(f'Worker with {worker.client_id=} got no client object!')
+            db.session.commit()
+
+        logging.info(f'Done Fetching')
+        return data
+
+
 
     def db_match_balance_currency(self, balance: Balance, currency: str):
         result = None

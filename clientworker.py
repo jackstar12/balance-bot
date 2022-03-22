@@ -6,7 +6,7 @@ from typing import List, Callable
 from requests import Request, Response, Session
 
 from api.dbmodels.client import Client
-
+from api.dbmodels.balance import Balance
 
 class ClientWorker:
     __tablename__ = 'client'
@@ -29,20 +29,23 @@ class ClientWorker:
         self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
 
-    def get_balance(self, time: datetime = None, force=False):
+    async def get_balance(self, session, time: datetime = None, force=False):
         if not time:
             time = datetime.now()
-        if time - self._last_fetch < timedelta(seconds=30) and not force:
-            return None
-        else:
+        if force or (time - self._last_fetch > timedelta(seconds=30) and not self.client.rekt_on):
             self._last_fetch = time
-        balance = self._get_balance(time)
-        if not balance.time:
-            balance.time = time
-        return balance
+            balance = await self._get_balance(time)
+            if not balance.time:
+                balance.time = time
+            balance.client = self.client
+            return balance
+        elif self.client.rekt_on:
+            return Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
+        else:
+            return None
 
     @abc.abstractmethod
-    def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime):
         logging.error(f'Exchange {self.exchange} does not implement _get_balance')
         raise NotImplementedError(f'Exchange {self.exchange} does not implement _get_balance')
 
