@@ -8,6 +8,9 @@ from api.database import db
 from api.dbmodels.serializer import Serializer
 import os
 import dotenv
+import config
+
+from api.dbmodels import balance
 
 dotenv.load_dotenv()
 
@@ -22,7 +25,7 @@ class Client(db.Model, Serializer):
     # Identification
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.BigInteger, db.ForeignKey('user.id'), nullable=True)
-    discord_user_id = db.Column(db.Integer, db.ForeignKey('discorduser.id'), nullable=True)
+    discord_user_id = db.Column(db.Integer, db.ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
 
     # User Information
     api_key = db.Column(db.String(), nullable=False)
@@ -36,9 +39,17 @@ class Client(db.Model, Serializer):
     name = db.Column(db.String, nullable=True)
     rekt_on = db.Column(db.DateTime, nullable=True)
     trades = db.relationship('Trade', backref='client', lazy=True, cascade="all, delete")
-    history = db.relationship('Balance', backref='client_history', lazy=True, cascade="all, delete", order_by="Balance.time")
+    history = db.relationship('Balance', backref='client',
+                              cascade="all, delete", lazy=True, order_by='Balance.time')
 
     required_extra_args: List[str] = []
+
+    @hybrid_property
+    def latest(self):
+        try:
+            return self.history[len(self.history) - 1]
+        except ValueError:
+            return None
 
     @hybrid_property
     def is_global(self):
@@ -48,13 +59,24 @@ class Client(db.Model, Serializer):
     def is_active(self):
         return not all(not event.is_active for event in self.events)
 
+    @hybrid_property
+    def initial(self):
+        try:
+            return self.history[0]
+        except ValueError:
+            return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
+
     def get_event_string(self, is_global=False):
         events = ''
         if self.is_global or is_global:
             events += 'Global'
         for event in self.events:
+            first = True
             if event.is_active or event.is_free_for_registration:
-                events += f', {event.name}'
+                if not first or self.is_global or is_global:
+                    events += f', '
+                events += event.name
+                first = False
         return events
 
     def get_discord_embed(self, is_global=False):
@@ -63,7 +85,6 @@ class Client(db.Model, Serializer):
         embed.add_field(name='Event', value=self.get_event_string(is_global), inline=False)
         embed.add_field(name='Exchange', value=self.exchange)
         embed.add_field(name='Api Key', value=self.api_key)
-        embed.add_field(name='Api Secret', value=self.api_secret)
 
         if self.subaccount:
             embed.add_field(name='Subaccount', value=self.subaccount)

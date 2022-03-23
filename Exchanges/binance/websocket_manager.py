@@ -1,17 +1,21 @@
 import json
+import logging
 import time
 from threading import Thread, Lock
+import aiohttp
 import threading
 
+import websockets
 from websocket import WebSocketApp
 
 
 class WebsocketManager:
     _CONNECT_TIMEOUT_S = 5
 
-    def __init__(self):
+    def __init__(self, session: aiohttp.ClientSession):
         self.connect_lock = Lock()
         self.ws = None
+        self._session = session
 
     def _get_url(self):
         raise NotImplementedError()
@@ -29,8 +33,24 @@ class WebsocketManager:
     def _on_ping(self, ws, *args, **kwargs):
         print(f'PING {args=} {kwargs=}')
 
-    def _connect(self):
+    async def _connect(self):
         assert not self.ws, "ws should be closed before attempting to connect"
+
+        print(self._get_url())
+
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(self._get_url(), autoping=True) as ws:
+                async for msg in ws:
+                    if msg.type == aiohttp.WSMsgType.PING:
+                        await ws.pong()
+                    elif msg.type == aiohttp.WSMsgType.PONG:
+                        await ws.ping()
+                    elif msg.type == aiohttp.WSMsgType.TEXT:
+                        self.callback(self._on_message, ws, msg.data)
+                    print('Message received from server:', msg)
+                    if msg.type in (aiohttp.WSMsgType.CLOSED,
+                                    aiohttp.WSMsgType.ERROR):
+                        break
 
         self.ws = WebSocketApp(
             self._get_url(),
@@ -61,6 +81,12 @@ class WebsocketManager:
                     raise Exception(f'Error running websocket callback: {e}')
         return wrapped_f
 
+    def callback(self, f, ws, *args, **kwargs):
+        try:
+            f(ws, *args, **kwargs)
+        except Exception:
+            logging.exception('Error running websocket callback:')
+
     def _run_websocket(self, ws):
         try:
             ws.run_forever()
@@ -76,14 +102,12 @@ class WebsocketManager:
             ws.close()
             self.connect()
 
-    def connect(self):
+    async def connect(self):
         if self.ws:
             return
         with self.connect_lock:
             while not self.ws:
-                self._connect()
-                if self.ws:
-                    return
+                await self._connect()
 
     def _on_close(self, ws):
         self._reconnect(ws)

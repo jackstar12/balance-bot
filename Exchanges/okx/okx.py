@@ -6,6 +6,7 @@ import api.dbmodels.balance as balance
 import urllib.parse
 import time
 import logging
+import ccxt.async_support
 from datetime import datetime
 from clientworker import ClientWorker
 import ccxt

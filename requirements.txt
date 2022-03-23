@@ -18,3 +18,5 @@ python-dotenv~=0.19.0
 alembic~=1.7.6
 PyJWT~=2.3.0
 cryptography~=36.0.1
+ccxt~=1.57.38
+aiohttp

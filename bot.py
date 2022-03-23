@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import List, Dict, Type, Tuple
 
 import dotenv
+import sqlalchemy.exc
 
 import config
 
@@ -62,6 +63,8 @@ slash = SlashCommand(bot)
 @bot.event
 async def on_ready():
     #user_manager.start_fetching()
+    user_manager.synch_workers()
+    bot.loop.create_task(user_manager.async_start_fetching())
     event_manager.initialize_events()
 
     logger.info('Bot Ready')
@@ -141,7 +144,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         registered_user = dbutils.get_client(user.id, ctx.guild.id)
 
         await ctx.defer()
-        usr_balance = user_manager.get_client_balance(registered_user, currency)
+        usr_balance = await user_manager.get_client_balance(registered_user, currency)
         if usr_balance and usr_balance.error is None:
             await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
         else:
@@ -151,7 +154,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         await ctx.defer()
 
         for user_client in user.clients:
-            usr_balance = user_manager.get_client_balance(user_client, currency)
+            usr_balance = await user_manager.get_client_balance(user_client, currency)
             balance_message = f'Your balance ({user_client.get_event_string()}): '
             if usr_balance.error is None:
                 await ctx.send(f'{balance_message}{usr_balance.to_string()}')
@@ -252,7 +255,7 @@ async def history(ctx: SlashContext,
 
     await ctx.defer()
 
-    utils.create_history(
+    await utils.create_history(
         to_graph=registrations,
         guild_id=ctx.guild_id,
         start=since,
@@ -312,7 +315,7 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
 
     await ctx.defer()
 
-    user_manager.fetch_data(clients=clients)
+    await user_manager.fetch_data(clients=clients)
     user_gains = utils.calc_gains(clients, ctx.guild_id, time, currency)
 
     for user_gain in user_gains:
@@ -403,7 +406,7 @@ async def register_new(ctx: SlashContext,
                     kwargs[name] = value
                 except UserInputError:
                     await ctx.send(
-                        f'Invalid keyword argument: {arg} syntax for keyword arguments: key1=value1 key2=value2 ...',
+                        f'Invalid keyword argument: {arg}\nSyntax for keyword arguments: key1=value1 key2=value2 ...',
                         hidden=True)
                     logging.error(f'Invalid Keyword Arg {arg} passed in')
 
@@ -414,7 +417,7 @@ async def register_new(ctx: SlashContext,
             # Check if required keyword args are given
             if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
                     all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
-                event = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
+                event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False)
                 existing_client = None
 
                 discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
@@ -432,20 +435,33 @@ async def register_new(ctx: SlashContext,
                     else:
                         existing_client = discord_user.global_client
 
-                new_client: Client = Client(
-                    api_key=api_key,
-                    api_secret=api_secret,
-                    subaccount=subaccount,
-                    extra_kwargs=kwargs,
-                    exchange=exchange_name,
-                    discorduser=discord_user
-                )
-                if event:
-                    new_client.events.append(event)
-                worker = exchange_cls(new_client)
+                def get_new_client() -> Client:
+                    new_client = Client(
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        subaccount=subaccount,
+                        extra_kwargs=kwargs,
+                        exchange=exchange_name,
+                        discorduser=discord_user
+                    )
+                    if event:
+                        new_client.events.append(event)
+                    return new_client
 
                 async def start_registration(ctx):
-                    init_balance = worker.get_balance(datetime.now())
+
+                    new_client = get_new_client()
+                    worker: ClientWorker = exchange_cls(new_client, user_manager.session)
+                    init_balance = await worker.get_balance(datetime.now())
+
+                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
+                    # if the registration is cancelled, causing bugs
+                    try:
+                        db.session.delete(new_client)
+                        db.session.commit()
+                    except sqlalchemy.exc.InvalidRequestError:
+                        pass
+
                     if init_balance.error is None:
                         if init_balance.amount < config.REGISTRATION_MINIMUM:
                             message = f'You do not have enough balance in your account ' \
@@ -459,7 +475,9 @@ async def register_new(ctx: SlashContext,
                                 if existing_client:
                                     user_manager.delete_client(existing_client, commit=False)
 
-                                if not discord_user.global_client:
+                                new_client = get_new_client()
+
+                                if not discord_user.global_client or event is None:
                                     discord_user.global_client = new_client
                                     discord_user.global_client_id = new_client.id
 
@@ -518,7 +536,7 @@ async def register_new(ctx: SlashContext,
                 for arg in exchange_cls.required_extra_args:
                     args_readable += f'{arg}\n'
                 raise UserInputError(
-                    f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}')
+                    f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n{args_readable}')
         else:
             raise InternalError(f'Class {exchange_cls} is no subclass of ClientWorker!')
     except KeyError:
@@ -534,7 +552,7 @@ async def register_new(ctx: SlashContext,
 @utils.log_and_catch_errors()
 @utils.server_only
 async def register_existing(ctx: SlashContext):
-    event = dbutils.get_event(guild_id=ctx.guild_id, registration=True)
+    event = dbutils.get_event(guild_id=ctx.guild_id, state='registration')
     user = dbutils.get_user(ctx.author_id)
 
     if event.is_free_for_registration:
@@ -558,7 +576,13 @@ async def register_existing(ctx: SlashContext):
 @utils.log_and_catch_errors()
 @utils.server_only
 async def event_show(ctx: SlashContext):
-    events: List[Event] = Event.query.filter_by(guild_id=ctx.guild_id).all()
+    now = datetime.now()
+
+    events: List[Event] = Event.query.filter(
+        Event.guild_id == ctx.guild_id,
+        Event.end > now
+    ).all()
+
     if len(events) == 0:
         await ctx.send(content='There are no events', hidden=True)
     else:
@@ -598,6 +622,7 @@ async def event_show(ctx: SlashContext):
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
+
     if start >= end:
         raise UserInputError("Start time can't be after end time.")
     if registration_start >= registration_end:
@@ -618,7 +643,7 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
             raise UserInputError(
                 f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
-    active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, registration=True, throw_exceptions=False)
+    active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False)
 
     if active_registration:
         if registration_start < active_registration.registration_end:
@@ -661,16 +686,18 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
 @utils.log_and_catch_errors()
 async def unregister(ctx):
     client = dbutils.get_client(ctx.author.id, ctx.guild_id)
-    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
+
+    await ctx.defer(hidden=True)
 
     def unregister_user(ctx):
         if event:
             client.events.remove(event)
-            if len(client.events) == 0:
+            if not client.is_active and not client.is_global:
                 user_manager.delete_client(client)
         else:
             user_manager.delete_client(client)
-        discord_user = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
+        discord_user: DiscordUser  = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
         if len(discord_user.clients) == 0 and not discord_user.user:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
             db.session.commit()
@@ -764,7 +791,7 @@ async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None):
 async def leaderboard_balance(ctx: SlashContext):
     await ctx.defer()
     await ctx.send(content='',
-                   embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance', time=None))
+                   embed=await utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance', time=None))
 
 
 @slash.subcommand(
@@ -786,7 +813,7 @@ async def leaderboard_balance(ctx: SlashContext):
 async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
     await ctx.defer()
     await ctx.send(content='',
-                   embed=utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='gain', time=time))
+                   embed=await utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='gain', time=time))
 
 
 @slash.slash(
@@ -943,7 +970,7 @@ async def summary(ctx: SlashContext):
     history = event.create_complete_history(dc_client=bot)
     await ctx.send(
         embeds=[
-            event.create_leaderboard(bot),
+            await event.create_leaderboard(bot),
             event.get_summary_embed(dc_client=bot).set_image(url=f'attachment://{history.filename}'),
         ],
         file=history
@@ -959,10 +986,14 @@ async def summary(ctx: SlashContext):
 async def archive(ctx: SlashContext):
 
     now = datetime.now()
+
     archived = Event.query.filter(
         Event.guild_id == ctx.guild_id,
         Event.end < now
-    )
+    ).all()
+
+    if len(archived) == 0:
+        raise UserInputError('There are no archived events')
 
     async def show_events(ctx, selection: List[Event]):
 
@@ -1016,6 +1047,7 @@ user_manager = UserManager(exchanges=EXCHANGES,
 
 event_manager = EventManager(discord_client=bot)
 
+
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
@@ -1023,5 +1055,9 @@ api_thread = Thread(target=api.run)
 api_thread.daemon = True
 api_thread.start()
 
+def run():
+    bot.run(KEY)
 
-bot.run(KEY)
+
+if __name__ == '__main__':
+    run()

@@ -39,6 +39,10 @@ class Event(db.Model, Serializer):
     def is_free_for_registration(self):
         return self.registration_start <= datetime.now() <= self.registration_end
 
+    @hybrid_property
+    def is_archived(self):
+        return self.end < datetime.now()
+
     def get_discord_embed(self, dc_client: discord.Client, registrations=False):
         embed = discord.Embed(title=f'Event')
         embed.add_field(name="Name", value=self.name)

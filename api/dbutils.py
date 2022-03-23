@@ -30,7 +30,7 @@ def get_client(user_id: int,
         raise UserInputError("User {name} is not registered", user_id)
 
 
-def get_event(guild_id: int, channel_id: int = None, registration=False, state: str = None,
+def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
               throw_exceptions=True) -> Optional[Event]:
 
     if not state:
@@ -41,17 +41,22 @@ def get_event(guild_id: int, channel_id: int = None, registration=False, state: 
     filters = [Event.guild_id == guild_id]
     if state == 'archived':
         filters.append(Event.end < now)
-    elif state == 'active' or not registration:
+    elif state == 'active':
         filters.append(Event.start <= now)
         filters.append(now <= Event.end)
-    elif state == 'registration' or registration:
+    elif state == 'registration':
         filters.append(Event.registration_start <= now)
         filters.append(now <= Event.registration_end)
 
-    event = Event.query.filter(*filters).first()
+    if state == 'archived':
+        events = Event.query.filter(*filters).all()
+        events.sort(key=lambda x: x.end, reverse=True)
+        event = events[0]
+    else:
+        event = Event.query.filter(*filters).first()
 
     if not event and throw_exceptions:
-        raise UserInputError(f'There is no {"event you can register for" if registration else "active event"}')
+        raise UserInputError(f'There is no {"event you can register for" if state == "registration" else "active event"}')
     return event
 
 
@@ -78,9 +83,11 @@ def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
 
 
 def get_guild_start_end_times(guild_id, start, end, archived=False):
+
     start = datetime.fromtimestamp(0) if not start else start
     end = datetime.now() if not end else end
     event = get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
+
     if event:
         # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
         return max(start, event.start), min(end, event.end)

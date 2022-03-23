@@ -23,44 +23,13 @@ class EventManager:
         self._scheduled: List[FutureCallback] = []
         self._schedule_lock = RLock()
         self._cur_timer = None
-        self._um = UserManager()
+        self._user_manager = UserManager()
         self._dc_client = discord_client
 
     def initialize_events(self):
         events = Event.query.all()
         for event in events:
             self.register(event)
-
-    def _get_event_channel(self, event: Event) -> discord.TextChannel:
-        guild = self._dc_client.get_guild(event.guild_id)
-        return guild.get_channel(event.channel_id)
-
-    async def _event_start(self, event: Event):
-        self._um.synch_workers()
-        await self._get_event_channel(event).send(content=f'Event **{event.name}** just started!',
-                                                  embed=event.get_discord_embed(dc_client=self._dc_client, registrations=True))
-
-    async def _event_end(self, event: Event):
-        await self._get_event_channel(event).send(
-            content=f'Event **{event.name}** just ended! Final standings:',
-            embed=utils.create_leaderboard(self._dc_client, event.guild_id, mode='gain')
-        )
-
-        name = f'FINAL_{event.name}_{event.id}.png'
-        await self._get_event_channel(event).send(
-            embed=event.get_summary_embed(dc_client=self._dc_client).set_image(url=f'attachment://{name}'),
-            file=event.create_complete_history(dc_client=self._dc_client, path=name)
-        )
-
-        self._um.synch_workers()
-        Event.query.filter_by(id=event.id).delete()
-        db.session.commit()
-
-    async def _event_registration_start(self, event: Event):
-        await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has started!')
-
-    async def _event_registration_end(self, event: Event):
-        await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has ended!')
 
     def register(self, event: Event):
         event_callbacks = [
@@ -78,6 +47,35 @@ class EventManager:
                         callback=self._wrap_async(callback)
                     )
                 )
+
+    def _get_event_channel(self, event: Event) -> discord.TextChannel:
+        guild = self._dc_client.get_guild(event.guild_id)
+        return guild.get_channel(event.channel_id)
+
+    async def _event_start(self, event: Event):
+        self._user_manager.synch_workers()
+        await self._get_event_channel(event).send(content=f'Event **{event.name}** just started!',
+                                                  embed=event.get_discord_embed(dc_client=self._dc_client, registrations=True))
+
+    async def _event_end(self, event: Event):
+        await self._get_event_channel(event).send(
+            content=f'Event **{event.name}** just ended! Final standings:',
+            embed=await utils.create_leaderboard(self._dc_client, event.guild_id, mode='gain')
+        )
+
+        complete_history = event.create_complete_history(dc_client=self._dc_client)
+        await self._get_event_channel(event).send(
+            embed=event.get_summary_embed(dc_client=self._dc_client).set_image(url=f'attachment://{complete_history.filename}'),
+            file=complete_history
+        )
+
+        self._user_manager.synch_workers()
+
+    async def _event_registration_start(self, event: Event):
+        await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has started!')
+
+    async def _event_registration_end(self, event: Event):
+        await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has ended!')
 
     def _wrap_async(self, coro):
         @wraps(coro)
