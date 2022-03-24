@@ -19,8 +19,8 @@ class WebsocketManager:
         self._ws = None
         self._session = session
 
-    def send(self, message):
-        self.connect()
+    async def send(self, message):
+        await self.connect()
         self._ws.send(message)
 
     async def send_json(self, data):
@@ -31,10 +31,17 @@ class WebsocketManager:
         if self.connected:
             self._reconnect(self._ws)
 
-    def connect(self):
+    async def connect(self):
         if self.connected:
             return
         asyncio.create_task(self._async_connect())
+
+        ts = time.time()
+        while not self.connected:
+            if time.time() - ts > self._CONNECT_TIMEOUT_S:
+                self._ws = None
+                break
+            await asyncio.sleep(0.5)
 
     @property
     def connected(self):
@@ -46,45 +53,39 @@ class WebsocketManager:
             async for msg in ws:
                 msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
                 print('Message received from server:', msg)
-                print(msg.json())
+
                 if msg.type == aiohttp.WSMsgType.PING:
                     await ws.pong()
                 elif msg.type == aiohttp.WSMsgType.TEXT:
-                    self._callback(self._on_message, ws, msg.data)
+                    await self._callback(self._on_message, ws, msg.data)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    self._callback(self._on_close, ws)
+                    await self._callback(self._on_close, ws)
                     break
                 elif msg.type == aiohttp.WSMsgType.CLOSED:
-                    self._callback(self._on_close, ws)
+                    await self._callback(self._on_close, ws)
                     break
 
-    def _callback(self, f, ws, *args, **kwargs):
+    async def _callback(self, f, ws, *args, **kwargs):
         if callable(f) and ws is self._ws:
             try:
-                f(ws, *args, **kwargs)
+                if asyncio.iscoroutine(f):
+                    await f(ws, *args, **kwargs)
+                else:
+                    f(ws, *args, **kwargs)
             except Exception:
                 logging.exception('Error running websocket callback:')
 
-    def _run_websocket(self, ws):
-        try:
-            ws.run_forever()
-        except Exception as e:
-            raise Exception(f'Unexpected error while running websocket: {e}')
-        finally:
-            self._reconnect(ws)
-
     async def _reconnect(self, ws):
-        assert ws is not None, '_reconnect should only be called with an existing ws'
-        if ws is self._ws:
+        if self.connected:
             self._ws = None
             await ws.close()
-            self.connect()
+            await self.connect()
 
-    def _on_close(self, ws):
-        self._reconnect(ws)
+    async def _on_close(self, ws):
+        await self._reconnect(ws)
 
-    def _on_error(self, ws, error):
-        self._reconnect(ws)
+    async def _on_error(self, ws, error):
+        await self._reconnect(ws)
 
     def _get_url(self):
         raise NotImplementedError()

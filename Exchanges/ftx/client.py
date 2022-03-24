@@ -1,14 +1,11 @@
 import hmac
 import json
 import time
-import zlib
-import sys
 from collections import defaultdict, deque
-from itertools import zip_longest
-from typing import DefaultDict, Deque, List, Dict, Tuple, Optional
+from typing import DefaultDict, Deque, List, Dict
 from gevent.event import Event
 
-from Exchanges.ftx.websocket_manager import WebsocketManager
+from models.websocket_manager import WebsocketManager
 
 
 class FtxWebsocketClient(WebsocketManager):

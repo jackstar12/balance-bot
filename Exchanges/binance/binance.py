@@ -92,7 +92,7 @@ class BinanceFutures(_BinanceBaseClient):
         else:
             return None
 
-    async def keep_alive(self, listenKey):
+    async def keep_alive(self):
         await self._put(self.ENDPOINT + 'fapi/v1/listenKey')
 
     def set_execution_callback(self, callback: Callable[[Client, Execution], None]):

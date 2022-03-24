@@ -1,14 +1,9 @@
-import asyncio
-import json
 import logging
 import asyncio
 
-from datetime import timedelta
-from threading import Timer, Lock
 from typing import Callable
 
-from Exchanges.binance.async_websocket_manager import WebsocketManager
-from datetime import datetime
+from models.async_websocket_manager import WebsocketManager
 import aiohttp
 
 
@@ -20,7 +15,6 @@ class FuturesWebsocketClient(WebsocketManager):
         super().__init__(session=session)
         self._client = client
         self._listenKey = None
-        self._keep_alive_timer = None
         self._on_message = on_message
 
     def _get_url(self):
@@ -37,18 +31,19 @@ class FuturesWebsocketClient(WebsocketManager):
     async def start(self):
         if self._listenKey is None:
             self._listenKey = await self._client.start_user_stream()
-        self.connect()
+        asyncio.create_task(self._keep_alive())
+        await self.connect()
 
     def stop(self):
         self._listenKey = None
 
     async def _renew_listen_key(self):
-        self._listenKey = asyncio.run(self._client.start_user_stream())
+        self._listenKey = await self._client.start_user_stream()
+        self.reconnect()
 
-    def _keep_alive(self):
-        if self._listenKey:
-            logging.info('Trying to reconnect binance websocket')
-            self._listenKey = self._client.start_user_stream()
-            keep_alive = Timer(timedelta(minutes=45).total_seconds(), self._keep_alive)
-            keep_alive.daemon = True
-            keep_alive.start()
+    async def _keep_alive(self):
+        while self.connected:
+            if self._listenKey:
+                logging.info('Trying to reconnect binance websocket')
+                self._listenKey = await self._client.keep_alive()
+                await asyncio.sleep(45 * 60)
