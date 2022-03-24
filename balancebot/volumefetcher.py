@@ -30,11 +30,11 @@ class VolumeFetcher(Singleton):
         if markets:
             for market in markets:
                 async with self._get(
-                        f'markets/{market["name"]}',
-                        params={
-                            'start_time': str(datetime.now()),
-                            'resolution': str(10 * 60)
-                        }
+                    f'markets/{market["name"]}/candles',
+                    params={
+                        'start_time': str(datetime.now()),
+                        'resolution': str(10 * 60)
+                    }
                 ) as response:
                     if response.status == 200:
                         print(response.json())
