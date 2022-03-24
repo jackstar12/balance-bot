@@ -342,7 +342,7 @@ def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
     return result
 
 
-def create_leaderboard(dc_client: discord.Client,
+async def create_leaderboard(dc_client: discord.Client,
                        guild_id: int,
                        mode: str,
                        time: datetime = None,
@@ -374,7 +374,7 @@ def create_leaderboard(dc_client: discord.Client,
 
     if not archived:
         user_manager = UserManager()
-        user_manager.fetch_data(clients=clients)
+        await user_manager.fetch_data(clients=clients)
 
     if mode == 'balance':
         for client in clients:
