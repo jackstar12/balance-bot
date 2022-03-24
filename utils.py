@@ -69,6 +69,7 @@ def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
     :param allow_future: whether dates in the future are permitted
     :return:
     """
+
     def decorator(coro):
         @wraps(coro)
         async def wrapper(*args, **kwargs):
@@ -80,7 +81,9 @@ def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
                     time = calc_time_from_time_args(time_arg, allow_future)
                     kwargs[name] = time
             return await coro(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -111,7 +114,8 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
                     else:
                         e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
-                logging.info(f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
+                logging.info(
+                    f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
             except InternalError as e:
                 await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
                 logging.error(f'{coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
@@ -120,6 +124,7 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
                 logging.critical(f'{coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
 
         return wrapper
+
     return decorator
 
 
@@ -177,23 +182,24 @@ def create_history(to_graph: List[Tuple[client.Client, str]],
 
     first = True
     title = ''
+
     um = UserManager()
     um.fetch_data([graph[0] for graph in to_graph])
     for registered_client, name in to_graph:
 
-        user_data = um.get_client_history(registered_client,
-                                          guild_id=guild_id,
-                                          start=start,
-                                          end=end,
-                                          currency=currency,
-                                          archived=archived)
+        history = um.get_client_history(registered_client,
+                                        guild_id=guild_id,
+                                        since=start,
+                                        to=end,
+                                        currency=currency,
+                                        archived=archived)
 
-        if len(user_data) == 0:
+        if len(history.data) == 0:
             raise UserInputError(f'Got no data for {name}!')
 
-        xs, ys = calc_xs_ys(user_data, percentage)
+        xs, ys = calc_xs_ys(history.data, percentage, relative_to=history.initial)
 
-        total_gain = calc_percentage(ys[0], ys[len(ys) - 1])
+        total_gain = calc_percentage(history.initial.amount, ys[len(ys) - 1])
 
         if first:
             title = f'History for {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
@@ -300,11 +306,11 @@ def calc_daily(client: client.Client,
 
                 prev_daily = prev_daily or daily
                 values = (
-                            current_day.strftime('%Y-%m-%d'),
-                            daily.amount,
-                            round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-                            calc_percentage(prev_daily.amount, daily.amount, string=False)
-                         )
+                    current_day.strftime('%Y-%m-%d'),
+                    daily.amount,
+                    round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+                    calc_percentage(prev_daily.amount, daily.amount, string=False)
+                )
                 if string:
                     results.add_row([*values])
                 else:
@@ -359,6 +365,7 @@ async def create_leaderboard(dc_client: discord.Client,
     guild = dc_client.get_guild(guild_id)
     if not guild:
         raise InternalError(f'Provided guild_id is not valid!')
+
     event = dbutils.get_event(guild.id, state='archived' if archived else 'active', throw_exceptions=False)
 
     if event:
@@ -421,6 +428,7 @@ async def create_leaderboard(dc_client: discord.Client,
                     )
                 )
             )
+
         prev_score = None
         for client, score in user_scores:
             member = guild.get_member(client.discorduser.user_id)
@@ -486,12 +494,25 @@ def calc_gains(clients: List[Client],
         if not client:
             logging.info('calc_gains: A none client was passed in?')
             continue
-        data = user_manager.get_client_history(client, guild_id, start=search, archived=archived)
-        if len(data) > 0:
-            balance_then = user_manager.db_match_balance_currency(data[0], currency)
-            balance_now = user_manager.db_match_balance_currency(data[len(data) - 1], currency)
+
+        #search, _ = dbutils.get_guild_start_end_times(guild_id, search, None, archived=archived)
+#
+        #balance_then = user_manager.db_match_balance_currency(
+        #    Balance.query.filter(
+        #        Balance.client_id == client.id,
+        #        Balance.time >= search
+        #    ).first(),
+        #    currency
+        #)
+
+        history = user_manager.get_client_history(client, guild_id, since=search, currency=currency)
+
+        if history.data:
+            balance_then = history.data[0]
+            balance_now = user_manager.db_match_balance_currency(history.data[len(history.data) - 1], currency)
             diff = round(balance_now.amount - balance_then.amount,
                          ndigits=CURRENCY_PRECISION.get(currency, 3))
+
             if balance_then.amount > 0:
                 results.append(
                     Gain(
@@ -500,7 +521,6 @@ def calc_gains(clients: List[Client],
                         absolute=diff
                     )
                 )
-
             else:
                 results.append(
                     Gain(client, 0.0, diff)
