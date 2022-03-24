@@ -14,7 +14,12 @@ from api.app import app, flask_jwt
 
 OAUTH2_CLIENT_ID = os.environ.get('OAUTH2_CLIENT_ID')
 OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET')
-OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT', 'http://localhost/api/v1/discord/callback')
+OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT')
+
+assert OAUTH2_CLIENT_SECRET
+assert OAUTH2_CLIENT_ID
+assert OAUTH2_REDIRECT_URI
+
 
 API_BASE_URL = os.environ.get('API_BASE_URL', 'https://discordapp.com/api')
 AUTHORIZATION_BASE_URL = API_BASE_URL + '/oauth2/authorize'
@@ -96,4 +101,4 @@ def callback():
     user.discorduser = discord_user
 
     db.session.commit()
-    return redirect('/profile')
+    return redirect('/app/profile')

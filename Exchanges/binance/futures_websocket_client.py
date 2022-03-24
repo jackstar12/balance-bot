@@ -32,7 +32,6 @@ class FuturesWebsocketClient(WebsocketManager):
         if self._listenKey is None:
             self._listenKey = await self._client.start_user_stream()
         await self.connect()
-        asyncio.create_task(self._keep_alive())
 
     def stop(self):
         self._listenKey = None

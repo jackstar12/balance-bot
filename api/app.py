@@ -37,7 +37,6 @@ app.config['JWT_CSRF_METHODS'] = []
 app.config['JWT_COOKIE_CSRF_PROTECT'] = True
 app.config['JWT_COOKIE_SECURE'] = True  # True in production
 app.config['JWT_COOKIE_MAX_AGE'] = timedelta(hours=48).total_seconds()
-app.config['JWT_SECRET_KEY'] = 'owcBrtneZ-AgIfGFS3Wel8KXQUjJDr7mA1grv1u7Ra0'
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=48)
 app.config['JWT_SESSION_COOKIE'] = False
 
@@ -104,6 +103,7 @@ def login(email: str, password: str):
 def delete():
     user: User = flask_jwt.current_user
     User.query.filter_by(id=user.id).delete()
+    db.session.commit()
     return {'msg': 'Success'}, HTTPStatus.OK
 
 

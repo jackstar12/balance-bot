@@ -15,7 +15,6 @@ class WebsocketManager:
     _CONNECT_TIMEOUT_S = 5
 
     def __init__(self, session: aiohttp.ClientSession):
-        self.connect_lock = Lock()
         self._ws = None
         self._session = session
 
