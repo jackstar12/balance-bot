@@ -136,10 +136,10 @@ class Event(db.Model, Serializer):
 
         return embed
 
-    def create_complete_history(self, dc_client: discord.Client):
+    async def create_complete_history(self, dc_client: discord.Client):
 
         path = f'HISTORY_{self.guild_id}_{self.channel_id}_{int(self.start.timestamp())}.png'
-        utils.create_history(
+        await utils.create_history(
             custom_title=f'Complete history for {self.name}',
             to_graph=[
                 (client, client.discorduser.get_display_name(dc_client, self.guild_id))

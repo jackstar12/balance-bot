@@ -155,7 +155,7 @@ def de_emojify(text):
     return _regrex_pattern.sub(r'', text)
 
 
-def create_history(to_graph: List[Tuple[client.Client, str]],
+async def create_history(to_graph: List[Tuple[client.Client, str]],
                    guild_id: int,
                    start: datetime,
                    end: datetime,
@@ -184,7 +184,7 @@ def create_history(to_graph: List[Tuple[client.Client, str]],
     title = ''
 
     um = UserManager()
-    um.fetch_data([graph[0] for graph in to_graph])
+    await um.fetch_data([graph[0] for graph in to_graph])
     for registered_client, name in to_graph:
 
         history = um.get_client_history(registered_client,

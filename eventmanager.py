@@ -63,7 +63,7 @@ class EventManager:
             embed=await utils.create_leaderboard(self._dc_client, event.guild_id, mode='gain')
         )
 
-        complete_history = event.create_complete_history(dc_client=self._dc_client)
+        complete_history = await event.create_complete_history(dc_client=self._dc_client)
         await self._get_event_channel(event).send(
             embed=event.get_summary_embed(dc_client=self._dc_client).set_image(url=f'attachment://{complete_history.filename}'),
             file=complete_history

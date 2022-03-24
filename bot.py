@@ -967,7 +967,7 @@ if args.reset and os.path.exists(DATA_PATH):
 async def summary(ctx: SlashContext):
     event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active')
     await ctx.defer()
-    history = event.create_complete_history(dc_client=bot)
+    history = await event.create_complete_history(dc_client=bot)
     await ctx.send(
         embeds=[
             await event.create_leaderboard(bot),
