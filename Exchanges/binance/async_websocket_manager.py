@@ -7,6 +7,7 @@ import aiohttp
 import threading
 
 import websockets
+from aiohttp import WSMessage
 from websocket import WebSocketApp
 
 
@@ -43,7 +44,9 @@ class WebsocketManager:
         async with self._session.ws_connect(self._get_url(), autoping=True) as ws:
             self._ws = ws
             async for msg in ws:
+                msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
                 print('Message received from server:', msg)
+                print(msg.json())
                 if msg.type == aiohttp.WSMsgType.PING:
                     await ws.pong()
                 elif msg.type == aiohttp.WSMsgType.TEXT:

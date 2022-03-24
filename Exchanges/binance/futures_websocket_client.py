@@ -37,7 +37,7 @@ class FuturesWebsocketClient(WebsocketManager):
     async def start(self):
         if self._listenKey is None:
             self._listenKey = await self._client.start_user_stream()
-            await self.connect()
+        self.connect()
 
     def stop(self):
         self._listenKey = None

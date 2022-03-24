@@ -72,7 +72,7 @@ class BinanceFutures(_BinanceBaseClient):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._ws = FuturesWebsocketClient(self, self._on_message)
+        self._ws = FuturesWebsocketClient(self, session=self._http_client, on_message=self._on_message)
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     async def _get_balance(self, time: datetime = None):
