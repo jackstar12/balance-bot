@@ -31,8 +31,8 @@ class FuturesWebsocketClient(WebsocketManager):
     async def start(self):
         if self._listenKey is None:
             self._listenKey = await self._client.start_user_stream()
-        asyncio.create_task(self._keep_alive())
         await self.connect()
+        asyncio.create_task(self._keep_alive())
 
     def stop(self):
         self._listenKey = None
@@ -43,7 +43,8 @@ class FuturesWebsocketClient(WebsocketManager):
 
     async def _keep_alive(self):
         while self.connected:
+            # Ping binance every 50 minutes
             if self._listenKey:
                 logging.info('Trying to reconnect binance websocket')
                 self._listenKey = await self._client.keep_alive()
-                await asyncio.sleep(45 * 60)
+                await asyncio.sleep(50 * 60)
