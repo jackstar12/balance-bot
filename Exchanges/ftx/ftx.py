@@ -58,7 +58,7 @@ class FtxClient(ClientWorker):
 
     def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
-        signature_payload = f'{ts}{method}{url}'.encode()
+        signature_payload = f'{ts}{method}/account'.encode()
         if data:
             signature_payload += data
         signature = hmac.new(self._api_secret.encode(), signature_payload, 'sha256').hexdigest()
