@@ -248,7 +248,7 @@ def get_client(id: int = None, currency: str = None, since: str = None, to: str 
             winners, losers = 0, 0
             avg_win, avg_loss = 0.0, 0.0
             for trade in client.trades:
-                if since <= trade.initial.time <= to:
+                if since_date <= trade.initial.time <= to_date:
                     trade = trade.serialize(data=True)
                     if trade['status'] == 'win':
                         winners += 1
