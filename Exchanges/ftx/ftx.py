@@ -1,3 +1,4 @@
+import json
 import urllib.parse
 import hmac
 import logging
@@ -50,6 +51,7 @@ class FtxClient(ClientWorker):
     async def _get_balance(self, time: datetime):
         response = await self._get('/api/account')
         if response['success']:
+            print(json.dumps(response['result'], indent=3))
             amount = response['result']['collateral']
         else:
             amount = 0
