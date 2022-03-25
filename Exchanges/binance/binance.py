@@ -75,7 +75,7 @@ class BinanceFutures(_BinanceBaseClient):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._ws = FuturesWebsocketClient(self, session=self._http_client, on_message=self._on_message)
+        self._ws = FuturesWebsocketClient(self, session=self._session, on_message=self._on_message)
         self._ccxt = ccxt.binanceusdm({
             'apiKey': self._api_key,
             'secret': self._api_secret

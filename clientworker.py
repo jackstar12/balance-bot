@@ -19,7 +19,7 @@ class ClientWorker:
     exchange: str = ''
     required_extra_args: List[str] = []
 
-    def __init__(self, client: Client, http_client: aiohttp.ClientSession):
+    def __init__(self, client: Client, session: aiohttp.ClientSession):
         self.client = client
         self.client_id = client.id
         self.in_position = True
@@ -31,7 +31,7 @@ class ClientWorker:
         self._subaccount = client.subaccount
         self._extra_kwargs = client.extra_kwargs
 
-        self._http_client = http_client
+        self._session = session
         self._on_execution = None
         self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
@@ -72,7 +72,7 @@ class ClientWorker:
         params = params or {}
         if sign:
             self._sign_request(method, path, headers, params, data)
-        async with self._http_client.request(method, self._ENDPOINT + path, headers=headers, params=params, data=data, **kwargs) as resp:
+        async with self._session.request(method, self._ENDPOINT + path, headers=headers, params=params, data=data, **kwargs) as resp:
             return await self._process_response(resp)
 
     async def _get(self, path: str, headers=None, params=None, sign=True, **kwargs):

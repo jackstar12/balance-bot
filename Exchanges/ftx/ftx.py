@@ -24,7 +24,8 @@ class FtxClient(ClientWorker):
         self.ws = FtxWebsocketClient(api_key=self._api_key,
                                      api_secret=self._api_secret,
                                      subaccount=self._subaccount,
-                                     on_message_callback=self._on_message)
+                                     on_message_callback=self._on_message,
+                                     session=self._session)
 
     def set_execution_callback(self, callback: Callable[[int, Execution], None]):
         super().set_execution_callback(callback)
