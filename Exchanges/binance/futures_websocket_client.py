@@ -10,7 +10,7 @@ import aiohttp
 
 # https://binance-docs.github.io/apidocs/futures/en/#user-data-streams
 class FuturesWebsocketClient(WebsocketManager):
-    _ENDPOINT = 'wss://fstream.binance.com'
+    _ENDPOINT = 'wss://stream.binancefuture.com'
 
     def __init__(self, client, session: aiohttp.ClientSession, on_message: Callable = None):
         super().__init__(session=session)
@@ -30,16 +30,14 @@ class FuturesWebsocketClient(WebsocketManager):
             self._on_message(self, message)
 
     async def start(self):
-        if self._listenKey is None:
-            self._listenKey = await self._client.start_user_stream()
-        await self.connect()
+        await self._renew_listen_key()
 
     def stop(self):
         self._listenKey = None
 
     async def _renew_listen_key(self):
         self._listenKey = await self._client.start_user_stream()
-        self.reconnect()
+        await self.reconnect()
 
     async def _keep_alive(self):
         while self.connected:

@@ -1,9 +1,14 @@
-from typing import NamedTuple, List, Deque
+from typing import NamedTuple, List, Deque, Optional
+from dataclasses import dataclass
 from models.volumeratio import VolumeRatio
 
-class VolumeRatioHistory(NamedTuple):
+
+@dataclass
+class VolumeRatioHistory:
+    coin_name: str
     spot_name: str
-    spot_data: Deque[float]
     perp_name: str
-    perp_data: Deque[float]
-    ratio_data: List[float]
+    spot_data: Optional[Deque[float]]
+    perp_data: Optional[Deque[float]]
+    ratio_data: Optional[List[float]]
+    avg_ratio: Optional[float]

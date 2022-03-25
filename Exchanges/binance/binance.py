@@ -3,11 +3,13 @@ from typing import NamedTuple
 
 import asyncio
 import hmac
+import ccxt.async_support as ccxt
 import hmac
 import json
 import logging
 import sys
 import time
+import ccxt
 import urllib.parse
 from datetime import datetime
 from typing import Dict, Callable
@@ -67,12 +69,17 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    _ENDPOINT = 'https://fapi.binance.com'
+    _ENDPOINT = 'https://testnet.binancefuture.com'
     exchange = 'binance-futures'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ws = FuturesWebsocketClient(self, session=self._http_client, on_message=self._on_message)
+        self._ccxt = ccxt.binanceusdm({
+            'apiKey': self._api_key,
+            'secret': self._api_secret
+        })
+        self._ccxt.set_sandbox_mode(True)
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     async def _get_balance(self, time: datetime = None):
@@ -102,7 +109,7 @@ class BinanceFutures(_BinanceBaseClient):
     def _on_message(self, ws, message):
         message = json.loads(message)
         event = message['e']
-        data = message['o']
+        data = message.get('o')
         json.dump(message, fp=sys.stdout, indent=3)
         if event == 'ORDER_TRADE_UPDATE':
             if data['X'] == 'FILLED':

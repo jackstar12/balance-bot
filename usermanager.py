@@ -80,28 +80,12 @@ class UserManager(Singleton):
         if commit:
             db.session.commit()
 
-    def start_fetching(self):
-        """
-        Start fetching data at specified interval
-        """
-
-        self._db_fetch_data(set_full_fetch=True)
-
-        time = datetime.now()
-        next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
-                            microsecond=0) + timedelta(hours=self.interval_hours)
-        delay = next - time
-
-        timer = Timer(delay.total_seconds(), self.start_fetching)
-        timer.daemon = True
-        timer.start()
-
-    async def async_start_fetching(self):
+    async def start_fetching(self):
         """
         Start fetching data at specified interval
         """
         while True:
-            asyncio.create_task(self._async_fetch_data())
+            await self._async_fetch_data()
             time = datetime.now()
             next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
                                 microsecond=0) + timedelta(hours=self.interval_hours)
@@ -249,7 +233,7 @@ class UserManager(Singleton):
 
         logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
         for worker in workers:
-            if not worker:
+            if not worker or not worker.in_position:
                 continue
             tasks.append(
                 asyncio.create_task(worker.get_balance(self.session, time, force=force_fetch))
@@ -297,6 +281,14 @@ class UserManager(Singleton):
             Trade.open_qty > 0.0
         ).first()
 
+        client: api_client.Client = api_client.Client.query.filter_by(id=client_id).first()
+        worker = self._get_worker(client)
+
+        if worker:
+            worker.in_position = True
+        else:
+            logging.critical(f'on_execution callback: {active_trade.client=} for trade {active_trade} got no worker???')
+
         def weighted_avg(values: Tuple[float, float], weights: Tuple[float, float]):
             total = weights[0] + weights[1]
             return round(values[0] * (weights[0] / total) + values[1] * (weights[1] / total), ndigits=3)
@@ -310,7 +302,7 @@ class UserManager(Singleton):
                 active_trade.qty += execution.qty
                 active_trade.open_qty += execution.qty
             else:
-
+                new_execution = None
                 if execution.qty > active_trade.open_qty:
                     new_execution = Execution(
                         qty=execution.qty - active_trade.open_qty,
@@ -321,22 +313,20 @@ class UserManager(Singleton):
                     )
                     execution.qty = active_trade.open_qty
                     new_trade = trade_from_execution(new_execution)
-                    api_client.Client.query.filter_by(
-                        id=client_id
-                    ).first().trades.append(new_trade)
+                    client.trades.append(new_trade)
+                    asyncio.create_task(self._async_fetch_data([worker]))
                 if execution.qty <= active_trade.qty:
                     if active_trade.exit is None:
                         active_trade.exit = execution.price
                     else:
                         active_trade.exit = weighted_avg((active_trade.exit, execution.price),
                                                          (active_trade.open_qty, execution.qty))
+
                     if math.isclose(active_trade.open_qty, execution.qty, rel_tol=10e-6):
                         active_trade.open_qty = 0.0
-                        worker = self._get_worker(active_trade.client)
-                        if worker:
+                        asyncio.create_task(self._async_fetch_data([worker]))
+                        if worker and not new_execution:
                             worker.in_position = False
-                        else:
-                            logging.critical(f'on_execution callback: {active_trade.client=} for trade {active_trade} got no worker???')
                     else:
                         active_trade.open_qty -= execution.qty
                     realized_qty = active_trade.qty - active_trade.open_qty
@@ -344,13 +334,8 @@ class UserManager(Singleton):
                     active_trade.realized_pnl = (active_trade.exit * realized_qty - active_trade.entry * realized_qty) * (1 if active_trade.initial.side == 'BUY' else -1)
         else:
             trade = trade_from_execution(execution)
-            client = api_client.Client.query.filter_by(id=client_id).first()
             client.trades.append(trade)
-            worker = self._get_worker(client)
-            if worker:
-                worker.in_position = True
-            else:
-                logging.critical(f'on_execution callback: {active_trade.client=} for trade {active_trade} got no worker???')
+            asyncio.create_task(self._async_fetch_data([worker]))
 
         db.session.commit()
 

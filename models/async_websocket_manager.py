@@ -26,9 +26,11 @@ class WebsocketManager:
         if self._ws and not self._ws.closed:
             return await self._ws.send_json(data)
 
-    def reconnect(self) -> None:
+    async def reconnect(self) -> None:
         if self.connected:
-            self._reconnect(self._ws)
+            await self._ws.close()
+            self._ws = None
+        await self.connect()
 
     async def connect(self):
         if self.connected:
@@ -74,17 +76,11 @@ class WebsocketManager:
             except Exception:
                 logging.exception('Error running websocket callback:')
 
-    async def _reconnect(self, ws):
-        if self.connected:
-            self._ws = None
-            await ws.close()
-            await self.connect()
-
     async def _on_close(self, ws):
-        await self._reconnect(ws)
+        await self.reconnect(ws)
 
     async def _on_error(self, ws, error):
-        await self._reconnect(ws)
+        await self.reconnect(ws)
 
     def _get_url(self):
         raise NotImplementedError()

@@ -455,11 +455,8 @@ async def register_new(ctx: SlashContext,
 
                     # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
                     # if the registration is cancelled, causing bugs
-                    try:
-                        db.session.delete(new_client)
-                        db.session.commit()
-                    except sqlalchemy.exc.InvalidRequestError:
-                        pass
+                    db.session.expunge(new_client)
+                    db.session.commit()
 
                     if init_balance.error is None:
                         if init_balance.amount < config.REGISTRATION_MINIMUM:
