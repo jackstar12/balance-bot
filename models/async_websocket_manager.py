@@ -68,10 +68,7 @@ class WebsocketManager:
     async def _callback(self, f, ws, *args, **kwargs):
         if callable(f) and ws is self._ws:
             try:
-                if asyncio.iscoroutine(f):
-                    await f(ws, *args, **kwargs)
-                else:
-                    f(ws, *args, **kwargs)
+                await f(ws, *args, **kwargs)
             except Exception:
                 logging.exception('Error running websocket callback:')
 
