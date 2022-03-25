@@ -1,21 +1,24 @@
 from datetime import datetime
 
-from api.database import db
+from api.database import Base
+from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, ForeignKey, Text, String, DateTime, Float, PickleType
+
 import config
 from api.dbmodels.serializer import Serializer
 
 
-class Balance(db.Model, Serializer):
+class Balance(Base, Serializer):
     __tablename__ = 'balance'
     __serializer_forbidden__ = ['id', 'error', 'client_id']
 
-    id = db.Column(db.Integer, primary_key=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
-    time = db.Column(db.DateTime, nullable=False)
-    amount = db.Column(db.Float, nullable=False)
-    currency = db.Column(db.String, nullable=False)
-    error = db.Column(db.String, nullable=True)
-    extra_currencies = db.Column(db.PickleType, nullable=True)
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
+    time = Column(DateTime, nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, nullable=False)
+    error = Column(String, nullable=True)
+    extra_currencies = Column(PickleType, nullable=True)
 
     def to_json(self, currency=False):
         json = {

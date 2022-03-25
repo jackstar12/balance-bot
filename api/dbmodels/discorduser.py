@@ -7,21 +7,25 @@ import discord
 import api.dbmodels.client as client
 from api.dbmodels.serializer import Serializer
 
+from api.database import Base, session as session
+from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, ForeignKey, Text, String, DateTime, Float, PickleType, BigInteger
 
-class DiscordUser(db.Model, Serializer):
+
+class DiscordUser(Base, Serializer):
     __tablename__ = 'discorduser'
     __serializer_forbidden__ = ['global_client']
 
-    id = db.Column(db.Integer(), primary_key=True)
-    user_id = db.Column(db.BigInteger(), nullable=False)
-    name = db.Column(db.String(), nullable=True)
-    user = db.relationship('User', backref='discorduser', lazy=True, uselist=False)
-    avatar = db.Column(db.String(), nullable=True)
+    id = Column(Integer(), primary_key=True)
+    user_id = Column(BigInteger(), nullable=False)
+    name = Column(String(), nullable=True)
+    user = relationship('User', backref='discorduser', lazy=True, uselist=False)
+    avatar = Column(String(), nullable=True)
 
-    global_client_id = db.Column(db.Integer(), db.ForeignKey('client.id', ondelete="SET NULL"), nullable=True)
-    global_client = db.relationship('Client', lazy=True, foreign_keys=global_client_id, post_update=True, uselist=False, cascade="all, delete")
+    global_client_id = Column(Integer(), ForeignKey('client.id', ondelete="SET NULL"), nullable=True)
+    global_client = relationship('Client', lazy=True, foreign_keys=global_client_id, post_update=True, uselist=False, cascade="all, delete")
 
-    clients = db.relationship('Client', backref='discorduser', lazy=True, uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
+    clients = relationship('Client', backref='discorduser', lazy=True, uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
 
     def get_discord_embed(self) -> List[discord.Embed]:
         return [client.get_discord_embed() for client in self.clients]
@@ -49,12 +53,13 @@ def add_user_from_json(user_json) -> DiscordUser:
         rekt_on=rekt_on,
         exchange=exchange_name
     )
-    db.session.add(exchange)
+    session.add(exchange)
     user = DiscordUser(
         user_id=user_json['id'],
         clients=[exchange],
         global_client=exchange
     )
-    db.session.add(user)
-    db.session.commit()
+
+    session.add(user)
+    session.commit()
     return user

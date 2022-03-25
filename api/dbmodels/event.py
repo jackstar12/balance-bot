@@ -1,7 +1,6 @@
 import utils
 import numpy
 from models.gain import Gain
-from api.database import db
 from api.dbmodels.archive import Archive
 from api.dbmodels.serializer import Serializer
 from datetime import datetime
@@ -9,27 +8,30 @@ from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 from config import DATA_PATH
 import discord
 
-association = db.Table('association',
-                       db.Column('event_id', db.Integer, db.ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
-                       db.Column('client_id', db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
-                       )
+from api.database import Base, session as session
+from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, ForeignKey, Text, String, DateTime, Float, PickleType, BigInteger, Table
+
+association = Table('association',
+                    Column('event_id', Integer, ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
+                    Column('client_id', Integer, ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
+                    )
 
 
-class Event(db.Model, Serializer):
-
+class Event(Base, Serializer):
     __tablename__ = 'event'
-    id = db.Column(db.Integer, primary_key=True)
-    guild_id = db.Column(db.BigInteger, nullable=False)
-    channel_id = db.Column(db.BigInteger, nullable=False)
-    registration_start = db.Column(db.DateTime, nullable=False)
-    registration_end = db.Column(db.DateTime, nullable=False)
-    start = db.Column(db.DateTime, nullable=False)
-    end = db.Column(db.DateTime, nullable=False)
-    name = db.Column(db.String, nullable=False)
-    description = db.Column(db.String, nullable=False)
+    id = Column(Integer, primary_key=True)
+    guild_id = Column(BigInteger, nullable=False)
+    channel_id = Column(BigInteger, nullable=False)
+    registration_start = Column(DateTime, nullable=False)
+    registration_end = Column(DateTime, nullable=False)
+    start = Column(DateTime, nullable=False)
+    end = Column(DateTime, nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=False)
 
-    registrations = db.relationship('Client', secondary=association, backref='events')
-    archive = db.relationship('Archive', backref='event', uselist=False, cascade="all, delete")
+    registrations = relationship('Client', secondary=association, backref='events')
+    archive = relationship('Archive', backref='event', uselist=False, cascade="all, delete")
 
     @hybrid_property
     def is_active(self):
@@ -59,7 +61,7 @@ class Event(db.Model, Serializer):
             if value:
                 embed.add_field(name="Registrations", value=value, inline=False)
             self._archive.registrations = value
-            db.session.commit()
+            session.commit()
 
         return embed
 
@@ -157,7 +159,7 @@ class Event(db.Model, Serializer):
 
         file = discord.File(DATA_PATH + path, path)
         self._archive.history_path = path
-        db.session.commit()
+        session.commit()
 
         return file
 
@@ -171,7 +173,7 @@ class Event(db.Model, Serializer):
     def _archive(self):
         if not self.archive:
             self.archive = Archive(event_id=self.id)
-            db.session.add(self.archive)
+            session.add(self.archive)
         return self.archive
 
     def __hash__(self):

@@ -20,3 +20,4 @@ PyJWT~=2.3.0
 cryptography~=36.0.1
 ccxt~=1.57.38
 aiohttp
+fastapi~=0.68.0

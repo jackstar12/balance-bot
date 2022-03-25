@@ -11,6 +11,7 @@ from api.dbmodels.user import User
 import api.apiutils as apiutils
 
 from api.app import app, flask_jwt
+from fastapi import APIRouter
 
 OAUTH2_CLIENT_ID = os.environ.get('OAUTH2_CLIENT_ID')
 OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET')
@@ -19,6 +20,13 @@ OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT')
 assert OAUTH2_CLIENT_SECRET
 assert OAUTH2_CLIENT_ID
 assert OAUTH2_REDIRECT_URI
+
+router = APIRouter(
+    prefix="/discord",
+    tags=["discord"],
+    dependencies=[],
+    responses={400: {"msg": "Invalid Discord Account"}}
+)
 
 
 API_BASE_URL = os.environ.get('API_BASE_URL', 'https://discordapp.com/api')
@@ -49,7 +57,7 @@ def make_session(token=None, state=None, scope=None):
         token_updater=token_updater)
 
 
-@app.route('/api/v1/discord/connect', methods=["GET"])
+@router.get('/connect')
 @flask_jwt.jwt_required()
 def register_discord():
     user = flask_jwt.current_user
@@ -62,7 +70,7 @@ def register_discord():
         return {'authorization': authorization_url}, HTTPStatus.OK
 
 
-@app.route('/api/v1/discord/disconnect', methods=["GET"])
+@router.get('/disconnect')
 @flask_jwt.jwt_required()
 def disconnect_discord():
     user = flask_jwt.current_user
@@ -75,7 +83,7 @@ def disconnect_discord():
         return {'disconnect': True}, HTTPStatus.OK
 
 
-@app.route('/api/v1/discord/callback')
+@router.get('/callback')
 @flask_jwt.jwt_required()
 def callback():
     user = flask_jwt.current_user
@@ -86,7 +94,8 @@ def callback():
     token = discord.fetch_token(
         TOKEN_URL,
         client_secret=OAUTH2_CLIENT_SECRET,
-        authorization_response=request.url)
+        authorization_response=request.url
+    )
     session['oauth2_token'] = token
 
     user_json = discord.get(API_BASE_URL + '/users/@me').json()

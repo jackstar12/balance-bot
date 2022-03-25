@@ -1,5 +1,4 @@
 from sqlalchemy.inspection import inspect
-from api.database import db
 
 
 class Serializer:

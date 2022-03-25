@@ -1,18 +1,19 @@
-from api.database import db
+from api.database import Base, session as session
+from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, ForeignKey, Text, String, DateTime, Float, PickleType, BigInteger, Table
 from api.dbmodels.serializer import Serializer
 
-
-class Execution(db.Model, Serializer):
+class Execution(Base, Serializer):
     __tablename__ = 'execution'
-    id = db.Column(db.Integer, primary_key=True)
-    trade_id = db.Column(db.Integer, db.ForeignKey('trade.id', ondelete='CASCADE'), nullable=True)
+    id = Column(Integer, primary_key=True)
+    trade_id = Column(Integer, ForeignKey('trade.id', ondelete='CASCADE'), nullable=True)
 
-    symbol = db.Column(db.String, nullable=False)
-    price = db.Column(db.Float, nullable=False)
-    qty = db.Column(db.Float, nullable=False)
-    side = db.Column(db.String, nullable=False)
-    time = db.Column(db.DateTime, nullable=False)
-    type = db.Column(db.String, nullable=True)
+    symbol = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+    qty = Column(Float, nullable=False)
+    side = Column(String, nullable=False)
+    time = Column(DateTime, nullable=False)
+    type = Column(String, nullable=True)
 
 
 

@@ -1,33 +1,27 @@
-import json
 import logging
 import os
 from datetime import timezone, datetime, timedelta
-from functools import wraps
 from http import HTTPStatus
-from typing import List, Tuple, Union, Dict, Callable, Optional
+from typing import List, Optional
 from config import EXCHANGES
-
+from pydantic import BaseModel
+from fastapi import Depends, Request
+from fastapi_jwt_auth import AuthJWT
 import bcrypt
 import flask_jwt_extended as flask_jwt
 import jwt
 from flask import request, jsonify
-from sqlalchemy import or_, and_
+from sqlalchemy import or_
 
 import utils
-from api import dbutils
 from api.database import db, app, migrate
 
-import api.dbutils
 import api.apiutils as apiutils
 from api.dbmodels.client import Client
 from api.dbmodels.user import User
 from api.dbmodels.trade import Trade
 from api.dbmodels.label import Label
-from api.dbmodels.event import Event
-from api.dbmodels.execution import Execution
-import api.discordauth
 from clientworker import ClientWorker
-from usermanager import UserManager
 
 jwt_manager = flask_jwt.JWTManager(app)
 
@@ -41,14 +35,29 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=48)
 app.config['JWT_SESSION_COOKIE'] = False
 
 
+class Settings(BaseModel):
+    authjwt_secret_key: str = os.environ.get('JWT_SECRET')
+    authjwt_token_location: set = {"cookies"}
+    authjwt_cookie_secure: bool = False
+    authjwt_cookie_csrf_protect: bool = True
+    # authjwt_cookie_samesite: str = 'lax'
+
+
+@AuthJWT.load_config
+def get_config():
+    return Settings()
+
+
 @jwt_manager.user_lookup_loader
 def callback(token, payload):
     id = payload.get('sub')
     return User.query.filter_by(id=id).first()
 
 
-@app.after_request
-def refresh_expiring_jwts(response):
+@app.middleware("http")
+async def refresh_expiring_jwts(request: Request, call_next):
+    response = await call_next(request)
+
     try:
         exp_timestamp = flask_jwt.get_jwt()["exp"]
         now = datetime.now(timezone.utc)
@@ -64,7 +73,10 @@ def refresh_expiring_jwts(response):
         return response
 
 
-@app.route('/api/v1/register', methods=["POST"])
+    return response
+
+
+@app.post('/api/v1/register', methods=["POST"])
 @apiutils.require_args(arg_names=[('email', True), ('password', True)])
 def register(email: str, password: str):
     user = User.query.filter_by(email=email).first()
@@ -87,31 +99,34 @@ def register(email: str, password: str):
 
 @app.route('/api/v1/login', methods=["POST"])
 @apiutils.require_args(arg_names=[('email', True), ('password', True)])
-def login(email: str, password: str):
+def login(email: str, password: str, Authorize: AuthJWT = Depends()):
     user = User.query.filter_by(email=email).first()
     if user:
         if bcrypt.hashpw(password.encode('utf-8'), user.salt.encode('utf-8')).decode('utf-8') == user.password:
-            resp = jsonify({'login': True})
-            flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=user.id), max_age=app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
-            flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=user.id), app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
+            resp = jsonify({'msg': 'Successfully Loged IN'})
+
+            Authorize.set_access_cookies(Authorize.create_access_token(identity=user.id), max_age=app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
+            Authorize.set_refresh_cookies(Authorize.create_refresh_token(identity=user.id), app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
             return resp
     return {'msg': 'Wrong Email or password'}, 401
 
 
+@app.route('/api/v1/logout', methods=["POST"])
+def logout(Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    response = jsonify({"msg": "logout successful"})
+    Authorize.unset_jwt_cookies(response)
+    return response
+
+
 @app.route('/api/v1/delete', methods=["POST"])
 @flask_jwt.jwt_required()
-def delete():
+def delete(Authorize: AuthJWT = Depends()):
     user: User = flask_jwt.current_user
     User.query.filter_by(id=user.id).delete()
     db.session.commit()
     return {'msg': 'Success'}, HTTPStatus.OK
 
-
-@app.route('/api/v1/logout', methods=["POST"])
-def logout():
-    response = jsonify({"msg": "logout successful"})
-    flask_jwt.unset_jwt_cookies(response)
-    return response
 
 
 @app.route('/api/v1/info')

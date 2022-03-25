@@ -1,9 +1,14 @@
-from api.database import db
+from api.database import Base
+from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, ForeignKey, Text, String
 
 
-class Archive(db.Model):
-    event_id = db.Column(db.Integer, db.ForeignKey('event.id'), nullable=False, primary_key=True)
-    registrations = db.Column(db.Text, nullable=True)
-    leaderboard = db.Column(db.Text, nullable=True)
-    summary = db.Column(db.Text, nullable=True)
-    history_path = db.Column(db.String, nullable=True)
+class Archive(Base):
+
+    __tablename__ = 'archive'
+
+    event_id = Column(Integer, ForeignKey('event.id'), nullable=False, primary_key=True)
+    registrations = Column(Text, nullable=True)
+    leaderboard = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    history_path = Column(String, nullable=True)
