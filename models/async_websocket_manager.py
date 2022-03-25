@@ -53,15 +53,15 @@ class WebsocketManager:
             self._ws = ws
             async for msg in ws:
                 msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
-                print('Message received from server:', msg)
                 if msg.type == aiohttp.WSMsgType.PING:
                     await ws.pong()
-                elif msg.type == aiohttp.WSMsgType.TEXT:
+                print('Message received from server:', msg)
+                if msg.type == aiohttp.WSMsgType.TEXT:
                     await self._callback(self._on_message, ws, msg.data)
-                elif msg.type == aiohttp.WSMsgType.ERROR:
+                if msg.type == aiohttp.WSMsgType.ERROR:
                     await self._callback(self._on_close, ws)
                     break
-                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                if msg.type == aiohttp.WSMsgType.CLOSED:
                     await self._callback(self._on_close, ws)
                     break
 
