@@ -54,7 +54,6 @@ class WebsocketManager:
             async for msg in ws:
                 msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
                 print('Message received from server:', msg)
-
                 if msg.type == aiohttp.WSMsgType.PING:
                     await ws.pong()
                 elif msg.type == aiohttp.WSMsgType.TEXT:
@@ -77,13 +76,13 @@ class WebsocketManager:
                 logging.exception('Error running websocket callback:')
 
     async def _on_close(self, ws):
-        await self.reconnect(ws)
+        await self.reconnect()
 
     async def _on_error(self, ws, error):
-        await self.reconnect(ws)
+        await self.reconnect()
 
     def _get_url(self):
         raise NotImplementedError()
 
-    def _on_message(self, ws, message):
+    async def _on_message(self, ws, message):
         raise NotImplementedError()
