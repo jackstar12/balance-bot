@@ -50,7 +50,7 @@ class FtxClient(ClientWorker):
     async def _get_balance(self, time: datetime):
         response = await self._get('/api/account')
         if response['success']:
-            amount = response['result']['totalAccountValue']
+            amount = response['result']['collateral']
         else:
             amount = 0
         return balance.Balance(amount=amount, currency='$', error=response.get('error'), time=time)
