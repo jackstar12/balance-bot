@@ -14,6 +14,8 @@ from api.dbmodels.balance import Balance
 class ClientWorker:
     __tablename__ = 'client'
 
+    _ENDPOINT = ''
+
     exchange: str = ''
     required_extra_args: List[str] = []
 
@@ -58,29 +60,29 @@ class ClientWorker:
         self._on_execution = callback
 
     @abc.abstractmethod
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs):
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         logging.error(f'Exchange {self.exchange} does not implement _sign_request')
 
     @abc.abstractmethod
     async def _process_response(self, response: ClientResponse):
         logging.error(f'Exchange {self.exchange} does not implement _process_response')
 
-    async def _request(self, method: str, url: str, headers=None, params=None, data=None, sign=True, **kwargs):
+    async def _request(self, method: str, path: str, headers=None, params=None, data=None, sign=True, **kwargs):
         headers = headers or {}
         params = params or {}
         if sign:
-            self._sign_request(method, url, headers, params, data)
-        async with self._http_client.request(method, url, headers=headers, params=params, data=data, **kwargs) as resp:
+            self._sign_request(method, path, headers, params, data)
+        async with self._http_client.request(method, self._ENDPOINT + path, headers=headers, params=params, data=data, **kwargs) as resp:
             return await self._process_response(resp)
 
-    async def _get(self, url: str, headers=None, params=None, sign=True, **kwargs):
-        return await self._request('GET', url, headers=headers, params=params, sign=sign, **kwargs)
+    async def _get(self, path: str, headers=None, params=None, sign=True, **kwargs):
+        return await self._request('GET', path, headers=headers, params=params, sign=sign, **kwargs)
 
-    async def _post(self, url: str, headers=None, params=None, data=None, sign=True, **kwargs):
-        return await self._request('POST', url, headers=headers, params=params, data=data, sign=sign, **kwargs)
+    async def _post(self, path: str, headers=None, params=None, data=None, sign=True, **kwargs):
+        return await self._request('POST', path, headers=headers, params=params, data=data, sign=sign, **kwargs)
 
-    async def _put(self, url: str, headers=None, params=None, data=None, sign=True, **kwargs):
-        return await self._request('PUT', url, headers=headers, params=params, data=data, sign=sign, **kwargs)
+    async def _put(self, path: str, headers=None, params=None, data=None, sign=True, **kwargs):
+        return await self._request('PUT', path, headers=headers, params=params, data=data, sign=sign, **kwargs)
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'

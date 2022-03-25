@@ -59,7 +59,7 @@ class BybitClient(ClientWorker):
         return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs):
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
         params['api_key'] = self._api_key
         params['timestamp'] = str(ts)

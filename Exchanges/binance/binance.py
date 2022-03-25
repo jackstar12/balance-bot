@@ -24,7 +24,7 @@ from api.dbmodels.execution import Execution
 
 class _BinanceBaseClient(ClientWorker):
 
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs) -> None:
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
         headers['X-MBX-APIKEY'] = self._api_key
         params['timestamp'] = ts
@@ -67,7 +67,7 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    ENDPOINT = 'https://fapi.binance.com/'
+    ENDPOINT = 'https://fapi.binance.com'
     exchange = 'binance-futures'
 
     def __init__(self, *args, **kwargs):
@@ -76,7 +76,7 @@ class BinanceFutures(_BinanceBaseClient):
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     async def _get_balance(self, time: datetime = None):
-        response = await self._get(self.ENDPOINT + 'fapi/v2/account')
+        response = await self._get('/fapi/v2/account')
 
         return balance.Balance(
             amount=float(response.get('totalMarginBalance', 0)),
@@ -86,14 +86,14 @@ class BinanceFutures(_BinanceBaseClient):
         )
 
     async def start_user_stream(self):
-        response = await self._post(self.ENDPOINT + 'fapi/v1/listenKey')
+        response = await self._post('/fapi/v1/listenKey')
         if response.get('msg') is None:
             return response['listenKey']
         else:
             return None
 
     async def keep_alive(self):
-        await self._put(self.ENDPOINT + 'fapi/v1/listenKey')
+        await self._put('/fapi/v1/listenKey')
 
     def set_execution_callback(self, callback: Callable[[Client, Execution], None]):
         self._callback = callback
@@ -120,7 +120,7 @@ class BinanceFutures(_BinanceBaseClient):
 
 class BinanceSpot(_BinanceBaseClient):
 
-    ENDPOINT = 'https://api.binance.com/api/v3/'
+    ENDPOINT = 'https://api.binance.com/api/v3'
     exchange = 'binance-spot'
 
     _ticker_cache: _TickerCache = None
@@ -129,7 +129,7 @@ class BinanceSpot(_BinanceBaseClient):
         if self._ticker_cache and (time - self._ticker_cache.time).total_seconds() < 3:
             return self._ticker_cache.ticker
         else:
-            result = await self._get(self.ENDPOINT + 'ticker/price', sign=False)
+            result = await self._get('/ticker/price', sign=False)
             self._ticker_cache = _TickerCache(
                 result,
                 time
@@ -140,7 +140,7 @@ class BinanceSpot(_BinanceBaseClient):
     async def _get_balance(self, time: datetime):
 
         results = await asyncio.gather(
-            self._get(self.ENDPOINT + 'account'),
+            self._get('/account'),
             self._get_tickers(time)
         )
 

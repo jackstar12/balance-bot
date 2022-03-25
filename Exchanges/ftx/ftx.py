@@ -16,7 +16,7 @@ from Exchanges.ftx.client import FtxWebsocketClient
 
 class FtxClient(ClientWorker):
     exchange = 'ftx'
-    ENDPOINT = 'https://ftx.com/api/'
+    ENDPOINT = 'https://ftx.com'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -29,7 +29,6 @@ class FtxClient(ClientWorker):
         super().set_execution_callback(callback)
         self.ws.connect()
         self.ws.get_fills()
-        self.ws.get_ticker('BTC')
 
     def _on_message(self, ws, message):
         print('FTX MESSAGE!!!')
@@ -49,16 +48,16 @@ class FtxClient(ClientWorker):
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime):
-        response = await self._get(self.ENDPOINT + 'account')
+        response = await self._get('/api/account')
         if response['success']:
             amount = response['result']['totalAccountValue']
         else:
             amount = 0
         return balance.Balance(amount=amount, currency='$', error=response.get('error'), time=time)
 
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs) -> None:
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
-        signature_payload = f'{ts}{method}/account'.encode()
+        signature_payload = f'{ts}{method}{path}'.encode()
         if data:
             signature_payload += data
         signature = hmac.new(self._api_secret.encode(), signature_payload, 'sha256').hexdigest()
