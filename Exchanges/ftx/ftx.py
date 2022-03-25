@@ -16,7 +16,7 @@ from Exchanges.ftx.client import FtxWebsocketClient
 
 class FtxClient(ClientWorker):
     exchange = 'ftx'
-    ENDPOINT = 'https://ftx.com'
+    _ENDPOINT = 'https://ftx.com'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

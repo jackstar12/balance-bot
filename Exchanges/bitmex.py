@@ -12,7 +12,7 @@ from clientworker import ClientWorker
 
 class BitmexClient(ClientWorker):
     exchange = 'bitmex'
-    ENDPOINT = 'https://www.bitmex.com/api/v1'
+    _ENDPOINT = 'https://www.bitmex.com'
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
     async def _get_balance(self, time: datetime):
@@ -26,7 +26,7 @@ class BitmexClient(ClientWorker):
         # )
         # res = self._request(request)
         response = await self._get(
-            self.ENDPOINT + '/user/wallet',
+            '/api/v1/user/wallet',
             params={'currency': 'all'}
         )
         total_balance = 0

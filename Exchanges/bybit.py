@@ -16,23 +16,20 @@ from typing import List, Tuple, Dict
 
 class BybitClient(ClientWorker):
     exchange = 'bybit'
-    ENDPOINT = 'https://api.bybit.com/v2/'
+    _ENDPOINT = 'https://api.bybit.com'
 
     amount = float
     type = str
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
-    def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime):
 
-        request = Request(
-            'GET',
-            self.ENDPOINT + 'private/wallet/balance'
-        )
-        response = self._request(request)
+        response = await self._get('/v2/private/wallet/balance')
 
         total_balance = 0
         extra_currencies: Dict[str, float] = {}
         err_msg = None
+
         if response['ret_code'] == 0:
             data = response['result']
             for currency in data:
@@ -41,14 +38,12 @@ class BybitClient(ClientWorker):
                 if currency == 'USDT':
                     price = 1
                 elif amount > 0:
-                    request = Request(
-                        'GET',
-                        self.ENDPOINT + 'public/tickers',
-                        params = {
+                    response_price = await self._get(
+                        '/v2//public/tickers',
+                        params={
                             'symbol': f'{currency}USD'
                         }
                     )
-                    response_price = self._request(request)
                     if response_price['ret_code'] == 0:
                         price = float(response_price['result'][0]['last_price'])
                         extra_currencies[currency] = amount

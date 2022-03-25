@@ -14,16 +14,18 @@ from api.dbmodels.balance import Balance
 
 class KuCoinClient(ClientWorker):
     exchange = 'kucoin'
-    ENDPOINT = 'https://api-futures.kucoin.com/'
+    _ENDPOINT = 'https://api-futures.kucoin.com'
 
     required_extra_args = [
         'passphrase'
     ]
 
     # https://docs.kucoin.com/#get-account-balance-of-a-sub-account
-    def _get_balance(self, time: datetime):
-        request = Request('GET', self.ENDPOINT + 'api/v1/account-overview', params={'currency': 'USDT'})
-        response = self._request(request)
+    async def _get_balance(self, time: datetime):
+        response = await self._get(
+            '/api/v1/account-overview',
+            params={'currency': 'USDT'}
+        )
         if response['code'] != '200000':
             balance = Balance(0, '$', response['msg'])
         else:
@@ -34,7 +36,7 @@ class KuCoinClient(ClientWorker):
     # https://docs.kucoin.com/#authentication
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
-        signature_payload = f'{ts}{method}{method}'
+        signature_payload = f'{ts}{method}{path}'
         if data is not None:
             signature_payload += data
         signature = base64.b64encode(
