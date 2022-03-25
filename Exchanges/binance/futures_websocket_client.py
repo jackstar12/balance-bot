@@ -3,7 +3,7 @@ import asyncio
 
 from typing import Callable
 
-from Exchanges.binance.async_websocket_manager import WebsocketManager
+from models.async_websocket_manager import WebsocketManager
 from datetime import datetime
 import aiohttp
 
