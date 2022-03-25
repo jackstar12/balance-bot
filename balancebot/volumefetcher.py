@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import deque
 from models.volumeratiohistory import VolumeRatioHistory
 from models.volumeratio import VolumeRatio
@@ -36,13 +36,14 @@ class VolumeFetcher(Singleton):
             }
             return markets_by_name
 
-    async def _get_market_data(self, market: str, **kwargs):
+    async def _get_market_data(self, market: str, start_time: datetime, **kwargs):
         return await self._get(
             f'markets/{market}/candles',
             params={
-                'start_time': str(datetime.now()),
+                'start_time': str(start_time.isoformat()),
                 'resolution': str(10 * 60)
-            }
+            },
+            **kwargs
         )
 
     async def _bootstrap(self):
@@ -81,6 +82,30 @@ class VolumeFetcher(Singleton):
                 )
 
         asyncio.create_task(self._update_forever())
+
+    async def _update_volume_history(self, coin: VolumeRatioHistory):
+        if len(coin.spot_data):
+            start_time = coin.spot_data[len(coin.spot_data) - 1]
+        else:
+            start_time = datetime.now() - timedelta(days=7)
+
+        spot_data = await self._get_market_data(coin.spot_name, start_time=start_time)
+        perp_data = await self._get_market_data(coin.perp_name, start_time=start_time)
+
+        coin.spot_data.append(*spot_data)
+        coin.perp_data.append(*perp_data)
+
+        spot_aggr, perp_aggr = 0.0, 0.0
+        ratio_data = []
+        now = datetime.now()
+        for i in range(0, min(len(spot_data), len(perp_data))):
+            spot_aggr += spot_data[i]["volume"]
+            perp_aggr += perp_data[i]["volume"]
+            ratio_data.append(
+                VolumeRatio(date=now, ratio=spot_aggr / perp_aggr)
+            )
+        coin.ratio_data = ratio_data
+
 
     async def _update_forever(self):
         while True:
