@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import json
 import time
@@ -14,6 +15,10 @@ class FtxWebsocketClient(WebsocketManager):
 
     def _get_url(self) -> str:
         return self._ENDPOINT
+
+    async def connect(self):
+        await super().connect()
+        asyncio.create_task(self._ping_forever())
 
     def __init__(self, session: aiohttp.ClientSession, api_key=None, api_secret=None, on_message_callback=None, subaccount=None) -> None:
         super().__init__(session=session)
@@ -77,10 +82,15 @@ class FtxWebsocketClient(WebsocketManager):
             await self._subscribe(subscription)
         return self._tickers[market]
 
-    def ping(self):
-        self.send_json({
+    async def ping(self):
+        await self.send_json({
             'op': 'ping'
         })
+
+    async def _ping_forever(self):
+        while self.connected:
+            await self.ping()
+            await asyncio.sleep(15)
 
     def _handle_ticker_message(self, message: Dict) -> None:
         self._tickers[message['market']] = message['data']
