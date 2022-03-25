@@ -58,7 +58,6 @@ class WebsocketManager:
                     continue
                 if msg.type == aiohttp.WSMsgType.PONG:
                     continue
-                print('Message received from server:', msg)
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     await self._callback(self._on_message, ws, msg.data)
                 if msg.type == aiohttp.WSMsgType.ERROR:

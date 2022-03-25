@@ -114,6 +114,8 @@ class FtxWebsocketClient(WebsocketManager):
             raise Exception(message)
         channel = message['channel']
 
+        print('FTX MESSAGE: ', raw_message)
+
         if channel == 'ticker':
             self._handle_ticker_message(message)
         elif channel == 'fills':
