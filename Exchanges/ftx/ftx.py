@@ -1,3 +1,4 @@
+import asyncio
 import json
 import urllib.parse
 import hmac
@@ -29,8 +30,11 @@ class FtxClient(ClientWorker):
 
     def set_execution_callback(self, callback: Callable[[int, Execution], None]):
         super().set_execution_callback(callback)
-        self.ws.connect()
-        self.ws.get_fills()
+        asyncio.create_task(self._start_ws())
+
+    async def _start_ws(self):
+        await self.ws.connect()
+        await self.ws.get_fills()
 
     def _on_message(self, ws, message):
         print('FTX MESSAGE!!!')
