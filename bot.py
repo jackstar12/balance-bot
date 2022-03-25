@@ -62,9 +62,8 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
-    user_manager.start_fetching()
     user_manager.synch_workers()
-    bot.loop.create_task(user_manager.async_start_fetching())
+    bot.loop.create_task(user_manager.start_fetching())
     event_manager.initialize_events()
 
     logger.info('Bot Ready')
