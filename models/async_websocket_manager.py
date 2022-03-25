@@ -55,6 +55,9 @@ class WebsocketManager:
                 msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
                 if msg.type == aiohttp.WSMsgType.PING:
                     await ws.pong()
+                    continue
+                if msg.type == aiohttp.WSMsgType.PONG:
+                    continue
                 print('Message received from server:', msg)
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     await self._callback(self._on_message, ws, msg.data)
