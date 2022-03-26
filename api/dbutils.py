@@ -13,13 +13,20 @@ def get_client(user_id: int,
     user = DiscordUser.query.filter_by(user_id=user_id).first()
     if user:
         if guild_id:
-            event = get_event(guild_id, throw_exceptions=False)
+            event = get_event(guild_id, state='registration', throw_exceptions=False)
             if event:
                 for client in event.registrations:
                     if client.discorduser.user_id == user_id:
                         return client
-                if throw_exceptions:
-                    raise UserInputError("User {name} is not registered for this event", user_id)
+
+            event = get_event(guild_id, state='active', throw_exceptions=False)
+            if event:
+                for client in event.registrations:
+                    if client.discorduser.user_id == user_id:
+                        return client
+
+            if throw_exceptions:
+                raise UserInputError("User {name} is not registered for this event", user_id)
         if user.global_client:
             return user.global_client
         elif throw_exceptions:

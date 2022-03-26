@@ -133,8 +133,8 @@ class Event(db.Model):
         cum_percent = 0.0
         cum_dollar = 0.0
         for gain in gains:
-            cum_percent += gain.relative
-            cum_dollar += gain.absolute
+            cum_percent += gain.relative if gain.relative else 0
+            cum_dollar += gain.absolute if gain.absolute else 0
 
         cum_percent /= len(gains) or 1  # Avoid division by zero
 
@@ -148,10 +148,10 @@ class Event(db.Model):
 
         return embed
 
-    def create_complete_history(self, dc_client: discord.Client):
+    async def create_complete_history(self, dc_client: discord.Client):
 
         path = f'HISTORY_{self.guild_id}_{self.channel_id}_{int(self.start.timestamp())}.png'
-        utils.create_history(
+        await utils.create_history(
             custom_title=f'Complete history for {self.name}',
             to_graph=[
                 (client, client.discorduser.get_display_name(dc_client, self.guild_id))
@@ -164,7 +164,8 @@ class Event(db.Model):
             currency='$',
             percentage=True,
             path=DATA_PATH + path,
-            archived=self.end < datetime.now()
+            archived=self.end < datetime.now(),
+            throw_exceptions=False
         )
 
         file = discord.File(DATA_PATH + path, path)

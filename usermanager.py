@@ -40,7 +40,7 @@ class UserManager(Singleton):
             Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
-        self._session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession()
 
         self.synch_workers()
 
@@ -67,28 +67,12 @@ class UserManager(Singleton):
         if commit:
             db.session.commit()
 
-    def start_fetching(self):
-        """
-        Start fetching data at specified interval
-        """
-
-        self._db_fetch_data(set_full_fetch=True)
-
-        time = datetime.now()
-        next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
-                            microsecond=0) + timedelta(hours=self.interval_hours)
-        delay = next - time
-
-        timer = Timer(delay.total_seconds(), self.start_fetching)
-        timer.daemon = True
-        timer.start()
-
-    async def async_start_fetching(self):
+    async def start_fetching(self):
         """
         Start fetching data at specified interval
         """
         while True:
-            asyncio.create_task(self._async_fetch_data())
+            await self._async_fetch_data()
             time = datetime.now()
             next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
                                 microsecond=0) + timedelta(hours=self.interval_hours)
@@ -132,7 +116,7 @@ class UserManager(Singleton):
     def add_client(self, client):
         client_cls = self._exchanges[client.exchange]
         if issubclass(client_cls, ClientWorker):
-            worker = client_cls(client, self._session)
+            worker = client_cls(client, self.session)
             self._add_worker(worker)
         else:
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
@@ -191,6 +175,8 @@ class UserManager(Singleton):
                 initial = results[0]
             except ValueError:
                 pass
+            except IndexError:
+                pass
 
         return History(
             data=results,
@@ -238,7 +224,7 @@ class UserManager(Singleton):
             if not worker:
                 continue
             tasks.append(
-                asyncio.create_task(worker.get_balance(self._session, time, force=force_fetch))
+                asyncio.create_task(worker.get_balance(self.session, time, force=force_fetch))
             )
         results = await asyncio.gather(*tasks)
 

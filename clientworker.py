@@ -7,7 +7,6 @@ from aiohttp import ClientResponse
 from typing import NamedTuple
 from requests import Request, Response, Session
 
-from api.dbmodels.execution import Execution
 from api.dbmodels.client import Client
 from api.dbmodels.balance import Balance
 

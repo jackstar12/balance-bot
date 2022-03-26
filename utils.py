@@ -1,7 +1,6 @@
 import re
 import logging
 import traceback
-
 from models.gain import Gain
 from functools import wraps
 
@@ -59,9 +58,7 @@ def set_author_default(name: str):
             if user is None:
                 kwargs[name] = ctx.author
             return await coro(ctx, *args, **kwargs)
-
         return wrapper
-
     return decorator
 
 
@@ -102,7 +99,6 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
     :param log_args: whether the args passed in should be logged (e.g. disabled when sensitive data is passed).
     :return:
     """
-
     def decorator(coro):
         @wraps(coro)
         async def wrapper(ctx: SlashContext, *args, **kwargs):
@@ -169,7 +165,8 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                          percentage: bool,
                          path: str,
                          custom_title: str = None,
-                         archived=False):
+                         archived=False,
+                         throw_exceptions=True):
     """
     Creates a history image for a given list of clients and stores it in the given path.
 
@@ -189,7 +186,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     title = ''
 
     um = UserManager()
-
+    await um.fetch_data([graph[0] for graph in to_graph])
     for registered_client, name in to_graph:
 
         history = um.get_client_history(registered_client,
@@ -200,7 +197,10 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                                         archived=archived)
 
         if len(history.data) == 0:
-            raise UserInputError(f'Got no data for {name}!')
+            if throw_exceptions:
+                raise UserInputError(f'Got no data for {name}!')
+            else:
+                continue
 
         xs, ys = calc_xs_ys(history.data, percentage, relative_to=history.initial)
 
@@ -358,6 +358,7 @@ async def create_leaderboard(dc_client: discord.Client,
                        mode: str,
                        time: datetime = None,
                        archived=False) -> discord.Embed:
+
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
     users_rekt: List[DiscordUser] = []

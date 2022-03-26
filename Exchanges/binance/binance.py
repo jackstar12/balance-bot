@@ -64,7 +64,7 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    ENDPOINT = 'https://fapi.binance.com'
+    _ENDPOINT = 'https://fapi.binance.com'
     exchange = 'binance-futures'
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data

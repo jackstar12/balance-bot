@@ -58,8 +58,8 @@ class Client(db.Model):
     def initial(self):
         try:
             return self.history[0]
-        except ValueError:
-            return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
+        except (ValueError, IndexError):
+            return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None)
 
     def get_event_string(self, is_global=False):
         events = ''
