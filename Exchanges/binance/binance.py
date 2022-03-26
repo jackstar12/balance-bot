@@ -69,7 +69,7 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    _ENDPOINT = 'https://testnet.binancefuture.com'
+    _ENDPOINT = 'wss://fstream.binance.com'
     exchange = 'binance-futures'
 
     def __init__(self, *args, **kwargs):
