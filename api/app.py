@@ -12,9 +12,10 @@ import flask_jwt_extended as flask_jwt
 import jwt
 from flask import request, jsonify
 from sqlalchemy import or_
+from fastapi import FastAPI
 
 import utils
-from api.database import db, app, migrate
+from api.database import migrate, session
 
 import api.apiutils as apiutils
 from api.dbmodels.client import Client
@@ -23,16 +24,17 @@ from api.dbmodels.trade import Trade
 from api.dbmodels.label import Label
 from clientworker import ClientWorker
 
-jwt_manager = flask_jwt.JWTManager(app)
+import routers.discordauth as discord
+import routers.authentication as auth
 
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET')
-app.config['JWT_TOKEN_LOCATION'] = ['cookies']
-app.config['JWT_CSRF_METHODS'] = []
-app.config['JWT_COOKIE_CSRF_PROTECT'] = True
-app.config['JWT_COOKIE_SECURE'] = True  # True in production
-app.config['JWT_COOKIE_MAX_AGE'] = timedelta(hours=48).total_seconds()
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=48)
-app.config['JWT_SESSION_COOKIE'] = False
+app = FastAPI(
+    openapi_prefix='/api/v1'
+)
+
+app.include_router(discord.router)
+app.include_router(auth.router)
+
+jwt_manager = flask_jwt.JWTManager(app)
 
 
 class Settings(BaseModel):
@@ -40,6 +42,8 @@ class Settings(BaseModel):
     authjwt_token_location: set = {"cookies"}
     authjwt_cookie_secure: bool = False
     authjwt_cookie_csrf_protect: bool = True
+    authjwt_access_token_expires: timedelta = timedelta(hours=48)
+    authjwt_cookie_max_age: int = timedelta(hours=48).total_seconds()
     # authjwt_cookie_samesite: str = 'lax'
 
 
@@ -76,62 +80,20 @@ async def refresh_expiring_jwts(request: Request, call_next):
     return response
 
 
-@app.post('/api/v1/register', methods=["POST"])
-@apiutils.require_args(arg_names=[('email', True), ('password', True)])
-def register(email: str, password: str):
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        salt = bcrypt.gensalt()
-        new_user = User(
-            email=email,
-            salt=salt.decode('utf-8'),
-            password=bcrypt.hashpw(password.encode(), salt).decode('utf-8')
-        )
-        db.session.add(new_user)
-        db.session.commit()
-        resp = jsonify({'login': True})
-        flask_jwt.set_access_cookies(resp, flask_jwt.create_access_token(identity=new_user.id), app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
-        flask_jwt.set_refresh_cookies(resp, flask_jwt.create_refresh_token(identity=new_user.id), app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
-        return resp
-    else:
-        return {'msg': f'Email is already used'}, HTTPStatus.BAD_REQUEST
-
-
-@app.route('/api/v1/login', methods=["POST"])
-@apiutils.require_args(arg_names=[('email', True), ('password', True)])
-def login(email: str, password: str, Authorize: AuthJWT = Depends()):
-    user = User.query.filter_by(email=email).first()
-    if user:
-        if bcrypt.hashpw(password.encode('utf-8'), user.salt.encode('utf-8')).decode('utf-8') == user.password:
-            resp = jsonify({'msg': 'Successfully Loged IN'})
-
-            Authorize.set_access_cookies(Authorize.create_access_token(identity=user.id), max_age=app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
-            Authorize.set_refresh_cookies(Authorize.create_refresh_token(identity=user.id), app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
-            return resp
-    return {'msg': 'Wrong Email or password'}, 401
-
-
-@app.route('/api/v1/logout', methods=["POST"])
-def logout(Authorize: AuthJWT = Depends()):
-    Authorize.jwt_required()
-    response = jsonify({"msg": "logout successful"})
-    Authorize.unset_jwt_cookies(response)
-    return response
-
-
-@app.route('/api/v1/delete', methods=["POST"])
-@flask_jwt.jwt_required()
+@app.post('/delete')
 def delete(Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
     user: User = flask_jwt.current_user
     User.query.filter_by(id=user.id).delete()
-    db.session.commit()
+    session.commit()
     return {'msg': 'Success'}, HTTPStatus.OK
 
 
-
-@app.route('/api/v1/info')
-@flask_jwt.jwt_required()
-def info():
+@app.get('/info')
+def info(Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    Authorize.get_jwt_subject()
+    Authorize.get_jwt_subject()
     return jsonify(flask_jwt.current_user.serialize(full=True, data=False)), 200
 
 
@@ -301,7 +263,7 @@ def get_client_analytics(id: int = None, currency: str = None, since: str = None
 def delete_client(id: int):
     user = flask_jwt.current_user
     get_client_query(user, id).delete()
-    db.session.commit()
+    session.commit()
     return {'msg': 'Success'}, HTTPStatus.OK
 
 
@@ -347,8 +309,8 @@ def confirm_client(token: str):
     try:
         client = Client(**client_json)
         flask_jwt.current_user.clients.append(client)
-        db.session.add(client)
-        db.session.commit()
+        session.add(client)
+        session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     except TypeError:
         return {'msg': 'Internal Error'}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -368,8 +330,8 @@ def get_label(id: int):
 
 def create_label(name: str, color: str):
     label = Label(name=name, color=color, user_id=flask_jwt.current_user.id)
-    db.session.add(label)
-    db.session.commit()
+    session.add(label)
+    session.commit()
     return jsonify(label.serialize()), HTTPStatus.OK
 
 
@@ -377,7 +339,7 @@ def delete_label(id: int):
     result = get_label(id)
     if isinstance(result, Label):
         Label.query.filter_by(id=id).delete()
-        db.session.commit()
+        session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     else:
         return result
@@ -390,7 +352,7 @@ def update_label(id: int, name: str = None, color: str = None):
             result.name = name
         if color:
             result.color = color
-        db.session.commit()
+        session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     else:
         return result
@@ -485,7 +447,7 @@ def set_labels(client_id: int, trade_id: int, label_ids: List[int]):
             ).all()
         else:
             trade.labels = []
-        db.session.commit()
+        session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     else:
         return trade

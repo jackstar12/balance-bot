@@ -22,6 +22,7 @@ from clientworker import ClientWorker
 from api.dbmodels.client import Client
 import api.dbmodels.balance as balance
 from api.dbmodels.execution import Execution
+import os
 
 
 class _BinanceBaseClient(ClientWorker):
@@ -69,7 +70,7 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    _ENDPOINT = 'https://testnet.binancefuture.com'
+    _ENDPOINT = 'https://fapi.binance.com'
     exchange = 'binance-futures'
 
     def __init__(self, *args, **kwargs):
