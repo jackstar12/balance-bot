@@ -13,7 +13,7 @@ from api.dbmodels.balance import Balance
 
 
 class Cached(NamedTuple):
-    path: str
+    url: str
     response: dict
     expires: datetime
 
@@ -77,17 +77,18 @@ class ClientWorker:
     async def _request(self, method: str, path: str, headers=None, params=None, data=None, sign=True, cache=False, **kwargs):
         headers = headers or {}
         params = params or {}
+        url = self._ENDPOINT + path
         if cache:
-            cached = ClientWorker._cache.get(self._ENDPOINT + path)
+            cached = ClientWorker._cache.get(url)
             if cached and datetime.now() < cached.expires:
                 return cached.response
         if sign:
             self._sign_request(method, path, headers, params, data)
-        async with self._session.request(method, self._ENDPOINT + path, headers=headers, params=params, data=data, **kwargs) as resp:
+        async with self._session.request(method, url, headers=headers, params=params, data=data, **kwargs) as resp:
             resp = await self._process_response(resp)
             if cache:
-                ClientWorker._cache[path] = Cached(
-                    path=self._ENDPOINT + path,
+                ClientWorker._cache[url] = Cached(
+                    url=url,
                     response=resp,
                     expires=datetime.now() + timedelta(seconds=5)
                 )

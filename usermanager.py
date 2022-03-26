@@ -1,28 +1,23 @@
+from __future__ import annotations
 import json
 import asyncio
 import aiohttp
 import logging
 import math
-import os
-import shutil
 from datetime import datetime, timedelta
-from threading import RLock, Timer, Thread
-from typing import List, Tuple, Dict, Callable, Optional, Any
-
-from aiohttp import ClientSession
-
-from api.dbmodels.trade import Trade, trade_from_execution
-from models.history import History
-from models.singleton import Singleton
-from config import CURRENCY_ALIASES
+from threading import RLock, Timer
+from typing import List, Dict, Callable, Optional, Any
 
 import api.dbutils as dbutils
 from api.database import db
-from api.dbmodels.discorduser import DiscordUser, add_user_from_json
-from api.dbmodels.balance import Balance, balance_from_json
-import api.dbmodels.client as api_client
-from api.dbmodels.execution import Execution
+from api.dbmodels.balance import Balance
+from api.dbmodels.client import Client
+from api.dbmodels.discorduser import DiscordUser
+import api.dbmodels.event as db_event
 from clientworker import ClientWorker
+from config import CURRENCY_ALIASES
+from models.history import History
+from models.singleton import Singleton
 
 
 class UserManager(Singleton):
@@ -49,11 +44,6 @@ class UserManager(Singleton):
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
         self.session = aiohttp.ClientSession()
-
-        #self.synch_workers()
-
-    async def get_session(self) -> ClientSession:
-        return self.session
 
     def _add_worker(self, worker: ClientWorker):
         with self._worker_lock:
@@ -151,7 +141,7 @@ class UserManager(Singleton):
 
     def get_client_history(self,
                            client: api_client.Client,
-                           guild_id: int,
+                           event: db_event.Event,
                            since: datetime = None,
                            to: datetime = None,
                            currency: str = None,
@@ -159,7 +149,6 @@ class UserManager(Singleton):
 
         since = since or datetime.fromtimestamp(0)
         to = to or datetime.now()
-        event = dbutils.get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
 
         if event:
             # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
