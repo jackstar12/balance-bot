@@ -21,7 +21,7 @@ import api.dbmodels.balance as balance
 
 class _BinanceBaseClient(ClientWorker):
 
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs) -> None:
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
         headers['X-MBX-APIKEY'] = self._api_key
         params['timestamp'] = ts
@@ -64,12 +64,12 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    ENDPOINT = 'https://fapi.binance.com/'
+    ENDPOINT = 'https://fapi.binance.com'
     exchange = 'binance-futures'
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     async def _get_balance(self, time: datetime = None):
-        response = await self._get(self.ENDPOINT + 'fapi/v2/account')
+        response = await self._get('/fapi/v2/account')
 
         return balance.Balance(
             amount=float(response.get('totalMarginBalance', 0)),
@@ -81,28 +81,15 @@ class BinanceFutures(_BinanceBaseClient):
 
 class BinanceSpot(_BinanceBaseClient):
 
-    ENDPOINT = 'https://api.binance.com/api/v3/'
+    _ENDPOINT = 'https://api.binance.com/api/v3'
     exchange = 'binance-spot'
-
-    _ticker_cache: _TickerCache = None
-
-    async def _get_tickers(self, time: datetime):
-        if self._ticker_cache and (time - self._ticker_cache.time).total_seconds() < 3:
-            return self._ticker_cache.ticker
-        else:
-            result = await self._get(self.ENDPOINT + 'ticker/price', sign=False)
-            self._ticker_cache = _TickerCache(
-                result,
-                time
-            )
-            return result
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
     async def _get_balance(self, time: datetime):
 
         results = await asyncio.gather(
-            self._get(self.ENDPOINT + 'account'),
-            self._get_tickers(time)
+            self._get('/account'),
+            self._get('/ticker/price', sign=False, cache=True)
         )
 
         if isinstance(results[0], dict):

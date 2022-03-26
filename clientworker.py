@@ -1,21 +1,32 @@
 import abc
 import logging
 from datetime import datetime, timedelta
-from typing import List, Callable, Union
+from typing import List, Callable, Union, Dict
 import aiohttp.client
 from aiohttp import ClientResponse
+from typing import NamedTuple
 from requests import Request, Response, Session
 
+from api.dbmodels.execution import Execution
 from api.dbmodels.client import Client
 from api.dbmodels.balance import Balance
 
+
+class Cached(NamedTuple):
+    path: str
+    response: dict
+    expires: datetime
+
+
 class ClientWorker:
     __tablename__ = 'client'
+    _ENDPOINT = ''
+    _cache: Dict[str, Cached] = {}
 
     exchange: str = ''
     required_extra_args: List[str] = []
 
-    def __init__(self, client: Client, http_client: aiohttp.ClientSession):
+    def __init__(self, client: Client, session: aiohttp.ClientSession):
         self.client = client
         self.client_id = client.id
         self.exchange = client.exchange
@@ -26,7 +37,7 @@ class ClientWorker:
         self._subaccount = client.subaccount
         self._extra_kwargs = client.extra_kwargs
 
-        self._http_client = http_client
+        self._session = session
         self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
 
@@ -51,23 +62,40 @@ class ClientWorker:
         raise NotImplementedError(f'Exchange {self.exchange} does not implement _get_balance')
 
     @abc.abstractmethod
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs):
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         logging.error(f'Exchange {self.exchange} does not implement _sign_request')
 
     @abc.abstractmethod
     async def _process_response(self, response: ClientResponse):
         logging.error(f'Exchange {self.exchange} does not implement _process_response')
 
-    async def _request(self, method: str, url: str, headers=None, params=None, data=None, sign=True, **kwargs):
+    async def _request(self, method: str, path: str, headers=None, params=None, data=None, sign=True, cache=False, **kwargs):
         headers = headers or {}
         params = params or {}
+        if cache:
+            cached = ClientWorker._cache.get(self._ENDPOINT + path)
+            if cached and datetime.now() < cached.expires:
+                return cached.response
         if sign:
-            self._sign_request(method, url, headers, params, data)
-        async with self._http_client.request(method, url, headers=headers, params=params, data=data, **kwargs) as resp:
-            return await self._process_response(resp)
+            self._sign_request(method, path, headers, params, data)
+        async with self._session.request(method, self._ENDPOINT + path, headers=headers, params=params, data=data, **kwargs) as resp:
+            resp = await self._process_response(resp)
+            if cache:
+                ClientWorker._cache[path] = Cached(
+                    path=self._ENDPOINT + path,
+                    response=resp,
+                    expires=datetime.now() + timedelta(seconds=5)
+                )
+            return resp
 
-    async def _get(self, url: str, headers=None, params=None, sign=True, **kwargs):
-        return await self._request('GET', url, headers=headers, params=params, sign=sign, **kwargs)
+    async def _get(self, path: str, **kwargs):
+        return await self._request('GET', path, **kwargs)
+
+    async def _post(self, path: str, **kwargs):
+        return await self._request('POST', path, **kwargs)
+
+    async def _put(self, path: str, **kwargs):
+        return await self._request('PUT', path, **kwargs)
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'

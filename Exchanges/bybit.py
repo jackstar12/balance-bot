@@ -1,3 +1,4 @@
+import asyncio
 import urllib.parse
 import time
 import logging
@@ -16,50 +17,56 @@ from typing import List, Tuple, Dict
 
 class BybitClient(ClientWorker):
     exchange = 'bybit'
-    ENDPOINT = 'https://api.bybit.com/v2/'
+    _ENDPOINT = 'https://api.bybit.com'
 
     amount = float
     type = str
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
-    def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime):
 
-        request = Request(
-            'GET',
-            self.ENDPOINT + 'private/wallet/balance'
+        results = await asyncio.gather(
+            self._get('/v2/private/wallet/balance'),
+            self._get('/v2/public/tickers', sign=False, cache=True)
         )
-        response = self._request(request)
+
+        if isinstance(results[0], Dict):
+            balance = results[0]
+            tickers = results[1]
+        else:
+            balance = results[1]
+            tickers = results[0]
 
         total_balance = 0
         extra_currencies: Dict[str, float] = {}
         err_msg = None
-        if response['ret_code'] == 0:
-            data = response['result']
-            for currency in data:
-                amount = float(data[currency]['equity'])
-                price = 0
-                if currency == 'USDT':
-                    price = 1
-                elif amount > 0:
-                    request = Request(
-                        'GET',
-                        self.ENDPOINT + 'public/tickers',
-                        params = {
-                            'symbol': f'{currency}USD'
-                        }
-                    )
-                    response_price = self._request(request)
-                    if response_price['ret_code'] == 0:
-                        price = float(response_price['result'][0]['last_price'])
-                        extra_currencies[currency] = amount
-                total_balance += amount * price
+
+        if balance['ret_code'] == 0:
+            data = balance['result']
+            if tickers['ret_code'] == 0:
+                ticker_data = tickers['result']
+                ticker_prices = {
+                    ticker['symbol']: ticker['last_price'] for ticker in ticker_data
+                }
+                for currency in data:
+                    amount = float(data[currency]['equity'])
+                    price = 0
+                    if currency == 'USDT':
+                        price = 1
+                    elif amount > 0:
+                        price = ticker_prices.get(currency)
+                        if price:
+                            extra_currencies[currency] = amount
+                    total_balance += amount * price
+            else:
+                err_msg = tickers['ret_msg']
         else:
-            err_msg = response['ret_msg']
+            err_msg = balance['ret_msg']
 
         return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs):
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
         params['api_key'] = self._api_key
         params['timestamp'] = str(ts)
