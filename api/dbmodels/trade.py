@@ -30,7 +30,7 @@ class Trade(db.Model, Serializer):
     executions = db.relationship('Execution', foreign_keys='[Execution.trade_id]', backref='trade', lazy=True,
                                  cascade='all, delete')
 
-    initial_execution_id = db.Column(db.Integer, db.ForeignKey('execution.id'), nullable=True)
+    initial_execution_id = db.Column(db.Integer, db.ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
 
     initial = db.relationship(
         'Execution',
