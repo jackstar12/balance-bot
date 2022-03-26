@@ -5,6 +5,7 @@ from api.dbmodels.archive import Archive
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.balance import Balance
+from api.dbmodels.event import Event
 
 db.init_app(app)
 migrate.init_app(app, db)
