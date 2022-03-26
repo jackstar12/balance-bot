@@ -1,8 +1,9 @@
+from __future__ import annotations
 from datetime import datetime
 
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
-from api.dbmodels.event import Event
+import api.dbmodels.event as db_event
 from typing import Optional
 from errors import UserInputError
 
@@ -18,14 +19,12 @@ def get_client(user_id: int,
                 for client in event.registrations:
                     if client.discorduser.user_id == user_id:
                         return client
-
             event = get_event(guild_id, state='active', throw_exceptions=False)
             if event:
                 for client in event.registrations:
                     if client.discorduser.user_id == user_id:
                         return client
-
-            if throw_exceptions:
+            if event and throw_exceptions:
                 raise UserInputError("User {name} is not registered for this event", user_id)
         if user.global_client:
             return user.global_client
@@ -36,29 +35,29 @@ def get_client(user_id: int,
 
 
 def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
-              throw_exceptions=True) -> Optional[Event]:
+              throw_exceptions=True) -> Optional[db_event.Event]:
 
     if not state:
         state = 'active'
 
     now = datetime.now()
 
-    filters = [Event.guild_id == guild_id]
+    filters = [db_event.Event.guild_id == guild_id]
     if state == 'archived':
-        filters.append(Event.end < now)
+        filters.append(db_event.Event.end < now)
     elif state == 'active':
-        filters.append(Event.start <= now)
-        filters.append(now <= Event.end)
+        filters.append(db_event.Event.start <= now)
+        filters.append(now <= db_event.Event.end)
     elif state == 'registration':
-        filters.append(Event.registration_start <= now)
-        filters.append(now <= Event.registration_end)
+        filters.append(db_event.Event.registration_start <= now)
+        filters.append(now <= db_event.Event.registration_end)
 
     if state == 'archived':
-        events = Event.query.filter(*filters).all()
+        events = db_event.Event.query.filter(*filters).all()
         events.sort(key=lambda x: x.end, reverse=True)
         event = events[0]
     else:
-        event = Event.query.filter(*filters).first()
+        event = db_event.Event.query.filter(*filters).first()
 
     if not event and throw_exceptions:
         raise UserInputError(f'There is no {"event you can register for" if state == "registration" else "active event"}')

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import asyncio
 import aiohttp
@@ -12,6 +13,7 @@ from api.database import db
 from api.dbmodels.balance import Balance
 from api.dbmodels.client import Client
 from api.dbmodels.discorduser import DiscordUser
+import api.dbmodels.event as db_event
 from clientworker import ClientWorker
 from config import CURRENCY_ALIASES
 from models.history import History
@@ -137,15 +139,13 @@ class UserManager(Singleton):
 
     def get_client_history(self,
                            client: Client,
-                           guild_id: int,
+                           event: db_event.Event,
                            since: datetime = None,
                            to: datetime = None,
-                           currency: str = None,
-                           archived=False) -> History:
+                           currency: str = None) -> History:
 
         since = since or datetime.fromtimestamp(0)
         to = to or datetime.now()
-        event = dbutils.get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
 
         if event:
             # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
@@ -173,9 +173,7 @@ class UserManager(Singleton):
         if not initial:
             try:
                 initial = results[0]
-            except ValueError:
-                pass
-            except IndexError:
+            except (ValueError, IndexError):
                 pass
 
         return History(

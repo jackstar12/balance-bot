@@ -140,6 +140,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         registered_user = dbutils.get_client(user.id, ctx.guild.id)
 
         await ctx.defer()
+
         usr_balance = await user_manager.get_client_balance(registered_user, currency)
         if usr_balance and usr_balance.error is None:
             await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
@@ -253,7 +254,7 @@ async def history(ctx: SlashContext,
 
     await utils.create_history(
         to_graph=registrations,
-        guild_id=ctx.guild_id,
+        event=dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False),
         start=since,
         end=to,
         currency_display=currency_raw,
@@ -310,16 +311,20 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
     time_str = utils.readable_time(time)
 
     await ctx.defer()
-
     await user_manager.fetch_data(clients=clients)
-    user_gains = utils.calc_gains(clients, ctx.guild_id, time, currency)
+
+    user_gains = utils.calc_gains(
+        clients,
+        event=dbutils.get_event(ctx.guild_id, throw_exceptions=False),
+        search=time,
+        currency=currency
+    )
 
     for user_gain in user_gains:
         guild = bot.get_guild(ctx.guild_id)
         if ctx.guild:
             gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
         else:
-
             gain_message = f"Your gain ({user_gain.client.get_event_string()}): " if not guild else f"Your gain on {guild}: "
         if user_gain.relative is None:
             logger.info(
@@ -911,7 +916,7 @@ async def help(ctx: SlashContext):
     await ctx.send(embed=embed)
 
 
-async def on_rekt_async(user: DiscordUser):
+async def on_rekt_async(client: Client):
     logger.info(f'User {user} is rekt')
 
     message = random.Random().choice(seq=REKT_MESSAGES)
@@ -991,7 +996,6 @@ async def archive(ctx: SlashContext):
         raise UserInputError('There are no archived events')
 
     async def show_events(ctx, selection: List[Event]):
-
         for event in selection:
             archive = event.archive
             history = discord.File(DATA_PATH + archive.history_path, "history.png")
@@ -1023,9 +1027,10 @@ async def archive(ctx: SlashContext):
         author_id=ctx.author_id,
         options=[
             {
-                "name": event.name,
-                "description": f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
-                "value": event,
+                'name': event.name,
+                'description': f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
+                'value': str(event.id),
+                'object': event,
             }
             for event in archived
         ],

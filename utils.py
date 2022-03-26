@@ -1,6 +1,9 @@
+from __future__ import annotations
 import re
 import logging
 import traceback
+
+import api.dbmodels.event as event
 from models.gain import Gain
 from functools import wraps
 
@@ -116,13 +119,13 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
                         e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
                 logging.info(
-                    f'{coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
+                    f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
             except InternalError as e:
                 await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
-                logging.error(f'{coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
+                logging.error(f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
             except Exception:
                 await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
-                logging.critical(f'{coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
+                logging.critical(f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
 
         return wrapper
 
@@ -157,7 +160,7 @@ def de_emojify(text):
 
 
 async def create_history(to_graph: List[Tuple[Client, str]],
-                         guild_id: int,
+                         event: event.Event,
                          start: datetime,
                          end: datetime,
                          currency_display: str,
@@ -165,13 +168,13 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                          percentage: bool,
                          path: str,
                          custom_title: str = None,
-                         archived=False,
                          throw_exceptions=True):
     """
     Creates a history image for a given list of clients and stores it in the given path.
 
+    :param throw_exceptions:
+    :param event:
     :param to_graph: List of Clients to graph.
-    :param guild_id: Current guild id (determines event context)
     :param start: Start time of the history
     :param end: End time of the history
     :param currency_display: Currency which will be shown to the user
@@ -179,7 +182,6 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     :param percentage: Whether to display the balance absolute or in % relative to the first balance of the graph (default True if multiple clients are drawn)
     :param path: Path to store image file at
     :param custom_title: Custom Title to replace default title with
-    :param archived: Whether the data to search for is archived
     """
 
     first = True
@@ -190,11 +192,10 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     for registered_client, name in to_graph:
 
         history = um.get_client_history(registered_client,
-                                        guild_id=guild_id,
+                                        event=event,
                                         since=start,
                                         to=end,
-                                        currency=currency,
-                                        archived=archived)
+                                        currency=currency)
 
         if len(history.data) == 0:
             if throw_exceptions:
@@ -354,10 +355,11 @@ def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
 
 
 async def create_leaderboard(dc_client: discord.Client,
-                       guild_id: int,
-                       mode: str,
-                       time: datetime = None,
-                       archived=False) -> discord.Embed:
+                             guild_id: int,
+                             mode: str,
+                             event: event.Event = None,
+                             time: datetime = None,
+                             archived=False) -> discord.Embed:
 
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
@@ -371,7 +373,8 @@ async def create_leaderboard(dc_client: discord.Client,
     if not guild:
         raise InternalError(f'Provided guild_id is not valid!')
 
-    event = dbutils.get_event(guild.id, state='archived' if archived else 'active', throw_exceptions=False)
+    if not event:
+        event = dbutils.get_event(guild_id, throw_exceptions=False)
 
     if event:
         clients = event.registrations
@@ -405,7 +408,7 @@ async def create_leaderboard(dc_client: discord.Client,
 
         description += f'Gain {readable_time(time)}\n\n'
 
-        client_gains = calc_gains(clients, guild.id, time, archived=archived)
+        client_gains = calc_gains(clients, event, time)
 
         for gain in client_gains:
             if gain.relative is not None:
@@ -417,7 +420,7 @@ async def create_leaderboard(dc_client: discord.Client,
             else:
                 clients_missing.append(gain.client)
     else:
-        raise UserInputError(f'Unknown mode {mode} was passed in')
+        raise InternalError(f'Unknown mode {mode} was passed in')
 
     user_scores.sort(key=lambda x: x[1], reverse=True)
     rank = 1
@@ -475,16 +478,14 @@ async def create_leaderboard(dc_client: discord.Client,
 
 
 def calc_gains(clients: List[Client],
-               guild_id: int,
+               event: event.Event,
                search: datetime,
-               currency: str = None,
-               archived=False) -> List[Gain]:
+               currency: str = None) -> List[Gain]:
     """
-    :param guild_id:
+    :param event:
     :param clients: users to calculate gain for
     :param search: date since when gain should be calculated
     :param currency:
-    :param since_start: should the gain since the start be calculated?
     :return:
     Gain for each user is stored in a list of tuples following this structure: (User, (user gain rel, user gain abs)) success
                                                                                (User, None) missing
@@ -510,7 +511,7 @@ def calc_gains(clients: List[Client],
         #    currency
         #)
 
-        history = user_manager.get_client_history(client, guild_id, since=search, currency=currency)
+        history = user_manager.get_client_history(client, event, since=search, currency=currency)
 
         if history.data:
             balance_then = history.data[0]
@@ -687,7 +688,7 @@ def create_yes_no_button_row(slash: SlashCommand,
             slash.remove_component_callback(custom_id=custom_id)
 
         @slash.component_callback(components=[custom_id])
-        @log_and_catch_errors(type="component callback")
+        @log_and_catch_errors(type="Component callback")
         @wraps(callback)
         async def yes_no_wrapper(ctx: ComponentContext):
 
@@ -735,16 +736,16 @@ def create_selection(slash: SlashCommand,
     """
     custom_id = f'selection_{author_id}'
 
-    objects_by_label = {}
+    objects_by_value = {}
 
     for option in options:
-        objects_by_label[option['name']] = option['value']
+        objects_by_value[option['value']] = option['object']
 
     selection = discord_components.create_select(
         options=[
             create_select_option(
                 label=option['name'],
-                value=option['name'],
+                value=option['value'],
                 description=option['description']
             )
             for option in options
@@ -757,10 +758,11 @@ def create_selection(slash: SlashCommand,
         slash.remove_component_callback(custom_id=custom_id)
 
     @slash.component_callback(components=[custom_id])
-    @log_and_catch_errors(type="component callback")
+    @log_and_catch_errors(type="Component callback")
+    @wraps(callback)
     async def on_select(ctx: ComponentContext):
         values = ctx.data['values']
-        objects = [objects_by_label.get(value) for value in values]
+        objects = [objects_by_value.get(value) for value in values]
         await call_unknown_function(callback, ctx, objects)
 
     return create_actionrow(selection)

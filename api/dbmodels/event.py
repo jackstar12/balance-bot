@@ -70,7 +70,7 @@ class Event(db.Model):
             return embed
 
         now = datetime.now()
-        gains = utils.calc_gains(self.registrations, self.guild_id, self.start, archived=now > self.end)
+        gains = utils.calc_gains(self.registrations, event=self, search=self.start)
 
         def key(x: Gain):
             if x.client.rekt_on:
@@ -157,14 +157,13 @@ class Event(db.Model):
                 (client, client.discorduser.get_display_name(dc_client, self.guild_id))
                 for client in self.registrations
             ],
-            guild_id=self.guild_id,
+            event=self,
             start=self.start,
             end=self.end,
             currency_display='%',
             currency='$',
             percentage=True,
             path=DATA_PATH + path,
-            archived=self.end < datetime.now(),
             throw_exceptions=False
         )
 
@@ -175,7 +174,7 @@ class Event(db.Model):
         return file
 
     async def create_leaderboard(self, dc_client: discord.Client, mode='gain', time: datetime = None) -> discord.Embed:
-        leaderboard = await utils.create_leaderboard(dc_client, self.guild_id, mode, time)
+        leaderboard = await utils.create_leaderboard(dc_client, self.guild_id, mode, time=time, event=self)
         self._archive.leaderboard = leaderboard.description
 
         return leaderboard
