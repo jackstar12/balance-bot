@@ -24,7 +24,7 @@ class Client(db.Model, Serializer):
 
     # Identification
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.BigInteger, db.ForeignKey('user.id'), nullable=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
     discord_user_id = db.Column(db.Integer, db.ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
 
     # User Information
