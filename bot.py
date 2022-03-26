@@ -10,9 +10,7 @@ import time
 import typing
 from datetime import datetime
 from typing import List, Dict, Type, Tuple
-
 import dotenv
-
 import config
 
 dotenv.load_dotenv()
@@ -26,7 +24,7 @@ from sqlalchemy import inspect
 
 import api.dbmodels.client
 import api.dbutils as dbutils
-import api.app as api
+import api.app
 import utils
 from api.database import db
 from api.dbmodels.client import Client
