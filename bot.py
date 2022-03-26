@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import argparse
 import datetime as datetime
@@ -63,8 +64,8 @@ slash = SlashCommand(bot)
 @bot.event
 async def on_ready():
     user_manager.synch_workers()
-    bot.loop.create_task(user_manager.start_fetching())
     event_manager.initialize_events()
+    asyncio.create_task(user_manager.start_fetching())
 
     logger.info('Bot Ready')
     print('Bot Ready')
@@ -1050,6 +1051,7 @@ assert KEY, 'BOT_KEY missing'
 api_thread = Thread(target=api.run)
 api_thread.daemon = True
 api_thread.start()
+
 
 def run():
     bot.run(KEY)
