@@ -56,7 +56,6 @@ class FtxClient(ClientWorker):
     async def _get_balance(self, time: datetime):
         response = await self._get('/api/account')
         if response['success']:
-            logging.info(json.dumps(response['result'], indent=3))
             amount = response['result']['totalAccountValue']
         else:
             amount = 0
