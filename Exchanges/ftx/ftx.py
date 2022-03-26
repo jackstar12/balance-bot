@@ -43,7 +43,7 @@ class FtxClient(ClientWorker):
             if callable(self._on_execution):
                 self._on_execution(
                     self.client_id,
-                    'sd'.upper()
+                    Execution(
                         symbol=message['market'],
                         side=message['side'].upper(),
                         price=float(message['price']),
