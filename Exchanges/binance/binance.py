@@ -22,7 +22,6 @@ from clientworker import ClientWorker
 from api.dbmodels.client import Client
 import api.dbmodels.balance as balance
 from api.dbmodels.execution import Execution
-import os
 
 
 class _BinanceBaseClient(ClientWorker):
