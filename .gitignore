@@ -4,6 +4,6 @@ data
 archive
 log.txt
 LOGS
-api/db.sqlite3
+balancebot/api/db.sqlite3
 migrations
 .env
