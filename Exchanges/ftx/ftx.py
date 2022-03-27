@@ -41,13 +41,14 @@ class FtxClient(ClientWorker):
         logging.info(f'FTX MESSAGE! {message}')
         if message['channel'] == 'fills':
             if callable(self._on_execution):
+                data = message['data']
                 self._on_execution(
                     self.client_id,
                     Execution(
-                        symbol=message['market'],
-                        side=message['side'].upper(),
-                        price=float(message['price']),
-                        qty=float(message['size']),
+                        symbol=data['market'],
+                        side=data['side'].upper(),
+                        price=float(data['price']),
+                        qty=float(data['size']),
                         time=datetime.now()
                     )
                 )
