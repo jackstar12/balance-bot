@@ -1,40 +1,38 @@
-from api.database import Base, session as session
-from sqlalchemy.orm import relationship
-from sqlalchemy import Column, Integer, ForeignKey, Text, String, DateTime, Float, PickleType, BigInteger, Table
-from api.dbmodels.serializer import Serializer
-
+from api.database import db
 from api.dbmodels.serializer import Serializer
 from sqlalchemy.ext.hybrid import hybrid_property
 from api.dbmodels.execution import Execution
 
-trade_association = Table('trade_association',
-                          Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
-                          Column('label_id', ForeignKey('label.id', ondelete="CASCADE"), primary_key=True)
-                          )
+
+trade_association = db.Table('trade_association',
+                             db.Column('trade_id', db.ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
+                             db.Column('label_id', db.ForeignKey('label.id', ondelete="CASCADE"), primary_key=True)
+                             )
 
 
-class Trade(Base, Serializer):
+class Trade(db.Model, Serializer):
+
     __tablename__ = 'trade'
     __serializer_forbidden__ = ['client', 'initial']
 
-    id = Column(Integer, primary_key=True)
-    client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
-    labels = relationship('Label', secondary=trade_association, backref='trades')
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
+    labels = db.relationship('Label', secondary=trade_association, backref='trades')
 
-    symbol = Column(String, nullable=False)
-    entry = Column(Float, nullable=False)
+    symbol = db.Column(db.String, nullable=False)
+    entry = db.Column(db.Float, nullable=False)
 
-    qty = Column(Float, nullable=False)
-    open_qty = Column(Float, nullable=False)
-    exit = Column(Float, nullable=True)
-    realized_pnl = Column(Float, nullable=True)
+    qty = db.Column(db.Float, nullable=False)
+    open_qty = db.Column(db.Float, nullable=False)
+    exit = db.Column(db.Float, nullable=True)
+    realized_pnl = db.Column(db.Float, nullable=True)
 
-    executions = relationship('Execution', foreign_keys='[Execution.trade_id]', backref='trade', lazy=True,
-                              cascade='all, delete')
+    executions = db.relationship('Execution', foreign_keys='[Execution.trade_id]', backref='trade', lazy=True,
+                                 cascade='all, delete')
 
-    initial_execution_id = Column(Integer, ForeignKey('execution.id'), nullable=True)
+    initial_execution_id = db.Column(db.Integer, db.ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
 
-    initial = relationship(
+    initial = db.relationship(
         'Execution',
         lazy=True,
         foreign_keys=[initial_execution_id, symbol],
@@ -44,7 +42,7 @@ class Trade(Base, Serializer):
         uselist=False
     )
 
-    memo = Column(String, nullable=True)
+    memo = db.Column(db.String, nullable=True)
 
     def is_data(self):
         return True

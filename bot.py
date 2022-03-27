@@ -51,7 +51,6 @@ from usermanager import UserManager
 from utils import (de_emojify,
                    create_yes_no_button_row)
 from threading import Thread
-import api.app as api
 
 intents = discord.Intents().default()
 intents.members = True
@@ -64,8 +63,8 @@ slash = SlashCommand(bot)
 @bot.event
 async def on_ready():
     user_manager.synch_workers()
-    bot.loop.create_task(user_manager.start_fetching())
     event_manager.initialize_events()
+    asyncio.create_task(user_manager.start_fetching())
 
     logger.info('Bot Ready')
     print('Bot Ready')
@@ -144,6 +143,7 @@ async def balance(ctx: SlashContext, user: discord.Member = None, currency: str 
         registered_user = dbutils.get_client(user.id, ctx.guild.id)
 
         await ctx.defer()
+
         usr_balance = await user_manager.get_client_balance(registered_user, currency)
         if usr_balance and usr_balance.error is None:
             await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
@@ -257,7 +257,7 @@ async def history(ctx: SlashContext,
 
     await utils.create_history(
         to_graph=registrations,
-        guild_id=ctx.guild_id,
+        event=dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False),
         start=since,
         end=to,
         currency_display=currency_raw,
@@ -314,16 +314,20 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
     time_str = utils.readable_time(time)
 
     await ctx.defer()
-
     await user_manager.fetch_data(clients=clients)
-    user_gains = utils.calc_gains(clients, ctx.guild_id, time, currency)
+
+    user_gains = utils.calc_gains(
+        clients,
+        event=dbutils.get_event(ctx.guild_id, throw_exceptions=False),
+        search=time,
+        currency=currency
+    )
 
     for user_gain in user_gains:
         guild = bot.get_guild(ctx.guild_id)
         if ctx.guild:
             gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
         else:
-            
             gain_message = f"Your gain ({user_gain.client.get_event_string()}): " if not guild else f"Your gain on {guild}: "
         if user_gain.relative is None:
             logger.info(
@@ -619,7 +623,6 @@ async def event_show(ctx: SlashContext):
 @utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
-
     if start >= end:
         raise UserInputError("Start time can't be after end time.")
     if registration_start >= registration_end:
@@ -694,10 +697,10 @@ async def unregister(ctx):
                 user_manager.delete_client(client)
         else:
             user_manager.delete_client(client)
-        discord_user: DiscordUser  = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
+        discord_user: DiscordUser = DiscordUser.query.filter_by(user_id=ctx.author_id).first()
         if len(discord_user.clients) == 0 and not discord_user.user:
             DiscordUser.query.filter_by(user_id=ctx.author_id).delete()
-            db.session.commit()
+        db.session.commit()
         logger.info(f'Successfully unregistered user {ctx.author.display_name}')
 
     buttons = create_yes_no_button_row(
@@ -748,7 +751,6 @@ async def info(ctx):
 @utils.log_and_catch_errors()
 @utils.time_args(names=[('since', None), ('to', None)])
 async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None):
-
     client = dbutils.get_client(ctx.author_id, ctx.guild_id)
 
     from_to = ''
@@ -788,7 +790,8 @@ async def clear(ctx: SlashContext, since: datetime = None, to: datetime = None):
 async def leaderboard_balance(ctx: SlashContext):
     await ctx.defer()
     await ctx.send(content='',
-                   embed=await utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance', time=None))
+                   embed=await utils.create_leaderboard(dc_client=bot, guild_id=ctx.guild_id, mode='balance',
+                                                        time=None))
 
 
 @slash.subcommand(
@@ -913,8 +916,8 @@ async def help(ctx: SlashContext):
     await ctx.send(embed=embed)
 
 
-async def on_rekt_async(user: DiscordUser):
-    logger.info(f'User {user} is rekt')
+async def on_rekt_async(client: Client):
+    logger.info(f'Use {client.discorduser} is rekt')
 
     message = random.Random().choice(seq=REKT_MESSAGES)
 
@@ -922,7 +925,7 @@ async def on_rekt_async(user: DiscordUser):
         try:
             guild: discord.guild.Guild = bot.get_guild(guild_data['guild_id'])
             channel = guild.get_channel(guild_data['guild_channel'])
-            member = guild.get_member(user.user_id)
+            member = guild.get_member(client.discorduser.user_id)
             if member:
                 message_replaced = message.replace("{name}", member.display_name)
                 embed = discord.Embed(description=message_replaced)
@@ -955,6 +958,7 @@ if args.reset and os.path.exists(DATA_PATH):
     except FileNotFoundError as e:
         logger.info(f'Error while archiving data: {e}')
 
+
 @slash.slash(
     name="summary",
     description="Show event summary"
@@ -975,13 +979,12 @@ async def summary(ctx: SlashContext):
 
 
 @slash.slash(
-   name="archive",
-   description="Shows summary of archived event"
+    name="archive",
+    description="Shows summary of archived event"
 )
 @utils.log_and_catch_errors()
 @utils.server_only
 async def archive(ctx: SlashContext):
-
     now = datetime.now()
 
     archived = Event.query.filter(
@@ -993,7 +996,6 @@ async def archive(ctx: SlashContext):
         raise UserInputError('There are no archived events')
 
     async def show_events(ctx, selection: List[Event]):
-
         for event in selection:
             archive = event.archive
             history = discord.File(DATA_PATH + archive.history_path, "history.png")
@@ -1025,9 +1027,10 @@ async def archive(ctx: SlashContext):
         author_id=ctx.author_id,
         options=[
             {
-                "name": event.name,
-                "description": f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
-                "value": event,
+                'name': event.name,
+                'description': f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
+                'value': str(event.id),
+                'object': event,
             }
             for event in archived
         ],
@@ -1035,6 +1038,7 @@ async def archive(ctx: SlashContext):
     )
 
     await ctx.send(content='Which events do you want to display', hidden=True, components=[selection_row])
+
 
 user_manager = UserManager(exchanges=EXCHANGES,
                            fetching_interval_hours=FETCHING_INTERVAL_HOURS,
@@ -1044,13 +1048,13 @@ user_manager = UserManager(exchanges=EXCHANGES,
 
 event_manager = EventManager(discord_client=bot)
 
-
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
 api_thread = Thread(target=api.run)
 api_thread.daemon = True
 api_thread.start()
+
 
 def run():
     bot.run(KEY)

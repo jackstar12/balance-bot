@@ -1,3 +1,4 @@
+import asyncio
 import urllib.parse
 import time
 import logging
@@ -24,32 +25,43 @@ class BybitClient(ClientWorker):
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime):
 
-        response = await self._get('/v2/private/wallet/balance')
+        results = await asyncio.gather(
+            self._get('/v2/private/wallet/balance'),
+            self._get('/v2/public/tickers', sign=False, cache=True)
+        )
+
+        if isinstance(results[0], Dict):
+            balance = results[0]
+            tickers = results[1]
+        else:
+            balance = results[1]
+            tickers = results[0]
 
         total_balance = 0
         extra_currencies: Dict[str, float] = {}
         err_msg = None
 
-        if response['ret_code'] == 0:
-            data = response['result']
-            for currency in data:
-                amount = float(data[currency]['equity'])
-                price = 0
-                if currency == 'USDT':
-                    price = 1
-                elif amount > 0:
-                    response_price = await self._get(
-                        '/v2//public/tickers',
-                        params={
-                            'symbol': f'{currency}USD'
-                        }
-                    )
-                    if response_price['ret_code'] == 0:
-                        price = float(response_price['result'][0]['last_price'])
-                        extra_currencies[currency] = amount
-                total_balance += amount * price
+        if balance['ret_code'] == 0:
+            data = balance['result']
+            if tickers['ret_code'] == 0:
+                ticker_data = tickers['result']
+                ticker_prices = {
+                    ticker['symbol']: ticker['last_price'] for ticker in ticker_data
+                }
+                for currency in data:
+                    amount = float(data[currency]['equity'])
+                    price = 0
+                    if currency == 'USDT':
+                        price = 1
+                    elif amount > 0:
+                        price = ticker_prices.get(currency)
+                        if price:
+                            extra_currencies[currency] = amount
+                    total_balance += amount * price
+            else:
+                err_msg = tickers['ret_msg']
         else:
-            err_msg = response['ret_msg']
+            err_msg = balance['ret_msg']
 
         return Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
 

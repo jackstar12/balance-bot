@@ -1,3 +1,4 @@
+import asyncio
 from functools import wraps
 from typing import List, Dict, Callable
 from dataclasses import dataclass
@@ -60,7 +61,7 @@ class EventManager:
     async def _event_end(self, event: Event):
         await self._get_event_channel(event).send(
             content=f'Event **{event.name}** just ended! Final standings:',
-            embed=await utils.create_leaderboard(self._dc_client, event.guild_id, mode='gain')
+            embed=await event.create_leaderboard(self._dc_client)
         )
 
         complete_history = await event.create_complete_history(dc_client=self._dc_client)
@@ -87,32 +88,25 @@ class EventManager:
         with self._schedule_lock:
             self._scheduled.append(callback)
             if len(self._scheduled) == 1:
-                self._execute()
+                self._cur_timer = asyncio.create_task(self._execute())
             else:
                 # Execution has to be restarted if the callback to schedule happens before the current waiting callback
                 if callback.time < self._scheduled[0].time:
                     self._cur_timer.cancel()
                     self._scheduled.sort(key=lambda x: x.time)
-                    self._execute()
+                    self._cur_timer = asyncio.create_task(self._execute())
                 else:
                     self._scheduled.sort(key=lambda x: x.time)
 
-    def _execute(self):
-        with self._schedule_lock:
-            if len(self._scheduled) > 0:
-                cur_event = self._scheduled[0]
-                diff_seconds = (cur_event.time - datetime.now()).total_seconds()
+    async def _execute(self):
+        while len(self._scheduled) > 0:
+            cur_event = self._scheduled[0]
+            diff_seconds = (cur_event.time - datetime.now()).total_seconds()
+            await asyncio.sleep(diff_seconds)
 
-                def wrapper():
-                    try:
-                        cur_event.callback()
-                    except Exception as e:
-                        logging.error(f'Unhandled exception during event callback {cur_event.callback}: {e}')
-                    with self._schedule_lock:
-                        if cur_event in self._scheduled:
-                            self._scheduled.remove(cur_event)
-                    self._execute()
-
-                self._cur_timer = Timer(diff_seconds, wrapper)
-                self._cur_timer.daemon = True
-                self._cur_timer.start()
+            try:
+                cur_event.callback()
+            except Exception as e:
+                logging.error(f'Unhandled exception during event callback {cur_event.callback}: {e}')
+            if cur_event in self._scheduled:
+                self._scheduled.remove(cur_event)

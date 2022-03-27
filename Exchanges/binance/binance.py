@@ -69,7 +69,7 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    _ENDPOINT = 'https://fapi.binance.com'
+    _ENDPOINT = 'wss://fapi.binance.com'
     exchange = 'binance-futures'
 
     def __init__(self, *args, **kwargs):
@@ -130,25 +130,12 @@ class BinanceSpot(_BinanceBaseClient):
     _ENDPOINT = 'https://api.binance.com/api/v3'
     exchange = 'binance-spot'
 
-    _ticker_cache: _TickerCache = None
-
-    async def _get_tickers(self, time: datetime):
-        if self._ticker_cache and (time - self._ticker_cache.time).total_seconds() < 3:
-            return self._ticker_cache.ticker
-        else:
-            result = await self._get('/ticker/price', sign=False)
-            self._ticker_cache = _TickerCache(
-                result,
-                time
-            )
-            return result
-
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
     async def _get_balance(self, time: datetime):
 
         results = await asyncio.gather(
             self._get('/account'),
-            self._get_tickers(time)
+            self._get('/ticker/price', sign=False, cache=True)
         )
 
         if isinstance(results[0], dict):

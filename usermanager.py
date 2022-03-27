@@ -1,28 +1,25 @@
+from __future__ import annotations
 import json
 import asyncio
 import aiohttp
 import logging
 import math
-import os
-import shutil
 from datetime import datetime, timedelta
-from threading import RLock, Timer, Thread
-from typing import List, Tuple, Dict, Callable, Optional, Any
-
-from aiohttp import ClientSession
-
-from api.dbmodels.trade import Trade, trade_from_execution
-from models.history import History
-from models.singleton import Singleton
-from config import CURRENCY_ALIASES
+from threading import RLock, Timer
+from typing import List, Dict, Callable, Optional, Any, Tuple
 
 import api.dbutils as dbutils
 from api.database import db
-from api.dbmodels.discorduser import DiscordUser, add_user_from_json
-from api.dbmodels.balance import Balance, balance_from_json
-import api.dbmodels.client as api_client
+from api.dbmodels.balance import Balance
+from api.dbmodels.client import Client
+from api.dbmodels.discorduser import DiscordUser
 from api.dbmodels.execution import Execution
+from api.dbmodels.trade import Trade, trade_from_execution
+import api.dbmodels.event as db_event
 from clientworker import ClientWorker
+from config import CURRENCY_ALIASES
+from models.history import History
+from models.singleton import Singleton
 
 
 class UserManager(Singleton):
@@ -50,11 +47,6 @@ class UserManager(Singleton):
 
         self.session = aiohttp.ClientSession()
 
-        #self.synch_workers()
-
-    async def get_session(self) -> ClientSession:
-        return self.session
-
     def _add_worker(self, worker: ClientWorker):
         with self._worker_lock:
             if worker not in self._workers:
@@ -74,9 +66,9 @@ class UserManager(Singleton):
                 self._workers.remove(worker)
                 del worker
 
-    def delete_client(self, client: api_client.Client, commit=True):
+    def delete_client(self, client: Client, commit=True):
         self._remove_worker(self._get_worker(client, create_if_missing=False))
-        api_client.Client.query.filter_by(id=client.id).delete()
+        Client.query.filter_by(id=client.id).delete()
         if commit:
             db.session.commit()
 
@@ -92,11 +84,11 @@ class UserManager(Singleton):
             delay = next - time
             await asyncio.sleep(delay.total_seconds())
 
-    async def fetch_data(self, clients: List[api_client.Client] = None, guild_id: int = None):
+    async def fetch_data(self, clients: List[Client] = None, guild_id: int = None):
         workers = [self._get_worker(client) for client in clients]
         return await self._async_fetch_data(workers)
 
-    async def get_client_balance(self, client:api_client. Client, currency: str = None, force_fetch=False) -> Balance:
+    async def get_client_balance(self, client: Client, currency: str = None, force_fetch=False) -> Balance:
 
         if currency is None:
             currency = '$'
@@ -118,7 +110,7 @@ class UserManager(Singleton):
         return result
 
     def synch_workers(self):
-        clients = api_client.Client.query.all()
+        clients = Client.query.all()
 
         for client in clients:
             if client.is_global or client.is_active:
@@ -135,7 +127,7 @@ class UserManager(Singleton):
         else:
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
-    def _get_worker(self, client: api_client.Client, create_if_missing=True) -> ClientWorker:
+    def _get_worker(self, client: Client, create_if_missing=True) -> ClientWorker:
         with self._worker_lock:
             if client:
                 worker = self._workers_by_client_id.get(client.id)
@@ -150,8 +142,8 @@ class UserManager(Singleton):
             return self._workers_by_id[event].get(user_id)
 
     def get_client_history(self,
-                           client: api_client.Client,
-                           guild_id: int,
+                           client: Client,
+                           event: db_event.Event,
                            since: datetime = None,
                            to: datetime = None,
                            currency: str = None,
@@ -159,7 +151,6 @@ class UserManager(Singleton):
 
         since = since or datetime.fromtimestamp(0)
         to = to or datetime.now()
-        event = dbutils.get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
 
         if event:
             # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
@@ -196,7 +187,7 @@ class UserManager(Singleton):
         )
 
     def clear_client_data(self,
-                          client: api_client.Client,
+                          client: Client,
                           start: datetime = None,
                           end: datetime = None,
                           update_initial_balance=False):
@@ -242,7 +233,7 @@ class UserManager(Singleton):
 
         for result in results:
             if isinstance(result, Balance):
-                client = api_client.Client.query.filter_by(id=result.client_id).first()
+                client = Client.query.filter_by(id=result.client_id).first()
                 if client:
                     history_len = len(client.history)
                     latest_balance = None if history_len == 0 else client.history[history_len - 1]
@@ -281,7 +272,7 @@ class UserManager(Singleton):
             Trade.open_qty > 0.0
         ).first()
 
-        client: api_client.Client = api_client.Client.query.filter_by(id=client_id).first()
+        client: Client = Client.query.filter_by(id=client_id).first()
         worker = self._get_worker(client)
 
         if worker:

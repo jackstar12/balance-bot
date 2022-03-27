@@ -4,6 +4,7 @@ import discord
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType, FernetEngine
 
+from api.database import db
 from api.dbmodels.serializer import Serializer
 import os
 import dotenv
@@ -11,38 +12,34 @@ import config
 
 from api.dbmodels import balance
 
-from api.database import Base
-from sqlalchemy.orm import relationship
-from sqlalchemy import Column, Integer, ForeignKey, Text, String, DateTime, Float, PickleType, BigInteger
-
 dotenv.load_dotenv()
 
 _key = os.environ.get('ENCRYPTION_SECRET')
 assert _key, 'Missing ENCRYPTION_SECRET in env'
 
 
-class Client(Base, Serializer):
+class Client(db.Model, Serializer):
     __tablename__ = 'client'
     __serializer_forbidden__ = ['api_secret']
 
     # Identification
-    id = Column(Integer, primary_key=True)
-    user_id = Column(BigInteger, ForeignKey('user.id'), nullable=True)
-    discord_user_id = Column(Integer, ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
+    discord_user_id = db.Column(db.Integer, db.ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
 
     # User Information
-    api_key = Column(String(), nullable=False)
-    #api_secret = Column(String(), nullable=False)
-    api_secret = Column(StringEncryptedType(String(), _key.encode('utf-8'), FernetEngine), nullable=False)
-    exchange = Column(String, nullable=False)
-    subaccount = Column(String, nullable=True)
-    extra_kwargs = Column(PickleType, nullable=True)
+    api_key = db.Column(db.String(), nullable=False)
+    #api_secret = db.Column(db.String(), nullable=False)
+    api_secret = db.Column(StringEncryptedType(db.String(), _key.encode('utf-8'), FernetEngine), nullable=False)
+    exchange = db.Column(db.String, nullable=False)
+    subaccount = db.Column(db.String, nullable=True)
+    extra_kwargs = db.Column(db.PickleType, nullable=True)
 
     # Data
-    name = Column(String, nullable=True)
-    rekt_on = Column(DateTime, nullable=True)
-    trades = relationship('Trade', backref='client', lazy=True, cascade="all, delete")
-    history = relationship('Balance', backref='client',
+    name = db.Column(db.String, nullable=True)
+    rekt_on = db.Column(db.DateTime, nullable=True)
+    trades = db.relationship('Trade', backref='client', lazy=True, cascade="all, delete")
+    history = db.relationship('Balance', backref='client',
                               cascade="all, delete", lazy=True, order_by='Balance.time')
 
     required_extra_args: List[str] = []
