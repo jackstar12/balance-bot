@@ -6,7 +6,7 @@ from api.dbmodels.archive import Archive
 from api.dbmodels.serializer import Serializer
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
-from config import DATA_PATH
+import config
 import discord
 
 association = db.Table('association',
@@ -145,17 +145,15 @@ class Event(db.Model, Serializer):
                 (client, client.discorduser.get_display_name(dc_client, self.guild_id))
                 for client in self.registrations
             ],
-            guild_id=self.guild_id,
             start=self.start,
             end=self.end,
             currency_display='%',
             currency='$',
             percentage=True,
-            path=DATA_PATH + path,
-            archived=self.end < datetime.now()
+            path=config.DATA_PATH + path
         )
 
-        file = discord.File(DATA_PATH + path, path)
+        file = discord.File(config.DATA_PATH + path, path)
         self._archive.history_path = path
         db.session.commit()
 

@@ -1,6 +1,5 @@
 import logging
 import asyncio
-
 from typing import Callable
 
 from models.async_websocket_manager import WebsocketManager
@@ -21,16 +20,17 @@ class FuturesWebsocketClient(WebsocketManager):
     def _get_url(self):
         return self._ENDPOINT + f'/ws/{self._listenKey}'
 
-    def _on_message(self, ws, message):
+    async def _on_message(self, ws, message):
         event = message['e']
         print(message)
-        if event == 'listenKeyExpired':
-            self._renew_listen_key()
+        if event == "listenKeyExpired":
+            await self._renew_listen_key()
         elif callable(self._on_message):
-            self._on_message(self, message)
+            self._on_message(message)
 
     async def start(self):
         await self._renew_listen_key()
+        asyncio.create_task(self._keep_alive())
 
     def stop(self):
         self._listenKey = None
