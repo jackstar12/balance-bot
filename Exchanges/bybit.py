@@ -57,7 +57,8 @@ class BybitClient(ClientWorker):
                         price = ticker_prices.get(currency)
                         if price:
                             extra_currencies[currency] = amount
-                    total_balance += amount * price
+                    if price:
+                        total_balance += amount * price
             else:
                 err_msg = tickers['ret_msg']
         else:

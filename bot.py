@@ -11,6 +11,8 @@ import typing
 from datetime import datetime
 from typing import List, Dict, Type, Tuple
 import dotenv
+import sqlalchemy.exc
+
 import config
 
 dotenv.load_dotenv()
@@ -457,8 +459,11 @@ async def register_new(ctx: SlashContext,
 
                     # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
                     # if the registration is cancelled, causing bugs
-                    db.session.expunge(new_client)
-                    db.session.commit()
+                    try:
+                        db.session.expunge(new_client)
+                        db.session.commit()
+                    except sqlalchemy.exc.InvalidRequestError:
+                        pass
 
                     if init_balance.error is None:
                         if init_balance.amount < config.REGISTRATION_MINIMUM:
