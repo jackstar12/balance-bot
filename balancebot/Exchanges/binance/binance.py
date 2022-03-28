@@ -15,13 +15,13 @@ from typing import Dict, Callable
 
 from aiohttp import ClientResponse, ClientResponseError
 from balancebot.Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 from balancebot.api.dbmodels.client import Client
 import balancebot.api.dbmodels.balance as balance
 from balancebot.api.dbmodels.execution import Execution
 
 
-class _BinanceBaseClient(ClientWorker):
+class _BinanceBaseClient(ExchangeWorker):
 
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)

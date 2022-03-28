@@ -16,7 +16,7 @@ from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 from balancebot.bot.config import CURRENCY_ALIASES
 from balancebot.models.history import History
 from balancebot.models.singleton import Singleton
@@ -40,14 +40,14 @@ class UserManager(Singleton):
 
         self._exchanges = exchanges
         self._worker_lock = RLock()
-        self._workers: List[ClientWorker] = []
+        self._workers: List[ExchangeWorker] = []
         self._workers_by_id: Dict[
-            Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
-        self._workers_by_client_id: Dict[int, ClientWorker] = {}
+            Optional[int], Dict[int, ExchangeWorker]] = {}  # { event_id: { user_id: ClientWorker } }
+        self._workers_by_client_id: Dict[int, ExchangeWorker] = {}
 
         self.session = aiohttp.ClientSession()
 
-    def _add_worker(self, worker: ClientWorker):
+    def _add_worker(self, worker: ExchangeWorker):
         with self._worker_lock:
             if worker not in self._workers:
                 self._workers.append(worker)
@@ -57,7 +57,7 @@ class UserManager(Singleton):
                     self._workers_by_id[event][worker.client.discorduser.id] = worker
                 self._workers_by_client_id[worker.client.id] = worker
 
-    def _remove_worker(self, worker: ClientWorker):
+    def _remove_worker(self, worker: ExchangeWorker):
         with self._worker_lock:
             if worker in self._workers:
                 for event in [None, *worker.client.events]:
@@ -120,14 +120,14 @@ class UserManager(Singleton):
 
     def add_client(self, client):
         client_cls = self._exchanges[client.exchange]
-        if issubclass(client_cls, ClientWorker):
+        if issubclass(client_cls, ExchangeWorker):
             worker = client_cls(client, self.session)
             worker.set_execution_callback(self._on_execution)
             self._add_worker(worker)
         else:
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
-    def _get_worker(self, client: Client, create_if_missing=True) -> ClientWorker:
+    def _get_worker(self, client: Client, create_if_missing=True) -> ExchangeWorker:
         with self._worker_lock:
             if client:
                 worker = self._workers_by_client_id.get(client.id)
@@ -207,7 +207,7 @@ class UserManager(Singleton):
         if len(client.history) == 0 and update_initial_balance:
             asyncio.create_task(self.get_client_balance(client, force_fetch=True))
 
-    async def _async_fetch_data(self, workers: List[ClientWorker] = None,
+    async def _async_fetch_data(self, workers: List[ExchangeWorker] = None,
                                 keep_errors: bool = False,
                                 force_fetch=False) -> List[Balance]:
         """

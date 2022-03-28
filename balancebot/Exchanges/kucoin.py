@@ -6,11 +6,11 @@ from datetime import datetime
 from aiohttp import ClientResponse, ClientResponseError
 import time
 import logging
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 from balancebot.api.dbmodels.balance import Balance
 
 
-class KuCoinClient(ClientWorker):
+class KuCoinClient(ExchangeWorker):
     exchange = 'kucoin'
     _ENDPOINT = 'https://api-futures.kucoin.com'
 

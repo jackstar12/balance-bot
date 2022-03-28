@@ -18,7 +18,7 @@ from balancebot.api.dbmodels.client import Client, get_client_query
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
 
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 from balancebot.bot.config import EXCHANGES
 
 router = APIRouter(
@@ -43,7 +43,7 @@ class RegisterBody(BaseModel):
 async def register_client(body: RegisterBody):
     try:
         exchange_cls = EXCHANGES[body.exchange]
-        if issubclass(exchange_cls, ClientWorker):
+        if issubclass(exchange_cls, ExchangeWorker):
             # Check if required keyword args are given
             if len(body.kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
                     all(required_kwarg in body.kwargs for required_kwarg in exchange_cls.required_extra_args):
@@ -236,6 +236,8 @@ def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = N
         intraday_performance = []
         for trade in client.trades:
             weekday_performance[trade.initial.time.weekday()] += trade.realized_pnl
+
+
 
         return {
             'label_performance': label_performance,

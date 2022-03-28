@@ -25,7 +25,7 @@ from balancebot.api.database import migrate, session
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 from balancebot.api.database import Base, engine
 
 import routers.discordauth as discord

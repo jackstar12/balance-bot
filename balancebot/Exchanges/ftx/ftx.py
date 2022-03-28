@@ -7,13 +7,13 @@ from typing import Callable
 from aiohttp import ClientResponse, ClientResponseError
 from balancebot.api.dbmodels.execution import Execution
 import balancebot.api.dbmodels.balance as balance
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 import time
 
 from balancebot.Exchanges.ftx.client import FtxWebsocketClient
 
 
-class FtxClient(ClientWorker):
+class FtxClient(ExchangeWorker):
     exchange = 'ftx'
     _ENDPOINT = 'https://ftx.com'
 

@@ -7,12 +7,12 @@ from datetime import datetime
 
 from aiohttp import ClientResponse, ClientResponseError
 
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 from balancebot.api.dbmodels.balance import Balance
 from typing import Dict
 
 
-class BybitClient(ClientWorker):
+class BybitClient(ExchangeWorker):
     exchange = 'bybit'
     _ENDPOINT = 'https://api.bybit.com'
 

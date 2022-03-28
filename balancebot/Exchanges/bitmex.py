@@ -5,10 +5,10 @@ from balancebot.api.dbmodels.balance import Balance
 import time
 import logging
 from datetime import datetime
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 
 
-class BitmexClient(ClientWorker):
+class BitmexClient(ExchangeWorker):
     exchange = 'bitmex'
     _ENDPOINT = 'https://www.bitmex.com'
 

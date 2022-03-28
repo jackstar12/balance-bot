@@ -26,7 +26,7 @@ from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.event import Event
 from balancebot.api.database import session
-from balancebot.clientworker import ClientWorker
+from balancebot.exchangeworker import ExchangeWorker
 from balancebot.bot.config import *
 import balancebot.bot.config as config
 from balancebot.errors import UserInputError, InternalError
@@ -401,7 +401,7 @@ async def register_new(ctx: SlashContext,
     try:
         exchange_name = exchange_name.lower()
         exchange_cls = EXCHANGES[exchange_name]
-        if issubclass(exchange_cls, ClientWorker):
+        if issubclass(exchange_cls, ExchangeWorker):
             # Check if required keyword args are given
             if len(kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
                     all(required_kwarg in kwargs for required_kwarg in exchange_cls.required_extra_args):
@@ -439,7 +439,7 @@ async def register_new(ctx: SlashContext,
                 async def start_registration(ctx):
 
                     new_client = get_new_client()
-                    worker: ClientWorker = exchange_cls(new_client, user_manager.session)
+                    worker: ExchangeWorker = exchange_cls(new_client, user_manager.session)
                     init_balance = await worker.get_balance(datetime.now())
 
                     # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
