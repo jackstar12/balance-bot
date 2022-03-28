@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import shutil
+import sys
 import time
 import typing
 from datetime import datetime
@@ -849,10 +850,11 @@ def setup_logger(debug: bool = False):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    print(os.path.abspath(LOG_OUTPUT_DIR))
     if not os.path.exists(LOG_OUTPUT_DIR):
         os.mkdir(LOG_OUTPUT_DIR)
     log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
-    handler = logging.StreamHandler(log_stream)
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
 
     logger.addHandler(handler)

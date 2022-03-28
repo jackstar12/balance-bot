@@ -1,16 +1,20 @@
 import abc
+import asyncio
 import logging
+import math
 from datetime import datetime, timedelta
-from typing import List, Callable, Union, Dict
+from typing import List, Callable, Union, Dict, Tuple
 import aiohttp.client
 from aiohttp import ClientResponse
 from typing import NamedTuple
 from requests import Request, Response, Session
 
+import balancebot.api.database as db
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.balance import Balance
-from balancebot.api.dbmodels.trade import Trade
+from balancebot.api.dbmodels.trade import Trade, trade_from_execution
+from balancebot.usermanager import UserManager
 
 
 class Cached(NamedTuple):
@@ -113,6 +117,72 @@ class ExchangeWorker:
     async def _put(self, path: str, **kwargs):
         return await self._request('PUT', path, **kwargs)
 
+    async def _on_execute(self, execution: Execution):
+        active_trade: Trade = db.session.query(Trade).filter(
+            Trade.symbol == execution.symbol,
+            Trade.client_id == self.client_id,
+            Trade.open_qty > 0.0
+        ).first()
+
+        client: Client = self.client
+        user_manager = UserManager()
+        if self:
+            self.in_position = True
+        else:
+            logging.critical(f'on_execution callback: {active_trade.client=} for trade {active_trade} got no worker???')
+
+        def weighted_avg(values: Tuple[float, float], weights: Tuple[float, float]):
+            total = weights[0] + weights[1]
+            return round(values[0] * (weights[0] / total) + values[1] * (weights[1] / total), ndigits=3)
+
+        if active_trade:
+            active_trade.executions.append(execution)
+
+            if execution.side == active_trade.initial.side:
+                active_trade.entry = weighted_avg((active_trade.entry, execution.price),
+                                                  (active_trade.qty, execution.qty))
+                active_trade.qty += execution.qty
+                active_trade.open_qty += execution.qty
+            else:
+                new_execution = None
+                if execution.qty > active_trade.open_qty:
+                    new_execution = Execution(
+                        qty=execution.qty - active_trade.open_qty,
+                        symbol=execution.symbol,
+                        price=execution.price,
+                        side=execution.side,
+                        time=execution.time
+                    )
+                    execution.qty = active_trade.open_qty
+                    new_trade = trade_from_execution(new_execution)
+                    client.trades.append(new_trade)
+                    asyncio.create_task(user_manager.fetch_data([self.client]))
+                if execution.qty <= active_trade.qty:
+                    if active_trade.exit is None:
+                        active_trade.exit = execution.price
+                    else:
+                        active_trade.exit = weighted_avg((active_trade.exit, execution.price),
+                                                         (active_trade.open_qty, execution.qty))
+
+                    if math.isclose(active_trade.open_qty, execution.qty, rel_tol=10e-6):
+                        active_trade.open_qty = 0.0
+                        asyncio.create_task(self._async_fetch_data([self.client]))
+                        if self and not new_execution:
+                            self.in_position = False
+                    else:
+                        active_trade.open_qty -= execution.qty
+                    realized_qty = active_trade.qty - active_trade.open_qty
+
+                    active_trade.realized_pnl = (active_trade.exit * realized_qty - active_trade.entry * realized_qty) * (1 if active_trade.initial.side == 'BUY' else -1)
+        else:
+            trade = trade_from_execution(execution)
+            client.trades.append(trade)
+            asyncio.create_task(self._async_fetch_data([self]))
+            asyncio.create_task(self.on_trade)
+
+        db.session.commit()
+
+    @classmethod
     async def get_ticker(self, symbol: str):
         pass
 

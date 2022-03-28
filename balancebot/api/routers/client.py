@@ -260,8 +260,8 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
         def f(obj: Serializer):
             asyncio.create_task(
                 websocket.send(create_ws_message(
-                    type='update',
-                    channel='trade',
+                    type=type,
+                    channel=channel,
                     data=obj.serialize()
                 ))
             )
@@ -271,8 +271,12 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
         await websocket.send_json(create_ws_message(
             type='initial',
             channel='client',
-            data=create_cilent_data_serialized(client,
-                                               since_date=config.since, to_date=config.to, currency=config.currency)
+            data=create_cilent_data_serialized(
+                subscribed_client,
+                since_date=config.since,
+                to_date=config.to,
+                currency=config.currency
+            )
         ))
 
     while True:
@@ -291,11 +295,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                         error='Invalid Client ID'
                     ))
                 else:
-                    await websocket.send_json(create_ws_message(
-                        type='initial',
-                        channel='client',
-                        data=create_cilent_data_serialized(subscribed_client)
-                    ))
+                    await send_client_snapshot()
 
                     user_manager.on_client_balance_change(
                         subscribed_client,
@@ -312,7 +312,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
             elif msg.type == 'update':
                 if msg.channel == 'config':
                     config = WebsocketConfig(**msg.data)
-                    await send_client_snapshot(subscribed_client, config)
+                    await send_client_snapshot()
         except ValidationError as e:
             await websocket.send_json(create_ws_message(
                 type='error',
