@@ -1,11 +1,11 @@
 import asyncio
 from datetime import datetime, timedelta
 from collections import deque
-from models.volumeratiohistory import VolumeRatioHistory
-from models.volumeratio import VolumeRatio
+from balancebot.models.volumeratiohistory import VolumeRatioHistory
+from balancebot.models.volumeratio import VolumeRatio
 from typing import Dict, List
 
-from models.singleton import Singleton
+from balancebot.models.singleton import Singleton
 import aiohttp
 
 

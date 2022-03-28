@@ -16,7 +16,10 @@ DateTime~=4.4
 numpy~=1.21.2
 python-dotenv~=0.19.0
 alembic~=1.7.6
-PyJWT~=2.3.0
+PyJWT~=1.7.1
 cryptography~=36.0.1
 ccxt~=1.57.38
-aiohttp
+aiohttp~=3.7.4.post0
+fastapi~=0.68.0
+pydantic~=1.8.2
+websockets~=9.1
