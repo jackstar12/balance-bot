@@ -44,8 +44,6 @@ class UserManager(Singleton):
 
         self.session = aiohttp.ClientSession()
 
-        self.synch_workers()
-
     def _add_worker(self, worker: ClientWorker):
         if worker not in self._workers:
             self._workers.append(worker)
