@@ -28,10 +28,10 @@ from balancebot.api.settings import settings
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.api.database import Base, engine
 
-import routers.discordauth as discord
-import routers.authentication as auth
-import routers.client as client
-import routers.label as label
+import balancebot.api.routers.discordauth as discord
+import balancebot.api.routers.authentication as auth
+import balancebot.api.routers.client as client
+import balancebot.api.routers.label as label
 
 app = FastAPI(
     root_path='/api/v1'

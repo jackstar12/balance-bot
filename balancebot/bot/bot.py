@@ -923,24 +923,9 @@ async def on_rekt_async(client: Client):
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
 
-args = parser.parse_args()
+args = parser.parse_known_args()
 
 logger = setup_logger(debug=False)
-
-if args.reset and os.path.exists(DATA_PATH):
-    if not os.path.exists(ARCHIVE_PATH):
-        os.mkdir(ARCHIVE_PATH)
-
-    new_path = ARCHIVE_PATH + f"Archive_{datetime.now().strftime('%Y-%m-%d_%H-%M')}/"
-    os.mkdir(new_path)
-    try:
-        shutil.copy(DATA_PATH + "user_data.json", new_path + "user_data.json")
-        shutil.copy(DATA_PATH + "users.json", new_path + "users.json")
-
-        os.remove(DATA_PATH + "user_data.json")
-        os.remove(DATA_PATH + "users.json")
-    except FileNotFoundError as e:
-        logger.info(f'Error while archiving data: {e}')
 
 
 @slash.slash(
