@@ -12,7 +12,7 @@ from clientworker import ClientWorker
 
 class BitmexClient(ClientWorker):
     exchange = 'bitmex'
-    ENDPOINT = 'https://www.bitmex.com/api/v1/'
+    _ENDPOINT = 'https://www.bitmex.com'
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
     async def _get_balance(self, time: datetime):
@@ -26,7 +26,7 @@ class BitmexClient(ClientWorker):
         # )
         # res = self._request(request)
         response = await self._get(
-            self.ENDPOINT + 'user/wallet',
+            '/api/v1/user/wallet',
             params={'currency': 'all'}
         )
         total_balance = 0
@@ -41,7 +41,7 @@ class BitmexClient(ClientWorker):
                     price = 1
                 elif amount > 0:
                     response_price = await self._get(
-                        self.ENDPOINT + 'trade',
+                        '/trade',
                         params={
                             'symbol': symbol.upper(),
                             'count': 1,
@@ -64,9 +64,9 @@ class BitmexClient(ClientWorker):
                        error=err_msg)
 
     # https://www.bitmex.com/app/apiKeysUsage
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs):
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
-        request_signature = f'{method}{url}{ts}'
+        request_signature = f'{method}{path}{ts}'
         if data is not None:
             request_signature += data
         signature = hmac.new(self._api_secret.encode(), request_signature.encode(), 'sha256').hexdigest()

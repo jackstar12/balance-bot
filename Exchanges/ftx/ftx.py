@@ -2,11 +2,9 @@ import urllib.parse
 import hmac
 import logging
 from datetime import datetime
-from typing import List, Callable
-
+from typing import Callable
 from aiohttp import ClientResponse, ClientResponseError
-
-from api.dbmodels.balance import Balance
+import api.dbmodels.balance as balance
 from clientworker import ClientWorker
 import time
 import requests
@@ -15,20 +13,20 @@ from requests import Request, Session
 
 class FtxClient(ClientWorker):
     exchange = 'ftx'
-    ENDPOINT = 'https://ftx.com/api/'
+    ENDPOINT = 'https://ftx.com'
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime):
-        response = await self._get(self.ENDPOINT + 'account')
+        response = await self._get('/api/account')
         if response['success']:
             amount = response['result']['totalAccountValue']
         else:
             amount = 0
-        return Balance(amount=amount, currency='$', error=response.get('error'), time=time)
+        return balance.Balance(amount=amount, currency='$', error=response.get('error'), time=time)
 
-    def _sign_request(self, method: str, url: str, headers=None, params=None, data=None, **kwargs) -> None:
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
-        signature_payload = f'{ts}{method}{url}'.encode()
+        signature_payload = f'{ts}{method}{path}'.encode()
         if data:
             signature_payload += data
         signature = hmac.new(self._api_secret.encode(), signature_payload, 'sha256').hexdigest()
