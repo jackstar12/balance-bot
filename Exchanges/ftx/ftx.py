@@ -13,7 +13,7 @@ from requests import Request, Session
 
 class FtxClient(ClientWorker):
     exchange = 'ftx'
-    ENDPOINT = 'https://ftx.com'
+    _ENDPOINT = 'https://ftx.com'
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime):
