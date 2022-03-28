@@ -22,6 +22,9 @@ from fastapi import FastAPI, Request
 from balancebot import utils
 from balancebot.api.database import migrate, session
 
+from balancebot.api.dbmodels.trade import Trade
+from balancebot.api.dbmodels.execution import Execution
+from balancebot.api.dbmodels.archive import Archive
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
