@@ -457,14 +457,6 @@ async def register_new(ctx: SlashContext,
                     worker: ClientWorker = exchange_cls(new_client, user_manager.session)
                     init_balance = await worker.get_balance(datetime.now())
 
-                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
-                    # if the registration is cancelled, causing bugs
-                    try:
-                        db.session.expunge(new_client)
-                        db.session.commit()
-                    except sqlalchemy.exc.InvalidRequestError:
-                        pass
-
                     if init_balance.error is None:
                         if init_balance.amount < config.REGISTRATION_MINIMUM:
                             message = f'You do not have enough balance in your account ' \
@@ -514,6 +506,12 @@ async def register_new(ctx: SlashContext,
                         hidden=True,
                         components=[button_row] if button_row else None
                     )
+
+                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
+                    # if the registration is cancelled, causing bugs
+                    db.session.add(new_client)
+                    db.session.expunge(new_client)
+                    db.session.commit()
 
                 if not existing_client:
                     await start_registration(ctx)
