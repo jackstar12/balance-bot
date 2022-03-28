@@ -42,7 +42,7 @@ class WebsocketManager:
             if time.time() - ts > self._CONNECT_TIMEOUT_S:
                 self._ws = None
                 break
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
 
     @property
     def connected(self):
