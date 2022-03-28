@@ -28,8 +28,8 @@ class Trade(Base, Serializer):
     exit = Column(Float, nullable=True)
     realized_pnl = Column(Float, nullable=True)
     #max_upnl = Column(Float, nullable=True)
-    tp = Column(Float, nullable=True)
-    sl = Column(Float, nullable=True)
+    #tp = Column(Float, nullable=True)
+    #sl = Column(Float, nullable=True)
 
     executions = relationship('Execution', foreign_keys='[Execution.trade_id]', backref='trade', lazy=True,
                               cascade='all, delete')
