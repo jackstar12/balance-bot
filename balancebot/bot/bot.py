@@ -443,10 +443,6 @@ async def register_new(ctx: SlashContext,
                     worker: ExchangeWorker = exchange_cls(new_client, user_manager.session)
                     init_balance = await worker.get_balance(datetime.now())
 
-                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
-                    # if the registration is cancelled, causing bugs
-                    session.expunge(new_client)
-                    session.commit()
 
                     if init_balance.error is None:
                         if init_balance.amount < config.REGISTRATION_MINIMUM:
@@ -490,6 +486,12 @@ async def register_new(ctx: SlashContext,
                     else:
                         message = f'An error occured while getting your balance: {init_balance.error}.'
                         button_row = None
+
+                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
+                    # if the registration is cancelled, causing bugs
+                    session.add(new_client)
+                    session.expunge(new_client)
+                    session.commit()
 
                     await ctx.send(
                         content=message,

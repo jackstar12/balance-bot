@@ -166,7 +166,7 @@ class ExchangeWorker:
 
                     if math.isclose(active_trade.open_qty, execution.qty, rel_tol=10e-6):
                         active_trade.open_qty = 0.0
-                        asyncio.create_task(self._async_fetch_data([self.client]))
+                        asyncio.create_task(user_manager.fetch_data([self.client]))
                         if self and not new_execution:
                             self.in_position = False
                     else:
@@ -177,7 +177,7 @@ class ExchangeWorker:
         else:
             trade = trade_from_execution(execution)
             client.trades.append(trade)
-            asyncio.create_task(self._async_fetch_data([self]))
+            asyncio.create_task(user_manager.fetch_data([self.client]))
             asyncio.create_task(self.on_trade)
 
         db.session.commit()
