@@ -1,25 +1,31 @@
+import asyncio
 import logging
 from datetime import datetime
 from http import HTTPStatus
-from typing import Optional, Dict
+from typing import Optional, Dict, Type
 import aiohttp
 import jwt
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import or_
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from balancebot import utils
+from balancebot.api.dbmodels.balance import Balance
+from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.api.dbmodels.trade import Trade
 from balancebot.api.dependencies import current_user
 from balancebot.api.database import session
 from balancebot.api.dbmodels.client import Client, get_client_query
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
+from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
 
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.bot.config import EXCHANGES
+from balancebot.usermanager import UserManager
 
 router = APIRouter(
     tags=["client"],
@@ -126,53 +132,7 @@ def get_client(request: Request, response: Response,
         latest_balance = client.history[len(client.history) - 1] if client.history else None
 
         if tf_update or (latest_balance and latest_balance.time > last_fetch < to_date):
-            s = client.serialize(full=True, data=False)
-
-            history = []
-            s['daily'] = utils.calc_daily(
-                client=client,
-                forEach=lambda balance: history.append(balance.serialize(full=True, data=True, currency=currency)),
-                throw_exceptions=False,
-                since=since_date,
-                to=to_date
-            )
-            s['history'] = history
-
-            def ratio(a: float, b: float):
-                return round(a / (a + b), ndigits=3) if a + b > 0 else 0.5
-
-            winning_days, losing_days = 0, 0
-            for day in s['daily']:
-                if day[2] > 0:
-                    winning_days += 1
-                elif day[2] < 0:
-                    losing_days += 1
-
-            s['daily_win_ratio'] = ratio(winning_days, losing_days)
-            s['winning_days'] = winning_days
-            s['losing_days'] = losing_days
-
-            trades = []
-            winners, losers = 0, 0
-            avg_win, avg_loss = 0.0, 0.0
-            for trade in client.trades:
-                if since_date <= trade.initial.time <= to_date:
-                    trade = trade.serialize(data=True)
-                    if trade['status'] == 'win':
-                        winners += 1
-                        avg_win += trade['realized_pnl']
-                    elif trade['status'] == 'loss':
-                        losers += 1
-                        avg_loss += trade['realized_pnl']
-                    trades.append(trade)
-
-            s['trades'] = trades
-            s['win_ratio'] = ratio(winners, losers)
-            s['winners'] = winners
-            s['losers'] = losers
-            s['avg_win'] = avg_win / (winners or 1)
-            s['avg_loss'] = avg_loss / (losers or 1)
-            s['action'] = 'NEW'
+            s = create_cilent_data_serialized(client, since_date, to_date)
 
             response = JSONResponse(jsonable_encoder(s))
             response.set_cookie('client-last-fetch', value=str(now.timestamp()))
@@ -194,14 +154,8 @@ def get_client(request: Request, response: Response,
 
 def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = None, to: Optional[datetime] = None,
                          user: User = Depends(current_user)):
-    if id:
-        client: Optional[Client] = get_client_query(user, id).first()
-    elif len(user.clients) > 0:
-        client: Optional[Client] = user.clients[0]
-    elif user.discorduser:
-        client: Optional[Client] = user.discorduser.global_client
-    else:
-        client = None
+
+    client = get_user_client(user, id)
     if client:
 
         resp = {}
@@ -237,8 +191,6 @@ def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = N
         for trade in client.trades:
             weekday_performance[trade.initial.time.weekday()] += trade.realized_pnl
 
-
-
         return {
             'label_performance': label_performance,
             'weekday_performance': weekday_performance
@@ -272,3 +224,97 @@ def confirm_client(body: ConfirmBody, user: User = Depends(current_user)):
         return {'msg': 'Success'}, HTTPStatus.OK
     except TypeError:
         return {'msg': 'Internal Error'}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+def create_ws_message(type: str, channel: str = None, data: Dict = None, error: str = None, *args):
+    return {
+        "type": type,
+        "channel": channel,
+        "data": data,
+        "error": error
+    }
+
+
+class WebsocketMessage(BaseModel):
+    type: str
+    channel: Optional[str]
+    data: Optional[Dict]
+
+
+class WebsocketConfig(BaseModel):
+    id: Optional[int]
+    since: Optional[datetime]
+    to: Optional[datetime]
+    currency: Optional[str]
+
+
+@router.websocket('/client/ws')
+async def client_websocket(websocket: WebSocket, user: User = Depends(current_user)):
+    await websocket.accept()
+
+    user_manager = UserManager()
+    subscribed_client = None
+    config = None
+
+    def websocket_callback(type: str, channel: str):
+        def f(obj: Serializer):
+            asyncio.create_task(
+                websocket.send(create_ws_message(
+                    type='update',
+                    channel='trade',
+                    data=obj.serialize()
+                ))
+            )
+        return f
+
+    async def send_client_snapshot():
+        await websocket.send_json(create_ws_message(
+            type='initial',
+            channel='client',
+            data=create_cilent_data_serialized(client,
+                                               since_date=config.since, to_date=config.to, currency=config.currency)
+        ))
+
+    while True:
+        raw_msg = await websocket.receive()
+        try:
+            msg = WebsocketMessage(**raw_msg)
+            if msg.type == 'ping':
+                await websocket.send_json(create_ws_message(type='pong'))
+            elif msg.type == 'subscribe':
+                id = msg.data.get('id')
+                subscribed_client = get_user_client(user, id)
+
+                if not subscribed_client:
+                    await websocket.send_json(create_ws_message(
+                        type='error',
+                        error='Invalid Client ID'
+                    ))
+                else:
+                    await websocket.send_json(create_ws_message(
+                        type='initial',
+                        channel='client',
+                        data=create_cilent_data_serialized(subscribed_client)
+                    ))
+
+                    user_manager.on_client_balance_change(
+                        subscribed_client,
+                        websocket_callback(type='new', channel='balance')
+                    )
+                    user_manager.on_client_trade_new(
+                        subscribed_client,
+                        websocket_callback(type='new', channel='trade')
+                    )
+                    user_manager.on_client_trade_update(
+                        subscribed_client,
+                        websocket_callback(type='update', channel='trade')
+                    )
+            elif msg.type == 'update':
+                if msg.channel == 'config':
+                    config = WebsocketConfig(**msg.data)
+                    await send_client_snapshot(subscribed_client, config)
+        except ValidationError as e:
+            await websocket.send_json(create_ws_message(
+                type='error',
+                error=str(e)
+            ))

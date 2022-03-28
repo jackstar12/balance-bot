@@ -10,6 +10,7 @@ from requests import Request, Response, Session
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.balance import Balance
+from balancebot.api.dbmodels.trade import Trade
 
 
 class Cached(NamedTuple):
@@ -40,6 +41,7 @@ class ExchangeWorker:
 
         self._session = session
         self._on_execution = None
+        self._on_balance = None
         self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
 
@@ -57,6 +59,14 @@ class ExchangeWorker:
             return Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
         else:
             return None
+
+    def set_balance_callback(self, callback: Callable[[int, Balance], None]):
+        if callable(callback):
+            self._on_balance = callback
+
+    def set_trade_callback(self, callback: Callable[[int, Trade], None]):
+        if callable(callback):
+            self.on_trade = callback
 
     @abc.abstractmethod
     async def _get_balance(self, time: datetime):
@@ -103,10 +113,8 @@ class ExchangeWorker:
     async def _put(self, path: str, **kwargs):
         return await self._request('PUT', path, **kwargs)
 
-
     async def get_ticker(self, symbol: str):
-
-
+        pass
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'

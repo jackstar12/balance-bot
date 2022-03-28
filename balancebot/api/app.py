@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi_jwt_auth.exceptions import AuthJWTException
 from starlette.responses import JSONResponse
 
-from balancebot.bot.config import EXCHANGES
+from ..bot.config import EXCHANGES
 from pydantic import BaseModel
 from fastapi import Depends
 from fastapi_jwt_auth import AuthJWT

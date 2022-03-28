@@ -264,9 +264,18 @@ class UserManager(Singleton):
         logging.info(f'Done Fetching')
         return data
 
+    def on_client_balance_change(self, client: Client, callback: Callable[[Balance], None]):
+        pass
+
+    def on_client_trade_update(self, client: Client, callback: Callable[[Trade], None]):
+        worker: ExchangeWorker = self._get_worker(client)
+
+    def on_client_trade_update(self, client: Client,  callback: Callable[[Trade], None]):
+        worker: ExchangeWorker = self._get_worker(client)
+
     def _on_execution(self, client_id: int, execution: Execution):
 
-        active_trade: Trade = session.query(Trade).filter(
+        active_trade: Trade = db.session.query(Trade).filter(
             Trade.symbol == execution.symbol,
             Trade.client_id == client_id,
             Trade.open_qty > 0.0
@@ -327,6 +336,7 @@ class UserManager(Singleton):
             trade = trade_from_execution(execution)
             client.trades.append(trade)
             asyncio.create_task(self._async_fetch_data([worker]))
+            asyncio.create_task(worker.on_trade)
 
         db.session.commit()
 
