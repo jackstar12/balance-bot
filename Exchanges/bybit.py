@@ -54,11 +54,11 @@ class BybitClient(ClientWorker):
                     if currency == 'USDT':
                         price = 1
                     elif amount > 0:
-                        price = ticker_prices.get(currency)
-                        if price:
-                            extra_currencies[currency] = amount
-                    if price:
-                        total_balance += amount * price
+                        price = ticker_prices.get(f'{currency}USD') or ticker_prices.get(f'{currency}USDT')
+                        extra_currencies[currency] = amount
+                    if not price:
+                        err_msg = 'This is a bug in the ByBit bot implementation.'
+                    total_balance += amount * price
             else:
                 err_msg = tickers['ret_msg']
         else:
