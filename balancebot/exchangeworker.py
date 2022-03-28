@@ -10,6 +10,7 @@ from typing import NamedTuple
 from requests import Request, Response, Session
 
 import balancebot.api.database as db
+import balancebot.utils as utils
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.balance import Balance
@@ -44,10 +45,12 @@ class ExchangeWorker:
         self._extra_kwargs = client.extra_kwargs
 
         self._session = session
-        self._on_execution = None
-        self._on_balance = None
-        self._identifier = id
         self._last_fetch = datetime.fromtimestamp(0)
+        self._identifier = id
+
+        self._on_balance = None
+        self._on_new_trade = None
+        self._on_update_trade = None
 
     async def get_balance(self, session, time: datetime = None, force=False):
         if not time:
@@ -58,27 +61,37 @@ class ExchangeWorker:
             if not balance.time:
                 balance.time = time
             balance.client_id = self.client_id
+            asyncio.create_task(
+                utils.call_unknown_function(self._on_balance)
+            )
             return balance
         elif self.client.rekt_on:
             return Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
         else:
             return None
 
-    def set_balance_callback(self, callback: Callable[[int, Balance], None]):
+    def set_balance_callback(self, callback: Callable):
         if callable(callback):
             self._on_balance = callback
 
-    def set_trade_callback(self, callback: Callable[[int, Trade], None]):
+    def set_trade_callback(self, callback: Callable):
         if callable(callback):
-            self.on_trade = callback
+            self._on_new_trade = callback
+
+    def set_trade_update_callback(self, callback: Callable):
+        if callable(callback):
+            self._on_update_trade = callback
+
+    def clear_callbacks(self):
+        self._on_balance = self._on_new_trade = self._on_update_trade = None
+
+    def connect(self):
+        pass
 
     @abc.abstractmethod
     async def _get_balance(self, time: datetime):
         logging.error(f'Exchange {self.exchange} does not implement _get_balance')
         raise NotImplementedError(f'Exchange {self.exchange} does not implement _get_balance')
-
-    def set_execution_callback(self, callback: Callable[[int, Execution], None]):
-        self._on_execution = callback
 
     @abc.abstractmethod
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
@@ -88,7 +101,8 @@ class ExchangeWorker:
     async def _process_response(self, response: ClientResponse):
         logging.error(f'Exchange {self.exchange} does not implement _process_response')
 
-    async def _request(self, method: str, path: str, headers=None, params=None, data=None, sign=True, cache=False, **kwargs):
+    async def _request(self, method: str, path: str, headers=None, params=None, data=None, sign=True, cache=False,
+                       **kwargs):
         headers = headers or {}
         params = params or {}
         url = self._ENDPOINT + path
@@ -117,7 +131,7 @@ class ExchangeWorker:
     async def _put(self, path: str, **kwargs):
         return await self._request('PUT', path, **kwargs)
 
-    async def _on_execute(self, execution: Execution):
+    async def _on_execution(self, execution: Execution):
         active_trade: Trade = db.session.query(Trade).filter(
             Trade.symbol == execution.symbol,
             Trade.client_id == self.client_id,
@@ -156,7 +170,12 @@ class ExchangeWorker:
                     execution.qty = active_trade.open_qty
                     new_trade = trade_from_execution(new_execution)
                     client.trades.append(new_trade)
-                    asyncio.create_task(user_manager.fetch_data([self.client]))
+                    asyncio.create_task(
+                        user_manager.fetch_data([self.client])
+                    )
+                    asyncio.create_task(
+                        utils.call_unknown_function(self._on_new_trade, self, new_trade)
+                    )
                 if execution.qty <= active_trade.qty:
                     if active_trade.exit is None:
                         active_trade.exit = execution.price
@@ -173,12 +192,20 @@ class ExchangeWorker:
                         active_trade.open_qty -= execution.qty
                     realized_qty = active_trade.qty - active_trade.open_qty
 
-                    active_trade.realized_pnl = (active_trade.exit * realized_qty - active_trade.entry * realized_qty) * (1 if active_trade.initial.side == 'BUY' else -1)
+                    active_trade.realized_pnl = (active_trade.exit * realized_qty - active_trade.entry * realized_qty) \
+                                                * (1 if active_trade.initial.side == 'BUY' else -1)
+            asyncio.create_task(
+                utils.call_unknown_function(self._on_update_trade, self, active_trade)
+            )
         else:
             trade = trade_from_execution(execution)
             client.trades.append(trade)
-            asyncio.create_task(user_manager.fetch_data([self.client]))
-            asyncio.create_task(self.on_trade)
+            asyncio.create_task(
+                user_manager.fetch_data([self.client])
+            )
+            asyncio.create_task(
+                utils.call_unknown_function(self._on_new_trade, self, trade)
+            )
 
         db.session.commit()
 

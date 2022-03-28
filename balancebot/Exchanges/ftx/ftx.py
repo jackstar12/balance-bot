@@ -25,31 +25,28 @@ class FtxClient(ExchangeWorker):
                                      on_message_callback=self._on_message,
                                      session=self._session)
 
-    def set_execution_callback(self, callback: Callable[[int, Execution], None]):
-        super().set_execution_callback(callback)
+    def connect(self):
         asyncio.create_task(self._start_ws())
 
     async def _start_ws(self):
         await self.ws.connect()
         await self.ws.get_fills()
 
-    def _on_message(self, ws, message):
+    async def _on_message(self, ws, message):
         print('FTX MESSAGE!!!')
         logging.info(f'FTX MESSAGE! {message}')
         if message['channel'] == 'fills':
-            if callable(self._on_execution):
-                data = message['data']
-                self._on_execution(
-                    self.client_id,
-                    Execution(
-                        symbol=data['market'],
-                        side=data['side'].upper(),
-                        price=float(data['price']),
-                        qty=float(data['size']),
-                        time=datetime.now(),
-                        type=data.get('type')
-                    )
+            data = message['data']
+            await self._on_execution(
+                execution=Execution(
+                    symbol=data['market'],
+                    side=data['side'].upper(),
+                    price=float(data['price']),
+                    qty=float(data['size']),
+                    time=datetime.now(),
+                    type=data.get('type')
                 )
+            )
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime):

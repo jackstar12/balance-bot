@@ -5,7 +5,7 @@ from balancebot.api.dbmodels.archive import Archive
 from balancebot.api.dbmodels.serializer import Serializer
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property
-from balancebot.bot.config import DATA_PATH
+import balancebot.bot.config as config
 import discord
 
 from balancebot.api.database import Base, Meta, session as session
@@ -149,16 +149,16 @@ class Event(Base, Serializer):
                 (client, client.discorduser.get_display_name(dc_client, self.guild_id))
                 for client in self.registrations
             ],
+            event=self,
             start=self.start,
             end=self.end,
             currency_display='%',
             currency='$',
             percentage=True,
-            path=DATA_PATH + path,
-            archived=self.end < datetime.now()
+            path=config.DATA_PATH + path
         )
 
-        file = discord.File(DATA_PATH + path, path)
+        file = discord.File(config.DATA_PATH + path, path)
         self._archive.history_path = path
         session.commit()
 

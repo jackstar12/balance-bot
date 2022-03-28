@@ -487,18 +487,18 @@ async def register_new(ctx: SlashContext,
                         message = f'An error occured while getting your balance: {init_balance.error}.'
                         button_row = None
 
-                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
-                    # if the registration is cancelled, causing bugs
-                    session.add(new_client)
-                    session.expunge(new_client)
-                    session.commit()
-
                     await ctx.send(
                         content=message,
                         embed=new_client.get_discord_embed(is_global=event is None),
                         hidden=True,
                         components=[button_row] if button_row else None
                     )
+
+                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
+                    # if the registration is cancelled, causing bugs
+                    session.add(new_client)
+                    session.expunge(new_client)
+                    session.commit()
 
                 if not existing_client:
                     await start_registration(ctx)

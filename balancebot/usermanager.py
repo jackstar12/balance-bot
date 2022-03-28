@@ -39,7 +39,6 @@ class UserManager(Singleton):
         self.on_rekt_callback = on_rekt_callback
 
         self._exchanges = exchanges
-        self._worker_lock = RLock()
         self._workers: List[ExchangeWorker] = []
         self._workers_by_id: Dict[
             Optional[int], Dict[int, ExchangeWorker]] = {}  # { event_id: { user_id: ClientWorker } }
@@ -48,26 +47,24 @@ class UserManager(Singleton):
         self.session = aiohttp.ClientSession()
 
     def _add_worker(self, worker: ExchangeWorker):
-        with self._worker_lock:
-            if worker not in self._workers:
-                self._workers.append(worker)
-                for event in [None, *worker.client.events]:
-                    if event not in self._workers_by_id:
-                        self._workers_by_id[event] = {}
-                    self._workers_by_id[event][worker.client.discorduser.id] = worker
-                self._workers_by_client_id[worker.client.id] = worker
+        if worker not in self._workers:
+            self._workers.append(worker)
+            for event in [None, *worker.client.events]:
+                if event not in self._workers_by_id:
+                    self._workers_by_id[event] = {}
+                self._workers_by_id[event][worker.client.discorduser.id] = worker
+            self._workers_by_client_id[worker.client.id] = worker
 
     def _remove_worker(self, worker: ExchangeWorker):
-        with self._worker_lock:
-            if worker in self._workers:
-                for event in [None, *worker.client.events]:
-                    self._workers_by_id[event].pop(worker.client.discorduser.id)
-                self._workers_by_client_id.pop(worker.client.id)
-                self._workers.remove(worker)
-                del worker
+        if worker in self._workers:
+            for event in [None, *worker.client.events]:
+                self._workers_by_id[event].pop(worker.client.discorduser.id)
+            self._workers_by_client_id.pop(worker.client.id)
+            self._workers.remove(worker)
+            del worker
 
     def delete_client(self, client: Client, commit=True):
-        self._remove_worker(self._get_worker(client, create_if_missing=False))
+        self._remove_worker(self.get_worker(client, create_if_missing=False))
         db.session.query(Client).filter_by(id=client.id).delete()
         if commit:
             db.session.commit()
@@ -85,7 +82,7 @@ class UserManager(Singleton):
             await asyncio.sleep(delay.total_seconds())
 
     async def fetch_data(self, clients: List[Client] = None, guild_id: int = None):
-        workers = [self._get_worker(client) for client in clients]
+        workers = [self.get_worker(client) for client in clients]
         return await self._async_fetch_data(workers)
 
     async def get_client_balance(self, client: Client, currency: str = None, force_fetch=False) -> Balance:
@@ -93,7 +90,8 @@ class UserManager(Singleton):
         if currency is None:
             currency = '$'
 
-        data = await self._async_fetch_data(workers=[self._get_worker(client)], keep_errors=True, force_fetch=force_fetch)
+        data = await self._async_fetch_data(workers=[self.get_worker(client)], keep_errors=True,
+                                            force_fetch=force_fetch)
 
         if data:
             result = data[0]
@@ -116,30 +114,29 @@ class UserManager(Singleton):
             if client.is_global or client.is_active:
                 self.add_client(client)
             else:
-                self._remove_worker(self._get_worker(client, create_if_missing=False))
+                self._remove_worker(self.get_worker(client, create_if_missing=False))
 
     def add_client(self, client):
         client_cls = self._exchanges[client.exchange]
         if issubclass(client_cls, ExchangeWorker):
             worker = client_cls(client, self.session)
-            worker.set_execution_callback(self._on_execution)
+            worker.connect()
             self._add_worker(worker)
         else:
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
-    def _get_worker(self, client: Client, create_if_missing=True) -> ExchangeWorker:
-        with self._worker_lock:
-            if client:
+    def get_worker(self, client: Client, create_if_missing=True) -> ExchangeWorker:
+        if client:
+            worker = self._workers_by_client_id.get(client.id)
+            if not worker and create_if_missing:
+                self.add_client(client)
                 worker = self._workers_by_client_id.get(client.id)
-                if not worker and create_if_missing:
-                    self.add_client(client)
-                    worker = self._workers_by_client_id.get(client.id)
-                return worker
+            return worker
 
     def _get_worker_event(self, user_id, guild_id):
-        with self._worker_lock:
-            event = dbutils.get_event(guild_id)
-            return self._workers_by_id[event].get(user_id)
+
+        event = dbutils.get_event(guild_id)
+        return self._workers_by_id[event].get(user_id)
 
     def get_client_history(self,
                            client: Client,
@@ -265,13 +262,14 @@ class UserManager(Singleton):
         return data
 
     def on_client_balance_change(self, client: Client, callback: Callable[[Balance], None]):
-        pass
+        worker: ExchangeWorker = self.get_worker(client)
+        worker.set_balance_callback(callback)
 
     def on_client_trade_update(self, client: Client, callback: Callable[[Trade], None]):
-        worker: ExchangeWorker = self._get_worker(client)
+        worker: ExchangeWorker = self.get_worker(client)
 
-    def on_client_trade_update(self, client: Client,  callback: Callable[[Trade], None]):
-        worker: ExchangeWorker = self._get_worker(client)
+    def on_client_trade_update(self, client: Client, callback: Callable[[Trade], None]):
+        worker: ExchangeWorker = self.get_worker(client)
 
     def _on_execution(self, client_id: int, execution: Execution):
 
@@ -282,7 +280,7 @@ class UserManager(Singleton):
         ).first()
 
         client: Client = db.session.query(Client).filter_by(id=client_id).first()
-        worker = self._get_worker(client)
+        worker = self.get_worker(client)
 
         if worker:
             worker.in_position = True
@@ -331,7 +329,9 @@ class UserManager(Singleton):
                         active_trade.open_qty -= execution.qty
                     realized_qty = active_trade.qty - active_trade.open_qty
 
-                    active_trade.realized_pnl = (active_trade.exit * realized_qty - active_trade.entry * realized_qty) * (1 if active_trade.initial.side == 'BUY' else -1)
+                    active_trade.realized_pnl = (
+                                                            active_trade.exit * realized_qty - active_trade.entry * realized_qty) * (
+                                                    1 if active_trade.initial.side == 'BUY' else -1)
         else:
             trade = trade_from_execution(execution)
             client.trades.append(trade)

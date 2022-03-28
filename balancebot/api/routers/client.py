@@ -253,11 +253,11 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
     await websocket.accept()
 
     user_manager = UserManager()
-    subscribed_client = None
-    config = None
+    subscribed_client: Optional[Client] = None
+    config: Optional[WebsocketConfig] = None
 
     def websocket_callback(type: str, channel: str):
-        def f(obj: Serializer):
+        def f(worker: ExchangeWorker, obj: Serializer):
             asyncio.create_task(
                 websocket.send(create_ws_message(
                     type=type,
@@ -279,6 +279,27 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
             )
         ))
 
+    async def update_client(new_client: Client):
+
+        subscribed_worker: ExchangeWorker = user_manager.get_worker(subscribed_client)
+        if subscribed_client:
+            subscribed_worker.clear_callbacks()
+
+        await send_client_snapshot()
+        worker = user_manager.get_worker(new_client)
+
+        worker.set_balance_callback(
+            websocket_callback(type='new', channel='balance')
+        )
+        worker.set_trade_callback(
+            websocket_callback(type='new', channel='trade')
+        )
+        worker.set_trade_update_callback(
+            websocket_callback(type='update', channel='trade')
+        )
+
+        subscribed_client = new_client
+
     while True:
         raw_msg = await websocket.receive()
         try:
@@ -287,32 +308,27 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 await websocket.send_json(create_ws_message(type='pong'))
             elif msg.type == 'subscribe':
                 id = msg.data.get('id')
-                subscribed_client = get_user_client(user, id)
+                new_client = get_user_client(user, id)
 
-                if not subscribed_client:
+                if not new_client:
                     await websocket.send_json(create_ws_message(
                         type='error',
                         error='Invalid Client ID'
                     ))
                 else:
-                    await send_client_snapshot()
+                    await update_client(new_client)
 
-                    user_manager.on_client_balance_change(
-                        subscribed_client,
-                        websocket_callback(type='new', channel='balance')
-                    )
-                    user_manager.on_client_trade_new(
-                        subscribed_client,
-                        websocket_callback(type='new', channel='trade')
-                    )
-                    user_manager.on_client_trade_update(
-                        subscribed_client,
-                        websocket_callback(type='update', channel='trade')
-                    )
             elif msg.type == 'update':
                 if msg.channel == 'config':
                     config = WebsocketConfig(**msg.data)
-                    await send_client_snapshot()
+                    new_client = get_user_client(user, config.id)
+                    if not new_client:
+                        await websocket.send_json(create_ws_message(
+                            type='error',
+                            error='Invalid Client ID'
+                        ))
+                    else:
+                        await update_client(new_client)
         except ValidationError as e:
             await websocket.send_json(create_ws_message(
                 type='error',

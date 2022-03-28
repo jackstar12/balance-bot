@@ -99,8 +99,7 @@ class BinanceFutures(_BinanceBaseClient):
     async def keep_alive(self):
         await self._put('/fapi/v1/listenKey')
 
-    def set_execution_callback(self, callback: Callable[[Client, Execution], None]):
-        self._callback = callback
+    def connect(self):
         asyncio.create_task(self._ws.start())
 
     def _on_message(self, ws, message):
@@ -118,8 +117,7 @@ class BinanceFutures(_BinanceBaseClient):
                     side=data['S'],
                     time=datetime.now()
                 )
-                if callable(self._callback):
-                    self._callback(self.client_id, trade)
+                self._on_execution(trade)
 
 
 class BinanceSpot(_BinanceBaseClient):
