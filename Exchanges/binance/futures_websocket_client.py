@@ -29,7 +29,6 @@ class FuturesWebsocketClient(WebsocketManager):
 
     async def start(self):
         await self._renew_listen_key()
-        asyncio.create_task(self._keep_alive())
 
     def stop(self):
         self._listenKey = None

@@ -49,7 +49,8 @@ class FtxClient(ClientWorker):
                         side=data['side'].upper(),
                         price=float(data['price']),
                         qty=float(data['size']),
-                        time=datetime.now()
+                        time=datetime.now(),
+                        type=data.get('type')
                     )
                 )
 
