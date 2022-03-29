@@ -96,7 +96,8 @@ async def register_client(body: RegisterBody):
 
 @router.get('/client')
 def get_client(request: Request, response: Response,
-               id: Optional[int] = None, currency: Optional[str] = None, since: Optional[datetime] = None, to: Optional[datetime] = None,
+               id: Optional[int] = None, currency: Optional[str] = None, since: Optional[datetime] = None,
+               to: Optional[datetime] = None,
                user: User = Depends(current_user)):
     if not currency:
         currency = '$'
@@ -154,7 +155,6 @@ def get_client(request: Request, response: Response,
 
 def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = None, to: Optional[datetime] = None,
                          user: User = Depends(current_user)):
-
     client = get_user_client(user, id)
     if client:
 
@@ -265,28 +265,18 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                     data=obj.serialize()
                 ))
             )
+
         return f
 
-    async def send_client_snapshot():
-        await websocket.send_json(create_ws_message(
-            type='initial',
-            channel='client',
-            data=create_cilent_data_serialized(
-                subscribed_client,
-                since_date=config.since,
-                to_date=config.to,
-                currency=config.currency
-            )
-        ))
+    async def update_client(old: Client, new: Client):
 
-    async def update_client(new_client: Client):
+        if old:
+            old_worker: ExchangeWorker = user_manager.get_worker(old)
+            if old_worker:
+                old_worker.clear_callbacks()
 
-        subscribed_worker: ExchangeWorker = user_manager.get_worker(subscribed_client)
-        if subscribed_client:
-            subscribed_worker.clear_callbacks()
-
-        await send_client_snapshot()
-        worker = user_manager.get_worker(new_client)
+        await send_client_snapshot(new)
+        worker = user_manager.get_worker(new)
 
         worker.set_balance_callback(
             websocket_callback(type='new', channel='balance')
@@ -298,7 +288,17 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
             websocket_callback(type='update', channel='trade')
         )
 
-        subscribed_client = new_client
+    async def send_client_snapshot(client: Client):
+        await websocket.send_json(create_ws_message(
+            type='initial',
+            channel='client',
+            data=create_cilent_data_serialized(
+                client,
+                since_date=config.since,
+                to_date=config.to,
+                currency=config.currency
+            )
+        ))
 
     while True:
         raw_msg = await websocket.receive()
@@ -316,7 +316,8 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                         error='Invalid Client ID'
                     ))
                 else:
-                    await update_client(new_client)
+                    await update_client(old=subscribed_client, new=new_client)
+                    subscribed_client = new_client
 
             elif msg.type == 'update':
                 if msg.channel == 'config':
@@ -328,7 +329,8 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                             error='Invalid Client ID'
                         ))
                     else:
-                        await update_client(new_client)
+                        await update_client(old=subscribed_client, new=new_client)
+                        subscribed_client = new_client
         except ValidationError as e:
             await websocket.send_json(create_ws_message(
                 type='error',
