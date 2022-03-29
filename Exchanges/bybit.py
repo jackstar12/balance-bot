@@ -57,8 +57,10 @@ class BybitClient(ClientWorker):
                         price = ticker_prices.get(f'{currency}USD') or ticker_prices.get(f'{currency}USDT')
                         extra_currencies[currency] = amount
                     if not price:
+                        logging.info(f'Bybit Bug: ticker prices: {ticker_prices}')
                         err_msg = 'This is a bug in the ByBit bot implementation.'
-                    total_balance += amount * price
+                    else:
+                        total_balance += amount * price
             else:
                 err_msg = tickers['ret_msg']
         else:
