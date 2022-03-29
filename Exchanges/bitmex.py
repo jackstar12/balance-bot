@@ -41,11 +41,11 @@ class BitmexClient(ClientWorker):
                     price = 1
                 elif amount > 0:
                     response_price = await self._get(
-                        '/trade',
+                        '/api/v1/trade',
                         params={
                             'symbol': symbol.upper(),
                             'count': 1,
-                            'reverse': True
+                            'reverse': 'True'
                         }
                     )
                     if len(response_price) > 0:
@@ -76,7 +76,7 @@ class BitmexClient(ClientWorker):
         headers['api-signature'] = signature
 
     async def _process_response(self, response: ClientResponse):
-        response_json = await response.json()
+        response_json = await response.json(content_type=None)
         try:
             response.raise_for_status()
         except ClientResponseError as e:

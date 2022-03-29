@@ -48,10 +48,10 @@ class ClientWorker:
             self._last_fetch = time
             try:
                 balance = await self._get_balance(time)
-            except Exception as e:
+            except Exception:
                 logging.exception(
                     f'Exception occured while fetching balance for client with id {self.client_id} ({self.exchange})')
-                return None
+                return Balance(amount=0.0, currency='$', time=time, extra_currencies={}, error=f'Internal {self.exchange} implementation error.')
             if not balance.time:
                 balance.time = time
             balance.client_id = self.client_id
