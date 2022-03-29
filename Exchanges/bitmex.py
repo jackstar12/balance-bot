@@ -66,7 +66,8 @@ class BitmexClient(ClientWorker):
     # https://www.bitmex.com/app/apiKeysUsage
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
-        request_signature = f'{method}{path}{ts}'
+        query_string = urllib.parse.urlencode(params, True)
+        request_signature = f'{method}{path}{f"?{query_string}" if query_string else ""}{ts}'
         if data is not None:
             request_signature += data
         signature = hmac.new(self._api_secret.encode(), request_signature.encode(), 'sha256').hexdigest()
@@ -80,12 +81,11 @@ class BitmexClient(ClientWorker):
             response.raise_for_status()
         except ClientResponseError as e:
             logging.error(f'{e}\n{response_json}')
-
             error = ''
             if response.status == 400:
                 error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
             elif response.status == 401:
-                error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
+                error = f"401 Unauthorized ({response.reason}).Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
             elif response.status == 403:
                 error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your API access"
             elif response.status == 404:

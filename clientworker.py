@@ -46,7 +46,12 @@ class ClientWorker:
             time = datetime.now()
         if force or (time - self._last_fetch > timedelta(seconds=30) and not self.client.rekt_on):
             self._last_fetch = time
-            balance = await self._get_balance(time)
+            try:
+                balance = await self._get_balance(time)
+            except Exception as e:
+                logging.exception(
+                    f'Exception occured while fetching balance for client with id {self.client_id} ({self.exchange})')
+                return None
             if not balance.time:
                 balance.time = time
             balance.client_id = self.client_id

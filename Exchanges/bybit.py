@@ -37,7 +37,7 @@ class BybitClient(ClientWorker):
             balance = results[1]
             tickers = results[0]
 
-        total_balance = 0
+        total_balance = 0.0
         extra_currencies: Dict[str, float] = {}
         err_msg = None
 
@@ -50,9 +50,9 @@ class BybitClient(ClientWorker):
                 }
                 for currency in data:
                     amount = float(data[currency]['equity'])
-                    price = 0
+                    price = 0.0
                     if currency == 'USDT':
-                        price = 1
+                        price = 1.0
                     elif amount > 0:
                         price = ticker_prices.get(f'{currency}USD') or ticker_prices.get(f'{currency}USDT')
                         extra_currencies[currency] = amount
