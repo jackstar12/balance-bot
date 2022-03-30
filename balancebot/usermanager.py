@@ -163,17 +163,14 @@ class UserManager(Singleton):
         results = []
         initial = None
 
-        if event:
-            for balance in client.history:
-                if since <= balance.time <= to:
-                    if currency != '$':
-                        balance = self.db_match_balance_currency(balance, currency)
-                    if balance:
-                        results.append(balance)
-                elif event.start <= balance.time and not initial:
-                    initial = balance
-        else:
-            results = client.history
+        for balance in client.history:
+            if since <= balance.time <= to:
+                if currency != '$':
+                    balance = self.db_match_balance_currency(balance, currency)
+                if balance:
+                    results.append(balance)
+            elif event and event.start <= balance.time and not initial:
+                initial = balance
 
         if not initial:
             try:
