@@ -856,7 +856,7 @@ def setup_logger(debug: bool = False):
     if not os.path.exists(LOG_OUTPUT_DIR):
         os.mkdir(LOG_OUTPUT_DIR)
     log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
-    handler = logging.StreamHandler(sys.stdout)
+    handler = logging.StreamHandler(log_stream)
     handler.setFormatter(formatter)
 
     logger.addHandler(handler)
