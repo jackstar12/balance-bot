@@ -41,7 +41,7 @@ def create_cilent_data_serialized(client: Client, since_date: datetime, to_date:
     winners, losers = 0, 0
     avg_win, avg_loss = 0.0, 0.0
     for trade in client.trades:
-        if since_date <= trade.initial.time <= to_date:
+        if since_date <= trade.initial.tz_time <= to_date:
             trade = trade.serialize(data=True)
             if trade['status'] == 'win':
                 winners += 1
