@@ -1,3 +1,6 @@
+import pytz
+from sqlalchemy.ext.hybrid import hybrid_property
+
 from balancebot.api.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float
 from balancebot.api.dbmodels.serializer import Serializer
@@ -14,3 +17,8 @@ class Execution(Base, Serializer):
     side = Column(String, nullable=False)
     time = Column(DateTime, nullable=False)
     type = Column(String, nullable=True)
+
+    @hybrid_property
+    def tz_time(self, tz=pytz.UTC):
+        return self.time.replace(tzinfo=tz)
+
