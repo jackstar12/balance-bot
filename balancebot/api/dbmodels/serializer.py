@@ -10,8 +10,8 @@ class Serializer:
 
     # The full flag is needed to avoid cyclic serializations
     def serialize(self, full=False, data=True, *args, **kwargs):
-        if not self.__serializer_anti_recursion__:
-            self.__serializer_anti_recursion__ = True
+        if not self.__class__.__serializer_anti_recursion__:
+            self.__class__.__serializer_anti_recursion__ = True
             try:
                 if data or not self.is_data():
                     s = {}
@@ -26,11 +26,11 @@ class Serializer:
                                 else:
                                     continue
                             s[k] = v
+                    self.__class__.__serializer_anti_recursion__ = False
                     return s
             except Exception as e:
-                self.__serializer_anti_recursion__ = False
+                self.__class__.__serializer_anti_recursion__ = False
                 raise e
-            self.__serializer_anti_recursion__ = False
 
     @staticmethod
     def serialize_list(l, data=True, full=False, *args, **kwargs):
