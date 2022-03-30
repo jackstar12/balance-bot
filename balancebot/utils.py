@@ -235,7 +235,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
 
 def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
-    if abs((prev.time - search).total_seconds()) < abs((after.time - search).total_seconds()):
+    if abs((prev.tz_time - search).total_seconds()) < abs((after.tz_time - search).total_seconds()):
         return prev
     else:
         return after
