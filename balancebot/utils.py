@@ -279,7 +279,7 @@ def calc_daily(client: Client,
         to = now
 
     since = since.replace(tzinfo=pytz.UTC)
-    to.replace(tzinfo=pytz.UTC)
+    to = to.replace(tzinfo=pytz.UTC)
 
     daily_end = min(now, to)
 
