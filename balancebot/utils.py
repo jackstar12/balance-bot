@@ -278,7 +278,6 @@ def calc_daily(client: Client,
     if to is None:
         to = now
 
-
     since = since.replace(tzinfo=pytz.UTC)
     to = to.replace(tzinfo=pytz.UTC)
 
@@ -292,6 +291,7 @@ def calc_daily(client: Client,
     else:
         daily_start = client.history[0].time
 
+    daily_start = daily_start.replace(tzinfo=pytz.UTC)
     daily_start = max(since, daily_start).replace(hour=0, minute=0, second=0)
 
     if guild_id:
