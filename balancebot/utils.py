@@ -273,10 +273,11 @@ def calc_daily(client: Client,
     if since is None:
         since = datetime.fromtimestamp(0)
 
-    now = datetime.now()
+    now = datetime.now(tz=pytz.UTC)
 
     if to is None:
         to = now
+
 
     since = since.replace(tzinfo=pytz.UTC)
     to = to.replace(tzinfo=pytz.UTC)
