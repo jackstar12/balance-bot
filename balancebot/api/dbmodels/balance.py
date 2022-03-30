@@ -1,5 +1,8 @@
 from datetime import datetime
 
+import pytz
+from sqlalchemy.ext.hybrid import hybrid_property
+
 from balancebot.api.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType
 
@@ -61,6 +64,10 @@ class Balance(Base, Serializer):
                     round(amount, ndigits=config.CURRENCY_PRECISION.get(currency, 3)),
                     round(self.time.timestamp() * 1000)
                 )
+
+    @hybrid_property
+    def tz_time(self, tz=pytz.UTC):
+        return self.time.replace(tzinfo=tz)
 
 
 def balance_from_json(data: dict, time: datetime):
