@@ -9,8 +9,6 @@ from typing import Optional
 from fastapi_jwt_auth.exceptions import AuthJWTException
 from starlette.responses import JSONResponse
 
-from balancebot.bot.config import EXCHANGES
-from pydantic import BaseModel
 from fastapi import Depends
 from fastapi_jwt_auth import AuthJWT
 import flask_jwt_extended as flask_jwt
@@ -19,16 +17,10 @@ from flask import request, jsonify
 from sqlalchemy import or_
 from fastapi import FastAPI, Request
 
-from balancebot import utils
 from balancebot.api.database import migrate, session
 
-from balancebot.api.dbmodels.trade import Trade
-from balancebot.api.dbmodels.execution import Execution
-from balancebot.api.dbmodels.archive import Archive
-from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
-from balancebot.exchangeworker import ExchangeWorker
 from balancebot.api.database import Base, engine
 
 import balancebot.api.routers.discordauth as discord

@@ -11,7 +11,7 @@ import dotenv
 
 from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dbmodels.user import User
-from balancebot.bot.config import *
+import balancebot.bot.config as config
 from balancebot.api.database import Base, session
 from balancebot.api.dbmodels import balance
 
@@ -67,7 +67,7 @@ class Client(Base, Serializer):
         try:
             return self.history[0]
         except ValueError:
-            return balance.Balance(amount=REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
+            return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
     def get_event_string(self, is_global=False):
         events = ''

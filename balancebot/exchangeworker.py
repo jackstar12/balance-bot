@@ -1,9 +1,10 @@
+from __future__ import annotations
 import abc
 import asyncio
 import logging
 import math
 from datetime import datetime, timedelta
-from typing import List, Callable, Union, Dict, Tuple
+from typing import List, Callable, Union, Dict, Tuple, TYPE_CHECKING
 import aiohttp.client
 from aiohttp import ClientResponse
 from typing import NamedTuple
@@ -12,10 +13,13 @@ from requests import Request, Response, Session
 import balancebot.api.database as db
 import balancebot.utils as utils
 from balancebot.api.dbmodels.execution import Execution
-from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution
-from balancebot.usermanager import UserManager
+import balancebot.usermanager as um
+
+
+if TYPE_CHECKING:
+    from balancebot.api.dbmodels.client import Client
 
 
 class Cached(NamedTuple):
@@ -138,8 +142,8 @@ class ExchangeWorker:
             Trade.open_qty > 0.0
         ).first()
 
-        client: Client = self.client
-        user_manager = UserManager()
+        client: client.Client = self.client
+        user_manager = um.UserManager()
         if self:
             self.in_position = True
         else:

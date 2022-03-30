@@ -124,7 +124,7 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
                         e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
                 logging.info(
-                    f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
+                    f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n')
             except InternalError as e:
                 await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
                 logging.error(
@@ -133,9 +133,7 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
                 await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
                 logging.critical(
                     f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
-
         return wrapper
-
     return decorator
 
 

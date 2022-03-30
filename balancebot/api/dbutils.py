@@ -1,7 +1,8 @@
+from __future__ import annotations
 from datetime import datetime
 
 from balancebot.api.database import session
-from balancebot.api.dbmodels.client import Client
+import balancebot.api.dbmodels.client as db_client
 from balancebot.api.dbmodels.discorduser import DiscordUser
 import balancebot.api.dbmodels.event as db_event
 from typing import Optional
@@ -10,7 +11,7 @@ from balancebot.errors import UserInputError
 
 def get_client(user_id: int,
                guild_id: int = None,
-               throw_exceptions=True) -> Optional[Client]:
+               throw_exceptions=True) -> Optional[db_client.Client]:
     user = session.query(DiscordUser).filter_by(user_id=user_id).first()
     if user:
         if guild_id:
