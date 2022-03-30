@@ -7,6 +7,7 @@ from collections import defaultdict, deque
 from typing import DefaultDict, Deque, List, Dict
 from gevent.event import Event
 
+from balancebot import utils
 from balancebot.models.async_websocket_manager import WebsocketManager
 
 
@@ -122,4 +123,4 @@ class FtxWebsocketClient(WebsocketManager):
             self._handle_orders_message(message)
         if self._on_message_callback:
             if callable(self._on_message_callback):
-                self._on_message_callback(self, message)
+                await utils.call_unknown_function(self._on_message_callback, message)
