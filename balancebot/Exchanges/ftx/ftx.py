@@ -32,7 +32,7 @@ class FtxClient(ExchangeWorker):
         await self.ws.connect()
         await self.ws.get_fills()
 
-    async def _on_message(self, ws, message):
+    def _on_message(self, ws, message):
         print('FTX MESSAGE!!!')
         logging.info(f'FTX MESSAGE! {message}')
         if message['channel'] == 'fills':
