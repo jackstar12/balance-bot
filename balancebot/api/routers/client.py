@@ -5,6 +5,7 @@ from http import HTTPStatus
 from typing import Optional, Dict, Type
 import aiohttp
 import jwt
+import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ValidationError
@@ -123,6 +124,9 @@ def get_client(request: Request, response: Response,
 
         if not since:
             since = datetime.fromtimestamp(0)
+
+        to = to.replace(tzinfo=pytz.UTC)
+        since = since.replace(tzinfo=pytz.UTC)
 
         last_fetch = datetime.fromtimestamp(float(request.cookies.get('client-last-fetch', 0)))
         latest_balance = client.history[len(client.history) - 1] if client.history else None
