@@ -65,12 +65,12 @@ def authjwt_exception_handler(request: Request, exc: AuthJWTException):
 def delete(user: User = Depends(current_user)):
     session.query(User).filter_by(id=user.id).delete()
     session.commit()
-    return {'msg': 'Success'}, HTTPStatus.OK
+    return {'msg': 'Success'}
 
 
 @app.get('/api/v1/info')
 def info(user: User = Depends(current_user)):
-    return user.serialize(full=False, data=False), 200
+    return user.serialize(full=False, data=False)
 
 
 @app.post('/refresh')
