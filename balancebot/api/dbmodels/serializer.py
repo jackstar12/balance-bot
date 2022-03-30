@@ -13,6 +13,7 @@ class Serializer:
         if not self.__class__.__serializer_anti_recursion__:
             self.__class__.__serializer_anti_recursion__ = True
             try:
+                s = None
                 if data or not self.is_data():
                     s = {}
                     for k in inspect(self).attrs.keys():
@@ -26,8 +27,8 @@ class Serializer:
                                 else:
                                     continue
                             s[k] = v
-                    self.__class__.__serializer_anti_recursion__ = False
-                    return s
+                self.__class__.__serializer_anti_recursion__ = False
+                return s
             except Exception as e:
                 self.__class__.__serializer_anti_recursion__ = False
                 raise e
