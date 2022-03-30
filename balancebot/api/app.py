@@ -70,7 +70,7 @@ def delete(user: User = Depends(current_user)):
 
 @app.get('/api/v1/info')
 def info(user: User = Depends(current_user)):
-    return user.serialize(full=False, data=False)
+    return user.serialize(full=True, data=False)
 
 
 @app.post('/refresh')
