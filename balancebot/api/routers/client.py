@@ -119,21 +119,16 @@ def get_client(request: Request, response: Response,
         now = datetime.now()
 
         if not to:
-            to_date = now
-        else:
-            to_date = datetime.fromtimestamp(int(to))
+            to = now
 
         if not since:
-            since_date = datetime.fromtimestamp(0)
-            since = '0'
-        else:
-            since_date = datetime.fromtimestamp(int(since))
+            since = datetime.fromtimestamp(0)
 
         last_fetch = datetime.fromtimestamp(float(request.cookies.get('client-last-fetch', 0)))
         latest_balance = client.history[len(client.history) - 1] if client.history else None
 
-        if tf_update or (latest_balance and latest_balance.time > last_fetch < to_date):
-            s = create_cilent_data_serialized(client, since_date, to_date)
+        if tf_update or (latest_balance and latest_balance.time > last_fetch < to):
+            s = create_cilent_data_serialized(client, since_date=since, to_date=to)
 
             response = JSONResponse(jsonable_encoder(s))
             response.set_cookie('client-last-fetch', value=str(now.timestamp()))
