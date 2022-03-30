@@ -8,6 +8,7 @@ from functools import wraps
 import discord
 import inspect
 import matplotlib.pyplot as plt
+import pytz
 
 from prettytable import PrettyTable
 
@@ -276,6 +277,9 @@ def calc_daily(client: Client,
 
     if to is None:
         to = now
+
+    since = since.replace(tzinfo=pytz.UTC)
+    to.replace(tzinfo=pytz.UTC)
 
     daily_end = min(now, to)
 
