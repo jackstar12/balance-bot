@@ -13,6 +13,9 @@ def ratio(a: float, b: float):
 def create_cilent_data_serialized(client: Client, since_date: datetime, to_date: datetime, currency: str = None):
     s = client.serialize(full=True, data=False)
 
+    if currency is None:
+        currency = '$'
+
     history = []
     s['daily'] = utils.calc_daily(
         client=client,
