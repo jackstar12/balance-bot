@@ -314,15 +314,15 @@ def calc_daily(client: Client,
     else:
         results = []
     for balance in client.history:
-        if since <= balance.time <= to:
-            if balance.time >= current_search:
+        if since <= balance.tz_time <= to:
+            if balance.tz_time >= current_search:
 
                 daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
                 daily.time = daily.time.replace(minute=0, second=0)
 
                 prev_daily = prev_daily or daily
                 values = Daily(
-                    current_day.strftime('%Y-%m-%d'),
+                    current_day.strftime('%Y-%m-%d') if string else current_day,
                     daily.amount,
                     round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
                     calc_percentage(prev_daily.amount, daily.amount, string=False)
@@ -338,9 +338,9 @@ def calc_daily(client: Client,
             if callable(forEach):
                 forEach(balance)
 
-    if prev_balance.time < current_search:
+    if prev_balance.tz_time < current_search:
         values = Daily(
-            current_day.strftime('%Y-%m-%d'),
+            current_day.strftime('%Y-%m-%d') if string else current_day,
             prev_balance.amount,
             round(prev_balance.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
             calc_percentage(prev_daily.amount, prev_balance.amount, string=False)
@@ -515,7 +515,7 @@ def calc_gains(clients: List[Client],
         # balance_then = user_manager.db_match_balance_currency(
         #    Balance.query.filter(
         #        Balance.client_id == client.id,
-        #        Balance.time >= search
+        #        Balance.tz_time >= search
         #    ).first(),
         #    currency
         # )
@@ -634,7 +634,7 @@ def calc_xs_ys(data: List[Balance],
     if data:
         relative_to: Balance = relative_to or data[0]
         for balance in data:
-            xs.append(balance.time.replace(microsecond=0))
+            xs.append(balance.tz_time.replace(microsecond=0))
             if percentage:
                 if relative_to.amount > 0:
                     amount = 100 * (balance.amount - relative_to.amount) / relative_to.amount

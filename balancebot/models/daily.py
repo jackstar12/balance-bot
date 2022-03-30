@@ -1,9 +1,9 @@
-from typing import NamedTuple
+from typing import NamedTuple, Union
 from datetime import datetime
 
 
 class Daily(NamedTuple):
-    day: datetime
+    day: Union[datetime, str]
     amount: float
     diff_absolute: float
     diff_relative: float
