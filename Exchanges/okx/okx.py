@@ -26,7 +26,7 @@ class OkxClient(ClientWorker):
             'password': self._extra_kwargs['passphrase']
         })
 
-    def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime):
 
         # Could do something like that for displaying a trade history
         # request = Request(
@@ -39,10 +39,11 @@ class OkxClient(ClientWorker):
         # res = self._request(request)
 
         error = None
+        total_balance = None
 
         try:
-            total_balance = self.ccxt_client.fetch_total_balance()
-            tickers = self.ccxt_client.fetch_tickers()
+            total_balance = await self.ccxt_client.fetch_total_balance()
+            tickers = await self.ccxt_client.fetch_tickers()
         except ccxt.errors.AuthenticationError:
             error = 'Unauthorized. Is your api key valid? Did you specify the right subaccount? You might want to check your API access.'
         except ccxt.errors.ExchangeError:
