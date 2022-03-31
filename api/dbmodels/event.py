@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 import utils
 import numpy
 from models.gain import Gain
@@ -7,6 +9,11 @@ from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 from config import DATA_PATH
 import discord
+
+
+if TYPE_CHECKING:
+    from api.dbmodels.client import Client
+
 
 association = db.Table('association',
                        db.Column('event_id', db.Integer, db.ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
@@ -96,23 +103,20 @@ class Event(db.Model):
         description += f'\n**Lowest Stakes :yawning_face:**\n' \
                        f'{initials[len(initials) - 1].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
 
-        def non_null_balances(history):
-            balances = []
-            for balance in history:
-                balances.append(balance.amount)
-                if balance.amount == 0.0:
-                    break
-            return balances
+        def calc_volatility(client: Client):
+            if len(client.history) == 0:
+                return 0.0
 
-        def calc_volatility(client):
-            result = 0.0
-            prev_balance = client.initial
+            result, prev_diff = 0.0, 0.0
+            init_amount = client.initial.amount
             for balance in client.history:
-                result += (abs(balance.amount - prev_balance.amount) if prev_balance else 0.0)
+                sqr_diff = (balance.amount - init_amount)**2
+                result += sqr_diff - prev_diff
                 if balance.amount == 0.0:
                     break
-                prev_balance = balance
-            return result / client.initial.amount
+                prev_diff = sqr_diff
+
+            return result / init_amount**2
 
         volatility = [
             (
