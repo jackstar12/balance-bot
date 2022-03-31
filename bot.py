@@ -617,10 +617,10 @@ async def event_show(ctx: SlashContext):
     ]
 )
 @utils.log_and_catch_errors()
-@utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
-                 allow_future=True)
 @utils.server_only
 @utils.admin_only
+@utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
+                 allow_future=True)
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
     if start >= end:
