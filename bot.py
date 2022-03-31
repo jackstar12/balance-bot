@@ -619,8 +619,8 @@ async def event_show(ctx: SlashContext):
 @utils.log_and_catch_errors()
 @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
                  allow_future=True)
-@utils.admin_only
 @utils.server_only
+@utils.admin_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
     if start >= end:
@@ -1001,7 +1001,10 @@ async def archive(ctx: SlashContext):
     async def show_events(ctx, selection: List[Event]):
         for event in selection:
             archive = event.archive
-            history = discord.File(DATA_PATH + archive.history_path, "history.png")
+
+            history = None
+            if os.path.exists:
+                history = discord.File(DATA_PATH + archive.history_path, "history.png")
 
             info = archive.event.get_discord_embed(
                 bot, registrations=False
