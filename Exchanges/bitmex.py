@@ -12,7 +12,7 @@ from clientworker import ClientWorker
 
 class BitmexClient(ClientWorker):
     exchange = 'bitmex'
-    _ENDPOINT = 'https://testnet.bitmex.com'
+    _ENDPOINT = 'https://bitmex.com'
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
     async def _get_balance(self, time: datetime):
