@@ -333,6 +333,8 @@ def get_available_exchanges() -> str:
     return exchange_list
 
 
+
+
 @slash.subcommand(
     base="register",
     name="new",
@@ -443,7 +445,6 @@ async def register_new(ctx: SlashContext,
                     worker: ExchangeWorker = exchange_cls(new_client, user_manager.session)
                     init_balance = await worker.get_balance(datetime.now())
 
-
                     if init_balance.error is None:
                         if init_balance.amount < config.REGISTRATION_MINIMUM:
                             message = f'You do not have enough balance in your account ' \
@@ -543,7 +544,10 @@ async def register_existing(ctx: SlashContext):
     event = dbutils.get_event(guild_id=ctx.guild_id, state='registration')
     user = dbutils.get_user(ctx.author_id)
 
-    if event.is_free_for_registration:
+    if user and event.is_free_for_registration:
+        for client in user.clients:
+            if client in event.registrations:
+                raise UserInputError('You are already registered for this event!')
         if user.global_client:
             if user.global_client not in event.registrations:
                 event.registrations.append(user.global_client)
@@ -604,10 +608,10 @@ async def event_show(ctx: SlashContext):
     ]
 )
 @utils.log_and_catch_errors()
+@utils.server_only
+@utils.admin_only
 @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
                  allow_future=True)
-@utils.admin_only
-@utils.server_only
 async def register_event(ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                          registration_start: datetime, registration_end: datetime):
     if start >= end:
@@ -672,8 +676,11 @@ async def register_event(ctx: SlashContext, name: str, description: str, start: 
 )
 @utils.log_and_catch_errors()
 async def unregister(ctx):
-    client = dbutils.get_client(ctx.author.id, ctx.guild_id)
-    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
+    client = dbutils.get_client(ctx.author.id, ctx.guild_id, registration=True)
+    event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False)
+
+    if not event or not client in event.registrations:
+        event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
 
     await ctx.defer(hidden=True)
 
@@ -704,6 +711,38 @@ async def unregister(ctx):
         embed=client.get_discord_embed(),
         components=[buttons],
         hidden=True)
+
+
+@slash.slash(
+    name="delete",
+    description="Deletes everything associated to you.",
+    options=[]
+)
+@utils.log_and_catch_errors()
+async def delete_all(ctx: SlashContext):
+
+    user = dbutils.get_user(ctx.author_id)
+
+    def confirm_delete(ctx):
+        for client in user.clients:
+            user_manager.delete_client(client, commit=False)
+        DiscordUser.query.filter_by(id=user.id).delete()
+        db.session.commit()
+
+    button_row = create_yes_no_button_row(
+        slash,
+        author_id=ctx.author_id,
+        yes_callback=confirm_delete,
+        yes_message="Successfully deleted all your data",
+        hidden=True
+    )
+
+    await ctx.send('Do you really want to delete **all your accounts**? This action is unreversable.',
+                   components=[button_row],
+                   hidden=True)
+
+
+
 
 
 @slash.slash(
@@ -830,7 +869,7 @@ async def leaderboard_gain(ctx: SlashContext, time: datetime = None):
 @utils.log_and_catch_errors()
 @utils.set_author_default(name="user")
 async def daily(ctx: SlashContext, user: discord.Member, amount: int = None, currency: str = None):
-    client = dbutils.get_client(user.id, ctx.guild_id)
+    client = dbutils.get_client(user.id, ctx.guild_id, registration=True)
     await ctx.defer()
     daily_gains = utils.calc_daily(client, amount, ctx.guild_id, string=True, currency=currency)
     await ctx.send(
@@ -971,7 +1010,10 @@ async def archive(ctx: SlashContext):
     async def show_events(ctx, selection: List[Event]):
         for event in selection:
             archive = event.archive
-            history = discord.File(DATA_PATH + archive.history_path, "history.png")
+
+            history = None
+            if os.path.exists:
+                history = discord.File(DATA_PATH + archive.history_path, "history.png")
 
             info = archive.event.get_discord_embed(
                 bot, registrations=False

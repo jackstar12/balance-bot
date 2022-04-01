@@ -66,7 +66,7 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    _ENDPOINT = 'wss://fapi.binance.com'
+    _ENDPOINT = 'https://fapi.binance.com'
     exchange = 'binance-futures'
 
     def __init__(self, *args, **kwargs):

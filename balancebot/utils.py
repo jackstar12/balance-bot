@@ -64,9 +64,7 @@ def set_author_default(name: str):
             if user is None:
                 kwargs[name] = ctx.author
             return await coro(ctx, *args, **kwargs)
-
         return wrapper
-
     return decorator
 
 
@@ -125,16 +123,18 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
                         e.reason = e.reason.replace('{name}', ctx.author.display_name)
                 await ctx.send(e.reason, hidden=True)
                 logging.info(
-                    f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n')
+                    f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
             except InternalError as e:
-                await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
-                logging.error(
-                    f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
+                if ctx.deferred:
+                    await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
+                logging.error(f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
             except Exception:
-                await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
-                logging.critical(
-                    f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
+                if ctx.deferred:
+                    await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
+                logging.critical(f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
+
         return wrapper
+
     return decorator
 
 
@@ -178,6 +178,8 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     """
     Creates a history image for a given list of clients and stores it in the given path.
 
+    :param throw_exceptions:
+    :param event:
     :param to_graph: List of Clients to graph.
     :param guild_id: Current guild id (determines event context)
     :param start: Start time of the history
@@ -187,7 +189,6 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     :param percentage: Whether to display the balance absolute or in % relative to the first balance of the graph (default True if multiple clients are drawn)
     :param path: Path to store image file at
     :param custom_title: Custom Title to replace default title with
-    :param archived: Whether the data to search for is archived
     """
 
     first = True
@@ -370,6 +371,7 @@ async def create_leaderboard(dc_client: discord.Client,
                              event: event.Event = None,
                              time: datetime = None,
                              archived=False) -> discord.Embed:
+
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
     users_rekt: List[DiscordUser] = []

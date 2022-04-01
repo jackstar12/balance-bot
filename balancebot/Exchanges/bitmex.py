@@ -2,6 +2,7 @@ import hmac
 
 from aiohttp import ClientResponse, ClientResponseError
 from balancebot.api.dbmodels.balance import Balance
+import urllib.parse
 import time
 import logging
 from datetime import datetime
@@ -39,19 +40,24 @@ class BitmexClient(ExchangeWorker):
                     price = 1
                 elif amount > 0:
                     response_price = await self._get(
-                        '/trade',
+                        '/api/v1/trade',
                         params={
                             'symbol': symbol.upper(),
                             'count': 1,
-                            'reverse': True
+                            'reverse': 'True'
                         }
                     )
                     if len(response_price) > 0:
                         price = response_price[0]['price']
-                        if 'XBT' in symbol:
-                            # XBT amount is given in Sats (100 Million Sats = 1BTC)
-                            amount *= 10**-8
-                        extra_currencies[symbol] = amount
+                if 'XBT' in symbol:
+                    # XBT amount is given in Sats (100 Million Sats = 1BTC)
+                    amount *= 10**-8
+                # BITMEX WHY ???
+                elif 'USDT' in symbol:
+                    amount *= 10**-6
+                elif 'GWEI' in symbol or 'ETH' in symbol:
+                    amount *= 10**-9
+                extra_currencies[symbol] = amount
                 total_balance += amount * price
         else:
             err_msg = response['error']
@@ -64,7 +70,8 @@ class BitmexClient(ExchangeWorker):
     # https://www.bitmex.com/app/apiKeysUsage
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
-        request_signature = f'{method}{method}{ts}'
+        query_string = urllib.parse.urlencode(params, True)
+        request_signature = f'{method}{path}{f"?{query_string}" if query_string else ""}{ts}'
         if data is not None:
             request_signature += data
         signature = hmac.new(self._api_secret.encode(), request_signature.encode(), 'sha256').hexdigest()
@@ -78,7 +85,6 @@ class BitmexClient(ExchangeWorker):
             response.raise_for_status()
         except ClientResponseError as e:
             logging.error(f'{e}\n{response_json}')
-
             error = ''
             if response.status == 400:
                 error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
