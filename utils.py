@@ -117,8 +117,7 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
                         e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
                     else:
                         e.reason = e.reason.replace('{name}', ctx.author.display_name)
-                if ctx.deferred:
-                    await ctx.send(e.reason, hidden=True)
+                await ctx.send(e.reason, hidden=True)
                 logging.info(
                     f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
             except InternalError as e:

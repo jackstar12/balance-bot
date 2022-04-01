@@ -31,15 +31,15 @@ class BitmexClient(ClientWorker):
         )
         total_balance = 0
         extra_currencies = {}
-        err_msg = None
-        if 'error' not in response:
+        err_msg = response.get('error')
+        if not err_msg:
             for currency in response:
                 symbol = currency['currency'].upper()
                 amount = currency['amount']
                 price = 0
                 if symbol == 'USDT':
                     price = 1
-                elif amount > 0:
+                if amount > 0:
                     response_price = await self._get(
                         '/api/v1/trade',
                         params={
@@ -53,10 +53,13 @@ class BitmexClient(ClientWorker):
                         if 'XBT' in symbol:
                             # XBT amount is given in Sats (100 Million Sats = 1BTC)
                             amount *= 10**-8
+                        # BITMEX WHY ???
+                        elif 'USDT' in symbol:
+                            amount *= 10**-6
+                        elif 'GWEI' in symbol or 'ETH' in symbol:
+                            amount *= 10**-9
                         extra_currencies[symbol] = amount
                 total_balance += amount * price
-        else:
-            err_msg = response['error']
 
         return Balance(amount=total_balance,
                        currency='$',

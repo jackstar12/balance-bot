@@ -38,8 +38,6 @@ class UserManager(Singleton):
 
         self._exchanges = exchanges
         self._workers: List[ClientWorker] = []
-        self._workers_by_id: Dict[
-            Optional[int], Dict[int, ClientWorker]] = {}  # { event_id: { user_id: ClientWorker } }
         self._workers_by_client_id: Dict[int, ClientWorker] = {}
 
         self.session = aiohttp.ClientSession()
@@ -47,17 +45,11 @@ class UserManager(Singleton):
     def _add_worker(self, worker: ClientWorker):
         if worker not in self._workers:
             self._workers.append(worker)
-            for event in [None, *worker.client.events]:
-                if event not in self._workers_by_id:
-                    self._workers_by_id[event] = {}
-                self._workers_by_id[event][worker.client.discorduser.id] = worker
             self._workers_by_client_id[worker.client.id] = worker
 
     def _remove_worker(self, worker: ClientWorker):
         if worker in self._workers:
-            for event in [None, *worker.client.events]:
-                self._workers_by_id[event].pop(worker.client.discorduser.id)
-            self._workers_by_client_id.pop(worker.client.id)
+            self._workers_by_client_id.pop(worker.client.id, None)
             self._workers.remove(worker)
             del worker
 
@@ -113,11 +105,12 @@ class UserManager(Singleton):
             else:
                 self._remove_worker(self._get_worker(client, create_if_missing=False))
 
-    def add_client(self, client):
+    def add_client(self, client) -> ClientWorker:
         client_cls = self._exchanges[client.exchange]
         if issubclass(client_cls, ClientWorker):
             worker = client_cls(client, self.session)
             self._add_worker(worker)
+            return worker
         else:
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
@@ -126,12 +119,10 @@ class UserManager(Singleton):
         if client:
             worker = self._workers_by_client_id.get(client.id)
             if not worker and create_if_missing:
-                self.add_client(client)
-                worker = self._workers_by_client_id.get(client.id)
+                worker = self.add_client(client)
             return worker
 
     def _get_worker_event(self, user_id, guild_id):
-
         event = dbutils.get_event(guild_id)
         return self._workers_by_id[event].get(user_id)
 
@@ -198,6 +189,7 @@ class UserManager(Singleton):
         db.session.commit()
 
         if len(client.history) == 0 and update_initial_balance:
+            client.rekt_on = None
             asyncio.create_task(self.get_client_balance(client, force_fetch=True))
 
     async def _async_fetch_data(self, workers: List[ClientWorker] = None,
