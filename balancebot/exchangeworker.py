@@ -2,6 +2,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import logging
+import urllib.parse
 import math
 from datetime import datetime, timedelta
 from typing import List, Callable, Union, Dict, Tuple, TYPE_CHECKING
