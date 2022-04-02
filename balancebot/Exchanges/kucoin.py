@@ -34,7 +34,7 @@ class KuCoinClient(ExchangeWorker):
     # https://docs.kucoin.com/#authentication
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         ts = int(time.time() * 1000)
-        signature_payload = f'{ts}{method}{path}'
+        signature_payload = f'{ts}{method}{path}{self._query_string(params)}'
         if data is not None:
             signature_payload += data
         signature = base64.b64encode(
