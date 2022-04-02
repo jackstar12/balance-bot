@@ -50,10 +50,6 @@ class UserManager(Singleton):
     def _add_worker(self, worker: ExchangeWorker):
         if worker not in self._workers:
             self._workers.append(worker)
-            for event in [None, *worker.client.events]:
-                if event not in self._workers_by_id:
-                    self._workers_by_id[event] = {}
-                self._workers_by_id[event][worker.client.discorduser.id] = worker
             self._workers_by_client_id[worker.client.id] = worker
 
     def _remove_worker(self, worker: ExchangeWorker):
