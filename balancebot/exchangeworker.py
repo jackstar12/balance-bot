@@ -135,6 +135,10 @@ class ExchangeWorker:
     async def _put(self, path: str, **kwargs):
         return await self._request('PUT', path, **kwargs)
 
+    def _query_string(self, params: Dict):
+        query_string = urllib.parse.urlencode(params)
+        return f"?{query_string}" if query_string else ""
+
     async def _on_execution(self, execution: Execution):
         active_trade: Trade = db.session.query(Trade).filter(
             Trade.symbol == execution.symbol,
