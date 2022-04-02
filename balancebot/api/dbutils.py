@@ -11,15 +11,19 @@ from balancebot.errors import UserInputError
 
 def get_client(user_id: int,
                guild_id: int = None,
+               registration=False,
                throw_exceptions=True) -> Optional[db_client.Client]:
     user = session.query(DiscordUser).filter_by(user_id=user_id).first()
     if user:
         if guild_id:
-            event = get_event(guild_id, state='registration', throw_exceptions=False)
-            if event:
-                for client in event.registrations:
-                    if client.discorduser.user_id == user_id:
-                        return client
+
+            if registration:
+                event = get_event(guild_id, state='registration', throw_exceptions=False)
+                if event:
+                    for client in event.registrations:
+                        if client.discorduser.user_id == user_id:
+                            return client
+
             event = get_event(guild_id, state='active', throw_exceptions=False)
             if event:
                 for client in event.registrations:
@@ -40,6 +44,9 @@ def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
 
     if not state:
         state = 'active'
+
+    if not guild_id:
+        return None
 
     now = datetime.now()
 

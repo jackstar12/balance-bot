@@ -43,8 +43,6 @@ class UserManager(Singleton):
 
         self._exchanges = exchanges
         self._workers: List[ExchangeWorker] = []
-        self._workers_by_id: Dict[
-            Optional[int], Dict[int, ExchangeWorker]] = {}  # { event_id: { user_id: db_client.ClientWorker } }
         self._workers_by_client_id: Dict[int, ExchangeWorker] = {}
 
         self.session = aiohttp.ClientSession()
@@ -60,9 +58,7 @@ class UserManager(Singleton):
 
     def _remove_worker(self, worker: ExchangeWorker):
         if worker in self._workers:
-            for event in [None, *worker.client.events]:
-                self._workers_by_id[event].pop(worker.client.discorduser.id)
-            self._workers_by_client_id.pop(worker.client.id)
+            self._workers_by_client_id.pop(worker.client.id, None)
             self._workers.remove(worker)
             del worker
 
@@ -125,6 +121,7 @@ class UserManager(Singleton):
             worker = client_cls(client, self.session)
             worker.connect()
             self._add_worker(worker)
+            return worker
         else:
             logging.error(f'CRITICAL: Exchange class {client_cls} does NOT subclass ClientWorker')
 
@@ -136,18 +133,12 @@ class UserManager(Singleton):
                 worker = self._workers_by_client_id.get(client.id)
             return worker
 
-    def _get_worker_event(self, user_id, guild_id):
-
-        event = dbutils.get_event(guild_id)
-        return self._workers_by_id[event].get(user_id)
-
     def get_client_history(self,
                            client: db_client.Client,
                            event: db_event.Event,
                            since: datetime = None,
                            to: datetime = None,
-                           currency: str = None,
-                           archived=False) -> History:
+                           currency: str = None) -> History:
 
         since = since or datetime.fromtimestamp(0)
         to = to or datetime.now()
@@ -175,9 +166,7 @@ class UserManager(Singleton):
         if not initial:
             try:
                 initial = results[0]
-            except ValueError:
-                pass
-            except IndexError:
+            except (ValueError, IndexError):
                 pass
 
         return History(
@@ -204,6 +193,7 @@ class UserManager(Singleton):
         db.session.commit()
 
         if len(client.history) == 0 and update_initial_balance:
+            client.rekt_on = None
             asyncio.create_task(self.get_client_balance(client, force_fetch=True))
 
     async def _async_fetch_data(self, workers: List[ExchangeWorker] = None,
