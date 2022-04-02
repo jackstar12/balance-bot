@@ -37,6 +37,8 @@ class BitmexClient(ClientWorker):
                 symbol = currency['currency'].upper()
                 amount = currency['amount']
                 price = 0
+                if symbol == 'BMEX':
+                    continue
                 if symbol == 'USDT':
                     price = 1
                 elif amount > 0:

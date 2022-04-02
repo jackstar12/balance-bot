@@ -1,6 +1,7 @@
 from __future__ import annotations
 import abc
 import logging
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import List, Callable, Union, Dict
 import aiohttp.client
@@ -102,6 +103,10 @@ class ClientWorker:
 
     async def _put(self, path: str, **kwargs):
         return await self._request('PUT', path, **kwargs)
+
+    def _query_string(self, params: Dict):
+        query_string = urllib.parse.urlencode(params)
+        return f"?{query_string}" if query_string else ""
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'
