@@ -7,10 +7,10 @@ import urllib.parse
 import time
 import logging
 from datetime import datetime
-from clientworker import ClientWorker
+from exchangeworker import ExchangeWorker
 
 
-class BitmexClient(ClientWorker):
+class BitmexClient(ExchangeWorker):
     exchange = 'bitmex'
     _ENDPOINT = 'https://www.bitmex.com'
 

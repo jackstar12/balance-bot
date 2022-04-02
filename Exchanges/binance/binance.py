@@ -14,12 +14,12 @@ from typing import Dict, Callable
 import requests
 from aiohttp import ClientResponse, ClientResponseError
 from requests import Request, HTTPError
-from clientworker import ClientWorker
+from exchangeworker import ExchangeWorker
 from api.dbmodels.client import Client
 import api.dbmodels.balance as balance
 
 
-class _BinanceBaseClient(ClientWorker):
+class _BinanceBaseClient(ExchangeWorker):
 
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)

@@ -19,7 +19,7 @@ class Cached(NamedTuple):
     expires: datetime
 
 
-class ClientWorker:
+class ExchangeWorker:
     __tablename__ = 'client'
     _ENDPOINT = ''
     _cache: Dict[str, Cached] = {}
@@ -80,7 +80,7 @@ class ClientWorker:
         params = params or {}
         url = self._ENDPOINT + path
         if cache:
-            cached = ClientWorker._cache.get(url)
+            cached = ExchangeWorker._cache.get(url)
             if cached and datetime.now() < cached.expires:
                 return cached.response
         if sign:
@@ -88,7 +88,7 @@ class ClientWorker:
         async with self._session.request(method, url, headers=headers, params=params, data=data, **kwargs) as resp:
             resp = await self._process_response(resp)
             if cache:
-                ClientWorker._cache[url] = Cached(
+                ExchangeWorker._cache[url] = Cached(
                     url=url,
                     response=resp,
                     expires=datetime.now() + timedelta(seconds=5)

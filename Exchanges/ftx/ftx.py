@@ -5,13 +5,13 @@ from datetime import datetime
 from typing import Callable
 from aiohttp import ClientResponse, ClientResponseError
 import api.dbmodels.balance as balance
-from clientworker import ClientWorker
+from exchangeworker import ExchangeWorker
 import time
 import requests
 from requests import Request, Session
 
 
-class FtxClient(ClientWorker):
+class FtxClient(ExchangeWorker):
     exchange = 'ftx'
     _ENDPOINT = 'https://ftx.com'
 

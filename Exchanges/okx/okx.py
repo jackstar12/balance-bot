@@ -8,11 +8,11 @@ import time
 import logging
 import ccxt.async_support
 from datetime import datetime
-from clientworker import ClientWorker
+from exchangeworker import ExchangeWorker
 import ccxt
 
 
-class OkxClient(ClientWorker):
+class OkxClient(ExchangeWorker):
     ENDPOINT = 'https://www.bitmex.com/api/v1/'
 
     exchange = 'okx'

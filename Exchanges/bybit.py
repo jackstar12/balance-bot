@@ -9,13 +9,13 @@ from datetime import datetime
 
 from aiohttp import ClientResponse, ClientResponseError
 
-from clientworker import ClientWorker
+from exchangeworker import ExchangeWorker
 from api.dbmodels.balance import Balance
 from requests import Request, Response, Session, HTTPError
 from typing import List, Tuple, Dict
 
 
-class BybitClient(ClientWorker):
+class BybitClient(ExchangeWorker):
     exchange = 'bybit'
     _ENDPOINT = 'https://api.bybit.com'
 

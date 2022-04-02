@@ -8,11 +8,11 @@ from requests import Request, Response, Session, HTTPError
 import urllib.parse
 import time
 import logging
-from clientworker import ClientWorker
+from exchangeworker import ExchangeWorker
 from api.dbmodels.balance import Balance
 
 
-class KuCoinClient(ClientWorker):
+class KuCoinClient(ExchangeWorker):
     exchange = 'kucoin'
     _ENDPOINT = 'https://api-futures.kucoin.com'
 
