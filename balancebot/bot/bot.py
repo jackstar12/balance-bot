@@ -11,6 +11,7 @@ import typing
 from datetime import datetime
 from typing import List
 
+import aiohttp
 import dotenv
 
 import discord
@@ -51,7 +52,7 @@ async def on_ready():
     event_manager.initialize_events()
     asyncio.create_task(user_manager.start_fetching())
 
-    logger.info('Bot Ready')
+    logging.info('Bot Ready')
     print('Bot Ready')
     rate_limit = True
     while rate_limit:
@@ -315,7 +316,7 @@ async def gain(ctx: SlashContext, user: discord.Member, time: datetime = None, c
         else:
             gain_message = f"Your gain ({user_gain.client.get_event_string()}): " if not guild else f"Your gain on {guild}: "
         if user_gain.relative is None:
-            logger.info(
+            logging.info(
                 f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
             if ctx.guild:
                 await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
@@ -474,7 +475,7 @@ async def register_new(ctx: SlashContext,
 
                                 session.add(new_client)
                                 session.commit()
-                                logger.info(f'Registered new user')
+                                logging.info(f'Registered new user')
 
                             button_row = create_yes_no_button_row(
                                 slash=slash,
@@ -519,7 +520,7 @@ async def register_new(ctx: SlashContext,
                         hidden=True
                     )
             else:
-                logger.error(
+                logging.error(
                     f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
                 args_readable = ''
                 for arg in exchange_cls.required_extra_args:
@@ -695,7 +696,7 @@ async def unregister(ctx):
         if len(discord_user.clients) == 0 and not discord_user.user:
             session.query(DiscordUser).filter_by(user_id=ctx.author_id).delete()
         session.commit()
-        logger.info(f'Successfully unregistered user {ctx.author.display_name}')
+        logging.info(f'Successfully unregistered user {ctx.author.display_name}')
 
     buttons = create_yes_no_button_row(
         slash=slash,
@@ -727,7 +728,7 @@ async def delete_all(ctx: SlashContext):
         for client in user.clients:
             user_manager.delete_client(client, commit=False)
         DiscordUser.query.filter_by(id=user.id).delete()
-        db.session.commit()
+        session.commit()
 
     button_row = create_yes_no_button_row(
         slash,
@@ -881,25 +882,10 @@ async def daily(ctx: SlashContext, user: discord.Member, amount: int = None, cur
     description="Shows available exchanges"
 )
 async def exchanges(ctx):
-    logger.info(f'New Interaction: Listing available exchanges for user {de_emojify(ctx.author.display_name)}')
+    logging.info(f'New Interaction: Listing available exchanges for user {de_emojify(ctx.author.display_name)}')
     description = get_available_exchanges()
     embed = discord.Embed(title="Available Exchanges", description=description)
     await ctx.send(embed=embed)
-
-
-def setup_logger(debug: bool = False):
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    print(os.path.abspath(LOG_OUTPUT_DIR))
-    if not os.path.exists(LOG_OUTPUT_DIR):
-        os.mkdir(LOG_OUTPUT_DIR)
-    log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
-    handler = logging.StreamHandler(log_stream)
-    handler.setFormatter(formatter)
-
-    logger.addHandler(handler)
-    return logger
 
 
 @slash.slash(
@@ -944,7 +930,7 @@ async def help(ctx: SlashContext):
 
 
 async def on_rekt_async(client: Client):
-    logger.info(f'Use {client.discorduser} is rekt')
+    logging.info(f'Use {client.discorduser} is rekt')
 
     message = random.Random().choice(seq=REKT_MESSAGES)
 
@@ -958,17 +944,15 @@ async def on_rekt_async(client: Client):
                 embed = discord.Embed(description=message_replaced)
                 await channel.send(embed=embed)
         except KeyError as e:
-            logger.error(f'Invalid guild {guild_data=} {e}')
+            logging.error(f'Invalid guild {guild_data=} {e}')
         except AttributeError as e:
-            logger.error(f'Error while sending message to guild {e}')
+            logging.error(f'Error while sending message to guild {e}')
 
 
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
 
 args = parser.parse_known_args()
-
-logger = setup_logger(debug=False)
 
 
 @slash.slash(
@@ -1067,7 +1051,31 @@ KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
 
-async def run():
+async def run(http_session: aiohttp.ClientSession = None):
+
+    def setup_logger(debug: bool = False):
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        print(os.path.abspath(LOG_OUTPUT_DIR))
+        if not os.path.exists(LOG_OUTPUT_DIR):
+            os.mkdir(LOG_OUTPUT_DIR)
+        from balancebot.api.settings import settings
+        if settings.testing:
+            log_stream = sys.stdout
+        else:
+            log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
+        handler = logging.StreamHandler(log_stream)
+        handler.setFormatter(formatter)
+
+        logger.addHandler(handler)
+        return logger
+
+    setup_logger()
+
+    if http_session:
+        pass
+        #user_manager.session = http_session
     await bot.start(KEY)
 
 

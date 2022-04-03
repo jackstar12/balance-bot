@@ -2,13 +2,15 @@ import logging
 import asyncio
 from typing import Callable
 
+from balancebot import utils
+from balancebot.api.settings import settings
 from balancebot.models.async_websocket_manager import WebsocketManager
 import aiohttp
 
 
 # https://binance-docs.github.io/apidocs/futures/en/#user-data-streams
 class FuturesWebsocketClient(WebsocketManager):
-    _ENDPOINT = 'wss://fstream.binance.com'
+    _ENDPOINT = 'wss://stream.binancefuture.com' if settings.testing else 'wss://fstream.binance.com'
 
     def __init__(self, client, session: aiohttp.ClientSession, on_message: Callable = None):
         super().__init__(session=session)
@@ -24,7 +26,7 @@ class FuturesWebsocketClient(WebsocketManager):
         if event == "listenKeyExpired":
             await self._renew_listen_key()
         elif callable(self._on_message):
-            self._on_message(message)
+            await utils.call_unknown_function(self._on_message, message)
 
     async def start(self):
         await self._renew_listen_key()

@@ -51,5 +51,5 @@ EXCHANGES = {
     'bybit': BybitClient,
     'okx': OkxClient
 }
-LOG_OUTPUT_DIR = "C:/Users/jkran/PycharmProjects/BalanceBot/LOGS"
+LOG_OUTPUT_DIR = "C:/Users/jkran/PycharmProjects/BalanceBot/LOGS/"
 

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     authjwt_cookie_csrf_protect: bool = True
     authjwt_access_token_expires: timedelta = timedelta(hours=48)
     authjwt_cookie_max_age: int = timedelta(hours=48).total_seconds()
+    testing: bool = os.environ.get('TESTING') == 'True'
     # authjwt_cookie_samesite: str = 'lax'
 
     class Config:

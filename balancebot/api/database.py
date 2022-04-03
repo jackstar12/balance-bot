@@ -1,10 +1,10 @@
-from fastapi import FastAPI
 from asyncio import current_task
 from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import create_engine, MetaData
 import dotenv
 import os
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_
+from sqlalchemy.orm import relationship
 from flask import Flask
 
 from sqlalchemy.orm import sessionmaker, scoped_session

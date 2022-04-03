@@ -14,7 +14,10 @@ from datetime import datetime
 from typing import Dict, Callable
 
 from aiohttp import ClientResponse, ClientResponseError
+
+from balancebot import utils
 from balancebot.Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
+from balancebot.api.settings import settings
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.api.dbmodels.client import Client
 import balancebot.api.dbmodels.balance as balance
@@ -66,11 +69,12 @@ class _TickerCache(NamedTuple):
 
 
 class BinanceFutures(_BinanceBaseClient):
-    _ENDPOINT = 'https://fapi.binance.com'
+    _ENDPOINT = 'https://testnet.binancefuture.com' if settings.testing else 'https://fapi.binance.com'
     exchange = 'binance-futures'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self._ws = FuturesWebsocketClient(self, session=self._session, on_message=self._on_message)
         self._ccxt = ccxt.binanceusdm({
             'apiKey': self._api_key,
@@ -102,7 +106,7 @@ class BinanceFutures(_BinanceBaseClient):
     def connect(self):
         asyncio.create_task(self._ws.start())
 
-    def _on_message(self, ws, message):
+    async def _on_message(self, ws, message):
         message = json.loads(message)
         event = message['e']
         data = message.get('o')
@@ -117,12 +121,12 @@ class BinanceFutures(_BinanceBaseClient):
                     side=data['S'],
                     time=datetime.now()
                 )
-                self._on_execution(trade)
+                await utils.call_unknown_function(self._on_execution, trade)
 
 
 class BinanceSpot(_BinanceBaseClient):
 
-    _ENDPOINT = 'https://api.binance.com/api/v3'
+    _ENDPOINT = 'https://testnet.binance.vision/api/v3' if settings.testing else 'https://api.binance.com/api/v3'
     exchange = 'binance-spot'
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data

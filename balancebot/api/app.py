@@ -1,3 +1,4 @@
+import aiohttp
 import uvicorn
 import asyncio
 import logging
@@ -178,7 +179,17 @@ def refresh(Authorize: AuthJWT = Depends(), user: User = Depends(current_user)):
 @app.on_event("startup")
 def on_start():
     from balancebot.bot import bot
-    asyncio.create_task(bot.run())
+    from balancebot.cointracker import CoinTracker
+
+    async def run():
+        async with aiohttp.ClientSession() as http_session:
+            await asyncio.gather(
+                asyncio.create_task(bot.run(http_session)),
+                asyncio.create_task(CoinTracker().run(http_session))
+            )
+            print('done')
+
+    asyncio.create_task(run())
 
 
 if __name__ == '__main__':

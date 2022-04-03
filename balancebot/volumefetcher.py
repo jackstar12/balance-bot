@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from collections import deque
-from balancebot.models.volumeratiohistory import VolumeRatioHistory
+from balancebot.models.coin import Coin
 from balancebot.models.volumeratio import VolumeRatio
 from typing import Dict, List
 
@@ -22,7 +22,7 @@ class VolumeFetcher(Singleton):
         self._session = session
         self._time_window = time_window
         self._max_time_range = max_time_range
-        self._data: Dict[str, VolumeRatioHistory] = {}
+        self._data: Dict[str, Coin] = {}
 
     async def start(self):
         await self._bootstrap()
@@ -73,7 +73,7 @@ class VolumeFetcher(Singleton):
                 coin_name = perp_name.split('-')[0]
                 spot_name = f'{coin_name}/USD'
                 if spot_name in spot_markets_by_name:
-                    self._data[coin_name] = VolumeRatioHistory(
+                    self._data[coin_name] = Coin(
                         coin_name=coin_name,
                         spot_name=spot_name,
                         perp_name=perp_name,
@@ -85,15 +85,15 @@ class VolumeFetcher(Singleton):
 
         await self._update_forever()
 
-    async def _update_volume_history(self, coin: VolumeRatioHistory):
+    async def _update_volume_history(self, coin: Coin):
 
         if coin.spot_data:
             start_time = coin.spot_data[len(coin.spot_data) - 1]
         else:
             start_time = datetime(2022, 3, 22) - self._max_time_range
 
-        spot_data = await self._get_market_data(coin.spot_name, start_time=start_time)
-        perp_data = await self._get_market_data(coin.perp_name, start_time=start_time)
+        spot_data = await self._get_market_data(coin.spot_ticker, start_time=start_time)
+        perp_data = await self._get_market_data(coin.perp_ticker, start_time=start_time)
 
         if not coin.perp_data:
             coin.perp_data = deque(perp_data, maxlen=len(perp_data))

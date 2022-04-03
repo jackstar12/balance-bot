@@ -320,7 +320,6 @@ def calc_daily(client: Client,
 
                 daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
                 daily.time = daily.time.replace(minute=0, second=0)
-
                 prev_daily = prev_daily or daily
                 values = Daily(
                     current_day.strftime('%Y-%m-%d') if string else current_day,
@@ -336,8 +335,8 @@ def calc_daily(client: Client,
                 current_day = current_search
                 current_search = current_search + timedelta(days=1)
             prev_balance = balance
-            if callable(forEach):
-                forEach(balance)
+        if callable(forEach):
+            forEach(balance)
 
     if prev_balance.tz_time < current_search:
         values = Daily(
@@ -406,8 +405,9 @@ async def create_leaderboard(dc_client: discord.Client,
         for client in clients:
             if client.rekt_on:
                 users_rekt.append(client)
-            elif len(client.history) > 0:
-                balance = client.history[len(client.history) - 1]
+                continue
+            balance = client.latest
+            if balance and (event and balance.time > event.start):
                 if balance.amount > REKT_THRESHOLD:
                     user_scores.append((client, balance.amount))
                     value_strings[client] = balance.to_string(display_extras=False)

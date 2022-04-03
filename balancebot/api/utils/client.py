@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Optional
 
+import pytz
+
 import balancebot.utils as utils
 from balancebot.api.dbmodels.client import Client, get_client_query
 from balancebot.api.dbmodels.user import User
@@ -12,6 +14,17 @@ def ratio(a: float, b: float):
 
 def create_cilent_data_serialized(client: Client, since_date: datetime, to_date: datetime, currency: str = None):
     s = client.serialize(full=True, data=False)
+
+    if since_date is None:
+        since_date = datetime.fromtimestamp(0)
+
+    now = datetime.now(tz=pytz.UTC)
+
+    if to_date is None:
+        to_date = now
+
+    since_date = since_date.replace(tzinfo=pytz.UTC)
+    to_date = to_date.replace(tzinfo=pytz.UTC)
 
     if currency is None:
         currency = '$'

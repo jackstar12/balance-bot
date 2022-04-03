@@ -255,15 +255,26 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
     subscribed_client: Optional[Client] = None
     config: Optional[WebsocketConfig] = None
 
-    def websocket_callback(type: str, channel: str):
-        def f(worker: ExchangeWorker, obj: Serializer):
-            asyncio.create_task(
-                websocket.send(create_ws_message(
-                    type=type,
-                    channel=channel,
-                    data=obj.serialize()
-                ))
+    async def send_client_snapshot(client: Client):
+        msg = jsonable_encoder(create_ws_message(
+            type='initial',
+            channel='client',
+            data=create_cilent_data_serialized(
+                client,
+                since_date=config.since,
+                to_date=config.to,
+                currency=config.currency
             )
+        ))
+        await websocket.send_json(msg)
+
+    def websocket_callback(type: str, channel: str):
+        async def f(worker: ExchangeWorker, obj: Serializer):
+            await websocket.send_json(create_ws_message(
+                type=type,
+                channel=channel,
+                data=jsonable_encoder(obj.serialize())
+            ))
 
         return f
 
@@ -287,22 +298,11 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
             websocket_callback(type='update', channel='trade')
         )
 
-    async def send_client_snapshot(client: Client):
-        await websocket.send_json(create_ws_message(
-            type='initial',
-            channel='client',
-            data=create_cilent_data_serialized(
-                client,
-                since_date=config.since,
-                to_date=config.to,
-                currency=config.currency
-            )
-        ))
-
     while True:
-        raw_msg = await websocket.receive()
+        raw_msg = await websocket.receive_json()
         try:
             msg = WebsocketMessage(**raw_msg)
+            print(msg)
             if msg.type == 'ping':
                 await websocket.send_json(create_ws_message(type='pong'))
             elif msg.type == 'subscribe':

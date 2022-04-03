@@ -7,6 +7,7 @@ import math
 from datetime import datetime, timedelta
 from typing import List, Callable, Union, Dict, Tuple, TYPE_CHECKING
 import aiohttp.client
+import pytz
 from aiohttp import ClientResponse
 from typing import NamedTuple
 from requests import Request, Response, Session
@@ -50,7 +51,7 @@ class ExchangeWorker:
         self._extra_kwargs = client.extra_kwargs
 
         self._session = session
-        self._last_fetch = datetime.fromtimestamp(0)
+        self._last_fetch = datetime.fromtimestamp(0, tz=pytz.UTC)
         self._identifier = id
 
         self._on_balance = None
@@ -59,7 +60,7 @@ class ExchangeWorker:
 
     async def get_balance(self, session, time: datetime = None, force=False):
         if not time:
-            time = datetime.now()
+            time = datetime.now(tz=pytz.UTC)
         if force or (time - self._last_fetch > timedelta(seconds=30) and not self.client.rekt_on):
             self._last_fetch = time
             balance = await self._get_balance(time)
@@ -67,7 +68,7 @@ class ExchangeWorker:
                 balance.time = time
             balance.client_id = self.client_id
             asyncio.create_task(
-                utils.call_unknown_function(self._on_balance)
+                utils.call_unknown_function(self._on_balance, self, balance)
             )
             return balance
         elif self.client.rekt_on:

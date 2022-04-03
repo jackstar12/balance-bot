@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from threading import RLock
 from typing import List, Dict, Callable, Optional, Any, Tuple, TYPE_CHECKING
 
+import pytz.reference
+
 import balancebot.api.dbutils as dbutils
 import balancebot.api.database as db
 import balancebot.api.dbmodels.event as db_event
@@ -199,7 +201,7 @@ class UserManager(Singleton):
         :return:
         Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
         """
-        time = datetime.now()
+        time = datetime.now(tz=pytz.UTC)
 
         if workers is None:
             workers = self._workers
