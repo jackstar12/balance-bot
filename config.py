@@ -1,3 +1,5 @@
+import os
+
 from Exchanges.binance.binance import BinanceFutures, BinanceSpot
 from Exchanges.bitmex import BitmexClient
 from Exchanges.bybit import BybitClient
@@ -53,4 +55,5 @@ EXCHANGES = {
 }
 
 LOG_OUTPUT_DIR = "LOGS/"
+TESTING = os.environ.get('TESTING') == 'True'
 
