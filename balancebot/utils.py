@@ -9,6 +9,7 @@ import discord
 import inspect
 import matplotlib.pyplot as plt
 import pytz
+from discord.ext.commands import Cog
 
 from prettytable import PrettyTable
 
@@ -34,37 +35,42 @@ from balancebot.api.dbmodels.balance import Balance
 from balancebot.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
 
 
-def admin_only(coro):
+def admin_only(coro, cog=True):
     @wraps(coro)
-    async def wrapper(ctx: SlashContext, *args, **kwargs):
+    async def wrapper(*args, **kwargs):
+        ctx = args[1] if cog else args[0]
         if ctx.author.guild_permissions.administrator:
-            return await coro(ctx, *args, **kwargs)
+            return await coro(*args, **kwargs)
         else:
             await ctx.send('This command can only be used by administrators', hidden=True)
 
     return wrapper
 
 
-def server_only(coro):
+def server_only(coro, cog=True):
     @wraps(coro)
-    async def wrapper(ctx: SlashContext, *args, **kwargs):
+    async def wrapper(*args, **kwargs):
+        ctx = args[1] if cog else args[0]
         if not ctx.guild:
             await ctx.send('This command can only be used in a server.')
             return
-        return await coro(ctx, *args, **kwargs)
+        return await coro(*args, **kwargs)
 
     return wrapper
 
 
-def set_author_default(name: str):
+def set_author_default(name: str, cog=True):
     def decorator(coro):
+
         @wraps(coro)
-        async def wrapper(ctx: SlashContext, *args, **kwargs):
+        async def wrapper(*args, **kwargs):
+            ctx = args[1] if cog else args[0]
             user = kwargs.get(name)
             if user is None:
                 kwargs[name] = ctx.author
-            return await coro(ctx, *args, **kwargs)
+            return await coro(*args, **kwargs)
         return wrapper
+
     return decorator
 
 
@@ -94,7 +100,7 @@ def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
     return decorator
 
 
-def log_and_catch_errors(log_args=True, type: str = "command"):
+def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
     """
     Decorator which handles logging/errors for all commands.
     It takes care of:
@@ -108,12 +114,13 @@ def log_and_catch_errors(log_args=True, type: str = "command"):
 
     def decorator(coro):
         @wraps(coro)
-        async def wrapper(ctx: SlashContext, *args, **kwargs):
+        async def wrapper(*args, **kwargs):
+            ctx = args[1] if cog else args[0]
             logging.info(f'New Interaction: '
                          f'Execute {type} {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} ({ctx.author_id}) '
                          f'guild={ctx.guild}{f" {args=}, {kwargs=}" if log_args else ""}')
             try:
-                await coro(ctx, *args, **kwargs)
+                await coro(*args, **kwargs)
                 logging.info(f'Done executing {type} {coro.__name__}')
             except UserInputError as e:
                 if e.user_id:
@@ -695,11 +702,12 @@ def create_yes_no_button_row(slash: SlashCommand,
     ]
 
     def wrap_callback(custom_id: str, callback=None, message=None):
+
         if slash.get_component_callback(custom_id=custom_id) is not None:
             slash.remove_component_callback(custom_id=custom_id)
 
         @slash.component_callback(components=[custom_id])
-        @log_and_catch_errors(type="Component callback")
+        @log_and_catch_errors(type="Component callback", cog=False)
         @wraps(callback)
         async def yes_no_wrapper(ctx: ComponentContext):
 
@@ -769,7 +777,7 @@ def create_selection(slash: SlashCommand,
         slash.remove_component_callback(custom_id=custom_id)
 
     @slash.component_callback(components=[custom_id])
-    @log_and_catch_errors(type="Component callback")
+    @log_and_catch_errors(type="Component callback", cog=False)
     @wraps(callback)
     async def on_select(ctx: ComponentContext):
         values = ctx.data['values']

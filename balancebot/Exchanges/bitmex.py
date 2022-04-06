@@ -25,7 +25,7 @@ class BitmexClient(ExchangeWorker):
         # )
         # res = self._request(request)
         response = await self._get(
-            '/api/v1/user/wallet',
+            '/api/v1/user/margin',
             params={'currency': 'all'}
         )
         total_balance = 0
@@ -34,7 +34,7 @@ class BitmexClient(ExchangeWorker):
         if 'error' not in response:
             for currency in response:
                 symbol = currency['currency'].upper()
-                amount = currency['amount']
+                amount = currency['marginBalance']
                 price = 0
                 if symbol == 'USDT':
                     price = 1

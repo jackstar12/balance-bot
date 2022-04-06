@@ -24,6 +24,7 @@ class DiscordUser(Base, Serializer):
     global_client = relationship('Client', lazy=True, foreign_keys=global_client_id, post_update=True, uselist=False, cascade="all, delete")
 
     clients = relationship('Client', backref='discorduser', lazy=True, uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
+    alerts = relationship('Alert', backref='user', lazy=True, cascade="all, delete")
 
     def get_discord_embed(self) -> List[discord.Embed]:
         return [client.get_discord_embed() for client in self.clients]

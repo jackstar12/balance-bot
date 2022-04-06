@@ -1,20 +1,34 @@
+import logging
+
+from asgiref import typing
+from discord.ext.commands import Bot
 from discord.ext.commands.cog import Cog
 from datetime import datetime
 from typing import List
 
 import discord.ext.commands as commands
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
-from discord_slash.utils.manage_commands import create_option
+from discord_slash.utils.manage_commands import create_option, create_choice
+from sqlalchemy import inspect
 
 from balancebot import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
+from balancebot.api.dbmodels.client import Client
+from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.event import Event
-from balancebot.errors import UserInputError
+from balancebot.bot import config
+from balancebot.bot.cogs.cogbase import CogBase
+from balancebot.bot.config import EXCHANGES
+from balancebot.bot.eventmanager import EventManager
+from balancebot.errors import UserInputError, InternalError
+from balancebot.exchangeworker import ExchangeWorker
+from balancebot.usermanager import UserManager
 from balancebot.utils import create_yes_no_button_row
 
 
-class RegisterCog(Cog):
+class RegisterCog(CogBase):
+
     @cog_ext.cog_subcommand(
         base="register",
         name="new",
@@ -59,7 +73,8 @@ class RegisterCog(Cog):
         ]
     )
     @utils.log_and_catch_errors(log_args=False)
-    async def register_new(ctx: SlashContext,
+    async def register_new(self,
+                           ctx: SlashContext,
                            exchange_name: str,
                            api_key: str,
                            api_secret: str,
@@ -123,7 +138,7 @@ class RegisterCog(Cog):
                     async def start_registration(ctx):
 
                         new_client = get_new_client()
-                        worker: ExchangeWorker = exchange_cls(new_client, user_manager.session)
+                        worker: ExchangeWorker = exchange_cls(new_client, self.user_manager.session)
                         init_balance = await worker.get_balance(datetime.now())
 
                         if init_balance.error is None:
@@ -137,7 +152,7 @@ class RegisterCog(Cog):
 
                                 def register_user(ctx):
                                     if existing_client:
-                                        user_manager.delete_client(existing_client, commit=False)
+                                        self.user_manager.delete_client(existing_client, commit=False)
 
                                     new_client = get_new_client()
 
@@ -148,7 +163,7 @@ class RegisterCog(Cog):
                                     discord_user.clients.append(new_client)
 
                                     new_client.history.append(init_balance)
-                                    user_manager.add_client(new_client)
+                                    self.user_manager.add_client(new_client)
 
                                     if inspect(discord_user).transient:
                                         session.add(discord_user)
@@ -158,7 +173,7 @@ class RegisterCog(Cog):
                                     logging.info(f'Registered new user')
 
                                 button_row = create_yes_no_button_row(
-                                    slash=slash,
+                                    slash=self.slash_cmd_handler,
                                     author_id=ctx.author.id,
                                     yes_callback=register_user,
                                     yes_message="You were successfully registered!",
@@ -186,7 +201,7 @@ class RegisterCog(Cog):
                         await start_registration(ctx)
                     else:
                         buttons = create_yes_no_button_row(
-                            slash=slash,
+                            slash=self.slash_cmd_handler,
                             author_id=ctx.author_id,
                             yes_callback=start_registration,
                             no_message="Registration cancelled",
@@ -212,7 +227,7 @@ class RegisterCog(Cog):
         except KeyError:
             raise UserInputError(f'Exchange {exchange_name} unknown')
 
-    @slash.subcommand(
+    @cog_ext.cog_subcommand(
         base="register",
         name="existing",
         description="Registers your global access to an ongoing event.",
@@ -220,7 +235,7 @@ class RegisterCog(Cog):
     )
     @utils.log_and_catch_errors()
     @utils.server_only
-    async def register_existing(ctx: SlashContext):
+    async def register_existing(self, ctx: SlashContext):
         event = dbutils.get_event(guild_id=ctx.guild_id, state='registration')
         user = dbutils.get_user(ctx.author_id)
 
@@ -239,3 +254,47 @@ class RegisterCog(Cog):
                 raise UserInputError('You do not have a global access to use')
         else:
             raise UserInputError(f'Event {event.name} is not available for registration')
+
+    @cog_ext.cog_slash(
+        name="unregister",
+        description="Unregisters you from tracking",
+        options=[]
+    )
+    @utils.log_and_catch_errors()
+    async def unregister(self, ctx):
+        client = dbutils.get_client(ctx.author.id, ctx.guild_id, registration=True)
+        event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False)
+
+        if not event or not client in event.registrations:
+            event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
+
+        await ctx.defer(hidden=True)
+
+        def unregister_user(ctx):
+            if event:
+                client.events.remove(event)
+                if not client.is_active and not client.is_global:
+                    self.user_manager.delete_client(client)
+            else:
+                self.user_manager.delete_client(client)
+            discord_user: DiscordUser = session.query(DiscordUser).filter_by(user_id=ctx.author_id).first()
+            if len(discord_user.clients) == 0 and not discord_user.user:
+                session.query(DiscordUser).filter_by(user_id=ctx.author_id).delete()
+            session.commit()
+            logging.info(f'Successfully unregistered user {ctx.author.display_name}')
+
+        buttons = create_yes_no_button_row(
+            slash=self.slash_cmd_handler,
+            author_id=ctx.author.id,
+            yes_callback=unregister_user,
+            yes_message="You were succesfully unregistered!",
+            no_message="Unregistration cancelled",
+            hidden=True
+        )
+
+        await ctx.send(
+            content=f'Do you really want to unregister from {event.name if event else client.get_event_string()}? This will **delete all your data**.',
+            embed=client.get_discord_embed(),
+            components=[buttons],
+            hidden=True)
+

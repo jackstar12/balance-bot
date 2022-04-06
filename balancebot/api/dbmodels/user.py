@@ -19,3 +19,4 @@ class User(Base, Serializer):
     # Data
     clients = relationship('Client', backref='user', lazy=True, cascade="all, delete")
     labels = relationship('Label', backref='client', lazy=True, cascade="all, delete")
+    alerts = relationship('Alert', backref='user', lazy=True, cascade="all, delete")
