@@ -10,7 +10,7 @@ import discord
 
 from balancebot.api.database import session
 from balancebot.api.dbmodels.event import Event
-from balancebot.usermanager import UserManager
+from balancebot.collector.usermanager import UserManager
 
 
 @dataclass

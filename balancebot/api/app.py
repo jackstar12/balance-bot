@@ -1,24 +1,15 @@
 import aiohttp
 import uvicorn
 import asyncio
-import logging
-import os
-from datetime import datetime, timedelta
-from http import HTTPStatus
-from typing import Optional
 
 from fastapi_jwt_auth.exceptions import AuthJWTException
 from starlette.responses import JSONResponse
 
 from fastapi import Depends
 from fastapi_jwt_auth import AuthJWT
-import flask_jwt_extended as flask_jwt
-import jwt
-from flask import request, jsonify
-from sqlalchemy import or_
 from fastapi import FastAPI, Request
 
-from balancebot.api.database import migrate, session
+from balancebot.api.database import session
 
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
@@ -179,7 +170,7 @@ def refresh(Authorize: AuthJWT = Depends(), user: User = Depends(current_user)):
 @app.on_event("startup")
 def on_start():
     from balancebot.bot import bot
-    from balancebot.cointracker import CoinTracker
+    from balancebot.collector.cointracker import CoinTracker
 
     async def run():
         async with aiohttp.ClientSession() as http_session:

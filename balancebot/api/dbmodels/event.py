@@ -1,3 +1,5 @@
+import pytz
+
 from balancebot import utils
 import numpy
 from balancebot.models.gain import Gain
@@ -31,7 +33,7 @@ class Event(Base, Serializer):
     end = Column(DateTime, nullable=False)
     name = Column(String, nullable=False)
     description = Column(String, nullable=False)
-
+    pytz.timezone()
     registrations = relationship('Client', secondary=association, backref='events')
     archive = relationship('Archive', backref='event', uselist=False, cascade="all, delete")
 

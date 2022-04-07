@@ -9,7 +9,6 @@ import discord
 import inspect
 import matplotlib.pyplot as plt
 import pytz
-from discord.ext.commands import Cog
 
 from prettytable import PrettyTable
 
@@ -18,16 +17,15 @@ import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext
 from datetime import datetime, timedelta
-from discord_slash import SlashContext
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any
 
 
 import balancebot.api.dbmodels.event as event
 from balancebot.api.database import session
-from balancebot.errors import UserInputError, InternalError
+from balancebot.common.errors import UserInputError, InternalError
 from balancebot.models.daily import Daily
 from balancebot.models.gain import Gain
-from balancebot.usermanager import UserManager
+from balancebot.collector.usermanager import UserManager
 from balancebot.api.dbmodels.client import Client
 from balancebot.api import dbutils
 from balancebot.api.dbmodels.discorduser import DiscordUser

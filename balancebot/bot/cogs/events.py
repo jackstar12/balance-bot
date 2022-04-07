@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import List
 
 import discord.ext.commands
-import discord.ext.commands as commands
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
@@ -13,7 +12,7 @@ from balancebot.api.database import session
 from balancebot.api.dbmodels.event import Event
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.errors import UserInputError
+from balancebot.common.errors import UserInputError
 from balancebot.utils import create_yes_no_button_row
 
 

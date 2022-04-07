@@ -1,22 +1,17 @@
-import asyncio
 import logging
 from datetime import datetime
 from http import HTTPStatus
-from typing import Optional, Dict, Type
+from typing import Optional, Dict
 import aiohttp
 import jwt
 import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import or_
-from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from balancebot import utils
-from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.serializer import Serializer
-from balancebot.api.dbmodels.trade import Trade
 from balancebot.api.dependencies import current_user
 from balancebot.api.database import session
 from balancebot.api.dbmodels.client import Client, get_client_query
@@ -26,7 +21,7 @@ from balancebot.api.utils.client import create_cilent_data_serialized, get_user_
 
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.bot.config import EXCHANGES
-from balancebot.usermanager import UserManager
+from balancebot.collector.usermanager import UserManager
 
 router = APIRouter(
     tags=["client"],

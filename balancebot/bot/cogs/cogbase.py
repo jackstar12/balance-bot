@@ -3,7 +3,7 @@ from discord.ext.commands.cog import Cog
 from discord_slash import SlashCommand
 
 from balancebot.bot.eventmanager import EventManager
-from balancebot.usermanager import UserManager
+from balancebot.collector.usermanager import UserManager
 
 
 class CogBase(Cog):

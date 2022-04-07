@@ -5,19 +5,18 @@ import logging
 import urllib.parse
 import math
 from datetime import datetime, timedelta
-from typing import List, Callable, Union, Dict, Tuple, TYPE_CHECKING
+from typing import List, Callable, Dict, Tuple, TYPE_CHECKING
 import aiohttp.client
 import pytz
 from aiohttp import ClientResponse
 from typing import NamedTuple
-from requests import Request, Response, Session
 
 import balancebot.api.database as db
 import balancebot.utils as utils
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution
-import balancebot.usermanager as um
+import balancebot.collector.usermanager as um
 
 
 if TYPE_CHECKING:

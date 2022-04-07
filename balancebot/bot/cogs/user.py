@@ -1,29 +1,10 @@
-import logging
-
-from asgiref import typing
-from discord.ext.commands import Bot
-from discord.ext.commands.cog import Cog
-from datetime import datetime
-from typing import List
-
-import discord.ext.commands as commands
-from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
-from discord_slash.utils.manage_commands import create_option, create_choice
-from sqlalchemy import inspect
+from discord_slash import cog_ext, SlashContext
 
 from balancebot import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
-from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.event import Event
-from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.bot.config import EXCHANGES
-from balancebot.bot.eventmanager import EventManager
-from balancebot.errors import UserInputError, InternalError
-from balancebot.exchangeworker import ExchangeWorker
-from balancebot.usermanager import UserManager
 from balancebot.utils import create_yes_no_button_row
 
 

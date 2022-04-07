@@ -5,7 +5,6 @@ import logging
 import os
 import random
 import sys
-import time
 from datetime import datetime
 
 import aiohttp
@@ -15,13 +14,11 @@ from discord.ext import commands
 from discord_slash import SlashCommand
 from discord_slash.utils.manage_commands import create_choice
 
-import balancebot.bot.cogs as cogs
 from balancebot.api.dbmodels.client import Client
-from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.bot.config import *
 from balancebot.bot.cogs import *
 from balancebot.bot.eventmanager import EventManager
-from balancebot.usermanager import UserManager
+from balancebot.collector.usermanager import UserManager
 
 intents = discord.Intents().default()
 intents.members = True

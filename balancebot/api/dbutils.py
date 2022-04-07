@@ -6,7 +6,7 @@ import balancebot.api.dbmodels.client as db_client
 from balancebot.api.dbmodels.discorduser import DiscordUser
 import balancebot.api.dbmodels.event as db_event
 from typing import Optional
-from balancebot.errors import UserInputError
+from balancebot.common.errors import UserInputError
 
 
 def get_client(user_id: int,

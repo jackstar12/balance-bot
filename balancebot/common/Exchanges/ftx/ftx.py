@@ -3,14 +3,13 @@ import urllib.parse
 import hmac
 import logging
 from datetime import datetime
-from typing import Callable
 from aiohttp import ClientResponse, ClientResponseError
 from balancebot.api.dbmodels.execution import Execution
 import balancebot.api.dbmodels.balance as balance
 from balancebot.exchangeworker import ExchangeWorker
 import time
 
-from balancebot.Exchanges.ftx.client import FtxWebsocketClient
+from balancebot.common.Exchanges.ftx.client import FtxWebsocketClient
 
 
 class FtxClient(ExchangeWorker):

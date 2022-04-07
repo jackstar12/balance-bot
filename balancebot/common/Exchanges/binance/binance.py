@@ -11,15 +11,14 @@ import time
 import ccxt
 import urllib.parse
 from datetime import datetime
-from typing import Dict, Callable
+from typing import Dict
 
 from aiohttp import ClientResponse, ClientResponseError
 
 from balancebot import utils
-from balancebot.Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
+from balancebot.common.Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from balancebot.api.settings import settings
 from balancebot.exchangeworker import ExchangeWorker
-from balancebot.api.dbmodels.client import Client
 import balancebot.api.dbmodels.balance as balance
 from balancebot.api.dbmodels.execution import Execution
 
