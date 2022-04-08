@@ -12,7 +12,7 @@ from aiohttp import ClientResponse
 from typing import NamedTuple
 
 import balancebot.api.database as db
-import balancebot.utils as utils
+import balancebot.common.utils as utils
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution

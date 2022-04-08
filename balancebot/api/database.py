@@ -3,6 +3,7 @@ from flask_migrate import Migrate
 from sqlalchemy import create_engine, MetaData
 import dotenv
 import os
+import redis as r
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_
 from sqlalchemy.orm import relationship
 from flask import Flask
@@ -35,6 +36,8 @@ Meta = MetaData()
 # db = SQLAlchemy(app=app, session_options={'autoflush': False})
 
 migrate = Migrate()
+
+redis = r.Redis()
 
 if __name__ == '__main__':
     print(async_session.commit)

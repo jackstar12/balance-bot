@@ -1,11 +1,11 @@
 from discord_slash import cog_ext, SlashContext
 
-from balancebot import utils
+from balancebot.common import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.utils import create_yes_no_button_row
+from balancebot.common.utils import create_yes_no_button_row
 
 
 class UserCog(CogBase):

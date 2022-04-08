@@ -1,6 +1,6 @@
 import pytz
 
-from balancebot import utils
+from balancebot.common import utils
 import numpy
 from balancebot.models.gain import Gain
 from balancebot.api.dbmodels.archive import Archive
@@ -10,7 +10,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 import balancebot.bot.config as config
 import discord
 
-from balancebot.api.database import Base, Meta, session as session
+from balancebot.api.database import Base, session as session
 from sqlalchemy.orm import relationship
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table
 

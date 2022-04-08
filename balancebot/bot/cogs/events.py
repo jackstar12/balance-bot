@@ -6,14 +6,15 @@ import discord.ext.commands
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
-from balancebot import utils
+from balancebot.common import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
 from balancebot.api.dbmodels.event import Event
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.errors import UserInputError
-from balancebot.utils import create_yes_no_button_row
+from balancebot.models.selectionoption import SelectionOption
+from balancebot.common.utils import create_yes_no_button_row
 
 
 class EventsCog(CogBase):
@@ -176,12 +177,12 @@ class EventsCog(CogBase):
             self.slash_cmd_handler,
             author_id=ctx.author_id,
             options=[
-                {
-                    'name': event.name,
-                    'description': f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
-                    'value': str(event.id),
-                    'object': event,
-                }
+                SelectionOption(
+                    name=event.name,
+                    description=f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
+                    value=str(event.id),
+                    object=event,
+                )
                 for event in archived
             ],
             callback=show_events

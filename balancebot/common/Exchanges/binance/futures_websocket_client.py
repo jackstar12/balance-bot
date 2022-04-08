@@ -2,7 +2,7 @@ import logging
 import asyncio
 from typing import Callable
 
-from balancebot import utils
+from balancebot.common import utils
 from balancebot.api.settings import settings
 from balancebot.models.async_websocket_manager import WebsocketManager
 import aiohttp

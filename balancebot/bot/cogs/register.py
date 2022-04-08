@@ -7,7 +7,7 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import inspect
 
-from balancebot import utils
+from balancebot.common import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
 from balancebot.api.dbmodels.client import Client
@@ -17,7 +17,7 @@ from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.bot.config import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.exchangeworker import ExchangeWorker
-from balancebot.utils import create_yes_no_button_row
+from balancebot.common.utils import create_yes_no_button_row
 
 
 class RegisterCog(CogBase):

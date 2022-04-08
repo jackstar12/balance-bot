@@ -3,7 +3,7 @@ from typing import Optional
 
 import pytz
 
-import balancebot.utils as utils
+import balancebot.common.utils as utils
 from balancebot.api.dbmodels.client import Client, get_client_query
 from balancebot.api.dbmodels.user import User
 

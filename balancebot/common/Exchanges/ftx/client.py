@@ -7,7 +7,7 @@ from collections import defaultdict, deque
 from typing import DefaultDict, Deque, List, Dict
 from gevent.event import Event
 
-from balancebot import utils
+from balancebot.common import utils
 from balancebot.models.async_websocket_manager import WebsocketManager
 
 

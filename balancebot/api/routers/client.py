@@ -10,7 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ValidationError
 from starlette.responses import JSONResponse
 
-from balancebot import utils
+from balancebot.common import utils
 from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dependencies import current_user
 from balancebot.api.database import session

@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import asyncio
-import ccxt.async_support as ccxt
 import hmac
 import json
 import logging
@@ -15,7 +14,7 @@ from typing import Dict
 
 from aiohttp import ClientResponse, ClientResponseError
 
-from balancebot import utils
+from balancebot.common import utils
 from balancebot.common.Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from balancebot.api.settings import settings
 from balancebot.exchangeworker import ExchangeWorker

@@ -31,6 +31,7 @@ from balancebot.api import dbutils
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.balance import Balance
 from balancebot.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
+from balancebot.models.selectionoption import SelectionOption
 
 
 def admin_only(coro, cog=True):
@@ -725,8 +726,9 @@ def create_yes_no_button_row(slash: SlashCommand,
 
 def create_selection(slash: SlashCommand,
                      author_id: int,
-                     options: List[Dict],
-                     callback: Callable = None) -> Dict:
+                     options: List[SelectionOption],
+                     callback: Callable = None,
+                     **kwargs) -> Dict:
     """
     Utility method for creating a discord selection component.
     It provides functionality to return user-defined objects associated with the selected option on callback
@@ -756,19 +758,20 @@ def create_selection(slash: SlashCommand,
     objects_by_value = {}
 
     for option in options:
-        objects_by_value[option['value']] = option['object']
+        objects_by_value[option.value] = option.object
 
     selection = discord_components.create_select(
         options=[
             create_select_option(
-                label=option['name'],
-                value=option['value'],
-                description=option['description']
+                label=option.name,
+                value=option.value,
+                description=option.description
             )
             for option in options
         ],
         custom_id=custom_id,
-        min_values=1
+        min_values=1,
+        **kwargs
     )
 
     if slash.get_component_callback(custom_id=custom_id) is not None:
