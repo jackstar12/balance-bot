@@ -168,7 +168,6 @@ class UserManager(Singleton):
 
         filter_time = event.start if event else since
 
-        DateTime()
         history = client.history.filter(
             Balance.time > filter_time, Balance.time < to
         ).all()
