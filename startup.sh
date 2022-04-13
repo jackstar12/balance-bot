@@ -1,0 +1,1 @@
+uvicorn balancebot.api.app:app --port 5000
