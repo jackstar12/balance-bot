@@ -413,7 +413,7 @@ async def create_leaderboard(dc_client: discord.Client,
         users = session.query(DiscordUser).filter(DiscordUser.global_client_id is not None).all()
         for user in users:
             member = guild.get_member(user.user_id)
-            if member:
+            if member and user.global_client:
                 clients.append(user.global_client)
 
     if not archived:
@@ -434,6 +434,7 @@ async def create_leaderboard(dc_client: discord.Client,
                     users_rekt.append(client)
             else:
                 clients_missing.append(client)
+
     elif mode == 'gain':
 
         description += f'Gain {readable_time(time)}\n\n'
