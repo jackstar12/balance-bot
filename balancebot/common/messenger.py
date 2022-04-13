@@ -79,7 +79,7 @@ class Messenger(Singleton):
 
     def pub_channel(self, category: Category, sub: SubCategory, obj: object, channel_id: int = None):
         ch = self._join(category.value, sub.value, channel_id)
-        logging.info(f'Pub: {ch=} {obj=} {self._um.get_workers()}')
+        logging.info(f'Pub: {ch=} {obj=}')
         asyncio.create_task(self._redis.publish(ch, msgpack.packb(obj)))
 
     def _join(self, *args, denominator=':'):
