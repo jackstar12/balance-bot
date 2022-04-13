@@ -141,7 +141,7 @@ class CoinTracker(Singleton, Observer):
 
     def update(self, *new_state):
         trade: Trade = new_state[0]
-        print(trade)
+
         # find coin
 
         coin = self._coin_by_name.get(

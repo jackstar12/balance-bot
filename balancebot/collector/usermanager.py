@@ -167,7 +167,7 @@ class UserManager(Singleton):
         initial = None
 
         history = client.history.filter(
-            Balance.time > event.start, Balance.time < to
+            Balance.time > event.start if event else since, Balance.time < to
         ).order_by(
             asc(Balance.time)
         ).all()
