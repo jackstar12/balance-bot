@@ -8,6 +8,7 @@ import msgpack
 
 from balancebot.api.database import redis
 import balancebot.collector.usermanager as usermanager
+from balancebot.api.settings import settings
 from balancebot.common import utils
 from balancebot.common.models.singleton import Singleton
 
@@ -65,8 +66,9 @@ class Messenger(Singleton):
         if pattern:
             channel += '*'
         kwargs = {channel: self._wrap(callback)}
-        logging.info(f'Sub: {kwargs}')
-        asyncio.create_task(self._sub(pattern=pattern,**kwargs))
+        if settings.testing:
+            logging.info(f'Sub: {kwargs}')
+        asyncio.create_task(self._sub(pattern=pattern, **kwargs))
 
     def unsub_channel(self, category: Category, sub: SubCategory, channel_id: int = None, pattern=False):
         channel = self._join(category.value, sub.value, channel_id)
@@ -79,7 +81,8 @@ class Messenger(Singleton):
 
     def pub_channel(self, category: Category, sub: SubCategory, obj: object, channel_id: int = None):
         ch = self._join(category.value, sub.value, channel_id)
-        logging.info(f'Pub: {ch=} {obj=}')
+        if settings.testing:
+            logging.info(f'Pub: {ch=} {obj=}')
         asyncio.create_task(self._redis.publish(ch, msgpack.packb(obj)))
 
     def _join(self, *args, denominator=':'):
