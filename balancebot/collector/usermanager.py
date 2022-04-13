@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, TYPE_CHECKING
 
 import pytz
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, DateTime
 
 import balancebot.api.database as db
 import balancebot.api.dbmodels.event as db_event
@@ -166,10 +166,11 @@ class UserManager(Singleton):
         results = []
         initial = None
 
+        filter_time = event.start if event else since
+
+        DateTime()
         history = client.history.filter(
-            Balance.time > event.start if event else since, Balance.time < to
-        ).order_by(
-            asc(Balance.time)
+            Balance.time > filter_time, Balance.time < to
         ).all()
 
         for balance in history:
