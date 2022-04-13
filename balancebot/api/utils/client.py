@@ -137,9 +137,11 @@ async def create_cilent_data_serialized(client: Client, config: WebsocketConfig)
 
     if cached:
         s = cached
+        s['source'] = 'cache'
     else:
         s = client.serialize(full=True, data=False)
         s['trades'] = {}
+        s['source'] = 'database'
 
     cached_date = datetime.fromtimestamp(s.get('ts', 0), tz=pytz.UTC)
 

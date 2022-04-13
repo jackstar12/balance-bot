@@ -95,10 +95,11 @@ async def register_client(body: RegisterBody):
 
 
 @router.get('/client')
-def get_client(request: Request, response: Response,
+async def get_client(request: Request, response: Response,
                id: Optional[int] = None, currency: Optional[str] = None, since: Optional[datetime] = None,
                to: Optional[datetime] = None,
                user: User = Depends(current_user)):
+
     if not currency:
         currency = '$'
 
@@ -112,38 +113,11 @@ def get_client(request: Request, response: Response,
         client = None
     if client:
 
-        # Has selected timeframe changed?
-        # tf_update = since != request.cookies.get('client-since') or to != request.cookies.get('client-to')
-        tf_update = True
-
-        now = datetime.now()
-
-        if not to:
-            to = now
-
-        if not since:
-            since = datetime.fromtimestamp(0)
-
-        to = to.replace(tzinfo=pytz.UTC)
-        since = since.replace(tzinfo=pytz.UTC)
-
-        last_fetch = datetime.fromtimestamp(float(request.cookies.get('client-last-fetch', 0)))
-        latest_balance = client.latest
-
-        if tf_update or (latest_balance and latest_balance.time > last_fetch < to):
-            s = create_cilent_data_serialized(client, since_date=since, to_date=to)
-
-            response = JSONResponse(jsonable_encoder(s))
-            response.set_cookie('client-last-fetch', value=str(now.timestamp()))
-            # response.set_cookie('client-since', value=since, expires='session')
-            # response.set_cookie('client-to', value=to, expires='session')
-
-            return response
-        else:
-            return JSONResponse(
-                {'msg': 'No changes', 'code': 20000},
-                status_code=HTTPStatus.OK
-            )
+        s = await create_cilent_data_serialized(client, WebsocketConfig(id=client.id, since=since, to=to, currency=currency))
+        response = JSONResponse(jsonable_encoder(s))
+        # response.set_cookie('client-since', value=since, expires='session')
+        # response.set_cookie('client-to', value=to, expires='session')
+        return response
     else:
         return JSONResponse(
             {'msg': f'Invalid client id', 'code': 40000},

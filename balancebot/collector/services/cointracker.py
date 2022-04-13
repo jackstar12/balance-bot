@@ -36,7 +36,7 @@ class CoinTracker(Singleton, Observer):
         self._session = session
         self._time_window = time_window
         self._max_time_range = max_time_range
-        self._coin_by_name: Dict[str, Coin] = {}
+        self._coins_by_name: Dict[str, Coin] = {}
         self._current_coin_volume: Dict[Coin, Volume] = {}
         self.data_service = DataService()
 
@@ -97,19 +97,19 @@ class CoinTracker(Singleton, Observer):
             raise Exception
 
         coins = async_session.query(Coin).all()
-        self._coin_by_name = {coin.name: coin for coin in coins if coin.id == 27}
+        self._coins_by_name = {coin.name: coin for coin in coins}
 
         for perp_name in perp_markets_by_name:
             if 'PERP' in perp_name:
                 coin_name = self.get_coin_name(perp_name)
                 spot_name = f'{coin_name}/USD'
-                if spot_name in spot_markets_by_name and coin_name == 'BTC':
-                    if coin_name not in self._coin_by_name:
+                if spot_name in spot_markets_by_name and coin_name:
+                    if coin_name not in self._coins_by_name:
                         coin = Coin(
                             name=coin_name,
                             exchange='ftx',
                         )
-                        self._coin_by_name[coin_name] = coin
+                        self._coins_by_name[coin_name] = coin
                         async_session.add(coin)
                     await self.data_service.subscribe(
                         'ftx',
@@ -142,9 +142,7 @@ class CoinTracker(Singleton, Observer):
     def update(self, *new_state):
         trade: Trade = new_state[0]
 
-        # find coin
-
-        coin = self._coin_by_name.get(
+        coin = self._coins_by_name.get(
             self.get_coin_name(trade.symbol)
         )
         if coin:
@@ -158,7 +156,6 @@ class CoinTracker(Singleton, Observer):
                     spot_sell=0.0,
                     perp_buy=0.0,
                     perp_sell=0.0,
-                    # TODO: tf
                 )
                 self._current_coin_volume[coin] = current_volume
 
@@ -174,9 +171,6 @@ class CoinTracker(Singleton, Observer):
                     current_volume.spot_sell += trade.size
 
             if trade.time.minute != current_volume.time.minute:
-                print(current_volume.time)
-                print(f'PERP: ', current_volume.perp_buy + current_volume.perp_sell)
-                print(f'SPOT: ', current_volume.spot_buy + current_volume.spot_sell)
                 async_session.add(current_volume)
                 async_session.commit()
                 self._current_coin_volume.pop(coin)
@@ -216,9 +210,9 @@ class CoinTracker(Singleton, Observer):
 
     async def _update_forever(self):
         while False:
-            for coin in self._coin_by_name.values():
+            for coin in self._coins_by_name.values():
                 await self._update_volume_history(coin)
-            coins = list(self._coin_by_name.values())
+            coins = list(self._coins_by_name.values())
             coins.sort(key=lambda x: x.avg_ratio, reverse=True)
             print('Biggest Accumulators')
             for i in range(0, 5):
@@ -237,7 +231,7 @@ class CoinTracker(Singleton, Observer):
             for future in all_futures:
                 symbol = future.get('name')
                 if 'PERP' in symbol:
-                    coin: Coin = self._coin_by_name.get(self.get_coin_name(symbol))
+                    coin: Coin = self._coins_by_name.get(self.get_coin_name(symbol))
                     if coin:
                         coin.oi_history.append(
                             OI(
@@ -249,7 +243,7 @@ class CoinTracker(Singleton, Observer):
 
         async_session.commit()
 
-        self.oi_observable.notify(self._coin_by_name.values())
+        self.oi_observable.notify(self._coins_by_name.values())
 
     async def _fetch_oi(self):
         while True:
@@ -261,10 +255,11 @@ class CoinTracker(Singleton, Observer):
     def _on_message(self):
         pass
 
+
 async def main():
     async with aiohttp.ClientSession() as session:
         fetcher = CoinTracker(session=session)
-        await fetcher.start()
+        await fetcher.run()
 
 
 if __name__ == "__main__":
