@@ -16,6 +16,7 @@ from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.bot.config import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
+from balancebot.common.messenger import Category, SubCategory
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.common.utils import create_yes_no_button_row
 
@@ -143,9 +144,9 @@ class RegisterCog(CogBase):
                             else:
                                 message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
 
-                                def register_user(ctx):
+                                async def register_user(ctx):
                                     if existing_client:
-                                        self.user_manager.delete_client(existing_client, commit=False)
+                                        await dbutils.delete_client(existing_client, self.messenger, commit=False)
 
                                     new_client = get_new_client()
 
@@ -156,13 +157,14 @@ class RegisterCog(CogBase):
                                     discord_user.clients.append(new_client)
 
                                     new_client.history.append(init_balance)
-                                    self.user_manager.add_client(new_client)
+                                    dbutils.add_client(new_client, self.messenger)
 
                                     if inspect(discord_user).transient:
                                         session.add(discord_user)
 
                                     session.add(new_client)
                                     session.commit()
+                                    dbutils.add_client(new_client, self.messenger)
                                     logging.info(f'Registered new user')
 
                                 button_row = create_yes_no_button_row(
@@ -263,13 +265,15 @@ class RegisterCog(CogBase):
 
         await ctx.defer(hidden=True)
 
-        def unregister_user(ctx):
+        async def unregister_user(ctx):
             if event:
                 client.events.remove(event)
                 if not client.is_active and not client.is_global:
-                    self.user_manager.delete_client(client)
+                    await dbutils.delete_client(client, self.messenger)
             else:
-                self.user_manager.delete_client(client)
+                await dbutils.delete_client(client, self.messenger)
+            session.commit()
+
             discord_user: DiscordUser = session.query(DiscordUser).filter_by(user_id=ctx.author_id).first()
             if len(discord_user.clients) == 0 and not discord_user.user:
                 session.query(DiscordUser).filter_by(user_id=ctx.author_id).delete()

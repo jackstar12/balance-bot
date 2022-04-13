@@ -13,7 +13,7 @@ from balancebot.api.dbmodels.event import Event
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.errors import UserInputError
-from balancebot.models.selectionoption import SelectionOption
+from balancebot.common.models.selectionoption import SelectionOption
 from balancebot.common.utils import create_yes_no_button_row
 
 

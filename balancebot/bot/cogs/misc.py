@@ -19,7 +19,7 @@ class MiscCog(CogBase):
     async def exchanges(self, ctx):
         logging.info(f'New Interaction: Listing available exchanges for user {de_emojify(ctx.author.display_name)}')
         exchange_list = '\n'.join(config.EXCHANGES.keys())
-        embed = discord.Embed(title="Available Exchanges", description=exchange_list)
+        embed = discord.Embed(title="Available exchanges", description=exchange_list)
         await ctx.send(embed=embed)
 
     @cog_ext.cog_slash(

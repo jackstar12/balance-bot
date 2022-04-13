@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
@@ -8,10 +8,27 @@ from balancebot.api import dbutils
 from balancebot.api.database import session
 from balancebot.api.dbmodels.alert import Alert
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.models.selectionoption import SelectionOption
+from balancebot.common.messenger import Category, SubCategory
+from balancebot.common.models.selectionoption import SelectionOption
 
 
 class AlertCog(CogBase):
+
+    async def on_alert_trigger(self, data: Dict):
+        user_id = data.get('discord_user_id')
+        if user_id:
+            message = f'Your alert for {data.get("symbol")}@{data.get("price")} just triggered!'
+            note = data.get('note')
+            if note:
+                message += f'\nNote: _{note}_'
+            await self.send_dm(
+                user_id,
+                message
+            )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.messenger.sub_channel(Category.ALERT, sub=SubCategory.FINISHED, callback=self.on_alert_trigger)
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -28,7 +45,7 @@ class AlertCog(CogBase):
                 name="price",
                 description="Price to trigger at.",
                 required=True,
-                option_type=SlashCommandOptionType.INTEGER
+                option_type=SlashCommandOptionType.FLOAT
             ),
             create_option(
                 name="note",
@@ -49,13 +66,16 @@ class AlertCog(CogBase):
             symbol=symbol,
             price=price,
             note=note,
+            exchange='ftx',
             discord_user_id=discord_user.id
         )
 
         session.add(alert)
         session.commit()
 
-        self.messager.pub_channel('alert:new', alert.id)
+        await ctx.send('Alert created', embed=alert.get_discord_embed())
+
+        self.messenger.pub_channel(Category.ALERT, SubCategory.NEW, obj=alert.serialize(data=True, full=False))
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -65,7 +85,8 @@ class AlertCog(CogBase):
             create_option(
                 name="symbol",
                 description="Symbol to delete",
-                option_type=SlashCommandOptionType.STRING
+                option_type=SlashCommandOptionType.STRING,
+                required=True
             )
         ]
     )
@@ -79,7 +100,7 @@ class AlertCog(CogBase):
         def on_alert_select(selections: List[Alert]):
             for selection in selections:
                 session.query(Alert).filter_by(id=selection.id).delete()
-                self.messager.pub_channel('alert:delete', selection.id)
+                self.messenger.pub_channel(Category.ALERT, SubCategory.DELETE, selection.id)
                 session.commit()
 
         if len(alerts) > 1:
@@ -134,6 +155,3 @@ class AlertCog(CogBase):
             )
         else:
             await ctx.send(f'You do not have any alerts active{f" for symbol {symbol}" if symbol else ""}')
-
-
-

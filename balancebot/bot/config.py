@@ -1,9 +1,9 @@
-from balancebot.common.Exchanges.binance.binance import BinanceFutures, BinanceSpot
-from balancebot.common.Exchanges.bitmex import BitmexClient
-from balancebot.common.Exchanges import BybitClient
-from balancebot.common.Exchanges import FtxClient
-from balancebot.common.Exchanges.kucoin import KuCoinClient
-from balancebot.common.Exchanges import OkxClient
+from balancebot.common.exchanges.binance.binance import BinanceFutures, BinanceSpot
+from balancebot.common.exchanges.bitmex import BitmexClient
+from balancebot.common.exchanges.bybit import BybitClient
+from balancebot.common.exchanges.ftx.http import FtxClient
+from balancebot.common.exchanges.kucoin import KuCoinClient
+from balancebot.common.exchanges.okx.okx import OkxClient
 
 PREFIX = "c "
 DATA_PATH = "C:/Users/jkran/PycharmProjects/BalanceBot/data/"

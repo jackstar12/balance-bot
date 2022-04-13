@@ -27,7 +27,7 @@ class Trade(Base, Serializer):
     open_qty = Column(Float, nullable=False)
     exit = Column(Float, nullable=True)
     realized_pnl = Column(Float, nullable=True)
-    #max_upnl = Column(Float, nullable=True)
+    max_upnl = Column(Float, nullable=True)
     #tp = Column(Float, nullable=True)
     #sl = Column(Float, nullable=True)
 
@@ -36,7 +36,7 @@ class Trade(Base, Serializer):
 
     initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
 
-    initial = relationship(
+    initial: Execution = relationship(
         'Execution',
         lazy=True,
         foreign_keys=[initial_execution_id, symbol],
@@ -53,13 +53,20 @@ class Trade(Base, Serializer):
 
     @hybrid_property
     def is_open(self):
-        return self.exit is not None
+        return self.open_qty > 0.0
 
     def serialize(self, data=True, full=True, *args, **kwargs):
         s = super().serialize(data, full, *args, **kwargs)
         if s:
             s['status'] = 'open' if self.open_qty > 0 else 'win' if self.realized_pnl > 0.0 else 'loss'
         return s
+
+    def calc_rpnl(self):
+        realized_qty = self.qty - self.open_qty
+        return (self.exit * realized_qty - self.entry * realized_qty) * (1 if self.initial.side == 'BUY' else -1)
+
+    def calc_upnl(self, price: float):
+        return (price * self.open_qty - self.entry * self.open_qty) * (1 if self.initial.side == 'BUY' else -1)
 
 
 def trade_from_execution(execution: Execution):

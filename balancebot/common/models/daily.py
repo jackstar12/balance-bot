@@ -3,7 +3,7 @@ from datetime import datetime
 
 
 class Daily(NamedTuple):
-    day: Union[datetime, str]
+    day: Union[int, str]
     amount: float
     diff_absolute: float
     diff_relative: float

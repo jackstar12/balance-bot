@@ -4,5 +4,6 @@ __all__ = [
     "register",
     "history",
     "misc",
-    "user"
+    "user",
+    "alert"
 ]

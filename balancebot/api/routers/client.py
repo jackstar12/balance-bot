@@ -9,15 +9,19 @@ from fastapi import APIRouter, Depends, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ValidationError
 from starlette.responses import JSONResponse
+from starlette.websockets import WebSocketDisconnect
 
+from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
 from balancebot.common import utils
 from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dependencies import current_user
-from balancebot.api.database import session
+from balancebot.api.database import session, redis
 from balancebot.api.dbmodels.client import Client, get_client_query
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
 from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
+import balancebot.api.utils.client as client_utils
+from balancebot.common.messenger import Messenger, Category, SubCategory
 
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.bot.config import EXCHANGES
@@ -77,7 +81,7 @@ async def register_client(body: RegisterBody):
                                'msg': f'An error occured while getting your balance: {init_balance.error}.'}, HTTPStatus.BAD_REQUEST
             else:
                 logging.error(
-                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
+                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {body.kwargs}\nRequired: {exchange_cls.required_extra_args}')
                 args_readable = '\n'.join(exchange_cls.required_extra_args)
                 return {
                            'msg': f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}',
@@ -124,7 +128,7 @@ def get_client(request: Request, response: Response,
         since = since.replace(tzinfo=pytz.UTC)
 
         last_fetch = datetime.fromtimestamp(float(request.cookies.get('client-last-fetch', 0)))
-        latest_balance = client.history[len(client.history) - 1] if client.history else None
+        latest_balance = client.latest
 
         if tf_update or (latest_balance and latest_balance.time > last_fetch < to):
             s = create_cilent_data_serialized(client, since_date=since, to_date=to)
@@ -229,19 +233,6 @@ def create_ws_message(type: str, channel: str = None, data: Dict = None, error: 
     }
 
 
-class WebsocketMessage(BaseModel):
-    type: str
-    channel: Optional[str]
-    data: Optional[Dict]
-
-
-class WebsocketConfig(BaseModel):
-    id: Optional[int]
-    since: Optional[datetime]
-    to: Optional[datetime]
-    currency: Optional[str]
-
-
 @router.websocket('/client/ws')
 async def client_websocket(websocket: WebSocket, user: User = Depends(current_user)):
     await websocket.accept()
@@ -249,53 +240,94 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
     user_manager = UserManager()
     subscribed_client: Optional[Client] = None
     config: Optional[WebsocketConfig] = None
+    messenger = Messenger()
 
-    async def send_client_snapshot(client: Client):
+    async def send_client_snapshot(client: Client, type: str, channel: str):
         msg = jsonable_encoder(create_ws_message(
-            type='initial',
-            channel='client',
-            data=create_cilent_data_serialized(
+            type=type,
+            channel=channel,
+            data=await create_cilent_data_serialized(
                 client,
-                since_date=config.since,
-                to_date=config.to,
-                currency=config.currency
+                config
             )
         ))
         await websocket.send_json(msg)
 
-    def websocket_callback(type: str, channel: str):
-        async def f(worker: ExchangeWorker, obj: Serializer):
-            await websocket.send_json(create_ws_message(
-                type=type,
-                channel=channel,
-                data=jsonable_encoder(obj.serialize())
-            ))
-
-        return f
+    def unsub_client(client: Client):
+        if client:
+            messenger.unsub_channel(Category.BALANCE, sub=SubCategory.NEW, channel_id=client.id)
+            messenger.unsub_channel(Category.TRADE, sub=SubCategory.NEW, channel_id=client.id)
+            messenger.unsub_channel(Category.TRADE, sub=SubCategory.UPDATE, channel_id=client.id)
+            messenger.unsub_channel(Category.TRADE, sub=SubCategory.UPNL, channel_id=client.id)
 
     async def update_client(old: Client, new: Client):
 
-        if old:
-            old_worker: ExchangeWorker = user_manager.get_worker(old)
-            if old_worker:
-                old_worker.clear_callbacks()
+        unsub_client(old)
+        await send_client_snapshot(new, type='intial', channel='client')
 
-        await send_client_snapshot(new)
-        worker = user_manager.get_worker(new)
+        async def send_json_message(json: Dict):
+            await websocket.send_json(
+                jsonable_encoder(json)
+            )
 
-        worker.set_balance_callback(
-            websocket_callback(type='new', channel='balance')
+        async def send_upnl_update(data: Dict):
+            await send_json_message(
+                create_ws_message(
+                    type='trade',
+                    channel='upnl',
+                    data=data
+                )
+            )
+
+        async def send_trade_update(trade: Dict):
+            await send_json_message(
+                create_ws_message(
+                    type='client',
+                    channel='update',
+                    data=client_utils.update_client_data_trades(
+                        await client_utils.get_cached_data(config),
+                        [trade],
+                        config
+                    )
+                )
+            )
+
+        async def send_balance_update(balance: Dict):
+            await send_json_message(
+                create_ws_message(
+                    type='client',
+                    channel='update',
+                    data=client_utils.update_client_data_balance(
+                        await client_utils.get_cached_data(config),
+                        subscribed_client,
+                        config
+                    )
+                )
+            )
+
+        messenger.sub_channel(
+            Category.BALANCE, sub=SubCategory.NEW, channel_id=new.id,
+            callback=send_balance_update
         )
-        worker.set_trade_callback(
-            websocket_callback(type='new', channel='trade')
+
+        messenger.sub_channel(
+            Category.TRADE, sub=SubCategory.NEW, channel_id=new.id,
+            callback=send_trade_update
         )
-        worker.set_trade_update_callback(
-            websocket_callback(type='update', channel='trade')
+
+        messenger.sub_channel(
+            Category.TRADE, sub=SubCategory.UPDATE, channel_id=new.id,
+            callback=send_trade_update
+        )
+
+        messenger.sub_channel(
+            Category.TRADE, sub=SubCategory.UPNL, channel_id=new.id,
+            callback=send_upnl_update
         )
 
     while True:
-        raw_msg = await websocket.receive_json()
         try:
+            raw_msg = await websocket.receive_json()
             msg = WebsocketMessage(**raw_msg)
             print(msg)
             if msg.type == 'ping':
@@ -323,6 +355,8 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                             error='Invalid Client ID'
                         ))
                     else:
+                        config.id = new_client.id
+                        config.currency = config.currency or '$'
                         await update_client(old=subscribed_client, new=new_client)
                         subscribed_client = new_client
         except ValidationError as e:
@@ -330,3 +364,6 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 type='error',
                 error=str(e)
             ))
+        except WebSocketDisconnect:
+            unsub_client(subscribed_client)
+            break

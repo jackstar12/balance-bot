@@ -9,7 +9,7 @@ import balancebot.api.dbmodels.balance as balance
 from balancebot.exchangeworker import ExchangeWorker
 import time
 
-from balancebot.common.Exchanges.ftx.client import FtxWebsocketClient
+from balancebot.common.exchanges.ftx.websocket import FtxWebsocketClient
 
 
 class FtxClient(ExchangeWorker):

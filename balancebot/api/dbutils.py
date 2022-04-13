@@ -7,6 +7,7 @@ from balancebot.api.dbmodels.discorduser import DiscordUser
 import balancebot.api.dbmodels.event as db_event
 from typing import Optional
 from balancebot.common.errors import UserInputError
+from balancebot.common.messenger import Messenger, Category, SubCategory
 
 
 def get_client(user_id: int,
@@ -71,6 +72,16 @@ def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
         raise UserInputError(f'There is no {"event you can register for" if state == "registration" else "active event"}')
     return event
 
+
+async def delete_client(client: db_client.Client, messenger: Messenger, commit=False):
+    session.query(db_client.Client).filter_by(id=client.id).delete()
+    messenger.pub_channel(Category.CLIENT, SubCategory.DELETE, obj=client.id)
+    if commit:
+        session.commit()
+
+
+def add_client(client: db_client.Client, messenger: Messenger):
+    messenger.pub_channel(Category.CLIENT, SubCategory.NEW, obj=client.id)
 
 def get_all_events(guild_id: int, channel_id):
     pass

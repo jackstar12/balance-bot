@@ -6,6 +6,7 @@ import os
 import random
 import sys
 from datetime import datetime
+from typing import Dict
 
 import aiohttp
 import discord
@@ -14,11 +15,14 @@ from discord.ext import commands
 from discord_slash import SlashCommand
 from discord_slash.utils.manage_commands import create_choice
 
+from balancebot.api.database import session
 from balancebot.api.dbmodels.client import Client
 from balancebot.bot.config import *
 from balancebot.bot.cogs import *
 from balancebot.bot.eventmanager import EventManager
+from balancebot.collector.services.alertservice import AlertService
 from balancebot.collector.usermanager import UserManager
+from balancebot.common.messenger import Messenger, Category, SubCategory
 
 intents = discord.Intents().default()
 intents.members = True
@@ -66,7 +70,8 @@ async def on_guild_join(guild: discord.Guild):
     await slash.sync_all_commands(delete_from_unused_guilds=True)
 
 
-async def on_rekt_async(client: Client):
+async def on_rekt_async(data: Dict):
+    client = session.query(Client).filter_by(id=data.get('id'))
     logging.info(f'Use {client.discorduser} is rekt')
 
     message = random.Random().choice(seq=REKT_MESSAGES)
@@ -86,21 +91,31 @@ async def on_rekt_async(client: Client):
             logging.error(f'Error while sending message to guild {e}')
 
 
+user_manager = UserManager(exchanges=EXCHANGES,
+                           fetching_interval_hours=FETCHING_INTERVAL_HOURS,
+                           data_path=DATA_PATH,
+                           rekt_threshold=REKT_THRESHOLD)
+
 parser = argparse.ArgumentParser(description="Run the bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
 
 args = parser.parse_known_args()
 
-user_manager = UserManager(exchanges=EXCHANGES,
-                           fetching_interval_hours=FETCHING_INTERVAL_HOURS,
-                           data_path=DATA_PATH,
-                           rekt_threshold=REKT_THRESHOLD,
-                           on_rekt_callback=lambda user: bot.loop.create_task(on_rekt_async(user)))
-
 event_manager = EventManager(discord_client=bot)
 
-for cog in [balance.BalanceCog, history.HistoryCog, events.EventsCog, misc.MiscCog, register.RegisterCog, user.UserCog]:
-    cog.setup(bot, user_manager, event_manager, slash)
+messanger = Messenger()
+messanger.sub_channel(Category.CLIENT, SubCategory.REKT, callback=on_rekt_async, pattern=True)
+
+for cog in [
+    balance.BalanceCog,
+    history.HistoryCog,
+    events.EventsCog,
+    misc.MiscCog,
+    register.RegisterCog,
+    user.UserCog,
+    alert.AlertCog
+]:
+    cog.setup(bot, user_manager, event_manager, messanger, slash)
 
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'

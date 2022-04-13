@@ -4,23 +4,22 @@ import aiohttp
 import logging
 import math
 from datetime import datetime, timedelta
-from threading import RLock
-from typing import List, Dict, Callable, Optional, Any, Tuple, TYPE_CHECKING
+from typing import List, Dict, Tuple, TYPE_CHECKING
 
-import pytz.reference
+import pytz
+from sqlalchemy import asc, desc
 
-import balancebot.api.dbutils as dbutils
 import balancebot.api.database as db
 import balancebot.api.dbmodels.event as db_event
 
 from balancebot.api.dbmodels.balance import Balance
 import balancebot.api.dbmodels.client as db_client
-from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution
 import balancebot.bot.config as config
-from balancebot.models.history import History
-from balancebot.models.singleton import Singleton
+from balancebot.common.messenger import Messenger, Category, SubCategory
+from balancebot.common.models.history import History
+from balancebot.common.models.singleton import Singleton
 import balancebot.exchangeworker as exchange_worker
 
 if TYPE_CHECKING:
@@ -33,38 +32,53 @@ class UserManager(Singleton):
              exchanges: dict = None,
              fetching_interval_hours: int = 4,
              rekt_threshold: float = 2.5,
-             data_path: str = '',
-             on_rekt_callback: Callable[[DiscordUser], Any] = None):
+             data_path: str = ''):
 
         # Public parameters
         self.interval_hours = fetching_interval_hours
         self.rekt_threshold = rekt_threshold
         self.data_path = data_path
         self.backup_path = self.data_path + 'backup/'
-        self.on_rekt_callback = on_rekt_callback
 
         self._exchanges = exchanges
         self._workers: List[ExchangeWorker] = []
         self._workers_by_client_id: Dict[int, ExchangeWorker] = {}
 
         self.session = aiohttp.ClientSession()
+        self.messenger = Messenger()
+
+        self.messenger.sub_channel(Category.CLIENT, sub=SubCategory.NEW, callback=self._on_client_delete)
+        self.messenger.sub_channel(Category.CLIENT, sub=SubCategory.DELETE, callback=self._on_client_add)
+
+    def get_workers(self):
+        return self._workers
+
+    def _on_client_delete(self, client_id: int):
+        self._remove_worker(self._workers_by_client_id.get(client_id))
+
+    def _on_client_add(self, client_id: int):
+        self.add_client(db.session.query(db_client.Client).filter_by(id=client_id))
 
     def _add_worker(self, worker: ExchangeWorker):
         if worker not in self._workers:
             self._workers.append(worker)
             self._workers_by_client_id[worker.client.id] = worker
 
+            worker.set_trade_update_callback(
+                lambda worker, trade: self.messenger.pub_channel(Category.TRADE, sub=SubCategory.UPDATE, channel_id=worker.client_id, obj=trade.serialize())
+            )
+            worker.set_trade_callback(
+                lambda worker, trade: self.messenger.pub_channel(Category.TRADE, sub=SubCategory.NEW, channel_id=worker.client_id, obj=trade.serialize())
+            )
+            worker.set_balance_callback(
+                lambda worker, balance: self.messenger.pub_channel(Category.BALANCE, sub=SubCategory.NEW, channel_id=worker.client_id, obj=balance.serialize())
+            )
+
     def _remove_worker(self, worker: ExchangeWorker):
         if worker in self._workers:
             self._workers_by_client_id.pop(worker.client.id, None)
             self._workers.remove(worker)
             del worker
-
-    def delete_client(self, client: db_client.Client, commit=True):
-        self._remove_worker(self.get_worker(client, create_if_missing=False))
-        db.session.query(db_client.Client).filter_by(id=client.id).delete()
-        if commit:
-            db.session.commit()
 
     async def start_fetching(self):
         """
@@ -152,7 +166,13 @@ class UserManager(Singleton):
         results = []
         initial = None
 
-        for balance in client.history:
+        history = client.history.filter(
+            Balance.time > event.start, Balance.time < to
+        ).order_by(
+            asc(Balance.time)
+        ).all()
+
+        for balance in history:
             if since <= balance.time <= to:
                 if currency != '$':
                     balance = self.db_match_balance_currency(balance, currency)
@@ -190,7 +210,7 @@ class UserManager(Singleton):
 
         db.session.commit()
 
-        if len(client.history) == 0 and update_initial_balance:
+        if len(client.full_history) == 0 and update_initial_balance:
             client.rekt_on = None
             asyncio.create_task(self.get_client_balance(client, force_fetch=True))
 
@@ -218,16 +238,21 @@ class UserManager(Singleton):
             )
         results = await asyncio.gather(*tasks)
 
+        tasks = []
         for result in results:
             if isinstance(result, Balance):
                 client = db.session.query(db_client.Client).filter_by(id=result.client_id).first()
                 if client:
-                    history_len = len(client.history)
-                    latest_balance = None if history_len == 0 else client.history[history_len - 1]
+                    tasks.append(
+                        lambda: self.messenger.pub_channel(Category.BALANCE, SubCategory.NEW, channel_id=client.id, obj=result.id)
+                    )
+                    history = client.history.order_by(desc(Balance.time)).limit(3).all()
+                    history_len = len(history)
+                    latest_balance = None if history_len == 0 else history[history_len - 1]
                     if history_len > 2:
                         # If balance hasn't changed at all, why bother keeping it?
                         if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
-                                and math.isclose(client.history[history_len - 2].amount, result.amount, rel_tol=1e-06):
+                                and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
                             latest_balance.time = time
                             data.append(latest_balance)
                             continue
@@ -235,18 +260,19 @@ class UserManager(Singleton):
                         logging.error(f'Error while fetching {client.id=} balance: {result.error}')
                         if keep_errors:
                             data.append(result)
-
                     else:
                         client.history.append(result)
                         data.append(result)
                         if result.amount <= self.rekt_threshold and not client.rekt_on:
                             client.rekt_on = time
-                            if callable(self.on_rekt_callback):
-                                self.on_rekt_callback(client)
+                            self.messenger.pub_channel(Category.CLIENT, SubCategory.REKT, channel_id=client.id, obj={'id': client.id})
                 else:
                     logging.error(f'Worker with {result.client_id=} got no client object!')
 
         db.session.commit()
+
+        for task in tasks:
+            task()
 
         logging.info(f'Done Fetching')
         return data

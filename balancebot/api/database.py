@@ -1,14 +1,12 @@
+import asyncio
 from asyncio import current_task
 from flask_migrate import Migrate
 from sqlalchemy import create_engine, MetaData
 import dotenv
 import os
-import redis as r
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_
-from sqlalchemy.orm import relationship
-from flask import Flask
+import aioredis
 
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import sessionmaker, scoped_session, Session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession
 
@@ -23,10 +21,11 @@ engine = create_engine(
 #
 # session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-session = scoped_session(maker)
+session: Session = scoped_session(maker)
 
 async_maker = sessionmaker(_class=AsyncSession, autocommit=False, autoflush=False, bind=engine)
 async_session = async_scoped_session(async_maker, current_task)
+async_session = session
 
 Base = declarative_base()
 Meta = MetaData()
@@ -37,7 +36,10 @@ Meta = MetaData()
 
 migrate = Migrate()
 
-redis = r.Redis()
+redis = aioredis.Redis()
+
 
 if __name__ == '__main__':
-    print(async_session.commit)
+    print(asyncio.run(redis.get('test')))
+
+

@@ -1,6 +1,6 @@
-import aiohttp
 import uvicorn
 import asyncio
+import aiohttp
 
 from fastapi_jwt_auth.exceptions import AuthJWTException
 from starlette.responses import JSONResponse
@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 
 from balancebot.api.database import session
 
+from balancebot.api.dbmodels.alert import Alert
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
 from balancebot.api.database import Base, engine
@@ -19,6 +20,8 @@ import balancebot.api.routers.discordauth as discord
 import balancebot.api.routers.authentication as auth
 import balancebot.api.routers.client as client
 import balancebot.api.routers.label as label
+
+import balancebot.collector.collector as collector
 
 app = FastAPI(
     root_path='/api/v1'
@@ -170,17 +173,16 @@ def refresh(Authorize: AuthJWT = Depends(), user: User = Depends(current_user)):
 @app.on_event("startup")
 def on_start():
     from balancebot.bot import bot
-    from balancebot.collector.cointracker import CoinTracker
 
-    async def run():
+    async def run_all():
         async with aiohttp.ClientSession() as http_session:
             await asyncio.gather(
-                asyncio.create_task(bot.run(http_session)),
-                asyncio.create_task(CoinTracker().run(http_session))
+                bot.run(http_session),
+                collector.run(http_session)
             )
             print('done')
 
-    asyncio.create_task(run())
+    asyncio.create_task(run_all())
 
 
 if __name__ == '__main__':

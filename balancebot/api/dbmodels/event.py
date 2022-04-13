@@ -1,8 +1,6 @@
-import pytz
-
 from balancebot.common import utils
 import numpy
-from balancebot.models.gain import Gain
+from balancebot.common.models.gain import Gain
 from balancebot.api.dbmodels.archive import Archive
 from balancebot.api.dbmodels.serializer import Serializer
 from datetime import datetime
@@ -33,7 +31,7 @@ class Event(Base, Serializer):
     end = Column(DateTime, nullable=False)
     name = Column(String, nullable=False)
     description = Column(String, nullable=False)
-    pytz.timezone()
+
     registrations = relationship('Client', secondary=association, backref='events')
     archive = relationship('Archive', backref='event', uselist=False, cascade="all, delete")
 
@@ -78,7 +76,7 @@ class Event(Base, Serializer):
             return embed
 
         now = datetime.now()
-        gains = utils.calc_gains(self.registrations, self.guild_id, self.start, archived=now > self.end)
+        gains = utils.calc_gains(self.registrations, self.guild_id, self.start)
 
         def key(x: Gain):
             if x.client.rekt_on:

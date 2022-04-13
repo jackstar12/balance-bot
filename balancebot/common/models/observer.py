@@ -114,4 +114,4 @@ class Observable(object):
         :type new_state: A tuple of arbitrary content.
         """
         for observer in self._observers:
-            observer.update(new_state)
+            observer.update(*new_state)

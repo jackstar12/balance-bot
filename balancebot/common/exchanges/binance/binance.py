@@ -15,7 +15,7 @@ from typing import Dict
 from aiohttp import ClientResponse, ClientResponseError
 
 from balancebot.common import utils
-from balancebot.common.Exchanges.binance.futures_websocket_client import FuturesWebsocketClient
+from balancebot.common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from balancebot.api.settings import settings
 from balancebot.exchangeworker import ExchangeWorker
 import balancebot.api.dbmodels.balance as balance
@@ -111,7 +111,6 @@ class BinanceFutures(_BinanceBaseClient):
         json.dump(message, fp=sys.stdout, indent=3)
         if event == 'ORDER_TRADE_UPDATE':
             if data['X'] == 'FILLED':
-                json.dump(data, fp=sys.stdout, indent=3)
                 trade = Execution(
                     symbol=data['s'],
                     price=float(data['ap']) or float(data['p']),

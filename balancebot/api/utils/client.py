@@ -1,76 +1,169 @@
+import asyncio
+import msgpack
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, List
 
 import pytz
 
 import balancebot.common.utils as utils
+from balancebot.api.database import redis
 from balancebot.api.dbmodels.client import Client, get_client_query
 from balancebot.api.dbmodels.user import User
+from balancebot.api.models.websocket import WebsocketConfig
 
 
 def ratio(a: float, b: float):
     return round(a / (a + b), ndigits=3) if a + b > 0 else 0.5
 
 
-def create_cilent_data_serialized(client: Client, since_date: datetime, to_date: datetime, currency: str = None):
-    s = client.serialize(full=True, data=False)
+def update_dicts(*dicts: Dict, **kwargs):
+    for arg in dicts:
+        arg.update(kwargs)
 
-    if since_date is None:
-        since_date = datetime.fromtimestamp(0)
+
+def update_client_data_trades(cache: Dict, trades: List[Dict], config: WebsocketConfig, save_cache=True):
+
+    result = {}
+    new_trades = {}
+    existing_trades = cache['trades']
+    now = datetime.now(tz=pytz.utc)
+
+    winners, losers = cache.get('winners', 0), cache.get('losers', 0)
+    total_win, total_loss = cache.get('avg_win', 0.0) * winners, cache.get('avg_loss', 0.0) * losers
+
+    for trade in trades:
+        # Get existing entry
+        existing = existing_trades.get(trade['id'])
+        if trade['status'] == 'win':
+            winners += 1
+            total_win += trade['realized_pnl']
+        elif trade['status'] == 'loss':
+            losers += 1
+            total_loss += trade['realized_pnl']
+        update_dicts(
+            result, cache
+        )
+        new_trades[trade['id']] = existing_trades[trade['id']] = trade
+
+    update_dicts(result, trades=new_trades)
+
+    update_dicts(
+        result, cache,
+        winners=winners,
+        losers=losers,
+        avg_win=total_win / winners,
+        avg_loss=total_loss / losers,
+        win_ratio=ratio(winners, losers),
+        ts=now.timestamp()
+    )
+
+    if save_cache:
+        asyncio.create_task(set_cached_data(cache, config))
+
+    return result
+
+
+def update_client_data_balance(cache: Dict, client: Client, config: WebsocketConfig, save_cache=True) -> Dict:
+
+    cached_date = datetime.fromtimestamp(cache.get('ts', 0), tz=pytz.UTC)
+    now = datetime.now(tz=pytz.UTC)
+
+    if config.since:
+        since_date = max(config.since, cached_date)
+    else:
+        since_date = cached_date
+
+    result = {}
+
+    new_history = []
+    daily = utils.calc_daily(
+        client=client,
+        throw_exceptions=False,
+        since=since_date,
+        to=config.to,
+        now=now,
+        forEach=lambda balance: new_history.append(balance.serialize(full=True, data=True, currency=config.currency))
+    )
+    result['history'] = new_history
+    cache['history'] += new_history
+
+    winning_days, losing_days = cache.get('winning_days', 0), cache.get('losing_days', 0)
+    for day in daily:
+        if day.diff_absolute > 0:
+            winning_days += 1
+        elif day.diff_absolute < 0:
+            losing_days += 1
+    result['daily'] = daily
+
+    # When updating daily cache it's important to set the last day to the current day
+    daily_cache = cache.get('daily', [])
+    if daily:
+        if daily_cache and cached_date.weekday() == now.weekday():
+            daily_cache[len(daily_cache) - 1] = daily[0]
+            daily_cache += daily[1:]
+        else:
+            daily_cache += daily
+    cache['daily'] = daily_cache
+
+    update_dicts(
+        result, cache,
+        daily_win_ratio=ratio(winning_days, losing_days),
+        winning_days=winning_days,
+        losing_days=losing_days,
+        ts=now.timestamp()
+    )
+
+    if save_cache:
+        asyncio.create_task(set_cached_data(cache, config))
+
+    return result
+
+
+async def get_cached_data(config: WebsocketConfig):
+    redis_key = f'client:data:{config.id}:{config.since.timestamp() if config.since else None}:{config.to.timestamp() if config.to else None}:{config.currency}'
+    cached = await redis.get(redis_key)
+    if cached:
+        return msgpack.unpackb(cached, raw=False)
+
+
+async def set_cached_data(data: Dict, config: WebsocketConfig):
+    redis_key = f'client:data:{config.id}:{config.since.timestamp() if config.since else None}:{config.to.timestamp() if config.to else None}:{config.currency}'
+    await redis.set(redis_key, msgpack.packb(data))
+
+
+async def create_cilent_data_serialized(client: Client, config: WebsocketConfig):
+
+    cached = await get_cached_data(config)
+
+    if cached:
+        s = cached
+    else:
+        s = client.serialize(full=True, data=False)
+        s['trades'] = {}
+
+    cached_date = datetime.fromtimestamp(s.get('ts', 0), tz=pytz.UTC)
 
     now = datetime.now(tz=pytz.UTC)
 
-    if to_date is None:
-        to_date = now
+    if config.since:
+        since_date = max(config.since, cached_date)
+    else:
+        since_date = cached_date
 
+    to_date = config.to or now
     since_date = since_date.replace(tzinfo=pytz.UTC)
     to_date = to_date.replace(tzinfo=pytz.UTC)
 
-    if currency is None:
-        currency = '$'
+    if to_date > cached_date:
+        since_date = max(since_date, cached_date)
 
-    history = []
-    s['daily'] = utils.calc_daily(
-        client=client,
-        forEach=lambda balance: history.append(balance.serialize(full=True, data=True, currency=currency)),
-        throw_exceptions=False,
-        since=since_date,
-        to=to_date
-    )
-    s['history'] = history
+        update_client_data_balance(s, client, config, save_cache=False)
 
-    winning_days, losing_days = 0, 0
-    for day in s['daily']:
-        if day[2] > 0:
-            winning_days += 1
-        elif day[2] < 0:
-            losing_days += 1
+        trades = [trade.serialize(data=True) for trade in client.trades if since_date <= trade.initial.tz_time <= to_date]
+        update_client_data_trades(s, trades, config, save_cache=False)
 
-    s['daily_win_ratio'] = ratio(winning_days, losing_days)
-    s['winning_days'] = winning_days
-    s['losing_days'] = losing_days
-
-    trades = []
-    winners, losers = 0, 0
-    avg_win, avg_loss = 0.0, 0.0
-    for trade in client.trades:
-        if since_date <= trade.initial.tz_time <= to_date:
-            trade = trade.serialize(data=True)
-            if trade['status'] == 'win':
-                winners += 1
-                avg_win += trade['realized_pnl']
-            elif trade['status'] == 'loss':
-                losers += 1
-                avg_loss += trade['realized_pnl']
-            trades.append(trade)
-
-    s['trades'] = trades
-    s['win_ratio'] = ratio(winners, losers)
-    s['winners'] = winners
-    s['losers'] = losers
-    s['avg_win'] = avg_win / (winners or 1)
-    s['avg_loss'] = avg_loss / (losers or 1)
-    s['action'] = 'NEW'
+        s['ts'] = now.timestamp()
+        asyncio.create_task(set_cached_data(s, config))
 
     return s
 

@@ -1,4 +1,7 @@
+from datetime import datetime
+
 from sqlalchemy.inspection import inspect
+from sqlalchemy.orm.dynamic import AppenderQuery
 
 
 class Serializer:
@@ -21,6 +24,13 @@ class Serializer:
                             v = getattr(self, k)
                             if issubclass(type(v), list):
                                 v = Serializer.serialize_list(v, data=data, full=full, *args, **kwargs)
+                            elif isinstance(v, AppenderQuery):
+                                if data:
+                                    v = v.all()
+                                else:
+                                    v = []
+                            elif isinstance(v, datetime):
+                                v = v.timestamp()
                             elif issubclass(type(v), Serializer):
                                 if full:
                                     v = v.serialize(full=full, data=data, *args, **kwargs)

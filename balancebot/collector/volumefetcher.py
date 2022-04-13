@@ -1,11 +1,11 @@
 import asyncio
 from datetime import datetime, timedelta
 from collections import deque
-from balancebot.models.coin import Coin
-from balancebot.models.volumeratio import VolumeRatio
+from balancebot.common.models.coin import Coin
+from balancebot.common.models.volumeratio import VolumeRatio
 from typing import Dict, List
 
-from balancebot.models.singleton import Singleton
+from balancebot.common.models.singleton import Singleton
 import aiohttp
 
 

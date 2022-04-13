@@ -8,7 +8,7 @@ from typing import DefaultDict, Deque, List, Dict
 from gevent.event import Event
 
 from balancebot.common import utils
-from balancebot.models.async_websocket_manager import WebsocketManager
+from balancebot.common.models.async_websocket_manager import WebsocketManager
 
 
 class FtxWebsocketClient(WebsocketManager):
@@ -53,7 +53,7 @@ class FtxWebsocketClient(WebsocketManager):
         self._logged_in = True
 
     async def _subscribe(self, subscription: Dict) -> None:
-        await self.send_json({'op': 'subscribe', **subscription})
+        res = await self.send_json({'op': 'subscribe', **subscription})
         self._subscriptions.append(subscription)
 
     async def _unsubscribe(self, subscription: Dict) -> None:
@@ -79,6 +79,12 @@ class FtxWebsocketClient(WebsocketManager):
 
     async def get_ticker(self, market: str) -> Dict:
         subscription = {'channel': 'ticker', 'market': market}
+        if subscription not in self._subscriptions:
+            await self._subscribe(subscription)
+        return self._tickers[market]
+
+    async def get_trades(self, market: str) -> Dict:
+        subscription = {'channel': 'trades', 'market': market}
         if subscription not in self._subscriptions:
             await self._subscribe(subscription)
         return self._tickers[market]

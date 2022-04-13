@@ -1,40 +1,63 @@
 from datetime import datetime
 from typing import List, Deque, Optional
 from dataclasses import dataclass
+
+from sqlalchemy import Column, Integer, Float, String, Enum, ForeignKey, DateTime
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import relationship
+from sqlalchemy.orm.dynamic import AppenderQuery
+
 from balancebot.api.database import *
+from balancebot.common.enums import TimeFrame
 
 
 class OI(Base):
+    __tablename__ = 'oi'
+
     id = Column(Integer, nullable=False, primary_key=True)
-    time: Column(DateTime, nullable=False)
-    value: Column(Float, nullable=False)
+    coin_id = Column(Integer, ForeignKey('coin.id', ondelete='CASCADE'), nullable=False)
+
+    time = Column(DateTime, nullable=False)
+    value = Column(Float, nullable=False)
+    tf = Column(Enum(TimeFrame), nullable=True)
 
 
 class Volume(Base):
+    __tablename__ = 'volume'
+
     id = Column(Integer, nullable=False, primary_key=True)
-    time: Column(DateTime, nullable=False)
-    spot: Column(Float, nullable=False)
-    perp: Column(Float, nullable=False)
-    ratio_data: Optional[List[float]]
-    avg_ratio: Optional[float]
+    coin_id = Column(Integer, ForeignKey('coin.id', ondelete='CASCADE'), nullable=False)
+
+    time = Column(DateTime, nullable=False)
+    spot_buy = Column(Float, nullable=False)
+    spot_sell = Column(Float, nullable=False)
+    perp_buy = Column(Float, nullable=False)
+    perp_sell = Column(Float, nullable=False)
+    tf = Column(Enum(TimeFrame), nullable=True)
 
 
-@dataclass
-class VolumeHistory:
-    spot_data: Optional[Deque[float]]
-    perp_data: Optional[Deque[float]]
-    ratio_data: Optional[List[float]]
-    avg_ratio: Optional[float]
+class Coin(Base):
+    __tablename__ = 'coin'
 
+    id = Column(Integer, nullable=False, primary_key=True)
+    name: str = Column(String, nullable=False)
+    exchange: str = Column(String, nullable=True)
 
-@dataclass
-class Coin:
-    coin_name: str
-    spot_ticker: str
-    perp_ticker: str
+    volume_history: AppenderQuery = relationship(
+        'Volume', lazy='dynamic', cascade='all, delete', backref='coin',
+    )
+    oi_history: AppenderQuery = relationship(
+        'OI', lazy='dynamic', cascade='all, delete', backref='coin',
+    )
 
-    # Volume Data
-    volume_history: VolumeHistory
+    @hybrid_property
+    def perp_ticker(self):
+        return f'{self.name}-PERP'
 
-    # OI Data
-    open_interest_data: Optional[Deque[OI]]
+    @hybrid_property
+    def spot_ticker(self):
+        return f'{self.name}/USD'
+
+    def __hash__(self):
+        return self.id.__hash__()
+

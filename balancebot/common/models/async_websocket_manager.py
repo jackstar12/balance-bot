@@ -35,7 +35,7 @@ class WebsocketManager:
     async def connect(self):
         if self.connected:
             return
-        asyncio.create_task(self._async_connect())
+        asyncio.create_task(self._run())
 
         ts = time.time()
         while not self.connected:
@@ -48,7 +48,7 @@ class WebsocketManager:
     def connected(self):
         return self._ws and not self._ws.closed
 
-    async def _async_connect(self):
+    async def _run(self):
         async with self._session.ws_connect(self._get_url(), autoping=True) as ws:
             self._ws = ws
             async for msg in ws:
@@ -61,9 +61,11 @@ class WebsocketManager:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     await self._callback(self._on_message, ws, msg.data)
                 if msg.type == aiohttp.WSMsgType.ERROR:
-                    await self._callback(self._on_close, ws)
+                    logging.info(f'DISCONNECTED {self=}')
+                    await self._callback(self._on_error, ws)
                     break
                 if msg.type == aiohttp.WSMsgType.CLOSED:
+                    logging.info(f'DISCONNECTED {self=}')
                     await self._callback(self._on_close, ws)
                     break
 

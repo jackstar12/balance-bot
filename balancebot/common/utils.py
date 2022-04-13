@@ -19,19 +19,20 @@ from discord_slash import SlashCommand, ComponentContext
 from datetime import datetime, timedelta
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any
 
+from sqlalchemy import asc
 
 import balancebot.api.dbmodels.event as event
 from balancebot.api.database import session
 from balancebot.common.errors import UserInputError, InternalError
-from balancebot.models.daily import Daily
-from balancebot.models.gain import Gain
+from balancebot.common.models.daily import Daily
+from balancebot.common.models.gain import Gain
 from balancebot.collector.usermanager import UserManager
 from balancebot.api.dbmodels.client import Client
 from balancebot.api import dbutils
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.balance import Balance
 from balancebot.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
-from balancebot.models.selectionoption import SelectionOption
+from balancebot.common.models.selectionoption import SelectionOption
 
 
 def admin_only(coro, cog=True):
@@ -107,6 +108,7 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
     - InternalErrors
     - Any other type of exceptions
 
+    :param type:
     :param log_args: whether the args passed in should be logged (e.g. disabled when sensitive data is passed).
     :return:
     """
@@ -256,47 +258,58 @@ def calc_daily(client: Client,
                forEach: Callable[[Balance], Any] = None,
                throw_exceptions=True,
                since: datetime = None,
-               to: datetime = None) -> Union[List[Daily], str]:
+               to: datetime = None,
+               now: datetime = None) -> Union[List[Daily], str]:
     """
     Calculates daily balance changes for a given client.
+    :param since:
+    :param to:
     :param throw_exceptions:
     :param forEach: function to be performed for each balance
     :param client: Client to calculate changes
     :param amount: Amount of days to calculate
     :param guild_id:
     :param currency: Currency that will be used
-    :param string: Whether the created table should be stored as a string using prettytable or as an array containing each row as a Tuple of the Cols
+    :param string: Whether the created table should be stored as a string using prettytable or as a list of
     :return:
     """
-    if len(client.history) == 0:
-        if throw_exceptions:
-            raise UserInputError(reason='Got no data for this user')
-        else:
-            return []
 
     if currency is None:
         currency = '$'
 
+    if now is None:
+        now = datetime.now(tz=pytz.UTC)
+
     if since is None:
         since = datetime.fromtimestamp(0)
-
-    now = datetime.now(tz=pytz.UTC)
 
     if to is None:
         to = now
 
-    since = since.replace(tzinfo=pytz.UTC)
+    since = since.replace(tzinfo=pytz.UTC).replace(hour=0, minute=0, second=0)
     to = to.replace(tzinfo=pytz.UTC)
 
     daily_end = min(now, to)
+
+    history = client.history.filter(
+        Balance.time > since, Balance.time < now
+    ).order_by(
+        asc(Balance.time)
+    ).all()
+
+    if len(history) == 0:
+        if throw_exceptions:
+            raise UserInputError(reason='Got no data for this user')
+        else:
+            return "" if string else []
 
     if amount:
         try:
             daily_start = daily_end - timedelta(days=amount - 1)
         except OverflowError:
-            raise ValueError('Invalid daily amount given')
+            raise UserInputError('Invalid daily amount given')
     else:
-        daily_start = client.history[0].time
+        daily_start = history[0].time
 
     daily_start = daily_start.replace(tzinfo=pytz.UTC)
     daily_start = max(since, daily_start).replace(hour=0, minute=0, second=0)
@@ -310,8 +323,8 @@ def calc_daily(client: Client,
 
     current_day = daily_start
     current_search = daily_start + timedelta(days=1)
-    prev_balance = um.db_match_balance_currency(client.history[0], currency)
-    prev_daily = client.history[0]
+    prev_balance = um.db_match_balance_currency(history[0], currency)
+    prev_daily = history[0]
     prev_daily.time = prev_daily.time.replace(hour=0, minute=0, second=0)
 
     if string:
@@ -320,7 +333,7 @@ def calc_daily(client: Client,
         )
     else:
         results = []
-    for balance in client.history:
+    for balance in history:
         if since <= balance.tz_time <= to:
             if balance.tz_time >= current_search:
 
@@ -328,7 +341,7 @@ def calc_daily(client: Client,
                 daily.time = daily.time.replace(minute=0, second=0)
                 prev_daily = prev_daily or daily
                 values = Daily(
-                    current_day.strftime('%Y-%m-%d') if string else current_day,
+                    current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
                     daily.amount,
                     round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
                     calc_percentage(prev_daily.amount, daily.amount, string=False)
@@ -346,7 +359,7 @@ def calc_daily(client: Client,
 
     if prev_balance.tz_time < current_search:
         values = Daily(
-            current_day.strftime('%Y-%m-%d') if string else current_day,
+            current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
             prev_balance.amount,
             round(prev_balance.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
             calc_percentage(prev_daily.amount, prev_balance.amount, string=False)

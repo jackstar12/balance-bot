@@ -1,5 +1,5 @@
-from typing import NamedTuple, List
 from datetime import datetime
+from typing import NamedTuple
 
 
 class VolumeRatio(NamedTuple):

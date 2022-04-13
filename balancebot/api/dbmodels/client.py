@@ -1,6 +1,6 @@
 from typing import List, Optional
 import discord
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc
 from sqlalchemy.orm import relationship
 
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -9,6 +9,7 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
+from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dbmodels.user import User
 import balancebot.bot.config as config
@@ -43,14 +44,18 @@ class Client(Base, Serializer):
     rekt_on = Column(DateTime, nullable=True)
     trades = relationship('Trade', backref='client', lazy=True, cascade="all, delete")
     history = relationship('Balance', backref='client',
-                           cascade="all, delete", lazy=True, order_by='Balance.time')
+                           cascade="all, delete", lazy='dynamic', order_by='Balance.time')
 
     required_extra_args: List[str] = []
 
     @hybrid_property
+    def full_history(self):
+        return self.history.all()
+
+    @hybrid_property
     def latest(self):
         try:
-            return self.history[len(self.history) - 1]
+            return self.history.order_by(desc(Balance.time)).first()
         except ValueError:
             return None
 
@@ -65,7 +70,7 @@ class Client(Base, Serializer):
     @hybrid_property
     def initial(self):
         try:
-            return self.history[0]
+            return self.history.order_by(asc(Balance.time)).first()
         except ValueError:
             return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
@@ -94,8 +99,9 @@ class Client(Base, Serializer):
         for extra in self.extra_kwargs:
             embed.add_field(name=extra, value=self.extra_kwargs[extra])
 
-        if len(self.history) > 0:
-            embed.add_field(name='Initial Balance', value=self.history[0].to_string())
+        initial = self.initial
+        if initial:
+            embed.add_field(name='Initial Balance', value=self.initial.to_string())
 
         return embed
 

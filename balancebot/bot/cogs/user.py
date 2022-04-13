@@ -21,7 +21,7 @@ class UserCog(CogBase):
 
         def confirm_delete(ctx):
             for client in user.clients:
-                self.user_manager.delete_client(client, commit=False)
+                dbutils.delete_client(client, self.messenger, commit=False)
             session.query(DiscordUser).filter_by(id=user.id).delete()
             session.commit()
 

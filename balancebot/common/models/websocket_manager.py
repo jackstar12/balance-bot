@@ -1,7 +1,6 @@
 import json
 import time
 from threading import Thread, Lock
-import threading
 
 from websocket import WebSocketApp
 

@@ -66,9 +66,6 @@ class ExchangeWorker:
             if not balance.time:
                 balance.time = time
             balance.client_id = self.client_id
-            asyncio.create_task(
-                utils.call_unknown_function(self._on_balance, self, balance)
-            )
             return balance
         elif self.client.rekt_on:
             return Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
@@ -199,10 +196,7 @@ class ExchangeWorker:
                             self.in_position = False
                     else:
                         active_trade.open_qty -= execution.qty
-                    realized_qty = active_trade.qty - active_trade.open_qty
-
-                    active_trade.realized_pnl = (active_trade.exit * realized_qty - active_trade.entry * realized_qty) \
-                                                * (1 if active_trade.initial.side == 'BUY' else -1)
+                    active_trade.realized_pnl = active_trade.calc_rpnl()
             asyncio.create_task(
                 utils.call_unknown_function(self._on_update_trade, self, active_trade)
             )
