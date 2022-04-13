@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 
 from fastapi_jwt_auth.exceptions import AuthJWTException
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import JSONResponse
 
 from fastapi import Depends
@@ -11,7 +12,6 @@ from fastapi import FastAPI, Request
 
 from balancebot.api.database import session
 
-from balancebot.api.dbmodels.alert import Alert
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
 from balancebot.api.database import Base, engine
@@ -26,6 +26,8 @@ import balancebot.collector.collector as collector
 app = FastAPI(
     root_path='/api/v1'
 )
+
+app.add_middleware(SessionMiddleware, secret_key='SECRET')
 
 Base.metadata.create_all(bind=engine)
 

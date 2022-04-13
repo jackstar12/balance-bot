@@ -70,7 +70,8 @@ class Client(Base, Serializer):
     @hybrid_property
     def initial(self):
         try:
-            return self.history.order_by(asc(Balance.time)).first()
+            if self.id:
+                return self.history.order_by(asc(Balance.time)).first()
         except ValueError:
             return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
@@ -101,7 +102,7 @@ class Client(Base, Serializer):
 
         initial = self.initial
         if initial:
-            embed.add_field(name='Initial Balance', value=self.initial.to_string())
+            embed.add_field(name='Initial Balance', value=initial.to_string())
 
         return embed
 

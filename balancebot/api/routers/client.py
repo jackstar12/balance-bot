@@ -237,7 +237,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
     async def update_client(old: Client, new: Client):
 
         unsub_client(old)
-        await send_client_snapshot(new, type='intial', channel='client')
+        await send_client_snapshot(new, type='initial', channel='client')
 
         async def send_json_message(json: Dict):
             await websocket.send_json(
@@ -322,6 +322,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
             elif msg.type == 'update':
                 if msg.channel == 'config':
                     config = WebsocketConfig(**msg.data)
+                    logging.info(config)
                     new_client = get_user_client(user, config.id)
                     if not new_client:
                         await websocket.send_json(create_ws_message(

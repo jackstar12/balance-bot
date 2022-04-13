@@ -171,6 +171,7 @@ class CoinTracker(Singleton, Observer):
                     current_volume.spot_sell += trade.size
 
             if trade.time.minute != current_volume.time.minute:
+                # TODO: avoid database spikes by smoothing / gathering volumes for commiting
                 async_session.add(current_volume)
                 async_session.commit()
                 self._current_coin_volume.pop(coin)

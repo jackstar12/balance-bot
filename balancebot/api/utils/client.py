@@ -51,8 +51,8 @@ def update_client_data_trades(cache: Dict, trades: List[Dict], config: Websocket
         result, cache,
         winners=winners,
         losers=losers,
-        avg_win=total_win / winners,
-        avg_loss=total_loss / losers,
+        avg_win=total_win / winners if winners else 1,
+        avg_loss=total_loss / losers if losers else 1,
         win_ratio=ratio(winners, losers),
         ts=now.timestamp()
     )
