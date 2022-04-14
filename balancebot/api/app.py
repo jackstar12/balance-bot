@@ -28,13 +28,12 @@ app = FastAPI(
 )
 
 app.add_middleware(SessionMiddleware, secret_key='SECRET')
-
-Base.metadata.create_all(bind=engine)
-
 app.include_router(discord.router, prefix='/api/v1')
 app.include_router(auth.router, prefix='/api/v1')
 app.include_router(client.router, prefix='/api/v1')
 app.include_router(label.router, prefix='/api/v1')
+
+Base.metadata.create_all(bind=engine)
 
 
 @AuthJWT.load_config

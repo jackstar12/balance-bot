@@ -4,6 +4,7 @@ from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, Pic
 from sqlalchemy.orm import relationship
 
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm.dynamic import AppenderQuery
 from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType, FernetEngine
 
 import os
@@ -42,8 +43,8 @@ class Client(Base, Serializer):
     # Data
     name = Column(String, nullable=True)
     rekt_on = Column(DateTime, nullable=True)
-    trades = relationship('Trade', backref='client', lazy=True, cascade="all, delete")
-    history = relationship('Balance', backref='client',
+    trades: AppenderQuery = relationship('Trade', backref='client', lazy=True, cascade="all, delete")
+    history: AppenderQuery = relationship('Balance', backref='client',
                            cascade="all, delete", lazy='dynamic', order_by='Balance.time')
 
     required_extra_args: List[str] = []
@@ -55,7 +56,7 @@ class Client(Base, Serializer):
     @hybrid_property
     def latest(self):
         try:
-            return self.history.order_by(desc(Balance.time)).first()
+            return self.history.order_by(None).order_by(desc(Balance.time)).first()
         except ValueError:
             return None
 

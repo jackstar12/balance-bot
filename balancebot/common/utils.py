@@ -426,7 +426,7 @@ async def create_leaderboard(dc_client: discord.Client,
                 users_rekt.append(client)
                 continue
             balance = client.latest
-            if balance and (event and balance.time > event.start):
+            if balance and not (event and balance.time < event.start):
                 if balance.amount > REKT_THRESHOLD:
                     user_scores.append((client, balance.amount))
                     value_strings[client] = balance.to_string(display_extras=False)
