@@ -18,6 +18,7 @@ class Category(Enum):
     ALERT = "alert"
     BALANCE = "balance"
     TRADE = "trade"
+    EVENT = "event"
     COIN_STATS = "coinstats"
 
 

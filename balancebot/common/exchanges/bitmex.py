@@ -1,12 +1,13 @@
 import hmac
 
 from aiohttp import ClientResponse, ClientResponseError
-from balancebot.api.dbmodels.balance import Balance
 import urllib.parse
 import time
 import logging
 from datetime import datetime
 from balancebot.exchangeworker import ExchangeWorker
+
+import balancebot.api.dbmodels.balance as db_balance
 
 
 class BitmexClient(ExchangeWorker):
@@ -51,21 +52,21 @@ class BitmexClient(ExchangeWorker):
                         price = response_price[0]['price']
                 if 'XBT' in symbol:
                     # XBT amount is given in Sats (100 Million Sats = 1BTC)
-                    amount *= 10**-8
+                    amount *= 10 ** -8
                 # BITMEX WHY ???
                 elif 'USDT' in symbol:
-                    amount *= 10**-6
+                    amount *= 10 ** -6
                 elif 'GWEI' in symbol or 'ETH' in symbol:
-                    amount *= 10**-9
+                    amount *= 10 ** -9
                 extra_currencies[symbol] = amount
                 total_balance += amount * price
         else:
             err_msg = response['error']
 
-        return Balance(amount=total_balance,
-                       currency='$',
-                       extra_currencies=extra_currencies,
-                       error=err_msg)
+        return db_balance.Balance(amount=total_balance,
+                                  currency='$',
+                                  extra_currencies=extra_currencies,
+                                  error=err_msg)
 
     # https://www.bitmex.com/app/apiKeysUsage
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):

@@ -17,7 +17,7 @@ class OI(Base):
     id = Column(Integer, nullable=False, primary_key=True)
     coin_id = Column(Integer, ForeignKey('coin.id', ondelete='CASCADE'), nullable=False)
 
-    time = Column(DateTime, nullable=False)
+    time = Column(DateTime(timezone=True), nullable=False)
     value = Column(Float, nullable=False)
     tf = Column(Enum(TimeFrame), nullable=True)
 
@@ -28,7 +28,7 @@ class Volume(Base):
     id = Column(Integer, nullable=False, primary_key=True)
     coin_id = Column(Integer, ForeignKey('coin.id', ondelete='CASCADE'), nullable=False)
 
-    time = Column(DateTime, nullable=False)
+    time = Column(DateTime(timezone=True), nullable=False)
     spot_buy = Column(Float, nullable=False)
     spot_sell = Column(Float, nullable=False)
     perp_buy = Column(Float, nullable=False)

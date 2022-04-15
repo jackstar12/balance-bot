@@ -21,3 +21,8 @@ class TimeFrame(Enum):
     D = 6
     W = 7
     M = 8
+
+
+class Tier(Enum):
+    BASE = 1
+    PREMIUM = 2

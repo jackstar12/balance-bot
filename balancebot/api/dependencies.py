@@ -8,8 +8,8 @@ from balancebot.api.dbmodels.user import User
 
 
 def current_user(Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
     if not settings.testing:
-        Authorize.jwt_required()
         user = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
     else:
         user = session.query(User).first()

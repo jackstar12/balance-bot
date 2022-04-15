@@ -23,12 +23,12 @@ class Event(Base, Serializer):
     __serializer_forbidden__ = ['archive']
 
     id = Column(Integer, primary_key=True)
-    guild_id = Column(BigInteger, nullable=False)
+    guild_id = Column(BigInteger, ForeignKey('guild.id', ondelete='SET NULL'), nullable=False)
     channel_id = Column(BigInteger, nullable=False)
-    registration_start = Column(DateTime, nullable=False)
-    registration_end = Column(DateTime, nullable=False)
-    start = Column(DateTime, nullable=False)
-    end = Column(DateTime, nullable=False)
+    registration_start = Column(DateTime(timezone=True), nullable=False)
+    registration_end = Column(DateTime(timezone=True), nullable=False)
+    start = Column(DateTime(timezone=True), nullable=False)
+    end = Column(DateTime(timezone=True), nullable=False)
     name = Column(String, nullable=False)
     description = Column(String, nullable=False)
 
@@ -40,8 +40,8 @@ class Event(Base, Serializer):
         return self.start <= datetime.now() <= self.end
 
     @hybrid_property
-    def is_free_for_registration(self):
-        return self.registration_start <= datetime.now() <= self.registration_end
+    def is_free_for_registration(self, now: datetime = None):
+        return self.registration_start <= (now or datetime.utcnow()) <= self.registration_end
 
     @hybrid_property
     def is_archived(self):

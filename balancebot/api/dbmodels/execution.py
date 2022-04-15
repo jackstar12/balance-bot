@@ -15,7 +15,7 @@ class Execution(Base, Serializer):
     price = Column(Float, nullable=False)
     qty = Column(Float, nullable=False)
     side = Column(String, nullable=False)
-    time = Column(DateTime, nullable=False)
+    time = Column(DateTime(timezone=True), nullable=False)
     type = Column(String, nullable=True)
 
     @hybrid_property

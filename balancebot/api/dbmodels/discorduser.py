@@ -15,7 +15,7 @@ class DiscordUser(Base, Serializer):
     __serializer_forbidden__ = ['global_client']
 
     id = Column(Integer(), primary_key=True)
-    user_id = Column(BigInteger(), nullable=False)
+    user_id = Column(BigInteger(), nullable=False, primary_key=True)
     name = Column(String(), nullable=True)
     user = relationship('User', backref='discorduser', lazy=True, uselist=False)
     avatar = Column(String(), nullable=True)

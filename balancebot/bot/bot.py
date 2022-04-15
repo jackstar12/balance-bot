@@ -17,11 +17,14 @@ from discord_slash.utils.manage_commands import create_choice
 
 from balancebot.api.database import session
 from balancebot.api.dbmodels.client import Client
+from balancebot.api.dbmodels.discorduser import DiscordUser
+from balancebot.api.dbmodels.guild import Guild
 from balancebot.bot.config import *
 from balancebot.bot.cogs import *
 from balancebot.bot.eventmanager import EventManager
 from balancebot.collector.services.alertservice import AlertService
 from balancebot.collector.usermanager import UserManager
+from balancebot.common.enums import Tier
 from balancebot.common.messenger import Messenger, Category, SubCategory
 
 intents = discord.Intents().default()
@@ -37,6 +40,23 @@ async def on_ready():
     user_manager.synch_workers()
     event_manager.initialize_events()
     asyncio.create_task(user_manager.start_fetching())
+
+    db_guilds_by_id = {db_guild.id: db_guild for db_guild in session.query(Guild).all()}
+    discord_users = session.query(DiscordUser).all()
+
+    # Make sure database entries for guilds are up-to-date
+    for guild in bot.guilds:
+        db_guild = db_guilds_by_id.get(guild.id)
+        if not db_guild:
+            db_guild = Guild(id=guild.id, name=guild.name, tier=Tier.BASE)
+            session.add(db_guild)
+        if db_guild.name != guild.name:
+            db_guild.name = guild.name
+        for discord_user in discord_users:
+            if guild.get_member(discord_user.user_id) and db_guild not in discord_user.guilds:
+                discord_user.guilds.append(db_guild)
+
+    session.commit()
 
     logging.info('Bot Ready')
     print('Bot Ready')
@@ -55,19 +75,66 @@ async def on_ready():
 
 
 @bot.event
-async def on_guild_join(guild: discord.Guild):
-    commands = [slash.commands['register'], slash.commands['unregister'], slash.commands['clear']]
+async def on_guild_update(before: discord.Guild, after: discord.Guild):
+    if before.name != after.name:
+        db_guild = session.query(Guild).filter_by(id=after.id).first()
+        if db_guild:
+            db_guild.name = after.name
+            session.commit()
 
-    for command in commands:
-        for option in command.options:
-            if option['name'] == 'guild':
-                option['choices'].append(
-                    create_choice(
-                        name=guild.name,
-                        value=guild.id
-                    )
-                )
-    await slash.sync_all_commands(delete_from_unused_guilds=True)
+
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    db_guild = Guild(
+        id=guild.id,
+        tier=Tier.BASE,
+        name=guild.name
+    )
+
+    session.add(db_guild)
+
+    discord_users = session.query(DiscordUser).all()
+    for discord_user in discord_users:
+        member = guild.get_member(discord_user.user_id)
+        if member:
+            discord_user.guilds.append(db_guild)
+
+    session.commit()
+
+    # commands = [slash.commands['register'], slash.commands['unregister'], slash.commands['clear']]
+    # for command in commands:
+    #    for option in command.options:
+    #        if option['name'] == 'guild':
+    #            option['choices'].append(
+    #                create_choice(
+    #                    name=guild.name,
+    #                    value=guild.id
+    #                )
+    #            )
+    # await slash.sync_all_commands(delete_from_unused_guilds=True)
+
+
+@bot.event
+async def on_guild_leave(guild: discord.Guild):
+    db_guild: Guild = session.query(Guild).filter_by(id=guild.id).first()
+
+    if db_guild:
+        for discord_user in db_guild.users:
+            discord_user.guilds.remove(db_guild)
+            if len(discord_user.guilds) == 0:
+                # Delete?
+                pass
+    session.commit()
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    pass
+
+
+@bot.event
+async def on_member_leave(member: discord.Member):
+    pass
 
 
 async def on_rekt_async(data: Dict):

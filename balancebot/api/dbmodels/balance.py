@@ -6,7 +6,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from balancebot.api.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType
 
-from balancebot.bot import config
+import balancebot.bot.config as config
 from balancebot.api.dbmodels.serializer import Serializer
 
 
@@ -16,7 +16,7 @@ class Balance(Base, Serializer):
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
-    time: DateTime = Column(DateTime, nullable=False)
+    time: DateTime = Column(DateTime(timezone=True), nullable=False)
     amount = Column(Float, nullable=False)
     currency = Column(String, nullable=False)
     error = Column(String, nullable=True)

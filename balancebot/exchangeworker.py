@@ -14,10 +14,10 @@ from typing import NamedTuple
 import balancebot.api.database as db
 import balancebot.common.utils as utils
 from balancebot.api.dbmodels.execution import Execution
-from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution
 import balancebot.collector.usermanager as um
 
+import balancebot.api.dbmodels.balance as db_balance
 
 if TYPE_CHECKING:
     from balancebot.api.dbmodels.client import Client
@@ -68,7 +68,7 @@ class ExchangeWorker:
             balance.client_id = self.client_id
             return balance
         elif self.client.rekt_on:
-            return Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
+            return db_balance.Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
         else:
             return None
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm.dynamic import AppenderQuery
 class Serializer:
     __serializer_anti_recursion__ = False
     __serializer_forbidden__ = []
+    __serializer_data_forbidden__ = []
 
     def is_data(self):
         return False
@@ -20,7 +21,8 @@ class Serializer:
                 if data or not self.is_data():
                     s = {}
                     for k in inspect(self).attrs.keys():
-                        if k not in self.__serializer_forbidden__:
+                        forbidden = self.__serializer_data_forbidden__ if data else self.__serializer_forbidden__
+                        if k not in forbidden:
                             v = getattr(self, k)
                             if issubclass(type(v), list):
                                 v = Serializer.serialize_list(v, data=data, full=full, *args, **kwargs)

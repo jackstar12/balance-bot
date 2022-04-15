@@ -1,7 +1,8 @@
 from typing import List, Optional
 import discord
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc, \
+    Boolean
+from sqlalchemy.orm import relationship, Query
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -26,6 +27,7 @@ assert _key, 'Missing ENCRYPTION_SECRET in env'
 class Client(Base, Serializer):
     __tablename__ = 'client'
     __serializer_forbidden__ = ['api_secret']
+    __serializer_data_forbidden__ = ['api_secret', 'discorduser']
 
     # Identification
     id = Column(Integer, primary_key=True)
@@ -34,7 +36,6 @@ class Client(Base, Serializer):
 
     # User Information
     api_key = Column(String(), nullable=False)
-    # api_secret = Column(String(), nullable=False)
     api_secret = Column(StringEncryptedType(String(), _key.encode('utf-8'), FernetEngine), nullable=False)
     exchange = Column(String, nullable=False)
     subaccount = Column(String, nullable=True)
@@ -42,10 +43,11 @@ class Client(Base, Serializer):
 
     # Data
     name = Column(String, nullable=True)
-    rekt_on = Column(DateTime, nullable=True)
+    rekt_on = Column(DateTime(timezone=True), nullable=True)
     trades: AppenderQuery = relationship('Trade', backref='client', lazy=True, cascade="all, delete")
     history: AppenderQuery = relationship('Balance', backref='client',
-                           cascade="all, delete", lazy='dynamic', order_by='Balance.time')
+                                          cascade="all, delete", lazy='dynamic', order_by='Balance.time')
+    archived = Column(Boolean, nullable=True)
 
     required_extra_args: List[str] = []
 
@@ -108,7 +110,7 @@ class Client(Base, Serializer):
         return embed
 
 
-def get_client_query(user: User, client_id: int):
+def get_client_query(user: User, client_id: int) -> Query:
     user_checks = [Client.user_id == user.id]
     if user.discorduser:
         user_checks.append(Client.discord_user_id == user.discorduser.id)

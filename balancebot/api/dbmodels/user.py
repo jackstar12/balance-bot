@@ -17,6 +17,13 @@ class User(Base, Serializer):
     discord_user_id = Column(Integer(), ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
 
     # Data
-    clients = relationship('Client', backref='user', lazy=True, cascade="all, delete")
+    #main_client_id = Column(Integer, ForeignKey('client.id', ondelete="SET NULL"), nullable=True)
+    #main_client = relationship('Client',
+    #                           lazy=True,
+    #                           cascade="all, delete",
+    #                           foreign_keys=main_client_id,
+    #                           post_update=True,
+    #                           uselist=False)
+    clients = relationship('Client', backref='user', lazy=True, cascade="all, delete", foreign_keys="[Client.user_id]")
     labels = relationship('Label', backref='client', lazy=True, cascade="all, delete")
     alerts = relationship('Alert', backref='user', lazy=True, cascade="all, delete")

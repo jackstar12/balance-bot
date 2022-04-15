@@ -20,6 +20,7 @@ import balancebot.api.routers.discordauth as discord
 import balancebot.api.routers.authentication as auth
 import balancebot.api.routers.client as client
 import balancebot.api.routers.label as label
+from balancebot.api.dbmodels.guild import Guild
 
 import balancebot.collector.collector as collector
 

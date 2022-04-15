@@ -1,17 +1,21 @@
 import logging
 from datetime import datetime
 from http import HTTPStatus
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 import aiohttp
 import jwt
 import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
+from fastapi_jwt_auth import AuthJWT
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import or_
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
+from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody
 from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
+from balancebot.api.utils.responses import BadRequest, InternalError, OK
 from balancebot.common import utils
 from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dependencies import current_user
@@ -22,6 +26,7 @@ from balancebot.api.settings import settings
 from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
 from balancebot.common.messenger import Messenger, Category, SubCategory
+import balancebot.api.dbmodels.event as db_event
 
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.bot.config import EXCHANGES
@@ -37,69 +42,69 @@ router = APIRouter(
 )
 
 
-class RegisterBody(BaseModel):
-    exchange: str
-    api_key: str
-    api_secret: str
-    subaccount: str
-    kwargs: Dict
+def validate_kwargs(kwargs: Dict, required: List[str]):
+    return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
 
 
 @router.post('/client')
-async def register_client(body: RegisterBody):
+async def register_client(body: RegisterBody, Authorize: AuthJWT = Depends()):
+    # Authorize.jwt_required()
     try:
         exchange_cls = EXCHANGES[body.exchange]
         if issubclass(exchange_cls, ExchangeWorker):
             # Check if required keyword args are given
-            if len(body.kwargs.keys()) >= len(exchange_cls.required_extra_args) and \
-                    all(required_kwarg in body.kwargs for required_kwarg in exchange_cls.required_extra_args):
+            if validate_kwargs(body.extra or {}, exchange_cls.required_extra_args):
                 client = Client(
+                    name=body.name,
                     api_key=body.api_key,
                     api_secret=body.api_secret,
                     subaccount=body.subaccount,
-                    extra_kwargs=body.kwargs,
+                    extra_kwargs=body.extra,
                     exchange=body.exchange
                 )
-                async with aiohttp.ClientSession as http_session:
+                async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session)
                     init_balance = await worker.get_balance(datetime.now())
                 if init_balance.error is None:
                     if round(init_balance.amount, ndigits=2) == 0.0:
-                        return {
-                            'msg': f'You do not have any balance in your account. Please fund your account before registering.'}
+                        return BadRequest(
+                            f'You do not have any balance in your account. Please fund your account before registering.'
+                        )
                     else:
                         payload = client.serialize(full=True, data=True)
                         # TODO: CHANGE THIS
                         payload['api_secret'] = client.api_secret
-                        return {
-                                   'msg': 'Success',
-                                   'token': jwt.encode(payload, settings.authjwt_secret_key, algorithm='HS256'),
-                                   'balance': init_balance.amount
-                               }, HTTPStatus.OK
+
+                        return JSONResponse(jsonable_encoder({
+                            'msg': 'Success',
+                            'token': jwt.encode(payload, settings.authjwt_secret_key, algorithm='HS256'),
+                            'balance': init_balance.amount
+                        }))
                 else:
-                    return {
-                               'msg': f'An error occured while getting your balance: {init_balance.error}.'}, HTTPStatus.BAD_REQUEST
+                    return BadRequest(f'An error occured while getting your balance: {init_balance.error}.')
             else:
                 logging.error(
-                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {body.kwargs}\nRequired: {exchange_cls.required_extra_args}')
+                    f'Not enough kwargs for exchange {exchange_cls.exchange} were given.'
+                    f'\nGot: {body.extra}\nRequired: {exchange_cls.required_extra_args}'
+                )
                 args_readable = '\n'.join(exchange_cls.required_extra_args)
-                return {
-                           'msg': f'Need more keyword arguments for exchange {exchange_cls.exchange}.\nRequirements:\n {args_readable}',
-                           'code': 40100
-                       }, HTTPStatus.BAD_REQUEST
+                return BadRequest(
+                    msg=f'Need more keyword arguments for exchange {exchange_cls.exchange}.'
+                        f'\nRequirements:\n {args_readable}',
+                    code=40100
+                )
 
         else:
             logging.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
     except KeyError:
-        return {'msg': f'Exchange {body.exchange} unknown'}, HTTPStatus.BAD_REQUEST
+        return BadRequest(f'Exchange {body.exchange} unknown')
 
 
 @router.get('/client')
 async def get_client(request: Request, response: Response,
-               id: Optional[int] = None, currency: Optional[str] = None, since: Optional[datetime] = None,
-               to: Optional[datetime] = None,
-               user: User = Depends(current_user)):
-
+                     id: Optional[int] = None, currency: Optional[str] = None, since: Optional[datetime] = None,
+                     to: Optional[datetime] = None,
+                     user: User = Depends(current_user)):
     if not currency:
         currency = '$'
 
@@ -113,16 +118,14 @@ async def get_client(request: Request, response: Response,
         client = None
     if client:
 
-        s = await create_cilent_data_serialized(client, WebsocketConfig(id=client.id, since=since, to=to, currency=currency))
+        s = await create_cilent_data_serialized(client,
+                                                WebsocketConfig(id=client.id, since=since, to=to, currency=currency))
         response = JSONResponse(jsonable_encoder(s))
         # response.set_cookie('client-since', value=since, expires='session')
         # response.set_cookie('client-to', value=to, expires='session')
         return response
     else:
-        return JSONResponse(
-            {'msg': f'Invalid client id', 'code': 40000},
-            status_code=HTTPStatus.BAD_REQUEST
-        )
+        return BadRequest('Invalid client id', 40000)
 
 
 def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = None, to: Optional[datetime] = None,
@@ -169,10 +172,6 @@ def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = N
         }
 
 
-class DeleteBody(BaseModel):
-    id: int
-
-
 @router.delete('/client')
 def delete_client(body: DeleteBody, user: User = Depends(current_user)):
     get_client_query(user, body.id).delete()
@@ -180,12 +179,54 @@ def delete_client(body: DeleteBody, user: User = Depends(current_user)):
     return {'msg': 'Success'}, HTTPStatus.OK
 
 
-class ConfirmBody(BaseModel):
-    token: str
+@router.patch('/client')
+async def update_client(body: UpdateBody, user: User = Depends(current_user)):
+    client: Client = get_client_query(user, body.id).first()
+
+    if body.archived is not None:
+        client.archived = body.archived
+
+    # Check explicitly for False and True because we don't want to do anything on None
+    if body.discord is False:
+        client.discord_user_id = None
+        client.discorduser = None
+    elif body.discord is True:
+        if not client.discord_user_id:
+            if user.discord_user_id:
+                client.discord_user_id = user.discord_user_id
+                if body.is_global is True:
+                    user.discorduser.global_client_id = client.id
+                elif body.is_global is False:
+                    if body.events:
+                        now = datetime.utcnow()
+                        events = session.query(db_event.Event).filter(
+                            or_(*[db_event.Event.id == event_id for event_id in body.events]),
+                            db_event.Event.registration_start < now,
+                            db_event.Event.registration_end > now
+                        ).all()
+                        valid_events = []
+                        for event in events:
+                            if event.is_free_for_registration(now):
+                                if event.guild in user.discorduser.guilds:
+                                    valid_events.append(event)
+                                else:
+                                    return BadRequest(f'You are not eglible to join {event.name} (Not in server)')
+                            else:
+                                return BadRequest(f'Event {event.name} is not free for registration')
+                        for valid in valid_events:
+                            client.events.append(valid)
+                        session.commit()
+                        return OK('Changes applied')
+                    else:
+                        return BadRequest(msg='Events need to be provided')
+            else:
+                return BadRequest('No discord account found')
 
 
 @router.post('/client/confirm')
-def confirm_client(body: ConfirmBody, user: User = Depends(current_user)):
+async def confirm_client(body: ConfirmBody, Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    user = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
     client_json = jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
     print(client_json)
     try:
@@ -194,8 +235,9 @@ def confirm_client(body: ConfirmBody, user: User = Depends(current_user)):
         session.add(client)
         session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
-    except TypeError:
-        return {'msg': 'Internal Error'}, HTTPStatus.INTERNAL_SERVER_ERROR
+    except TypeError as e:
+        return BadRequest(msg='Invalid token')
+        return InternalError(msg='Internal Error')
 
 
 def create_ws_message(type: str, channel: str = None, data: Dict = None, error: str = None, *args):
