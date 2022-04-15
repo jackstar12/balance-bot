@@ -84,7 +84,7 @@ class Client(Base, Serializer):
             events += 'Global'
         for event in self.events:
             first = True
-            if event.is_active or event.is_free_for_registration:
+            if event.is_active or event.is_free_for_registration():
                 if not first or self.is_global or is_global:
                     events += f', '
                 events += event.name

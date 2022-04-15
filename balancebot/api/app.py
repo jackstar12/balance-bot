@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request
 from balancebot.api.database import session
 
 from balancebot.api.dbmodels.user import User
+from balancebot.api.dependencies import current_user
 from balancebot.api.settings import settings
 from balancebot.api.database import Base, engine
 
@@ -40,12 +41,6 @@ Base.metadata.create_all(bind=engine)
 @AuthJWT.load_config
 def get_config():
     return settings
-
-
-def current_user(Authorize: AuthJWT = Depends()):
-    Authorize.jwt_required()
-    user = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
-    return user
 
 
 # exception handler for authjwt

@@ -34,8 +34,8 @@ class DeleteBody(BaseModel):
 
 class UpdateBody(BaseModel):
     id: int
-    archived: bool
-    discord: bool
-    is_global: bool
-    servers: Set[int]
-    events: Set[int]
+    archived: Optional[bool]
+    discord: Optional[bool]
+    is_global: Optional[bool]
+    servers: Optional[Set[int]]
+    events: Optional[Set[int]]

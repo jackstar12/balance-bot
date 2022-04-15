@@ -39,7 +39,6 @@ class Event(Base, Serializer):
     def is_active(self):
         return self.start <= datetime.now() <= self.end
 
-    @hybrid_property
     def is_free_for_registration(self, now: datetime = None):
         return self.registration_start <= (now or datetime.utcnow()) <= self.registration_end
 

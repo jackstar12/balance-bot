@@ -180,7 +180,9 @@ def delete_client(body: DeleteBody, user: User = Depends(current_user)):
 
 
 @router.patch('/client')
-async def update_client(body: UpdateBody, user: User = Depends(current_user)):
+async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    user: User = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
     client: Client = get_client_query(user, body.id).first()
 
     if body.archived is not None:
@@ -189,38 +191,45 @@ async def update_client(body: UpdateBody, user: User = Depends(current_user)):
     # Check explicitly for False and True because we don't want to do anything on None
     if body.discord is False:
         client.discord_user_id = None
-        client.discorduser = None
+        client.user_id = user.id
+        session.commit()
     elif body.discord is True:
-        if not client.discord_user_id:
-            if user.discord_user_id:
-                client.discord_user_id = user.discord_user_id
-                if body.is_global is True:
-                    user.discorduser.global_client_id = client.id
-                elif body.is_global is False:
-                    if body.events:
-                        now = datetime.utcnow()
-                        events = session.query(db_event.Event).filter(
-                            or_(*[db_event.Event.id == event_id for event_id in body.events]),
-                            db_event.Event.registration_start < now,
-                            db_event.Event.registration_end > now
-                        ).all()
-                        valid_events = []
-                        for event in events:
-                            if event.is_free_for_registration(now):
-                                if event.guild in user.discorduser.guilds:
-                                    valid_events.append(event)
-                                else:
-                                    return BadRequest(f'You are not eglible to join {event.name} (Not in server)')
+        if user.discord_user_id:
+            client.discord_user_id = user.discord_user_id
+            client.user_id = None
+            if body.is_global is True:
+                if user.discorduser.global_client.is_active:
+                    return BadRequest('You can not change your global account while it is in an active event.')
+                user.discorduser.global_client = client
+                user.discorduser.global_client_id = client.id
+                session.commit()
+                return OK('Changes applied')
+            elif body.is_global is False:
+                if body.events:
+                    now = datetime.utcnow()
+                    events = session.query(db_event.Event).filter(
+                        or_(*[db_event.Event.id == event_id for event_id in body.events])
+                    ).all()
+                    valid_events = []
+                    for event in events:
+                        if event.is_free_for_registration(now):
+                            if event.guild in user.discorduser.guilds:
+                                valid_events.append(event)
                             else:
-                                return BadRequest(f'Event {event.name} is not free for registration')
+                                return BadRequest(f'You are not eglible to join {event.name} (Not in server)')
+                        else:
+                            return BadRequest(f'Event {event.name} is not free for registration')
+                    if valid_events:
                         for valid in valid_events:
                             client.events.append(valid)
                         session.commit()
                         return OK('Changes applied')
                     else:
-                        return BadRequest(msg='Events need to be provided')
-            else:
-                return BadRequest('No discord account found')
+                        return BadRequest('')
+                else:
+                    return BadRequest('Events need to be provided')
+        else:
+            return BadRequest('No discord account found')
 
 
 @router.post('/client/confirm')

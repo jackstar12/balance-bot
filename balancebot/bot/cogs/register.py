@@ -234,7 +234,7 @@ class RegisterCog(CogBase):
         event = dbutils.get_event(guild_id=ctx.guild_id, state='registration')
         user = dbutils.get_user(ctx.author_id)
 
-        if user and event.is_free_for_registration:
+        if user and event.is_free_for_registration():
             for client in user.clients:
                 if client in event.registrations:
                     raise UserInputError('You are already registered for this event!')
