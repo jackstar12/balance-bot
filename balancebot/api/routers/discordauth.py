@@ -8,6 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse, JSONResponse
 
 from balancebot.api.database import session
+from balancebot.api.database_async import async_session
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.user import User
 from balancebot.api.dependencies import current_user
@@ -79,7 +80,7 @@ async def disconnect_discord(request: Request, user: User = Depends(current_user
     else:
         user.discord_user_id = None
         user.discord_user = None
-        session.commit()
+        await async_session.commit()
         return JSONResponse({'disconnect': True})
 
 
@@ -109,5 +110,5 @@ async def callback(request: Request, error: Optional[str] = None, user: User = D
 
     user.discorduser = discord_user
 
-    session.commit()
+    await async_session.commit()
     return RedirectResponse(url='/app/profile')

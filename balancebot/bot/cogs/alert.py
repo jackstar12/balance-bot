@@ -2,7 +2,9 @@ from typing import List, Dict
 
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
+from sqlalchemy import select, delete
 
+from balancebot.api.database_async import db_all, db, async_session, db_del_filter
 from balancebot.common import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
@@ -60,7 +62,7 @@ class AlertCog(CogBase):
 
         symbol = symbol.upper()
 
-        discord_user = dbutils.get_user(ctx.author_id)
+        discord_user = await dbutils.get_discord_user(ctx.author_id, alerts=True)
 
         alert = Alert(
             symbol=symbol,
@@ -71,7 +73,7 @@ class AlertCog(CogBase):
         )
 
         session.add(alert)
-        session.commit()
+        await async_session.commit()
 
         await ctx.send('Alert created', embed=alert.get_discord_embed())
 
@@ -93,17 +95,15 @@ class AlertCog(CogBase):
     @utils.log_and_catch_errors()
     async def delete_alert(self, ctx: SlashContext):
 
-        user = dbutils.get_user(ctx.author_id)
-        query = session.query(Alert).filter(Alert.discord_user_id == user.id)
-        alerts = query.all()
+        user = await dbutils.get_discord_user(ctx.author_id, alerts=True)
 
-        def on_alert_select(selections: List[Alert]):
+        async def on_alert_select(selections: List[Alert]):
             for selection in selections:
-                session.query(Alert).filter_by(id=selection.id).delete()
+                await db_del_filter(Alert, id=selection.id)
                 self.messenger.pub_channel(Category.ALERT, SubCategory.DELETE, selection.id)
-                session.commit()
+            await async_session.commit()
 
-        if len(alerts) > 1:
+        if len(user.alerts) > 1:
             component_row = utils.create_selection(
                 slash=self.slash_cmd_handler,
                 author_id=ctx.author_id,
@@ -114,15 +114,15 @@ class AlertCog(CogBase):
                         description=alert.note,
                         object=alert
                     )
-                    for alert in alerts
+                    for alert in user.alerts
                 ],
                 callback=on_alert_select,
                 max_values=1
             )
             await ctx.send(components=[component_row])
         else:
-            query.delete()
-            session.commit()
+            await db(delete(Alert).filter_by(discord_user_id=user.id))
+            await async_session.commit()
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -143,7 +143,7 @@ class AlertCog(CogBase):
         if symbol:
             symbol = symbol.upper()
 
-        user = dbutils.get_user(ctx.author_id)
+        user = await dbutils.get_discord_user(ctx.author_id, alerts=True)
 
         embeds = [
             alert.get_discord_embed() for alert in user.alerts if alert.symbol == symbol or not symbol

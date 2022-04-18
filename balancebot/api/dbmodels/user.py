@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, String
+from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger
 from sqlalchemy.orm import relationship
 
 from balancebot.api.database import Base
@@ -14,7 +14,7 @@ class User(Base, Serializer):
     email = Column(String, unique=True, nullable=False)
     password = Column(String, unique=True, nullable=False)
     salt = Column(String, nullable=False)
-    discord_user_id = Column(Integer(), ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
+    discord_user_id = Column(BigInteger(), ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
 
     # Data
     #main_client_id = Column(Integer, ForeignKey('client.id', ondelete="SET NULL"), nullable=True)
@@ -24,6 +24,6 @@ class User(Base, Serializer):
     #                           foreign_keys=main_client_id,
     #                           post_update=True,
     #                           uselist=False)
-    clients = relationship('Client', backref='user', lazy=True, cascade="all, delete", foreign_keys="[Client.user_id]")
-    labels = relationship('Label', backref='client', lazy=True, cascade="all, delete")
-    alerts = relationship('Alert', backref='user', lazy=True, cascade="all, delete")
+    clients = relationship('Client', backref='user', lazy='noload', cascade="all, delete", foreign_keys="[Client.user_id]")
+    labels = relationship('Label', backref='client', lazy='noload', cascade="all, delete")
+    alerts = relationship('Alert', backref='user', lazy='noload', cascade="all, delete")

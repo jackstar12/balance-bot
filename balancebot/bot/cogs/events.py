@@ -6,6 +6,7 @@ import discord.ext.commands
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
+from balancebot.api.database_async import async_session
 from balancebot.common import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
@@ -110,9 +111,9 @@ class EventsCog(CogBase):
             channel_id=ctx.channel_id
         )
 
-        def register(ctx: SlashContext):
+        async def register(ctx: SlashContext):
             session.add(event)
-            session.commit()
+            await async_session.commit()
             self.event_manager.register(event)
 
         row = create_yes_no_button_row(
@@ -203,7 +204,7 @@ class EventsCog(CogBase):
         await ctx.send(
             embeds=[
                 await event.create_leaderboard(self.bot),
-                event.get_summary_embed(dc_client=self.bot).set_image(url=f'attachment://{history.filename}'),
+                await event.get_summary_embed(dc_client=self.bot).set_image(url=f'attachment://{history.filename}'),
             ],
             file=history
         )

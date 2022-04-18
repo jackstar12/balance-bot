@@ -1,8 +1,15 @@
 from __future__ import annotations
 from datetime import datetime
 
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+from sqlalchemy.sql import Select
+
 from balancebot.api.database import session
 import balancebot.api.dbmodels.client as db_client
+from balancebot.api.database_async import async_session, db_first, db_eager, db, db_del_filter, db_unique, db_all, \
+    db_select
+from balancebot.api.dbmodels.GuildAssociation import GuildAssociation
 from balancebot.api.dbmodels.discorduser import DiscordUser
 import balancebot.api.dbmodels.event as db_event
 from typing import Optional
@@ -10,30 +17,41 @@ from balancebot.common.errors import UserInputError
 from balancebot.common.messenger import Messenger, Category, SubCategory
 
 
-def get_client(user_id: int,
-               guild_id: int = None,
-               registration=False,
-               throw_exceptions=True) -> Optional[db_client.Client]:
-    user = session.query(DiscordUser).filter_by(user_id=user_id).first()
+async def get_client(user_id: int,
+                     guild_id: int = None,
+                     registration=False,
+                     throw_exceptions=True,
+                     **kwargs) -> Optional[db_client.Client]:
+    user = await get_discord_user(user_id, throw_exceptions=throw_exceptions, clients=kwargs, global_client=True, guilds=True)
     if user:
         if guild_id:
-
             if registration:
                 event = get_event(guild_id, state='registration', throw_exceptions=False)
                 if event:
                     for client in event.registrations:
-                        if client.discorduser.user_id == user_id:
+                        if client.discord_user_id == user_id:
                             return client
 
             event = get_event(guild_id, state='active', throw_exceptions=False)
             if event:
                 for client in event.registrations:
-                    if client.discorduser.user_id == user_id:
+                    if client.discord_user_id == user_id:
                         return client
             if event and throw_exceptions:
                 raise UserInputError("User {name} is not registered for this event", user_id)
+
+            association = await db_unique(
+                select(GuildAssociation).filter_by(guild_id=guild_id)
+            )
+            if association:
+                return await db_select(db_client.Client, id=association.client_id)
+
         if user.global_client:
-            return user.global_client
+            if not guild_id:
+                return user.global_client
+            for guild in user.global_client.guilds:
+                if guild.id == guild_id:
+                    return user.global_client
         elif throw_exceptions:
             raise UserInputError("User {name} does not have a global registration", user_id)
     elif throw_exceptions:
@@ -74,10 +92,11 @@ def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
 
 
 async def delete_client(client: db_client.Client, messenger: Messenger, commit=False):
-    session.query(db_client.Client).filter_by(id=client.id).delete()
+    await db_del_filter(db_client.Client, id=client.id)
+    #session.query(db_client.Client).filter_by(id=client.id).delete()
     messenger.pub_channel(Category.CLIENT, SubCategory.DELETE, obj=client.id)
     if commit:
-        session.commit()
+        await async_session.commit()
 
 
 def add_client(client: db_client.Client, messenger: Messenger):
@@ -87,7 +106,7 @@ def get_all_events(guild_id: int, channel_id):
     pass
 
 
-def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
+async def get_discord_user(user_id: int, throw_exceptions=True, **kwargs) -> Optional[DiscordUser]:
     """
     Tries to find a matching entry for the user and guild id.
     :param user_id: id of user to get
@@ -97,7 +116,14 @@ def get_user(user_id: int, throw_exceptions=True) -> Optional[DiscordUser]:
     :return:
     The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
     """
-    result = session.query(DiscordUser).filter_by(user_id=user_id).first()
+    result = await db_unique(
+        db_eager(
+            select(DiscordUser),
+            **kwargs
+        ),
+    )
+
+    #result = session.query(DiscordUser).filter_by(user_id=user_id).first()
     if not result and throw_exceptions:
         raise UserInputError("User {name} is not registered", user_id)
     if len(result.clients) == 0 and throw_exceptions:

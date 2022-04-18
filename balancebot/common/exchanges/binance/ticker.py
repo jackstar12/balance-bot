@@ -42,7 +42,7 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
         msg = json.loads(msg_raw)
         event = msg.get('e')
         if event == "aggTrade":
-            self._callbacks.get(Channel.TICKER.value).notify(
+            await self._callbacks.get(Channel.TICKER.value).notify(
                 Ticker(
                     symbol=msg['s'],
                     price=float(msg['p']),

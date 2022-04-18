@@ -5,6 +5,7 @@ from typing import Dict
 import aiohttp
 
 from balancebot.api.database import session
+from balancebot.api.database_async import async_session
 from balancebot.api.dbmodels.trade import Trade
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common.messenger import Category, SubCategory
@@ -33,7 +34,7 @@ class PnlService(Singleton, Observer):
         self.messanger.sub_channel(Category.TRADE, sub=SubCategory.FINISHED, callback=self._on_trade_delete, pattern=True)
 
     def _on_trade_update(self, data: Dict):
-        trade = session.query(Trade).filter_by(id=data.get('id')).one()
+        trade = session.get(Trade, data.get('id'))
         if trade:
             self._trades_by_id[trade.id] = trade
 
@@ -51,7 +52,10 @@ class PnlService(Singleton, Observer):
                     if not trade.max_upnl or upnl > trade.max_upnl:
                         trade.max_upnl = upnl
                         changes = True
+                    if not trade.min_upnl or upnl < trade.min_upnl:
+                        trade.min_upnl = upnl
+                        changes = True
                     self.messanger.pub_channel(Category.TRADE, SubCategory.UPNL, channel_id=trade.client_id, obj={'id': trade.id, 'upnl': upnl})
             if changes:
-                session.commit()
+                await async_session.commit()
             await asyncio.sleep(3 - (time.time() - ts))

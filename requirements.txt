@@ -30,3 +30,4 @@ starlette~=0.14.2
 asgiref~=3.4.1
 aioredis~=2.0.1
 msgpack~=0.6.2
+asyncpg~=0.25.0

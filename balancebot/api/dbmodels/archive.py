@@ -7,7 +7,7 @@ class Archive(Base, Serializer):
 
     __tablename__ = 'archive'
 
-    event_id = Column(Integer, ForeignKey('event.id'), nullable=False, primary_key=True)
+    event_id = Column(Integer, ForeignKey('event.id', ondelete='CASCADE'), nullable=False, primary_key=True)
     registrations = Column(Text, nullable=True)
     leaderboard = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)

@@ -139,7 +139,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 await websocket.send_json(create_ws_message(type='pong'))
             elif msg.type == 'subscribe':
                 id = msg.data.get('id')
-                new_client = get_user_client(user, id)
+                new_client = await get_user_client(user, id)
 
                 if not new_client:
                     await websocket.send_json(create_ws_message(
@@ -153,7 +153,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
             elif msg.type == 'update':
                 if msg.channel == 'config':
                     config = WebsocketConfig(**msg.data)
-                    new_client = get_user_client(user, config.id)
+                    new_client = await get_user_client(user, config.id)
                     if not new_client:
                         await websocket.send_json(create_ws_message(
                             type='error',

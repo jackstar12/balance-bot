@@ -1,5 +1,8 @@
 from discord_slash import cog_ext, SlashContext
+from sqlalchemy import select
 
+from balancebot.api.database_async import db_del_filter, async_session, db_all, db_eager
+from balancebot.api.dbmodels.client import Client
 from balancebot.common import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
@@ -17,13 +20,13 @@ class UserCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def delete_all(self, ctx: SlashContext):
-        user = dbutils.get_user(ctx.author_id)
+        user = await dbutils.get_discord_user(ctx.author_id, clients=True)
 
-        def confirm_delete(ctx):
+        async def confirm_delete(ctx):
             for client in user.clients:
-                dbutils.delete_client(client, self.messenger, commit=False)
-            session.query(DiscordUser).filter_by(id=user.id).delete()
-            session.commit()
+                await dbutils.delete_client(client, self.messenger, commit=False)
+            await db_del_filter(DiscordUser, id=user.id)
+            await async_session.commit()
 
         button_row = create_yes_no_button_row(
             slash=self.slash_cmd_handler,
@@ -44,8 +47,8 @@ class UserCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def info(self, ctx: SlashContext):
-        user = dbutils.get_user(ctx.author_id)
-        embeds = user.get_discord_embed()
+        user = await dbutils.get_discord_user(ctx.author_id, throw_exceptions=False, clients=dict(events=True))
+        embeds = await user.get_discord_embed()
         await ctx.send(content='', embeds=embeds, hidden=True)
 
 

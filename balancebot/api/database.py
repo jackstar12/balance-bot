@@ -23,10 +23,6 @@ engine = create_engine(
 maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 session: Session = scoped_session(maker)
 
-async_maker = sessionmaker(_class=AsyncSession, autocommit=False, autoflush=False, bind=engine)
-async_session = async_scoped_session(async_maker, current_task)
-async_session = session
-
 Base = declarative_base()
 Meta = MetaData()
 

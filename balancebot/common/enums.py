@@ -26,3 +26,10 @@ class TimeFrame(Enum):
 class Tier(Enum):
     BASE = 1
     PREMIUM = 2
+
+
+class Priority(Enum):
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    FORCE = 4

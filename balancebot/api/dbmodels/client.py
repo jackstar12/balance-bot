@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 import discord
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc, \
     Boolean
@@ -6,12 +6,15 @@ from sqlalchemy.orm import relationship, Query
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
+from sqlalchemy.sql import Select, Delete, Update
 from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType, FernetEngine
 
 import os
 import dotenv
 
+from balancebot.api.database_async import db_first, db_all, async_session
 from balancebot.api.dbmodels.balance import Balance
+from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dbmodels.user import User
 import balancebot.bot.config as config
@@ -32,7 +35,7 @@ class Client(Base, Serializer):
     # Identification
     id = Column(Integer, primary_key=True)
     user_id = Column(BigInteger, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
-    discord_user_id = Column(Integer, ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
+    discord_user_id = Column(BigInteger, ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
 
     # User Information
     api_key = Column(String(), nullable=False)
@@ -48,17 +51,21 @@ class Client(Base, Serializer):
     history: AppenderQuery = relationship('Balance', backref='client',
                                           cascade="all, delete", lazy='dynamic', order_by='Balance.time')
     archived = Column(Boolean, nullable=True)
+    invalid = Column(Boolean, nullable=True)
+
+    currently_realized_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    currently_realized = relationship('Balance', lazy='joined', foreign_keys=currently_realized_id, cascade="all, delete")
 
     required_extra_args: List[str] = []
 
-    @hybrid_property
-    def full_history(self):
-        return self.history.all()
+    async def full_history(self):
+        return await db_all(self.history.statement)
 
-    @hybrid_property
-    def latest(self):
+    async def latest(self):
         try:
-            return self.history.order_by(None).order_by(desc(Balance.time)).first()
+            return await db_first(
+                self.history.statement.order_by(None).order_by(desc(Balance.time))
+            )
         except ValueError:
             return None
 
@@ -70,11 +77,10 @@ class Client(Base, Serializer):
     def is_active(self):
         return not all(not event.is_active for event in self.events)
 
-    @hybrid_property
-    def initial(self):
+    async def initial(self):
         try:
             if self.id:
-                return self.history.order_by(asc(Balance.time)).first()
+                return await db_first(self.history.statement.order_by(asc(Balance.time)))
         except ValueError:
             return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
@@ -91,7 +97,7 @@ class Client(Base, Serializer):
                 first = False
         return events
 
-    def get_discord_embed(self, is_global=False):
+    async def get_discord_embed(self, is_global=False):
 
         embed = discord.Embed(title="User Information")
         embed.add_field(name='Event', value=self.get_event_string(is_global), inline=False)
@@ -103,18 +109,18 @@ class Client(Base, Serializer):
         for extra in self.extra_kwargs:
             embed.add_field(name=extra, value=self.extra_kwargs[extra])
 
-        initial = self.initial
+        initial = await self.initial()
         if initial:
             embed.add_field(name='Initial Balance', value=initial.to_string())
 
         return embed
 
 
-def get_client_query(user: User, client_id: int) -> Query:
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[Select, Delete, Update]:
     user_checks = [Client.user_id == user.id]
-    if user.discorduser:
+    if user.discord_user_id:
         user_checks.append(Client.discord_user_id == user.discorduser.id)
-    return session.query(Client).filter(
+    return stmt.filter(
         Client.id == client_id,
         or_(*user_checks)
     )

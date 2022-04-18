@@ -62,7 +62,7 @@ class HistoryCog(CogBase):
             registered_client = dbutils.get_client(user.id, ctx.guild.id)
             registrations = [(registered_client, user.display_name)]
         else:
-            registered_user = dbutils.get_user(user.id)
+            registered_user = await dbutils.get_discord_user(user.id, clients=True)
             registrations = [
                 (client, client.get_event_string()) for client in registered_user.clients
             ]
@@ -149,11 +149,11 @@ class HistoryCog(CogBase):
         if to:
             from_to += f' till **{to}**'
 
-        def clear_user(ctx):
-            self.user_manager.clear_client_data(client,
-                                                start=since,
-                                                end=to,
-                                                update_initial_balance=True)
+        async def clear_user(ctx):
+            await self.user_manager.clear_client_data(client,
+                                                      start=since,
+                                                      end=to,
+                                                      update_initial_balance=True)
 
         buttons = create_yes_no_button_row(
             self.slash_cmd_handler,

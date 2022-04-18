@@ -1,4 +1,6 @@
 import asyncio
+from sqlalchemy import select
+
 import msgpack
 from datetime import datetime
 from typing import Optional, Dict, List
@@ -7,7 +9,8 @@ import pytz
 
 import balancebot.common.utils as utils
 from balancebot.api.database import redis
-from balancebot.api.dbmodels.client import Client, get_client_query
+from balancebot.api.database_async import db_first
+from balancebot.api.dbmodels.client import Client, add_client_filters
 from balancebot.api.dbmodels.user import User
 from balancebot.api.models.websocket import WebsocketConfig
 
@@ -170,12 +173,13 @@ async def create_cilent_data_serialized(client: Client, config: WebsocketConfig)
     return s
 
 
-def get_user_client(user: User, id: int = None):
+async def get_user_client(user: User, id: int = None):
     client: Optional[Client] = None
     if id:
-        client = get_client_query(user, id).first()
+        client = await db_first(add_client_filters(select(Client), user, id))
     elif user.discorduser:
-        client = user.discorduser.global_client
+        # TODO: Load client seperately?
+        client = await db_first(user.discorduser.global_client.statement)
     elif len(user.clients) > 0:
         client = user.clients[0]
     return client

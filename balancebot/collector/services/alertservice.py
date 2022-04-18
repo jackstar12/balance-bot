@@ -3,6 +3,7 @@ from typing import List, Dict
 import aiohttp
 
 from balancebot.api.database import session
+from balancebot.api.database_async import async_session, db_del_filter
 from balancebot.api.dbmodels.alert import Alert
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common.messenger import Category as MsgChannel, SubCategory
@@ -59,22 +60,28 @@ class AlertService(Singleton, Observer):
             if alert.id == data.get('id'):
                 alerts.remove(alert)
 
-    def update(self, *new_state):
+    async def update(self, *new_state):
         ticker: Ticker = new_state[0]
 
         symbol = f'{ticker.symbol}:{ticker.exchange}'
         self._tickers[symbol] = ticker
 
+        changes = False
         for alert in self.alerts_by_symbol.get(symbol):
             if alert.side == 'up':
                 if ticker.price > alert.price:
-                    self._finish_alert(alert)
+                    await self._finish_alert(alert)
+                    changes = True
             elif alert.side == 'down':
                 if ticker.price < alert.price:
-                    self._finish_alert(alert)
+                    await self._finish_alert(alert)
+                    changes = True
 
-    def _finish_alert(self, finished: Alert):
+        if changes:
+            await async_session.commit()
+
+    async def _finish_alert(self, finished: Alert):
         self.messanger.pub_channel(MsgChannel.ALERT, SubCategory.FINISHED, obj=finished.serialize())
         self.remove_alert(finished)
-        session.query(Alert).filter_by(id=finished.id).delete()
-        session.commit()
+        await db_del_filter(Alert, id=finished.id)
+

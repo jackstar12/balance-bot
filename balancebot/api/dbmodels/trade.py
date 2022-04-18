@@ -27,18 +27,27 @@ class Trade(Base, Serializer):
     open_qty = Column(Float, nullable=False)
     exit = Column(Float, nullable=True)
     realized_pnl = Column(Float, nullable=True)
-    max_upnl = Column(Float, nullable=True)
-    #tp = Column(Float, nullable=True)
-    #sl = Column(Float, nullable=True)
 
-    executions = relationship('Execution', foreign_keys='[Execution.trade_id]', backref='trade', lazy=True,
+    max_upnl_id = Column('Balance', ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    max_upnl = relationship('Balance', lazy='joined', foreign_keys=max_upnl_id, uselist=False)
+
+    min_upnl_id = Column('Balance', ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    min_upnl = relationship('Balance', lazy='joined', foreign_keys=min_upnl_id, uselist=False)
+
+    # tp = Column(Float, nullable=True)
+    # sl = Column(Float, nullable=True)
+
+    executions = relationship('Execution',
+                              foreign_keys='[Execution.trade_id]',
+                              backref='trade',
+                              lazy='noload',
                               cascade='all, delete')
 
     initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
 
     initial: Execution = relationship(
         'Execution',
-        lazy=True,
+        lazy='noload',
         foreign_keys=[initial_execution_id, symbol],
         post_update=True,
         primaryjoin='Execution.id == Trade.initial_execution_id',

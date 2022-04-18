@@ -1,5 +1,7 @@
 from __future__ import annotations
 import asyncio
+from select import select
+
 import aiohttp
 import logging
 import math
@@ -7,16 +9,18 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, TYPE_CHECKING
 
 import pytz
-from sqlalchemy import asc, desc, DateTime
+from sqlalchemy import asc, desc, DateTime, delete
 
 import balancebot.api.database as db
 import balancebot.api.dbmodels.event as db_event
+from balancebot.api.database_async import async_session, db as aio_db, db_first, db_all
 
 from balancebot.api.dbmodels.balance import Balance
 import balancebot.api.dbmodels.client as db_client
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution
 import balancebot.bot.config as config
+from balancebot.common.enums import Priority
 from balancebot.common.messenger import Messenger, Category, SubCategory
 from balancebot.common.models.history import History
 from balancebot.common.models.singleton import Singleton
@@ -65,13 +69,16 @@ class UserManager(Singleton):
             self._workers_by_client_id[worker.client.id] = worker
 
             worker.set_trade_update_callback(
-                lambda worker, trade: self.messenger.pub_channel(Category.TRADE, sub=SubCategory.UPDATE, channel_id=worker.client_id, obj=trade.serialize())
+                lambda worker, trade: self.messenger.pub_channel(Category.TRADE, sub=SubCategory.UPDATE,
+                                                                 channel_id=worker.client_id, obj=trade.serialize())
             )
             worker.set_trade_callback(
-                lambda worker, trade: self.messenger.pub_channel(Category.TRADE, sub=SubCategory.NEW, channel_id=worker.client_id, obj=trade.serialize())
+                lambda worker, trade: self.messenger.pub_channel(Category.TRADE, sub=SubCategory.NEW,
+                                                                 channel_id=worker.client_id, obj=trade.serialize())
             )
             worker.set_balance_callback(
-                lambda worker, balance: self.messenger.pub_channel(Category.BALANCE, sub=SubCategory.NEW, channel_id=worker.client_id, obj=balance.serialize())
+                lambda worker, balance: self.messenger.pub_channel(Category.BALANCE, sub=SubCategory.NEW,
+                                                                   channel_id=worker.client_id, obj=balance.serialize())
             )
 
     def _remove_worker(self, worker: ExchangeWorker):
@@ -96,12 +103,17 @@ class UserManager(Singleton):
         workers = [self.get_worker(client) for client in clients]
         return await self._async_fetch_data(workers)
 
-    async def get_client_balance(self, client: db_client.Client, currency: str = None, force_fetch=False) -> Balance:
+    async def get_client_balance(self,
+                                 client: db_client.Client,
+                                 currency: str = None,
+                                 priority: Priority = Priority.HIGH,
+                                 force_fetch=False) -> Balance:
 
         if currency is None:
             currency = '$'
 
         data = await self._async_fetch_data(workers=[self.get_worker(client)], keep_errors=True,
+                                            priority=priority,
                                             force_fetch=force_fetch)
 
         if data:
@@ -114,7 +126,7 @@ class UserManager(Singleton):
                 else:
                     result.error = f'User balance does not contain currency {currency}'
         else:
-            result = client.latest
+            result = await client.latest()
 
         return result
 
@@ -145,7 +157,7 @@ class UserManager(Singleton):
                 worker = self._workers_by_client_id.get(client.id)
             return worker
 
-    def get_client_history(self,
+    async def get_client_history(self,
                            client: db_client.Client,
                            event: db_event.Event,
                            since: datetime = None,
@@ -168,9 +180,9 @@ class UserManager(Singleton):
 
         filter_time = event.start if event else since
 
-        history = client.history.filter(
+        history = await db_all(client.history.statement.filter(
             Balance.time > filter_time, Balance.time < to
-        ).all()
+        ))
 
         for balance in history:
             if since <= balance.time <= to:
@@ -192,30 +204,32 @@ class UserManager(Singleton):
             initial=initial
         )
 
-    def clear_client_data(self,
-                          client: db_client.Client,
-                          start: datetime = None,
-                          end: datetime = None,
-                          update_initial_balance=False):
+    async def clear_client_data(self,
+                                client: db_client.Client,
+                                start: datetime = None,
+                                end: datetime = None,
+                                update_initial_balance=False):
         if start is None:
             start = datetime.fromtimestamp(0)
         if end is None:
             end = datetime.now()
 
-        db.session.query(Balance).filter(
+        await aio_db(delete(Balance).filter(
             Balance.client_id == client.id,
             Balance.time >= start,
             Balance.time <= end
-        ).delete()
+        ))
 
-        db.session.commit()
-
-        if len(client.full_history) == 0 and update_initial_balance:
+        history_record = await db_first(client.history.statement)
+        if not history_record and update_initial_balance:
             client.rekt_on = None
             asyncio.create_task(self.get_client_balance(client, force_fetch=True))
 
+        await async_session.commit()
+
     async def _async_fetch_data(self, workers: List[ExchangeWorker] = None,
                                 keep_errors: bool = False,
+                                priority: Priority = Priority.MEDIUM,
                                 force_fetch=False) -> List[Balance]:
         """
         :return:
@@ -234,7 +248,7 @@ class UserManager(Singleton):
             if not worker or not worker.in_position:
                 continue
             tasks.append(
-                asyncio.create_task(worker.get_balance(self.session, time, force=force_fetch))
+                asyncio.create_task(worker.get_balance(time=time, priority=priority, force=force_fetch))
             )
         results = await asyncio.gather(*tasks)
 
@@ -244,7 +258,8 @@ class UserManager(Singleton):
                 client = db.session.query(db_client.Client).filter_by(id=result.client_id).first()
                 if client:
                     tasks.append(
-                        lambda: self.messenger.pub_channel(Category.BALANCE, SubCategory.NEW, channel_id=client.id, obj=result.id)
+                        lambda: self.messenger.pub_channel(Category.BALANCE, SubCategory.NEW, channel_id=client.id,
+                                                           obj=result.id)
                     )
                     history = client.history.order_by(desc(Balance.time)).limit(3).all()
                     history_len = len(history)
@@ -265,86 +280,18 @@ class UserManager(Singleton):
                         data.append(result)
                         if result.amount <= self.rekt_threshold and not client.rekt_on:
                             client.rekt_on = time
-                            self.messenger.pub_channel(Category.CLIENT, SubCategory.REKT, channel_id=client.id, obj={'id': client.id})
+                            self.messenger.pub_channel(Category.CLIENT, SubCategory.REKT, channel_id=client.id,
+                                                       obj={'id': client.id})
                 else:
                     logging.error(f'Worker with {result.client_id=} got no client object!')
 
-        db.session.commit()
+        await async_session.commit()
 
         for task in tasks:
             task()
 
         logging.info(f'Done Fetching')
         return data
-
-    def _on_execution(self, client_id: int, execution: Execution):
-
-        active_trade: Trade = db.session.query(Trade).filter(
-            Trade.symbol == execution.symbol,
-            Trade.client_id == client_id,
-            Trade.open_qty > 0.0
-        ).first()
-
-        client: db_client.Client = db.session.query(db_client.Client).filter_by(id=client_id).first()
-        worker = self.get_worker(client)
-
-        if worker:
-            worker.in_position = True
-        else:
-            logging.critical(f'on_execution callback: {active_trade.client=} for trade {active_trade} got no worker???')
-
-        def weighted_avg(values: Tuple[float, float], weights: Tuple[float, float]):
-            total = weights[0] + weights[1]
-            return round(values[0] * (weights[0] / total) + values[1] * (weights[1] / total), ndigits=3)
-
-        if active_trade:
-            active_trade.executions.append(execution)
-
-            if execution.side == active_trade.initial.side:
-                active_trade.entry = weighted_avg((active_trade.entry, execution.price),
-                                                  (active_trade.qty, execution.qty))
-                active_trade.qty += execution.qty
-                active_trade.open_qty += execution.qty
-            else:
-                new_execution = None
-                if execution.qty > active_trade.open_qty:
-                    new_execution = Execution(
-                        qty=execution.qty - active_trade.open_qty,
-                        symbol=execution.symbol,
-                        price=execution.price,
-                        side=execution.side,
-                        time=execution.time
-                    )
-                    execution.qty = active_trade.open_qty
-                    new_trade = trade_from_execution(new_execution)
-                    client.trades.append(new_trade)
-                    asyncio.create_task(self._async_fetch_data([worker]))
-                if execution.qty <= active_trade.qty:
-                    if active_trade.exit is None:
-                        active_trade.exit = execution.price
-                    else:
-                        active_trade.exit = weighted_avg((active_trade.exit, execution.price),
-                                                         (active_trade.open_qty, execution.qty))
-
-                    if math.isclose(active_trade.open_qty, execution.qty, rel_tol=10e-6):
-                        active_trade.open_qty = 0.0
-                        asyncio.create_task(self._async_fetch_data([worker]))
-                        if worker and not new_execution:
-                            worker.in_position = False
-                    else:
-                        active_trade.open_qty -= execution.qty
-                    realized_qty = active_trade.qty - active_trade.open_qty
-
-                    active_trade.realized_pnl = (
-                                                            active_trade.exit * realized_qty - active_trade.entry * realized_qty) * (
-                                                    1 if active_trade.initial.side == 'BUY' else -1)
-        else:
-            trade = trade_from_execution(execution)
-            client.trades.append(trade)
-            asyncio.create_task(self._async_fetch_data([worker]))
-            asyncio.create_task(worker.on_trade)
-
-        db.session.commit()
 
     def db_match_balance_currency(self, balance: Balance, currency: str):
         result = None

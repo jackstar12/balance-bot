@@ -47,7 +47,7 @@ class DataService(Singleton, Observer):
         else:
             asyncio.create_task(ticker.subscribe(channel, self, **kwargs))
 
-    def update(self, *new_state):
+    async def update(self, *new_state):
         ticker: Ticker = new_state[0]
         self._tickers[f'{ticker.symbol}:{ticker.exchange}'] = ticker
 

@@ -2,16 +2,19 @@ from http import HTTPStatus
 from typing import List
 
 from fastapi import APIRouter, Depends
+from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
+from balancebot.api.database_async import async_session, db_first, db_eager, db_all
 from balancebot.api.dependencies import current_user
 from balancebot.api.database import session
 
-from balancebot.api.dbmodels.client import Client, get_client_query
+from balancebot.api.dbmodels.client import Client, add_client_filters
 from balancebot.api.dbmodels.label import Label
 from balancebot.api.dbmodels.trade import Trade
 from balancebot.api.dbmodels.user import User
+from balancebot.api.utils.responses import BadRequest, OK
 
 router = APIRouter(
     prefix="/label",
@@ -41,10 +44,10 @@ class CreateLabel(BaseModel):
 
 
 @router.post('/')
-def create_label(body: CreateLabel, user: User = Depends(current_user)):
+async def create_label(body: CreateLabel, user: User = Depends(current_user)):
     label = Label(name=body.name, color=body.color, user_id=body.user.id)
     session.add(label)
-    session.commit()
+    await async_session.commit()
     return label.serialize(), HTTPStatus.OK
 
 
@@ -53,11 +56,11 @@ class DeleteLabel(BaseModel):
 
 
 @router.delete('/')
-def delete_label(body: DeleteLabel, user: User = Depends(current_user)):
+async def delete_label(body: DeleteLabel, user: User = Depends(current_user)):
     result = get_label(body.id, user)
     if isinstance(result, Label):
         session.query(Label).filter_by(id=id).delete()
-        session.commit()
+        await async_session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     else:
         return result
@@ -70,29 +73,31 @@ class PatchLabel(BaseModel):
 
 
 @router.patch('/')
-def update_label(body: PatchLabel, user: User = Depends(current_user)):
+async def update_label(body: PatchLabel, user: User = Depends(current_user)):
     result = get_label(body.id, user)
     if isinstance(result, Label):
         if body.name:
             result.name = body.name
         if body.color:
             result.color = body.color
-        session.commit()
+        await async_session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     else:
         return result
 
 
-def get_trade_query(user: User, client_id: int, trade_id: int, label_id: int = None):
-    client = get_client_query(user, client_id)
+async def add_trade_filters(stmt, user: User, client_id: int, trade_id: int, label_id: int = None):
+    client = await db_first(add_client_filters(select(Client), user, client_id))
     if client:
-        return session.query(Trade).filter(
+        return stmt.filter(
             Trade.id == trade_id,
-            Trade.client_id == client_id,
-            Trade.label_id == label_id if label_id else True
+            Trade.client_id == client_id
         )
     else:
-        return {'msg': 'Invalid Client ID'}, HTTPStatus.UNAUTHORIZED
+        raise HTTPException(
+            status_code=HTTPStatus.UNAUTHORIZED,
+            detail='Invalid Client ID'
+        )
 
 
 class AddLabel(BaseModel):
@@ -102,22 +107,25 @@ class AddLabel(BaseModel):
 
 
 @router.post('/trade')
-def add_label(body: AddLabel, user: User = Depends(current_user)):
-    trade = get_trade_query(user, body.trade_id, body.label_id).first()
-    if isinstance(trade, Trade):
-        label = session.query(Label).filter(
+async def add_label(body: AddLabel, user: User = Depends(current_user)):
+    trade = await db_first(
+        db_eager(
+            await add_trade_filters(select(Trade), user, body.trade_id, body.label_id),
+            labels=True
+        )
+    )
+    if trade:
+        label = await db_first(select(Label).filter(
             Label.id == body.label_id,
             Label.client_id == body.client_id
-        ).first()
+        ))
         if label:
             if label not in trade.labels:
                 trade.labels.append(label)
             else:
-                return {'msg': 'Trade already has this label'}, HTTPStatus.BAD_REQUEST
+                return BadRequest('Trade already has this label')
         else:
-            return {'msg': 'Invalid Label ID'}, HTTPStatus.BAD_REQUEST
-    else:
-        return trade
+            return BadRequest('Invalid Label ID')
 
 
 class RemoveLabel(BaseModel):
@@ -127,8 +135,13 @@ class RemoveLabel(BaseModel):
 
 
 @router.delete('/trade')
-def remove_label(body: RemoveLabel, user: User = Depends(current_user)):
-    trade = get_trade_query(user, body.client_id, body.trade_id, body.label_id).first()
+async def remove_label(body: RemoveLabel, user: User = Depends(current_user)):
+    trade = await db_first(
+        db_eager(
+            await add_trade_filters(select(Trade), user, body.client_id, body.trade_id, body.label_id),
+            labels=True
+        )
+    )
     if isinstance(trade, Trade):
         label = session.query(Label).filter(
             Label.id == body.label_id,
@@ -152,19 +165,24 @@ class SetLabels(BaseModel):
 
 
 @router.patch('/trade')
-def set_labels(body: SetLabels, user: User = Depends(current_user)):
-    trade = get_trade_query(user, body.client_id, body.trade_id).first()
-    if isinstance(trade, Trade):
+async def set_labels(body: SetLabels, user: User = Depends(current_user)):
+    trade = await db_first(
+        await add_trade_filters(select(Trade), user, body.client_id, body.trade_id)
+    )
+    if trade:
         if len(body.label_ids) > 0:
-            trade.labels = session.query(Label).filter(
-                or_(
-                    Label.id == label_id for label_id in body.label_ids
-                ),
-                Label.user_id == user.id
-            ).all()
+            trade.labels = await db_all(
+                select(Label).filter(
+                    or_(
+                        Label.id == label_id for label_id in body.label_ids
+                    ),
+                    Label.user_id == user.id
+                )
+            )
         else:
             trade.labels = []
-        session.commit()
-        return {'msg': 'Success'}, HTTPStatus.OK
+        await async_session.commit()
+
+        return OK('Success')
     else:
         return trade

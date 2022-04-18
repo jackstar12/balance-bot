@@ -1,3 +1,6 @@
+import asyncio
+
+from balancebot.api.database_async import async_session
 from balancebot.common import utils
 import numpy
 from balancebot.common.models.gain import Gain
@@ -23,7 +26,7 @@ class Event(Base, Serializer):
     __serializer_forbidden__ = ['archive']
 
     id = Column(Integer, primary_key=True)
-    guild_id = Column(BigInteger, ForeignKey('guild.id', ondelete='SET NULL'), nullable=False)
+    guild_id = Column(BigInteger, ForeignKey('guild.id', ondelete='CASCADE'), nullable=False)
     channel_id = Column(BigInteger, nullable=False)
     registration_start = Column(DateTime(timezone=True), nullable=False)
     registration_end = Column(DateTime(timezone=True), nullable=False)
@@ -62,11 +65,11 @@ class Event(Base, Serializer):
             if value:
                 embed.add_field(name="Registrations", value=value, inline=False)
             self._archive.registrations = value
-            session.commit()
+            asyncio.create_task(async_session.commit())
 
         return embed
 
-    def get_summary_embed(self, dc_client: discord.Client):
+    async def get_summary_embed(self, dc_client: discord.Client):
         embed = discord.Embed(title=f'Summary')
 
         description = ''
@@ -75,7 +78,7 @@ class Event(Base, Serializer):
             return embed
 
         now = datetime.now()
-        gains = utils.calc_gains(self.registrations, self.guild_id, self.start)
+        gains = await utils.calc_gains(self.registrations, self.guild_id, self.start)
 
         def key(x: Gain):
             if x.client.rekt_on:
@@ -159,7 +162,7 @@ class Event(Base, Serializer):
 
         file = discord.File(config.DATA_PATH + path, path)
         self._archive.history_path = path
-        session.commit()
+        await async_session.commit()
 
         return file
 

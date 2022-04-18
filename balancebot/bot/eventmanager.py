@@ -66,8 +66,9 @@ class EventManager:
         )
 
         complete_history = await event.create_complete_history(dc_client=self._dc_client)
+        summary = await event.get_summary_embed(dc_client=self._dc_client)
         await self._get_event_channel(event).send(
-            embed=event.get_summary_embed(dc_client=self._dc_client).set_image(url=f'attachment://{complete_history.filename}'),
+            embed=summary.set_image(url=f'attachment://{complete_history.filename}'),
             file=complete_history
         )
 

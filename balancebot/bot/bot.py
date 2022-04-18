@@ -6,6 +6,7 @@ import os
 import random
 import sys
 from datetime import datetime
+from sqlalchemy import select
 from typing import Dict
 
 import aiohttp
@@ -14,8 +15,10 @@ import discord.errors
 from discord.ext import commands
 from discord_slash import SlashCommand
 from discord_slash.utils.manage_commands import create_choice
-
+from balancebot.api.app import app
 from balancebot.api.database import session
+from balancebot.api.database_async import async_session, db_all, db_unique
+from balancebot.api.dbmodels.GuildAssociation import GuildAssociation
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.guild import Guild
@@ -41,22 +44,39 @@ async def on_ready():
     event_manager.initialize_events()
     asyncio.create_task(user_manager.start_fetching())
 
-    db_guilds_by_id = {db_guild.id: db_guild for db_guild in session.query(Guild).all()}
-    discord_users = session.query(DiscordUser).all()
+    db_guilds_by_id = {
+        db_guild.id: db_guild for db_guild in await db_all(
+            select(Guild), users=True, global_clients=True
+        )
+    }
+    discord_users = await db_all(select(DiscordUser), guilds=True)
+    #associations_by_guild_id = {guild.id: guild for guild in await db_all(select(GuildAssociation))}
 
     # Make sure database entries for guilds are up-to-date
     for guild in bot.guilds:
         db_guild = db_guilds_by_id.get(guild.id)
         if not db_guild:
             db_guild = Guild(id=guild.id, name=guild.name, tier=Tier.BASE)
-            session.add(db_guild)
+            async_session.add(db_guild)
         if db_guild.name != guild.name:
             db_guild.name = guild.name
         for discord_user in discord_users:
             if guild.get_member(discord_user.user_id) and db_guild not in discord_user.guilds:
-                discord_user.guilds.append(db_guild)
+                async_session.add(
+                    GuildAssociation(
+                        guild_id=guild.id,
+                        discorduser_id=discord_user.id,
+                        client_id=discord_user.global_client_id
+                    )
+                )
 
-    session.commit()
+    await async_session.commit()
+
+    db_guilds_by_id = {
+        db_guild.id: db_guild for db_guild in await db_all(
+            select(Guild), users=True, global_clients=True
+        )
+    }
 
     logging.info('Bot Ready')
     print('Bot Ready')
@@ -80,7 +100,7 @@ async def on_guild_update(before: discord.Guild, after: discord.Guild):
         db_guild = session.query(Guild).filter_by(id=after.id).first()
         if db_guild:
             db_guild.name = after.name
-            session.commit()
+            await async_session.commit()
 
 
 @bot.event
@@ -99,7 +119,7 @@ async def on_guild_join(guild: discord.Guild):
         if member:
             discord_user.guilds.append(db_guild)
 
-    session.commit()
+    await async_session.commit()
 
     # commands = [slash.commands['register'], slash.commands['unregister'], slash.commands['clear']]
     # for command in commands:
@@ -124,7 +144,7 @@ async def on_guild_leave(guild: discord.Guild):
             if len(discord_user.guilds) == 0:
                 # Delete?
                 pass
-    session.commit()
+    await async_session.commit()
 
 
 @bot.event

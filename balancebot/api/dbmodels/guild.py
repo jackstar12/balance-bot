@@ -13,12 +13,6 @@ from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Enum, Ta
 from balancebot.common.enums import Tier
 
 
-guild_association = Table('guild_association', Base.metadata,
-                          Column('guild_id', BigInteger, ForeignKey('guild.id', ondelete='CASCADE'), primary_key=True),
-                          Column('user_id', BigInteger, ForeignKey('discorduser.id', ondelete='CASCADE'), primary_key=True)
-                          )
-
-
 class Guild(Base, Serializer):
     __tablename__ = 'guild'
 
@@ -26,5 +20,6 @@ class Guild(Base, Serializer):
     name = Column(String, nullable=True)
     tier = Column(Enum(Tier), nullable=False)
 
-    events = relationship('Event', lazy=True, backref='guild')
-    users = relationship('DiscordUser', secondary=guild_association, lazy=True, backref='guilds')
+    events = relationship('Event', lazy=True, backref='guild', cascade='all, delete')
+    users = relationship('DiscordUser', secondary='guild_association', lazy=True, backref='guilds')
+    global_clients = relationship('GuildAssociation', lazy='noload', backref='guild')

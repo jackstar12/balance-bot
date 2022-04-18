@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import asyncio
 from abc import ABCMeta
 from abc import abstractmethod
 
@@ -35,7 +35,7 @@ class Observer(object):
         Observer._object_counter += 1
 
     @abstractmethod
-    def update(self, *new_state):
+    async def update(self, *new_state):
         """
         Called by the concrete Observable when data has changed passing its state.
         :param new_state: The new state.
@@ -107,11 +107,13 @@ class Observable(object):
         if observer in self._observers:
             self._observers.discard(observer)
 
-    def notify(self, *new_state):
+    async def notify(self, *new_state):
         """
         The new state is updated to all registered Observers.
         :param new_state: The new state.
         :type new_state: A tuple of arbitrary content.
         """
-        for observer in self._observers:
-            observer.update(*new_state)
+        tasks = [asyncio.create_task(observer.update(*new_state)) for observer in self._observers]
+        await asyncio.gather(
+            *tasks
+        )

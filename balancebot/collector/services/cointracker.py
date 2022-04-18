@@ -2,9 +2,10 @@ import asyncio
 import time
 
 import pytz
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
 
-from balancebot.api.database import session, async_session
+from balancebot.api.database import session
+from balancebot.api.database_async import db_all, async_session
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common.models.observer import Observable, Observer
 import ccxt.async_support as ccxt
@@ -96,7 +97,7 @@ class CoinTracker(Singleton, Observer):
         if not perp_markets_by_name:
             raise Exception
 
-        coins = async_session.query(Coin).all()
+        coins = await db_all(select(Coin))
         self._coins_by_name = {coin.name: coin for coin in coins}
 
         for perp_name in perp_markets_by_name:
@@ -110,7 +111,7 @@ class CoinTracker(Singleton, Observer):
                             exchange='ftx',
                         )
                         self._coins_by_name[coin_name] = coin
-                        async_session.add(coin)
+                        session.add(coin)
                     await self.data_service.subscribe(
                         'ftx',
                         Channel.TRADES,
@@ -124,7 +125,7 @@ class CoinTracker(Singleton, Observer):
                         symbol=spot_name
                     )
 
-        async_session.commit()
+        await async_session.commit()
 
         print('Tracker Initialized')
 
@@ -139,7 +140,7 @@ class CoinTracker(Singleton, Observer):
             split = symbol.split('/')
         return split[0]
 
-    def update(self, *new_state):
+    async def update(self, *new_state):
         trade: Trade = new_state[0]
 
         coin = self._coins_by_name.get(
@@ -173,7 +174,7 @@ class CoinTracker(Singleton, Observer):
             if trade.time.minute != current_volume.time.minute:
                 # TODO: avoid database spikes by smoothing / gathering volumes for commiting
                 async_session.add(current_volume)
-                async_session.commit()
+                await async_session.commit()
                 self._current_coin_volume.pop(coin)
 
     async def _update_volume_history(self, coin: Coin):
@@ -207,7 +208,7 @@ class CoinTracker(Singleton, Observer):
 
         coin.avg_ratio /= len(coin.ratio_data) if coin.ratio_data else 1
 
-        self.volume_observable.notify(coin)
+        await self.volume_observable.notify(coin)
 
     async def _update_forever(self):
         while False:
@@ -242,9 +243,9 @@ class CoinTracker(Singleton, Observer):
                             )
                         )
 
-        async_session.commit()
+        await async_session.commit()
 
-        self.oi_observable.notify(self._coins_by_name.values())
+        await self.oi_observable.notify(self._coins_by_name.values())
 
     async def _fetch_oi(self):
         while True:

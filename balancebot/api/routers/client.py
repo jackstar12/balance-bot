@@ -9,10 +9,13 @@ from fastapi import APIRouter, Depends, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
 from fastapi_jwt_auth import AuthJWT
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import or_
+from sqlalchemy import or_, delete, select
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
+from balancebot.api.database_async import db, db_first, async_session, db_all, db_unique
+from balancebot.api.dbmodels.GuildAssociation import GuildAssociation
+from balancebot.api.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody
 from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
 from balancebot.api.utils.responses import BadRequest, InternalError, OK
@@ -20,7 +23,7 @@ from balancebot.common import utils
 from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dependencies import current_user
 from balancebot.api.database import session, redis
-from balancebot.api.dbmodels.client import Client, get_client_query
+from balancebot.api.dbmodels.client import Client, add_client_filters
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
 from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
@@ -64,7 +67,7 @@ async def register_client(body: RegisterBody, Authorize: AuthJWT = Depends()):
                 )
                 async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session)
-                    init_balance = await worker.get_balance(datetime.now())
+                    init_balance = await worker.get_balance(time=datetime.now())
                 if init_balance.error is None:
                     if round(init_balance.amount, ndigits=2) == 0.0:
                         return BadRequest(
@@ -109,7 +112,9 @@ async def get_client(request: Request, response: Response,
         currency = '$'
 
     if id:
-        client: Optional[Client] = get_client_query(user, id).first()
+        client: Optional[Client] = await db_first(
+            add_client_filters(select(Client), user, id)
+        )
     elif len(user.clients) > 0:
         client: Optional[Client] = user.clients[0]
     elif user.discorduser:
@@ -128,9 +133,10 @@ async def get_client(request: Request, response: Response,
         return BadRequest('Invalid client id', 40000)
 
 
-def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = None, to: Optional[datetime] = None,
-                         user: User = Depends(current_user)):
-    client = get_user_client(user, id)
+async def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = None,
+                               to: Optional[datetime] = None,
+                               user: User = Depends(current_user)):
+    client = await get_user_client(user, id)
     if client:
 
         resp = {}
@@ -173,17 +179,22 @@ def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = N
 
 
 @router.delete('/client')
-def delete_client(body: DeleteBody, user: User = Depends(current_user)):
-    get_client_query(user, body.id).delete()
-    session.commit()
+async def delete_client(body: DeleteBody, user: User = Depends(current_user)):
+    await db(
+        add_client_filters(delete(Client), user, body.id)
+    )
+    await async_session.commit()
     return {'msg': 'Success'}, HTTPStatus.OK
 
 
 @router.patch('/client')
 async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    user: User = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
-    client: Client = get_client_query(user, body.id).first()
+    #user: User = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
+    user = await db_unique(select(User).filter_by(id=Authorize.get_jwt_subject()), discorduser=True)
+    client: Client = await db_first(
+        add_client_filters(select(Client), user, body.id)
+    )
 
     if body.archived is not None:
         client.archived = body.archived
@@ -192,7 +203,7 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
     if body.discord is False:
         client.discord_user_id = None
         client.user_id = user.id
-        session.commit()
+        await async_session.commit()
     elif body.discord is True:
         if user.discord_user_id:
             client.discord_user_id = user.discord_user_id
@@ -200,9 +211,25 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
             if body.is_global is True:
                 if user.discorduser.global_client.is_active:
                     return BadRequest('You can not change your global account while it is in an active event.')
-                user.discorduser.global_client = client
                 user.discorduser.global_client_id = client.id
-                session.commit()
+                guilds: List[Guild] = await db_all(
+                    select(Guild).filter(
+                        or_(*[Guild.id == guild_id for guild_id in body.servers]),
+                    ),
+                    users=True
+                )
+                for guild in guilds:
+                    if user.discorduser in guild.users:
+                        guild.global_clients.append(
+                            GuildAssociation(
+                                discorduser_id=user.discord_user_id,
+                                client_id=client.id
+                            )
+                        )
+                    else:
+                        return BadRequest(f'You are not eglible to register in guild {guild.name}')
+
+                await async_session.commit()
                 return OK('Changes applied')
             elif body.is_global is False:
                 if body.events:
@@ -222,7 +249,7 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
                     if valid_events:
                         for valid in valid_events:
                             client.events.append(valid)
-                        session.commit()
+                        await async_session.commit()
                         return OK('Changes applied')
                     else:
                         return BadRequest('')
@@ -242,7 +269,7 @@ async def confirm_client(body: ConfirmBody, Authorize: AuthJWT = Depends()):
         client = Client(**client_json)
         user.clients.append(client)
         session.add(client)
-        session.commit()
+        await async_session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     except TypeError as e:
         return BadRequest(msg='Invalid token')
@@ -359,7 +386,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 await websocket.send_json(create_ws_message(type='pong'))
             elif msg.type == 'subscribe':
                 id = msg.data.get('id')
-                new_client = get_user_client(user, id)
+                new_client = await get_user_client(user, id)
 
                 if not new_client:
                     await websocket.send_json(create_ws_message(
@@ -374,7 +401,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 if msg.channel == 'config':
                     config = WebsocketConfig(**msg.data)
                     logging.info(config)
-                    new_client = get_user_client(user, config.id)
+                    new_client = await get_user_client(user, config.id)
                     if not new_client:
                         await websocket.send_json(create_ws_message(
                             type='error',

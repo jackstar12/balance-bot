@@ -3,7 +3,10 @@ import json
 import logging
 from datetime import datetime, timedelta
 
+from sqlalchemy.orm import make_transient
+
 import balancebot.api.database as db
+from balancebot.api.app import app
 from balancebot.api.dbmodels.balance import balance_from_json
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.discorduser import add_user_from_json, DiscordUser
@@ -11,6 +14,8 @@ from balancebot.api.dbmodels.event import Event
 from sqlalchemy_utils.types.encrypted.encrypted_type import FernetEngine
 import dotenv
 import os
+
+from balancebot.api.dbmodels.user import User
 from balancebot.bot.config import DATA_PATH
 
 dotenv.load_dotenv()
@@ -20,9 +25,36 @@ parser.add_argument("-e", "--event", action="store_true", help="Specifying this 
 parser.add_argument("-u", "--users", action="store_true", help="Specifying this puts the users.json the database.")
 parser.add_argument("-d", "--data", action="store_true", help="Specifying this puts the current data into a database.")
 parser.add_argument("-k", "--keys", action="store_true", help="Specifying this puts the current data into a database.")
+parser.add_argument("-c", "--discordids", action="store_true", help="Specifying this puts the migrates the discord user ids")
 
 args = parser.parse_args()
 
+if args.discordids:
+    discord_users = db.session.query(DiscordUser).all()
+
+    for discord_user in discord_users:
+        db.session.add(discord_user)
+        make_transient(discord_user)
+        discord_user.id = discord_user.user_id
+        db.session.add(discord_user)
+
+    db.session.commit()
+
+    discord_users = db.session.query(DiscordUser).all()
+
+    users = db.session.query(User).all()
+    for user in users:
+        user.discord_user_id = user.discorduser.user_id
+
+    for client in db.session.query(Client).all():
+        if client.discorduser:
+            client.discord_user_id = client.discorduser.user_id
+
+    db.session.commit()
+
+    db.session.query(DiscordUser).filter(DiscordUser.id != DiscordUser.user_id).delete()
+    db.session.commit()
+    print('Migrated discorduser ids')
 
 if args.keys:
     clients = db.session.query(Client).all()

@@ -51,7 +51,8 @@ class BalanceCog(CogBase):
             else:
                 await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
         else:
-            user = dbutils.get_user(ctx.author_id)
+            user = await dbutils.get_discord_user(ctx.author_id, clients=dict(events=True))
+
             await ctx.defer()
 
             for user_client in user.clients:
@@ -99,7 +100,7 @@ class BalanceCog(CogBase):
             registered_client = dbutils.get_client(user.id, ctx.guild_id)
             clients = [registered_client]
         else:
-            user = dbutils.get_user(ctx.author_id)
+            user = await dbutils.get_discord_user(ctx.author_id, clients=True)
             clients = user.clients
 
         since_start = time is None
@@ -108,7 +109,7 @@ class BalanceCog(CogBase):
         await ctx.defer()
         await self.user_manager.fetch_data(clients=clients)
 
-        user_gains = utils.calc_gains(
+        user_gains = await utils.calc_gains(
             clients,
             event=dbutils.get_event(ctx.guild_id, throw_exceptions=False),
             search=time,

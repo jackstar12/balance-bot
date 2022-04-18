@@ -4,6 +4,7 @@ from starlette.responses import JSONResponse
 from pydantic import BaseModel
 
 from balancebot.api.database import session
+from balancebot.api.database_async import async_session
 from balancebot.api.dbmodels.user import User
 import bcrypt
 
@@ -23,7 +24,7 @@ class AuthenticationBody(BaseModel):
 
 
 @router.post('/register')
-def register(body: AuthenticationBody, Authorize: AuthJWT = Depends()):
+async def register(body: AuthenticationBody, Authorize: AuthJWT = Depends()):
     user = session.query(User).filter_by(email=body.email).first()
     if not user:
         salt = bcrypt.gensalt()
@@ -32,7 +33,7 @@ def register(body: AuthenticationBody, Authorize: AuthJWT = Depends()):
             salt=salt.decode('utf-8'),
             password=bcrypt.hashpw(body.password.encode(), salt).decode('utf-8')
         )
-        session.commit()
+        await async_session.commit()
         session.refresh(new_user)
         Authorize.set_access_cookies(Authorize.create_access_token(subject=new_user.id))
         Authorize.set_refresh_cookies(Authorize.create_refresh_token(subject=new_user.id))
@@ -56,8 +57,8 @@ def login(body: AuthenticationBody, Authorize: AuthJWT = Depends()):
             refresh_token = Authorize.create_refresh_token(subject=user.id)
 
             # Set the JWT and CSRF double submit cookies in the response
-            Authorize.set_access_cookies(access_token)
-            Authorize.set_refresh_cookies(refresh_token)
+            Authorize.set_access_cookies(access_token, response=response)
+            Authorize.set_refresh_cookies(refresh_token, response=response)
 
             return response
 

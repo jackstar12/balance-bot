@@ -23,6 +23,7 @@ from sqlalchemy import asc
 
 import balancebot.api.dbmodels.event as event
 from balancebot.api.database import session
+from balancebot.api.database_async import async_session
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.models.daily import Daily
 from balancebot.common.models.gain import Gain
@@ -140,6 +141,7 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
                 if ctx.deferred:
                     await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
                 logging.critical(f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
+                await async_session.rollback()
 
         return wrapper
 
@@ -206,7 +208,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     await um.fetch_data([graph[0] for graph in to_graph])
     for registered_client, name in to_graph:
 
-        history = um.get_client_history(registered_client,
+        history = await um.get_client_history(registered_client,
                                         event=event,
                                         since=start,
                                         to=end,
@@ -425,7 +427,7 @@ async def create_leaderboard(dc_client: discord.Client,
             if client.rekt_on:
                 users_rekt.append(client)
                 continue
-            balance = client.latest
+            balance = await client.latest()
             if balance and not (event and balance.time < event.start):
                 if balance.amount > REKT_THRESHOLD:
                     user_scores.append((client, balance.amount))
@@ -439,7 +441,7 @@ async def create_leaderboard(dc_client: discord.Client,
 
         description += f'Gain {readable_time(time)}\n\n'
 
-        client_gains = calc_gains(clients, event, time)
+        client_gains = await calc_gains(clients, event, time)
 
         for gain in client_gains:
             if gain.relative is not None:
@@ -508,7 +510,7 @@ async def create_leaderboard(dc_client: discord.Client,
     )
 
 
-def calc_gains(clients: List[Client],
+async def calc_gains(clients: List[Client],
                event: event.Event,
                search: datetime,
                currency: str = None) -> List[Gain]:
@@ -542,7 +544,7 @@ def calc_gains(clients: List[Client],
         #    currency
         # )
 
-        history = user_manager.get_client_history(client, event, since=search, currency=currency)
+        history = await user_manager.get_client_history(client, event, since=search, currency=currency)
 
         if history.data:
             balance_then = history.data[0]
