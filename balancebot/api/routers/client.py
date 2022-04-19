@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
 from balancebot.api.database_async import db, db_first, async_session, db_all, db_unique
-from balancebot.api.dbmodels.GuildAssociation import GuildAssociation
+from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody
 from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
@@ -190,7 +190,6 @@ async def delete_client(body: DeleteBody, user: User = Depends(current_user)):
 @router.patch('/client')
 async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
     Authorize.jwt_required()
-    #user: User = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
     user = await db_unique(select(User).filter_by(id=Authorize.get_jwt_subject()), discorduser=True)
     client: Client = await db_first(
         add_client_filters(select(Client), user, body.id)
@@ -227,7 +226,7 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
                             )
                         )
                     else:
-                        return BadRequest(f'You are not eglible to register in guild {guild.name}')
+                        return BadRequest(f'You are not eligible to register in guild {guild.name}')
 
                 await async_session.commit()
                 return OK('Changes applied')
@@ -243,7 +242,7 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
                             if event.guild in user.discorduser.guilds:
                                 valid_events.append(event)
                             else:
-                                return BadRequest(f'You are not eglible to join {event.name} (Not in server)')
+                                return BadRequest(f'You are not eligible to join {event.name} (Not in server)')
                         else:
                             return BadRequest(f'Event {event.name} is not free for registration')
                     if valid_events:
@@ -252,7 +251,7 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
                         await async_session.commit()
                         return OK('Changes applied')
                     else:
-                        return BadRequest('')
+                        return BadRequest('No valid events were provided')
                 else:
                     return BadRequest('Events need to be provided')
         else:

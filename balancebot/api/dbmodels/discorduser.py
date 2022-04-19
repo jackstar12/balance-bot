@@ -4,12 +4,14 @@ import discord
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot import api as client
-from balancebot.api.database_async import async_session
+from balancebot.api.database_async import async_session, db_unique, db_select
+from balancebot.api.dbmodels.client import Client
+from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.serializer import Serializer
 
 from balancebot.api.database import Base, session as session
 from sqlalchemy.orm import relationship
-from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Table
+from sqlalchemy import select, Column, Integer, ForeignKey, String, BigInteger, Table
 
 
 class DiscordUser(Base, Serializer):
@@ -24,10 +26,24 @@ class DiscordUser(Base, Serializer):
     global_client_id = Column(Integer(), ForeignKey('client.id', ondelete="SET NULL"),  nullable=True)
     global_client = relationship('Client', lazy='noload', foreign_keys=global_client_id, post_update=True, uselist=False, cascade="all, delete")
 
-    global_clients = relationship('Client', secondary='guild_association', lazy='noload')
+    global_clients = relationship('GuildAssociation', lazy='noload', cascade="all, delete")
 
     clients = relationship('Client', backref='discorduser', lazy='noload', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
     alerts = relationship('Alert', backref='discorduser', lazy='noload', cascade="all, delete")
+
+    async def get_global_client(self, guild_id, **eager):
+        if not guild_id:
+            if len(self.global_clients) == 1:
+                association = self.global_clients[0]
+            else:
+                return
+        else:
+            association = await db_unique(
+                select(GuildAssociation).filter_by(discorduser_id=self.id, guild_id=guild_id),
+                **eager
+            )
+        if association:
+            return await db_select(Client, id=association.client_id)
 
     @hybrid_property
     def user_id(self):

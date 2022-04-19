@@ -41,7 +41,7 @@ class BalanceCog(CogBase):
         currency = currency.upper()
 
         if ctx.guild is not None:
-            registered_user = dbutils.get_client(user.id, ctx.guild.id)
+            registered_user = await dbutils.get_client(user.id, ctx.guild.id)
 
             await ctx.defer()
 

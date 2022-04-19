@@ -18,7 +18,7 @@ from discord_slash.utils.manage_commands import create_choice
 from balancebot.api.app import app
 from balancebot.api.database import session
 from balancebot.api.database_async import async_session, db_all, db_unique
-from balancebot.api.dbmodels.GuildAssociation import GuildAssociation
+from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.guild import Guild

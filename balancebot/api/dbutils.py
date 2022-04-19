@@ -9,7 +9,7 @@ from balancebot.api.database import session
 import balancebot.api.dbmodels.client as db_client
 from balancebot.api.database_async import async_session, db_first, db_eager, db, db_del_filter, db_unique, db_all, \
     db_select
-from balancebot.api.dbmodels.GuildAssociation import GuildAssociation
+from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.discorduser import DiscordUser
 import balancebot.api.dbmodels.event as db_event
 from typing import Optional
@@ -37,15 +37,18 @@ async def get_client(user_id: int,
                 for client in event.registrations:
                     if client.discord_user_id == user_id:
                         return client
+
             if event and throw_exceptions:
                 raise UserInputError("User {name} is not registered for this event", user_id)
 
-            association = await db_unique(
-                select(GuildAssociation).filter_by(guild_id=guild_id)
-            )
-            if association:
-                return await db_select(db_client.Client, id=association.client_id)
+        client = await user.get_global_client(guild_id)
+        if client:
+            return client
+        elif throw_exceptions:
+            raise UserInputError("User")
 
+        if len(user.global_clients) == 1:
+            return
         if user.global_client:
             if not guild_id:
                 return user.global_client

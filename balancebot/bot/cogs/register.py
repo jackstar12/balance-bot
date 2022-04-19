@@ -18,8 +18,9 @@ from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.bot.config import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.messenger import Category, SubCategory
+from balancebot.common.models.selectionoption import SelectionOption
 from balancebot.exchangeworker import ExchangeWorker
-from balancebot.common.utils import create_yes_no_button_row
+from balancebot.common.utils import create_yes_no_button_row, create_selection
 
 
 class RegisterCog(CogBase):
@@ -102,10 +103,12 @@ class RegisterCog(CogBase):
                                               throw_exceptions=False)
                     existing_client = None
 
-                    discord_user = session.query(DiscordUser).filter_by(user_id=ctx.author_id).first()
+                    discord_user = await dbutils.get_discord_user(
+                        ctx.author_id, throw_exceptions=False, guilds=True
+                    )
                     if not discord_user:
                         discord_user = DiscordUser(
-                            user_id=ctx.author.id,
+                            id=ctx.author.id,
                             name=ctx.author.name
                         )
                     else:
@@ -115,7 +118,7 @@ class RegisterCog(CogBase):
                                     existing_client = client
                                     break
                         else:
-                            existing_client = discord_user.global_client
+                            existing_client = await discord_user.global_clients
 
                     def get_new_client() -> Client:
                         new_client = Client(
@@ -168,14 +171,28 @@ class RegisterCog(CogBase):
                                     dbutils.add_client(new_client, self.messenger)
                                     logging.info(f'Registered new user')
 
-                                button_row = create_yes_no_button_row(
-                                    slash=self.slash_cmd_handler,
-                                    author_id=ctx.author.id,
-                                    yes_callback=register_user,
-                                    yes_message="You were successfully registered!",
-                                    no_message="Registration cancelled",
-                                    hidden=True
-                                )
+                                if ctx.guild_id:
+                                    button_row = create_yes_no_button_row(
+                                        slash=self.slash_cmd_handler,
+                                        author_id=ctx.author.id,
+                                        yes_callback=register_user,
+                                        yes_message="You were successfully registered!",
+                                        no_message="Registration cancelled",
+                                        hidden=True
+                                    )
+                                else:
+                                    button_row = create_selection(
+                                        self.slash_cmd_handler,
+                                        author_id=ctx.author_id,
+                                        options=[
+                                            SelectionOption(
+                                                name=guild.name,
+                                                value=guild.id,
+
+                                            )
+                                            for guild in
+                                        ]
+                                    )
                         else:
                             message = f'An error occured while getting your balance: {init_balance.error}.'
                             button_row = None

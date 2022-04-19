@@ -1,6 +1,12 @@
 from enum import Enum
 
 
+class EventState(Enum):
+    ARCHIVED = 1
+    REGISTRATION = 2
+    OPEN = 3
+
+
 class Side(Enum):
     BUY = 1
     SELL = 2
