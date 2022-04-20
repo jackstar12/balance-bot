@@ -28,10 +28,10 @@ class Trade(Base, Serializer):
     exit = Column(Float, nullable=True)
     realized_pnl = Column(Float, nullable=True)
 
-    max_upnl_id = Column('Balance', ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    max_upnl_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
     max_upnl = relationship('Balance', lazy='joined', foreign_keys=max_upnl_id, uselist=False)
 
-    min_upnl_id = Column('Balance', ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    min_upnl_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
     min_upnl = relationship('Balance', lazy='joined', foreign_keys=min_upnl_id, uselist=False)
 
     # tp = Column(Float, nullable=True)

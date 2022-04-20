@@ -1,6 +1,6 @@
 from __future__ import annotations
 import asyncio
-from select import select
+from sqlalchemy import select
 
 import aiohttp
 import logging
@@ -28,6 +28,31 @@ import balancebot.exchangeworker as exchange_worker
 
 if TYPE_CHECKING:
     from balancebot.exchangeworker import ExchangeWorker
+
+
+def db_match_balance_currency(balance: Balance, currency: str):
+    result = None
+
+    if balance is None:
+        return None
+
+    result = None
+
+    if balance.currency != currency:
+        if balance.extra_currencies:
+            result_currency = balance.extra_currencies.get(currency)
+            if not result_currency:
+                result_currency = balance.extra_currencies.get(config.CURRENCY_ALIASES.get(currency))
+            if result_currency:
+                result = Balance(
+                    amount=result_currency,
+                    currency=currency,
+                    time=balance.time
+                )
+    else:
+        result = balance
+
+    return result
 
 
 class UserManager(Singleton):
@@ -120,7 +145,7 @@ class UserManager(Singleton):
             result = data[0]
 
             if result.error is None or result.error == '':
-                matched_balance = self.db_match_balance_currency(result, currency)
+                matched_balance = db_match_balance_currency(result, currency)
                 if matched_balance:
                     result = matched_balance
                 else:
@@ -130,11 +155,12 @@ class UserManager(Singleton):
 
         return result
 
-    def synch_workers(self):
-        clients = db.session.query(db_client.Client).all()
+    async def synch_workers(self):
+        #clients = db.session.query(db_client.Client).all()
+        clients = await db_all(select(db_client.Client), events=True, discorduser=dict(global_associations=True))
 
         for client in clients:
-            if client.is_global or client.is_active:
+            if client.is_global() or client.is_active:
                 self.add_client(client)
             else:
                 self._remove_worker(self.get_worker(client, create_if_missing=False))
@@ -158,13 +184,13 @@ class UserManager(Singleton):
             return worker
 
     async def get_client_history(self,
-                           client: db_client.Client,
-                           event: db_event.Event,
-                           since: datetime = None,
-                           to: datetime = None,
-                           currency: str = None) -> History:
+                                 client: db_client.Client,
+                                 event: db_event.Event,
+                                 since: datetime = None,
+                                 to: datetime = None,
+                                 currency: str = None) -> History:
 
-        since = since or datetime.fromtimestamp(0)
+        since = since or datetime.utcfromtimestamp(1000.0)
         to = to or datetime.now()
 
         if event:
@@ -184,10 +210,20 @@ class UserManager(Singleton):
             Balance.time > filter_time, Balance.time < to
         ))
 
+        first = await db_first(
+            client.history.statement.filter(
+                Balance.time > filter_time
+            ).order_by(
+                asc(Balance.time)
+            )
+        )
+
+        latest = await client.latest()
+
         for balance in history:
             if since <= balance.time <= to:
                 if currency != '$':
-                    balance = self.db_match_balance_currency(balance, currency)
+                    balance = db_match_balance_currency(balance, currency)
                 if balance:
                     results.append(balance)
             elif event and event.start <= balance.time and not initial:
@@ -292,27 +328,3 @@ class UserManager(Singleton):
 
         logging.info(f'Done Fetching')
         return data
-
-    def db_match_balance_currency(self, balance: Balance, currency: str):
-        result = None
-
-        if balance is None:
-            return None
-
-        result = None
-
-        if balance.currency != currency:
-            if balance.extra_currencies:
-                result_currency = balance.extra_currencies.get(currency)
-                if not result_currency:
-                    result_currency = balance.extra_currencies.get(config.CURRENCY_ALIASES.get(currency))
-                if result_currency:
-                    result = Balance(
-                        amount=result_currency,
-                        currency=currency,
-                        time=balance.time
-                    )
-        else:
-            result = balance
-
-        return result

@@ -59,12 +59,12 @@ class HistoryCog(CogBase):
                       to: datetime = None,
                       currency: str = None):
         if ctx.guild:
-            registered_client = dbutils.get_client(user.id, ctx.guild.id)
+            registered_client = await dbutils.get_client(user.id, ctx.guild.id)
             registrations = [(registered_client, user.display_name)]
         else:
-            registered_user = await dbutils.get_discord_user(user.id, clients=True)
+            registered_user = await dbutils.get_discord_user(user.id, clients=dict(events=True))
             registrations = [
-                (client, client.get_event_string()) for client in registered_user.clients
+                (client, await client.get_event_string()) for client in registered_user.clients
             ]
 
         if compare:
@@ -84,7 +84,7 @@ class HistoryCog(CogBase):
                             # Could not cast to integer
                             continue
                         if member:
-                            registered_client = dbutils.get_client(member.id, ctx.guild.id)
+                            registered_client = await dbutils.get_client(member.id, ctx.guild.id)
                             registrations.append((registered_client, member.display_name))
 
         if currency is None:
@@ -107,7 +107,7 @@ class HistoryCog(CogBase):
 
         await utils.create_history(
             to_graph=registrations,
-            event=dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False),
+            event=await dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False),
             start=since,
             end=to,
             currency_display=currency_raw,
@@ -141,7 +141,7 @@ class HistoryCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.time_args(names=[('since', None), ('to', None)])
     async def clear(self, ctx: SlashContext, since: datetime = None, to: datetime = None):
-        client = dbutils.get_client(ctx.author_id, ctx.guild_id)
+        client = await dbutils.get_client(ctx.author_id, ctx.guild_id)
 
         from_to = ''
         if since:

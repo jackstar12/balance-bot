@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pytz
 import uvicorn
 import asyncio
 import aiohttp
@@ -22,12 +23,13 @@ from balancebot.api.dependencies import current_user
 from balancebot.api.settings import settings
 from balancebot.api.database import Base, engine, session
 
-import balancebot.api.routers.discordauth as discord
 import balancebot.api.routers.authentication as auth
 import balancebot.api.routers.client as client
 import balancebot.api.routers.label as label
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.guild import Guild
+from balancebot.api.dbmodels.balance import Balance
+import balancebot.api.routers.discordauth as discord
 
 import balancebot.collector.collector as collector
 from balancebot.common.enums import Tier
@@ -207,7 +209,7 @@ async def db_test():
     result = await sess.execute(
         delete(Guild).filter_by(id=234)
     )
-    now = datetime.utcnow()
+    now = datetime.now(tz=pytz.UTC)
     client = await sess.get(Client, 48)
     history = await aio_db.db_all(client.history.statement.filter(
         Balance.time < now

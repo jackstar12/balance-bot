@@ -29,8 +29,12 @@ async def db(stmt):
     return await async_session.execute(stmt)
 
 
-def db_select(cls, **filters):
+def db_select_first(cls, **filters):
     return db_first(select(cls).filter_by(**filters))
+
+
+def db_select_all(cls, **filters):
+    return db_all(select(cls).filter_by(**filters))
 
 
 async def db_all(stmt: Select, **eager):
@@ -42,7 +46,7 @@ async def db_all(stmt: Select, **eager):
 async def db_first(stmt: Select, **eager):
     if eager:
         stmt = db_eager(stmt, **eager)
-    return (await async_session.scalars(stmt.limit(1))).first()
+    return (await async_session.scalars(stmt.limit(1))).unique().first()
 
 
 async def db_unique(stmt: Select, **eager):

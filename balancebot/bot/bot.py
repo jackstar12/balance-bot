@@ -40,7 +40,7 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
-    user_manager.synch_workers()
+    await user_manager.synch_workers()
     event_manager.initialize_events()
     asyncio.create_task(user_manager.start_fetching())
 
@@ -49,7 +49,7 @@ async def on_ready():
             select(Guild), users=True, global_clients=True
         )
     }
-    discord_users = await db_all(select(DiscordUser), guilds=True)
+    discord_users = await db_all(select(DiscordUser))
     #associations_by_guild_id = {guild.id: guild for guild in await db_all(select(GuildAssociation))}
 
     # Make sure database entries for guilds are up-to-date
@@ -61,7 +61,7 @@ async def on_ready():
         if db_guild.name != guild.name:
             db_guild.name = guild.name
         for discord_user in discord_users:
-            if guild.get_member(discord_user.user_id) and db_guild not in discord_user.guilds:
+            if guild.get_member(discord_user.user_id) and discord_user not in db_guild.users:
                 async_session.add(
                     GuildAssociation(
                         guild_id=guild.id,

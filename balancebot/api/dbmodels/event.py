@@ -43,7 +43,7 @@ class Event(Base, Serializer):
         return self.start <= datetime.now() <= self.end
 
     def is_free_for_registration(self, now: datetime = None):
-        return self.registration_start <= (now or datetime.utcnow()) <= self.registration_end
+        return self.registration_start <= (now or datetime.now(tz=pytz.UTC)) <= self.registration_end
 
     @hybrid_property
     def is_archived(self):

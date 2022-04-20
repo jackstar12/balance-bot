@@ -1,9 +1,3 @@
-from datetime import datetime
-from typing import List
-import discord
-
-from balancebot import api as client
-from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.serializer import Serializer
 
 from balancebot.api.database import Base, session as session
@@ -20,6 +14,6 @@ class Guild(Base, Serializer):
     name = Column(String, nullable=True)
     tier = Column(Enum(Tier), nullable=False)
 
-    events = relationship('Event', lazy=True, backref='guild', cascade='all, delete')
-    users = relationship('DiscordUser', secondary='guild_association', lazy=True, backref='guilds')
+    events = relationship('Event', lazy='noload', backref='guild', cascade='all, delete')
+    users = relationship('DiscordUser', secondary='guild_association', lazy='noload', backref='guilds')
     global_clients = relationship('GuildAssociation', lazy='noload', backref='guild')

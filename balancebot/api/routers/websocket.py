@@ -102,7 +102,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 create_ws_message(
                     type='client',
                     channel='update',
-                    data=client_utils.update_client_data_balance(
+                    data=await client_utils.update_client_data_balance(
                         await client_utils.get_cached_data(config),
                         subscribed_client,
                         config

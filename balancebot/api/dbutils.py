@@ -8,7 +8,7 @@ from sqlalchemy.sql import Select
 from balancebot.api.database import session
 import balancebot.api.dbmodels.client as db_client
 from balancebot.api.database_async import async_session, db_first, db_eager, db, db_del_filter, db_unique, db_all, \
-    db_select
+    db_select_first
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.discorduser import DiscordUser
 import balancebot.api.dbmodels.event as db_event
@@ -26,13 +26,13 @@ async def get_client(user_id: int,
     if user:
         if guild_id:
             if registration:
-                event = get_event(guild_id, state='registration', throw_exceptions=False)
+                event = await get_event(guild_id, state='registration', throw_exceptions=False)
                 if event:
                     for client in event.registrations:
                         if client.discord_user_id == user_id:
                             return client
 
-            event = get_event(guild_id, state='active', throw_exceptions=False)
+            event = await get_event(guild_id, state='active', throw_exceptions=False)
             if event:
                 for client in event.registrations:
                     if client.discord_user_id == user_id:
@@ -47,7 +47,7 @@ async def get_client(user_id: int,
         elif throw_exceptions:
             raise UserInputError("User")
 
-        if len(user.global_clients) == 1:
+        if len(user.global_associations) == 1:
             return
         if user.global_client:
             if not guild_id:
@@ -61,8 +61,9 @@ async def get_client(user_id: int,
         raise UserInputError("User {name} is not registered", user_id)
 
 
-def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
-              throw_exceptions=True) -> Optional[db_event.Event]:
+async def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
+                    throw_exceptions=True,
+                    **eager_loads) -> Optional[db_event.Event]:
 
     if not state:
         state = 'active'
@@ -72,22 +73,23 @@ def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
 
     now = datetime.now()
 
-    filters = [db_event.Event.guild_id == guild_id]
-    if state == 'archived':
-        filters.append(db_event.Event.end < now)
-    elif state == 'active':
-        filters.append(db_event.Event.start <= now)
-        filters.append(now <= db_event.Event.end)
-    elif state == 'registration':
-        filters.append(db_event.Event.registration_start <= now)
-        filters.append(now <= db_event.Event.registration_end)
+    stmt = select(db_event.Event).filter(db_event.Event.guild_id == guild_id)
 
     if state == 'archived':
-        events = session.query(db_event.Event).filter(*filters).all()
+        stmt.filter(db_event.Event.end < now)
+    elif state == 'active':
+        stmt.filter(db_event.Event.start <= now)
+        stmt.filter(now <= db_event.Event.end)
+    elif state == 'registration':
+        stmt.filter(db_event.Event.registration_start <= now)
+        stmt.filter(now <= db_event.Event.registration_end)
+
+    if state == 'archived':
+        events = await db_all(stmt, **eager_loads)
         events.sort(key=lambda x: x.end, reverse=True)
         event = events[0]
     else:
-        event = session.query(db_event.Event).filter(*filters).first()
+        event = await db_first(stmt, **eager_loads)
 
     if not event and throw_exceptions:
         raise UserInputError(f'There is no {"event you can register for" if state == "registration" else "active event"}')
@@ -105,11 +107,12 @@ async def delete_client(client: db_client.Client, messenger: Messenger, commit=F
 def add_client(client: db_client.Client, messenger: Messenger):
     messenger.pub_channel(Category.CLIENT, SubCategory.NEW, obj=client.id)
 
+
 def get_all_events(guild_id: int, channel_id):
     pass
 
 
-async def get_discord_user(user_id: int, throw_exceptions=True, **kwargs) -> Optional[DiscordUser]:
+async def get_discord_user(user_id: int, throw_exceptions=True, clients=True, **kwargs) -> Optional[DiscordUser]:
     """
     Tries to find a matching entry for the user and guild id.
     :param user_id: id of user to get
@@ -122,6 +125,7 @@ async def get_discord_user(user_id: int, throw_exceptions=True, **kwargs) -> Opt
     result = await db_unique(
         db_eager(
             select(DiscordUser),
+            clients=clients,
             **kwargs
         ),
     )
@@ -134,11 +138,11 @@ async def get_discord_user(user_id: int, throw_exceptions=True, **kwargs) -> Opt
     return result
 
 
-def get_guild_start_end_times(guild_id, start, end, archived=False):
+async def get_guild_start_end_times(guild_id, start, end, archived=False):
 
     start = datetime.fromtimestamp(0) if not start else start
     end = datetime.now() if not end else end
-    event = get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
+    event = await get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
 
     if event:
         # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)

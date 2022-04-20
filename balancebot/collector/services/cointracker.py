@@ -111,7 +111,7 @@ class CoinTracker(Singleton, Observer):
                             exchange='ftx',
                         )
                         self._coins_by_name[coin_name] = coin
-                        session.add(coin)
+                        async_session.add(coin)
                     await self.data_service.subscribe(
                         'ftx',
                         Channel.TRADES,

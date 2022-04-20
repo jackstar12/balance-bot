@@ -55,7 +55,7 @@ class EventManager:
         return guild.get_channel(event.channel_id)
 
     async def _event_start(self, event: Event):
-        self._user_manager.synch_workers()
+        await self._user_manager.synch_workers()
         await self._get_event_channel(event).send(content=f'Event **{event.name}** just started!',
                                                   embed=event.get_discord_embed(dc_client=self._dc_client, registrations=True))
 
@@ -72,7 +72,7 @@ class EventManager:
             file=complete_history
         )
 
-        self._user_manager.synch_workers()
+        await self._user_manager.synch_workers()
 
     async def _event_registration_start(self, event: Event):
         await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has started!')

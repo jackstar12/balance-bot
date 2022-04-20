@@ -1,7 +1,7 @@
 from typing import List, Optional, Union
 import discord
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc, \
-    Boolean
+    Boolean, select
 from sqlalchemy.orm import relationship, Query
 
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -12,9 +12,11 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
-from balancebot.api.database_async import db_first, db_all, async_session
+from balancebot.api.database_async import db_first, db_all, async_session, db_select_all
 from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.discorduser import DiscordUser
+from balancebot.api.dbmodels.guild import Guild
+from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dbmodels.user import User
 import balancebot.bot.config as config
@@ -49,12 +51,15 @@ class Client(Base, Serializer):
     rekt_on = Column(DateTime(timezone=True), nullable=True)
     trades: AppenderQuery = relationship('Trade', backref='client', lazy=True, cascade="all, delete")
     history: AppenderQuery = relationship('Balance', backref='client',
-                                          cascade="all, delete", lazy='dynamic', order_by='Balance.time')
+                                          cascade="all, delete", lazy='dynamic',
+                                          order_by='Balance.time', foreign_keys='Balance.client_id')
+
     archived = Column(Boolean, nullable=True)
     invalid = Column(Boolean, nullable=True)
 
     currently_realized_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
-    currently_realized = relationship('Balance', lazy='joined', foreign_keys=currently_realized_id, cascade="all, delete")
+    currently_realized = relationship('Balance', lazy='joined', foreign_keys=currently_realized_id,
+                                      cascade="all, delete")
 
     required_extra_args: List[str] = []
 
@@ -69,9 +74,12 @@ class Client(Base, Serializer):
         except ValueError:
             return None
 
-    @hybrid_property
-    def is_global(self):
-        return self.discorduser.global_client_id == self.id if self.discorduser else False
+    def is_global(self, guild_id: int = None):
+        if self.discorduser:
+            association = self.discorduser.get_global_association(guild_id=guild_id, client_id=self.id)
+            return association and association.client_id == self.id
+        elif self.user_id:
+            return True
 
     @hybrid_property
     def is_active(self):
@@ -84,23 +92,30 @@ class Client(Base, Serializer):
         except ValueError:
             return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
-    def get_event_string(self, is_global=False):
-        events = ''
-        if self.is_global or is_global:
-            events += 'Global'
-        for event in self.events:
-            first = True
-            if event.is_active or event.is_free_for_registration():
-                if not first or self.is_global or is_global:
-                    events += f', '
-                events += event.name
-                first = False
-        return events
+    async def get_event_string(self, is_global=False):
+        events = []
+
+        associations = await db_select_all(GuildAssociation,
+                                           client_id=self.id,
+                                           discorduser_id=self.discord_user_id)
+
+        events += [
+            f'_{guild.name}_ (Server)' for guild in await db_all(
+                select(Guild).filter(
+                    or_(*[Guild.id == association.guild_id for association in associations])
+                )
+            )
+        ]
+        events += [
+            event.name for event in self.events if event.is_active or event.is_free_for_registration()
+        ]
+
+        return ', '.join(events)
 
     async def get_discord_embed(self, is_global=False):
 
         embed = discord.Embed(title="User Information")
-        embed.add_field(name='Event', value=self.get_event_string(is_global), inline=False)
+        embed.add_field(name='Event', value=await self.get_event_string(is_global), inline=False)
         embed.add_field(name='Exchange', value=self.exchange)
         embed.add_field(name='Api Key', value=self.api_key)
 
@@ -116,7 +131,8 @@ class Client(Base, Serializer):
         return embed
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[Select, Delete, Update]:
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[
+    Select, Delete, Update]:
     user_checks = [Client.user_id == user.id]
     if user.discord_user_id:
         user_checks.append(Client.discord_user_id == user.discorduser.id)

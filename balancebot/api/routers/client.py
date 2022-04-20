@@ -30,6 +30,7 @@ from balancebot.api.utils.client import create_cilent_data_serialized, get_user_
 import balancebot.api.utils.client as client_utils
 from balancebot.common.messenger import Messenger, Category, SubCategory
 import balancebot.api.dbmodels.event as db_event
+from balancebot.common.utils import validate_kwargs
 
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.bot.config import EXCHANGES
@@ -43,10 +44,6 @@ router = APIRouter(
         400: {"msg": "Email is already used"}
     }
 )
-
-
-def validate_kwargs(kwargs: Dict, required: List[str]):
-    return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
 
 
 @router.post('/client')
@@ -161,7 +158,7 @@ async def get_client_analytics(id: Optional[int] = None, since: Optional[datetim
                 if not trade.open_qty:
                     label_performance[label.id] += trade.realized_pnl
 
-        daily = utils.calc_daily(client)
+        daily = await utils.calc_daily(client)
 
         weekday_performance = [0] * 7
         for day in daily:
@@ -202,7 +199,9 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
     if body.discord is False:
         client.discord_user_id = None
         client.user_id = user.id
+
         await async_session.commit()
+
     elif body.discord is True:
         if user.discord_user_id:
             client.discord_user_id = user.discord_user_id
@@ -227,12 +226,11 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
                         )
                     else:
                         return BadRequest(f'You are not eligible to register in guild {guild.name}')
-
                 await async_session.commit()
                 return OK('Changes applied')
             elif body.is_global is False:
                 if body.events:
-                    now = datetime.utcnow()
+                    now = datetime.now(tz=pytz.UTC)
                     events = session.query(db_event.Event).filter(
                         or_(*[db_event.Event.id == event_id for event_id in body.events])
                     ).all()
@@ -348,7 +346,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 create_ws_message(
                     type='client',
                     channel='update',
-                    data=client_utils.update_client_data_balance(
+                    data=await client_utils.update_client_data_balance(
                         await client_utils.get_cached_data(config),
                         subscribed_client,
                         config

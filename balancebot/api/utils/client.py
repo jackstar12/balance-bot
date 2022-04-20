@@ -66,7 +66,7 @@ def update_client_data_trades(cache: Dict, trades: List[Dict], config: Websocket
     return result
 
 
-def update_client_data_balance(cache: Dict, client: Client, config: WebsocketConfig, save_cache=True) -> Dict:
+async def update_client_data_balance(cache: Dict, client: Client, config: WebsocketConfig, save_cache=True) -> Dict:
 
     cached_date = datetime.fromtimestamp(cache.get('ts', 0), tz=pytz.UTC)
     now = datetime.now(tz=pytz.UTC)
@@ -79,7 +79,7 @@ def update_client_data_balance(cache: Dict, client: Client, config: WebsocketCon
     result = {}
 
     new_history = []
-    daily = utils.calc_daily(
+    daily = await utils.calc_daily(
         client=client,
         throw_exceptions=False,
         since=since_date,
@@ -162,7 +162,7 @@ async def create_cilent_data_serialized(client: Client, config: WebsocketConfig)
     if to_date > cached_date:
         since_date = max(since_date, cached_date)
 
-        update_client_data_balance(s, client, config, save_cache=False)
+        await update_client_data_balance(s, client, config, save_cache=False)
 
         trades = [trade.serialize(data=True) for trade in client.trades if since_date <= trade.initial.tz_time <= to_date]
         update_client_data_trades(s, trades, config, save_cache=False)

@@ -19,15 +19,15 @@ from discord_slash import SlashCommand, ComponentContext
 from datetime import datetime, timedelta
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any
 
-from sqlalchemy import asc
+from sqlalchemy import asc, desc
 
 import balancebot.api.dbmodels.event as event
 from balancebot.api.database import session
-from balancebot.api.database_async import async_session
+from balancebot.api.database_async import async_session, db_first
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.models.daily import Daily
 from balancebot.common.models.gain import Gain
-from balancebot.collector.usermanager import UserManager
+from balancebot.collector.usermanager import UserManager, db_match_balance_currency
 from balancebot.api.dbmodels.client import Client
 from balancebot.api import dbutils
 from balancebot.api.dbmodels.discorduser import DiscordUser
@@ -62,7 +62,6 @@ def server_only(coro, cog=True):
 
 def set_author_default(name: str, cog=True):
     def decorator(coro):
-
         @wraps(coro)
         async def wrapper(*args, **kwargs):
             ctx = args[1] if cog else args[0]
@@ -70,9 +69,14 @@ def set_author_default(name: str, cog=True):
             if user is None:
                 kwargs[name] = ctx.author
             return await coro(*args, **kwargs)
+
         return wrapper
 
     return decorator
+
+
+def validate_kwargs(kwargs: Dict, required: List[str]):
+    return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
 
 
 def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
@@ -136,11 +140,13 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
             except InternalError as e:
                 if ctx.deferred:
                     await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
-                logging.error(f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
+                logging.error(
+                    f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
             except Exception:
                 if ctx.deferred:
                     await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
-                logging.critical(f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
+                logging.critical(
+                    f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
                 await async_session.rollback()
 
         return wrapper
@@ -209,10 +215,10 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     for registered_client, name in to_graph:
 
         history = await um.get_client_history(registered_client,
-                                        event=event,
-                                        since=start,
-                                        to=end,
-                                        currency=currency)
+                                              event=event,
+                                              since=start,
+                                              to=end,
+                                              currency=currency)
 
         if len(history.data) == 0:
             if throw_exceptions:
@@ -252,16 +258,16 @@ def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
         return after
 
 
-def calc_daily(client: Client,
-               amount: int = None,
-               guild_id: int = None,
-               currency: str = None,
-               string=False,
-               forEach: Callable[[Balance], Any] = None,
-               throw_exceptions=True,
-               since: datetime = None,
-               to: datetime = None,
-               now: datetime = None) -> Union[List[Daily], str]:
+async def calc_daily(client: Client,
+                     amount: int = None,
+                     guild_id: int = None,
+                     currency: str = None,
+                     string=False,
+                     forEach: Callable[[Balance], Any] = None,
+                     throw_exceptions=True,
+                     since: datetime = None,
+                     to: datetime = None,
+                     now: datetime = None) -> Union[List[Daily], str]:
     """
     Calculates daily balance changes for a given client.
     :param since:
@@ -317,7 +323,7 @@ def calc_daily(client: Client,
     daily_start = max(since, daily_start).replace(hour=0, minute=0, second=0)
 
     if guild_id:
-        event = dbutils.get_event(guild_id)
+        event = await dbutils.get_event(guild_id)
         if event and event.start > daily_start:
             daily_start = event.start
 
@@ -325,7 +331,7 @@ def calc_daily(client: Client,
 
     current_day = daily_start
     current_search = daily_start + timedelta(days=1)
-    prev_balance = um.db_match_balance_currency(history[0], currency)
+    prev_balance = db_match_balance_currency(history[0], currency)
     prev_daily = history[0]
     prev_daily.time = prev_daily.time.replace(hour=0, minute=0, second=0)
 
@@ -339,7 +345,7 @@ def calc_daily(client: Client,
         if since <= balance.tz_time <= to:
             if balance.tz_time >= current_search:
 
-                daily = um.db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
+                daily = db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
                 daily.time = daily.time.replace(minute=0, second=0)
                 prev_daily = prev_daily or daily
                 values = Daily(
@@ -391,7 +397,6 @@ async def create_leaderboard(dc_client: discord.Client,
                              event: event.Event = None,
                              time: datetime = None,
                              archived=False) -> discord.Embed:
-
     user_scores: List[Tuple[DiscordUser, float]] = []
     value_strings: Dict[DiscordUser, str] = {}
     users_rekt: List[DiscordUser] = []
@@ -405,7 +410,7 @@ async def create_leaderboard(dc_client: discord.Client,
         raise InternalError(f'Provided guild_id is not valid!')
 
     if not event:
-        event = dbutils.get_event(guild_id, throw_exceptions=False)
+        event = await dbutils.get_event(guild_id, throw_exceptions=False)
 
     if event:
         clients = event.registrations
@@ -511,9 +516,9 @@ async def create_leaderboard(dc_client: discord.Client,
 
 
 async def calc_gains(clients: List[Client],
-               event: event.Event,
-               search: datetime,
-               currency: str = None) -> List[Gain]:
+                     event: event.Event,
+                     search: datetime,
+                     currency: str = None) -> List[Gain]:
     """
     :param event:
     :param clients: users to calculate gain for
@@ -544,11 +549,33 @@ async def calc_gains(clients: List[Client],
         #    currency
         # )
 
-        history = await user_manager.get_client_history(client, event, since=search, currency=currency)
+        search, _ = dbutils.get_guild_start_end_times(event.guild_id, search, None)
+        balance_then = db_match_balance_currency(
+            await db_first(
+                client.history.statement.filter(
+                    Balance.time > search
+                ).order_by(asc(Balance.time))
+            ),
+            currency
+        )
 
-        if history.data:
-            balance_then = history.data[0]
-            balance_now = user_manager.db_match_balance_currency(history.data[len(history.data) - 1], currency)
+        balance_now = await client.latest()
+
+        # history = await user_manager.get_client_history(client, event, since=search, currency=currency)
+        # balance_now = db_match_balance_currency(
+        #     await db_first(
+        #         client.statement.filter(
+        #             Balance.time < search
+        #         ).order_by(None).order_by(
+        #             desc(Balance.time)
+        #         )
+        #     ),
+        #     currency
+        # )
+
+        if balance_then and balance_now:
+            # balance_then = history.data[0]
+            # balance_now = db_match_balance_currency(history.data[len(history.data) - 1], currency)
             diff = round(balance_now.amount - balance_then.amount,
                          ndigits=CURRENCY_PRECISION.get(currency, 3))
 
@@ -749,20 +776,9 @@ def create_selection(slash: SlashCommand,
     Utility method for creating a discord selection component.
     It provides functionality to return user-defined objects associated with the selected option on callback
 
-    Options must be given like the following:
 
-    ```{code-block} python
-    options=[
-        {
-            'name': Name of the Option,
-            'value': Object which will be provided on callback if the option is selected,
-            'description': Optional description of the option
-        },
-        ...
-    ]
-    ```
-
-
+    :param max_values:
+    :param min_values:
     :param slash: SlashCommand handler to use
     :param author_id: ID of the author invoking the call (used for settings custom_id)
     :param options: List of dicts describing the options.
