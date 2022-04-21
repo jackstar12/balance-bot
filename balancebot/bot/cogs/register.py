@@ -102,7 +102,6 @@ class RegisterCog(CogBase):
             exchange_name = exchange_name.lower()
             exchange_cls = EXCHANGES[exchange_name]
             if issubclass(exchange_cls, ExchangeWorker):
-                # Check if required keyword args are given
                 if validate_kwargs(kwargs, exchange_cls.required_extra_args):
 
                     event = await dbutils.get_event(ctx.guild_id,
