@@ -4,9 +4,11 @@ from starlette.responses import JSONResponse
 from pydantic import BaseModel
 
 from balancebot.api.database import session
-from balancebot.api.database_async import async_session
+from balancebot.api.database_async import async_session, db_select
 from balancebot.api.dbmodels.user import User
 import bcrypt
+
+from balancebot.api.utils.responses import OK
 
 router = APIRouter(
     tags=["authentication"],
@@ -25,7 +27,7 @@ class AuthenticationBody(BaseModel):
 
 @router.post('/register')
 async def register(body: AuthenticationBody, Authorize: AuthJWT = Depends()):
-    user = session.query(User).filter_by(email=body.email).first()
+    user = await db_select(User, email=body.email)
     if not user:
         salt = bcrypt.gensalt()
         new_user = User(
@@ -34,17 +36,18 @@ async def register(body: AuthenticationBody, Authorize: AuthJWT = Depends()):
             password=bcrypt.hashpw(body.password.encode(), salt).decode('utf-8')
         )
         await async_session.commit()
-        session.refresh(new_user)
+        await async_session.refresh(new_user)
         Authorize.set_access_cookies(Authorize.create_access_token(subject=new_user.id))
         Authorize.set_refresh_cookies(Authorize.create_refresh_token(subject=new_user.id))
-        return {'msg': 'Successfully registered'}
+
+        return OK(msg='Successfully registered')
     else:
         raise HTTPException(status_code=400)
 
 
 @router.post('/login')
 def login(body: AuthenticationBody, Authorize: AuthJWT = Depends()):
-    user = session.query(User).filter_by(email=body.email).first()
+    user = await db_select(User, email=body.email)
     if user:
         if bcrypt.hashpw(body.password.encode('utf-8'), user.salt.encode('utf-8')).decode('utf-8') == user.password:
 
