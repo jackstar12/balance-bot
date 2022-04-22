@@ -2,6 +2,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import logging
+import time
 import urllib.parse
 import math
 from asyncio import Future
@@ -32,13 +33,13 @@ if TYPE_CHECKING:
 class Cached(NamedTuple):
     url: str
     response: dict
-    expires: datetime
+    expires: float
 
 
 class TaskCache(NamedTuple):
     url: str
     task: Future
-    expires: datetime
+    expires: float
 
 
 class ExchangeWorker:
@@ -121,7 +122,7 @@ class ExchangeWorker:
         url = self._ENDPOINT + path
         if cache:
             cached = ExchangeWorker._cache.get(url)
-            if cached and datetime.now() < cached.expires:
+            if cached and time.time() < cached.expires:
                 return cached.response
         if sign:
             self._sign_request(method, path, headers, params, data)
@@ -131,7 +132,7 @@ class ExchangeWorker:
                 ExchangeWorker._cache[url] = Cached(
                     url=url,
                     response=resp,
-                    expires=datetime.now() + timedelta(seconds=5)
+                    expires=time.time() + 5
                 )
             return resp
 

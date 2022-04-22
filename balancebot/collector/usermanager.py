@@ -13,7 +13,7 @@ from sqlalchemy import asc, desc, DateTime, delete
 
 import balancebot.api.database as db
 import balancebot.api.dbmodels.event as db_event
-from balancebot.api.database_async import async_session, db as aio_db, db_first, db_all
+from balancebot.api.database_async import async_session, db as aio_db, db_first, db_all, db_select
 
 from balancebot.api.dbmodels.balance import Balance
 import balancebot.api.dbmodels.client as db_client
@@ -118,7 +118,7 @@ class UserManager(Singleton):
         """
         while True:
             await self._async_fetch_data()
-            time = datetime.now()
+            time = datetime.now(pytz.utc)
             next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
                                 microsecond=0) + timedelta(hours=self.interval_hours)
             delay = next - time
@@ -160,7 +160,7 @@ class UserManager(Singleton):
         clients = await db_all(select(db_client.Client), events=True, discorduser=dict(global_associations=True))
 
         for client in clients:
-            if client.is_global() or client.is_active:
+            if await client.is_global() or client.is_active:
                 self.add_client(client)
             else:
                 self._remove_worker(self.get_worker(client, create_if_missing=False))
@@ -190,8 +190,8 @@ class UserManager(Singleton):
                                  to: datetime = None,
                                  currency: str = None) -> History:
 
-        since = since or datetime.utcfromtimestamp(1000.0)
-        to = to or datetime.now()
+        since = since or datetime.fromtimestamp(0, tz=pytz.utc)
+        to = to or datetime.now(pytz.utc)
 
         if event:
             # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
@@ -229,6 +229,13 @@ class UserManager(Singleton):
             elif event and event.start <= balance.time and not initial:
                 initial = balance
 
+        if results:
+            results.insert(0, Balance(
+                time=since,
+                amount=results[0].amount,
+                currency=results[0].currency
+            ))
+
         if not initial:
             try:
                 initial = results[0]
@@ -248,7 +255,7 @@ class UserManager(Singleton):
         if start is None:
             start = datetime.fromtimestamp(0)
         if end is None:
-            end = datetime.now()
+            end = datetime.now(pytz.utc)
 
         await aio_db(delete(Balance).filter(
             Balance.client_id == client.id,
@@ -291,13 +298,13 @@ class UserManager(Singleton):
         tasks = []
         for result in results:
             if isinstance(result, Balance):
-                client = db.session.query(db_client.Client).filter_by(id=result.client_id).first()
+                client = await db_select(db_client.Client, id=result.client_id)
                 if client:
                     tasks.append(
                         lambda: self.messenger.pub_channel(Category.BALANCE, SubCategory.NEW, channel_id=client.id,
                                                            obj=result.id)
                     )
-                    history = client.history.order_by(desc(Balance.time)).limit(3).all()
+                    history = await db_all(client.history.order_by(desc(Balance.time)).limit(3))
                     history_len = len(history)
                     latest_balance = None if history_len == 0 else history[history_len - 1]
                     if history_len > 2:
@@ -312,7 +319,7 @@ class UserManager(Singleton):
                         if keep_errors:
                             data.append(result)
                     else:
-                        client.history.append(result)
+                        async_session.add(result)
                         data.append(result)
                         if result.amount <= self.rekt_threshold and not client.rekt_on:
                             client.rekt_on = time

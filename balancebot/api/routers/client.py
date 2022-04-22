@@ -64,7 +64,7 @@ async def register_client(body: RegisterBody, Authorize: AuthJWT = Depends()):
                 )
                 async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session)
-                    init_balance = await worker.get_balance(time=datetime.now())
+                    init_balance = await worker.get_balance(time=datetime.now(pytz.utc))
                 if init_balance.error is None:
                     if round(init_balance.amount, ndigits=2) == 0.0:
                         return BadRequest(

@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List
 
 import discord.ext.commands
+import pytz
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
@@ -27,7 +28,7 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def event_show(self, ctx: SlashContext):
-        now = datetime.now()
+        now = datetime.now(pytz.utc)
 
         events: List[Event] = session.query(Event).filter(
             Event.guild_id == ctx.guild_id,
@@ -93,7 +94,7 @@ class EventsCog(CogBase):
                     f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
         active_registration = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration',
-                                                throw_exceptions=False)
+                                                      throw_exceptions=False)
 
         if active_registration:
             if registration_start < active_registration.registration_end:
@@ -112,7 +113,7 @@ class EventsCog(CogBase):
         )
 
         async def register(ctx: SlashContext):
-            session.add(event)
+            async_session.add(event)
             await async_session.commit()
             self.event_manager.register(event)
 
@@ -134,7 +135,7 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def archive(self, ctx: SlashContext):
-        now = datetime.now()
+        now = datetime.now(pytz.utc)
 
         archived = session.query(Event).filter(
             Event.guild_id == ctx.guild_id,

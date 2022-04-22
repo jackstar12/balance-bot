@@ -1,10 +1,11 @@
 from datetime import datetime
-from typing import List
+from typing import List, Callable
 import discord
+from discord_slash import SlashCommand
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot import api as client
-from balancebot.api.database_async import async_session, db_unique, db_select_first
+from balancebot.api.database_async import async_session, db_unique, db_select
 import  balancebot.api.dbmodels.client as db_client
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.serializer import Serializer
@@ -12,6 +13,9 @@ from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.database import Base, session as session
 from sqlalchemy.orm import relationship
 from sqlalchemy import select, Column, Integer, ForeignKey, String, BigInteger, Table
+
+from balancebot.common.models.selectionoption import SelectionOption
+import balancebot.common.utils as utils
 
 
 class DiscordUser(Base, Serializer):
@@ -44,6 +48,23 @@ class DiscordUser(Base, Serializer):
             for association in self.global_associations:
                 if association.guild_id == guild_id or association.client_id == client_id:
                     return association
+
+    async def get_client_select(self, slash_cmd_handler: SlashCommand, callback: Callable):
+        return utils.create_selection(
+            slash_cmd_handler,
+            self.id,
+            options=[
+                SelectionOption(
+                    name=client.name if client.name else client.exchange,
+                    value=str(client.id),
+                    description=f'{f"{client.name}, " if client.name else ""}{client.exchange}, from {await client.get_events_and_guilds_string()}',
+                    object=client
+                )
+                for client in self.clients
+            ],
+            callback=callback,
+            max_values=1
+        )
 
     @hybrid_property
     def user_id(self):

@@ -60,7 +60,7 @@ class Messenger(Singleton):
             await self._pubsub.subscribe(**kwargs)
         if not self._listening:
             self._listening = True
-            #asyncio.create_task(self.listen())
+            asyncio.create_task(self.listen())
 
     def sub_channel(self, category: Category, sub: SubCategory, callback: Callable, channel_id: int = None, pattern=False):
         channel = self._join(category.value, sub.value, channel_id)

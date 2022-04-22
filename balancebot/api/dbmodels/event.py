@@ -1,5 +1,7 @@
 import asyncio
 
+import pytz
+
 from balancebot.api.database_async import async_session
 from balancebot.common import utils
 import numpy
@@ -15,10 +17,10 @@ from balancebot.api.database import Base, session as session
 from sqlalchemy.orm import relationship
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table
 
-association = Table('association', Base.metadata,
-                    Column('event_id', Integer, ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
-                    Column('client_id', Integer, ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
-                    )
+event_association = Table('association', Base.metadata,
+                          Column('event_id', Integer, ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
+                          Column('client_id', Integer, ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
+                          )
 
 
 class Event(Base, Serializer):
@@ -35,19 +37,19 @@ class Event(Base, Serializer):
     name = Column(String, nullable=False)
     description = Column(String, nullable=False)
 
-    registrations = relationship('Client', secondary=association, backref='events')
+    registrations = relationship('Client', lazy='raise', secondary=event_association, backref='events')
     archive = relationship('Archive', backref='event', uselist=False, cascade="all, delete")
 
     @hybrid_property
     def is_active(self):
-        return self.start <= datetime.now() <= self.end
+        return self.start <= datetime.now(pytz.UTC) <= self.end
 
     def is_free_for_registration(self, now: datetime = None):
         return self.registration_start <= (now or datetime.now(tz=pytz.UTC)) <= self.registration_end
 
     @hybrid_property
     def is_archived(self):
-        return self.end < datetime.now()
+        return self.end < datetime.now(pytz.utc)
 
     def get_discord_embed(self, dc_client: discord.Client, registrations=False):
         embed = discord.Embed(title=f'Event')
@@ -77,7 +79,7 @@ class Event(Base, Serializer):
         if len(self.registrations) == 0:
             return embed
 
-        now = datetime.now()
+        now = datetime.now(pytz.utc)
         gains = await utils.calc_gains(self.registrations, self.guild_id, self.start)
 
         def key(x: Gain):

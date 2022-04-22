@@ -22,6 +22,7 @@ from balancebot.api.dbmodels.user import User
 import balancebot.bot.config as config
 from balancebot.api.database import Base, session
 from balancebot.api.dbmodels import balance
+import balancebot.common.utils as utils
 
 dotenv.load_dotenv()
 
@@ -74,10 +75,13 @@ class Client(Base, Serializer):
         except ValueError:
             return None
 
-    def is_global(self, guild_id: int = None):
-        if self.discorduser:
-            association = self.discorduser.get_global_association(guild_id=guild_id, client_id=self.id)
-            return association and association.client_id == self.id
+    async def is_global(self, guild_id: int = None):
+        if self.discord_user_id:
+            if guild_id:
+                associations = await db_select_all(GuildAssociation, discorduser_id=self.discord_user_id, client_id=self.id, guild_id=guild_id)
+            else:
+                associations = await db_select_all(GuildAssociation, discorduser_id=self.discord_user_id, client_id=self.id)
+            return bool(associations)
         elif self.user_id:
             return True
 
@@ -92,30 +96,35 @@ class Client(Base, Serializer):
         except ValueError:
             return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
-    async def get_event_string(self, is_global=False):
-        events = []
+    async def get_events_and_guilds_string(self, guilds: Optional[List[Guild]] = None):
+        return ', '.join([await self.get_guilds_string(guilds), self.get_event_string()])
+
+    def get_event_string(self):
+        return ', '.join(
+            event.name for event in self.events if event.is_active or event.is_free_for_registration()
+        )
+
+    async def get_guilds_string(self, guilds: Optional[List[Guild]] = None):
+        if guilds is None:
+            guilds = []
 
         associations = await db_select_all(GuildAssociation,
                                            client_id=self.id,
                                            discorduser_id=self.discord_user_id)
 
-        events += [
-            f'_{guild.name}_ (Server)' for guild in await db_all(
-                select(Guild).filter(
-                    or_(*[Guild.id == association.guild_id for association in associations])
-                )
+        guilds += await db_all(
+            select(Guild).filter(
+                or_(*[Guild.id == association.guild_id for association in associations])
             )
-        ]
-        events += [
-            event.name for event in self.events if event.is_active or event.is_free_for_registration()
-        ]
+        )
 
-        return ', '.join(events)
+        return ', '.join(f'_{guild.name}_' for guild in guilds)
 
-    async def get_discord_embed(self, is_global=False):
+    async def get_discord_embed(self, guilds: Optional[List[Guild]] = None):
 
         embed = discord.Embed(title="User Information")
-        embed.add_field(name='Event', value=await self.get_event_string(is_global), inline=False)
+        utils.embed_add_value_safe(embed, 'Events', self.get_event_string())
+        utils.embed_add_value_safe(embed, 'Servers', await self.get_guilds_string(guilds), inline=False)
         embed.add_field(name='Exchange', value=self.exchange)
         embed.add_field(name='Api Key', value=self.api_key)
 

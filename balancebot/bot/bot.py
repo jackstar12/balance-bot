@@ -158,7 +158,7 @@ async def on_member_leave(member: discord.Member):
 
 
 async def on_rekt_async(data: Dict):
-    client = session.query(Client).filter_by(id=data.get('id'))
+    client = await async_session.get(Client, data.get('id'))
     logging.info(f'Use {client.discorduser} is rekt')
 
     message = random.Random().choice(seq=REKT_MESSAGES)
@@ -167,7 +167,7 @@ async def on_rekt_async(data: Dict):
         try:
             guild: discord.guild.Guild = bot.get_guild(guild_data['guild_id'])
             channel = guild.get_channel(guild_data['guild_channel'])
-            member = guild.get_member(client.discorduser.user_id)
+            member = guild.get_member(client.discord_user_id)
             if member:
                 message_replaced = message.replace("{name}", member.display_name)
                 embed = discord.Embed(description=message_replaced)
@@ -183,15 +183,14 @@ user_manager = UserManager(exchanges=EXCHANGES,
                            data_path=DATA_PATH,
                            rekt_threshold=REKT_THRESHOLD)
 
-parser = argparse.ArgumentParser(description="Run the bot.")
+parser = argparse.ArgumentParser(description="Run the test_bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
 
 args = parser.parse_known_args()
 
 event_manager = EventManager(discord_client=bot)
 
-messanger = Messenger()
-messanger.sub_channel(Category.CLIENT, SubCategory.REKT, callback=on_rekt_async, pattern=True)
+messenger = Messenger()
 
 for cog in [
     balance.BalanceCog,
@@ -202,7 +201,7 @@ for cog in [
     user.UserCog,
     alert.AlertCog
 ]:
-    cog.setup(bot, user_manager, event_manager, messanger, slash)
+    cog.setup(bot, user_manager, event_manager, messenger, slash)
 
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
@@ -228,6 +227,7 @@ async def run(http_session: aiohttp.ClientSession = None):
         return logger
 
     setup_logger()
+    messenger.sub_channel(Category.CLIENT, SubCategory.REKT, callback=on_rekt_async, channel_id=53)
 
     if http_session:
         pass

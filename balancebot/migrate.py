@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
+import pytz
 from sqlalchemy.orm import make_transient
 
 import balancebot.api.database as db
@@ -20,7 +21,7 @@ from balancebot.bot.config import DATA_PATH
 
 dotenv.load_dotenv()
 
-parser = argparse.ArgumentParser(description="Run the bot.")
+parser = argparse.ArgumentParser(description="Run the test_bot.")
 parser.add_argument("-e", "--event", action="store_true", help="Specifying this creates an dev event which can be used")
 parser.add_argument("-u", "--users", action="store_true", help="Specifying this puts the users.json the database.")
 parser.add_argument("-d", "--data", action="store_true", help="Specifying this puts the current data into a database.")
@@ -129,9 +130,9 @@ if args.event:
         channel_id=942495607015227502,
         registrations=Client.query.all(),
         start=datetime.fromtimestamp(0),
-        end=datetime.now() + timedelta(days=23),
+        end=datetime.now(pytz.utc) + timedelta(days=23),
         registration_start=datetime.fromtimestamp(0),
-        registration_end=datetime.now() + timedelta(days=24)
+        registration_end=datetime.now(pytz.utc) + timedelta(days=24)
     )
     db.session.add(event)
     db.session.commit()

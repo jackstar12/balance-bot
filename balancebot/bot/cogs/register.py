@@ -7,11 +7,11 @@ from datetime import datetime
 
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
-from sqlalchemy import inspect, select, or_
+from sqlalchemy import inspect, select, or_, update, insert
 
-from balancebot.api.database_async import async_session, db_del_filter, db_unique, db_select_first, db_all
+from balancebot.api.database_async import async_session, db_del_filter, db_unique, db_select, db_all, db
 from balancebot.api.dbmodels.balance import Balance
-from balancebot.api.dbmodels.event import Event
+from balancebot.api.dbmodels.event import Event, event_association
 from balancebot.api.dbmodels.guild import Guild
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.common import utils
@@ -147,7 +147,11 @@ class RegisterCog(CogBase):
                                         existing_clients = [client]
                                         break
                             else:
-                                existing_clients = [await discord_user.get_global_client(guild.id, events=True) for guild in guilds]
+                                existing_clients = []
+                                for guild in guilds:
+                                    existing_client = await discord_user.get_global_client(guild.id, events=True)
+                                    if existing_client:
+                                        existing_clients.append(existing_client)
 
                         def get_new_client() -> Client:
                             new_client = Client(
@@ -155,8 +159,7 @@ class RegisterCog(CogBase):
                                 api_secret=api_secret,
                                 subaccount=subaccount,
                                 extra_kwargs=kwargs,
-                                exchange=exchange_name,
-                                discorduser=discord_user
+                                exchange=exchange_name
                             )
                             if event:
                                 new_client.events.append(event)
@@ -180,7 +183,7 @@ class RegisterCog(CogBase):
                                     button_row = create_yes_no_button_row(
                                         slash=self.slash_cmd_handler,
                                         author_id=ctx.author.id,
-                                        yes_callback=lambda: self.register_user(
+                                        yes_callback=lambda ctx: self.register_user(
                                             existing_clients, get_new_client(), discord_user, init_balance, guilds,
                                             event,
                                         ),
@@ -193,15 +196,15 @@ class RegisterCog(CogBase):
 
                             await ctx.send(
                                 content=message,
-                                embed=await new_client.get_discord_embed(is_global=event is None),
+                                embed=await new_client.get_discord_embed(guilds=guilds),
                                 hidden=True,
                                 components=[button_row] if button_row else None
                             )
 
                             # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
                             # if the registration is cancelled, causing bugs
-                            session.add(new_client)
-                            session.expunge(new_client)
+                            async_session.add(new_client)
+                            async_session.expunge(new_client)
                             await async_session.commit()
 
                         if not existing_clients:
@@ -210,12 +213,12 @@ class RegisterCog(CogBase):
                             buttons = create_yes_no_button_row(
                                 slash=self.slash_cmd_handler,
                                 author_id=ctx.author_id,
-                                yes_callback=start_registration,
+                                yes_callback=lambda ctx: start_registration(ctx),
                                 no_message="Registration cancelled",
                                 hidden=True
                             )
                             existing = ", ".join(
-                                [await existing_client.get_event_string() for existing_client in existing_clients]
+                                [await existing_client.get_events_and_guilds_string() for existing_client in existing_clients]
                             )
                             await ctx.send(
                                 content=f'You are already registered for _{existing}_.\n'
@@ -305,6 +308,14 @@ class RegisterCog(CogBase):
 
         await async_session.commit()
 
+    async def register_client(self, ctx, event: Event, client: Client):
+        await db(
+            insert(event_association)
+            .values(event_id=event.id, client_id=client.id)
+        )
+        await async_session.commit()
+        await ctx.send(f'You are now registered for _{event.name}_!', hidden=True)
+
     @cog_ext.cog_subcommand(
         base="register",
         name="existing",
@@ -314,24 +325,64 @@ class RegisterCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def register_existing(self, ctx: SlashContext):
-        event = await dbutils.get_event(guild_id=ctx.guild_id, state='registration')
-        user = await dbutils.get_discord_user(ctx.author_id, clients=True)
+        event = await dbutils.get_event(guild_id=ctx.guild_id, state='registration', registrations=True)
 
-        if user and event.is_free_for_registration():
-            for client in user.clients:
-                if client in event.registrations:
+        if event.is_free_for_registration():
+            for client in event.registrations:
+                if client.discord_user_id == ctx.author_id:
                     raise UserInputError('You are already registered for this event!')
-            if user.global_client:
-                if user.global_client not in event.registrations:
-                    event.registrations.append(user.global_client)
-                    await async_session.commit()
-                    await ctx.send(f'You are now registered for _{event.name}_!', hidden=True)
+            user = await dbutils.get_discord_user(ctx.author_id, clients=dict(events=True), global_associations=True)
+            global_client = await user.get_global_client(ctx.guild_id)
+            if global_client:
+                if global_client not in event.registrations:
+                    await self.register_client(ctx, event, global_client)
                 else:
                     raise UserInputError('You are already registered for this event!')
             else:
-                raise UserInputError('You do not have a global access to use')
+                await ctx.send(
+                    content='Please select the client you want to register for this event.',
+                    components=[await user.get_client_select(
+                        self.slash_cmd_handler,
+                        lambda select_ctx, clients: self.register_client(select_ctx, event, clients[0])
+                    )],
+                    hidden=True
+                )
         else:
             raise UserInputError(f'Event {event.name} is not available for registration')
+
+    async def unregister_user(self, ctx, event: Event, client: Client, remove_guild: bool):
+
+        # When unregistering, one of the 2 cases applies:
+        # - Unregister a server bound global client
+        # - Unregister an event bound client
+        # - Unregister a server bound client from event
+
+        if event:
+            client.events.remove(event)
+            if not client.is_active and not await client.is_global(ctx.guild_id):
+                await dbutils.delete_client(client, self.messenger)
+        elif remove_guild:
+            await db(
+                update(GuildAssociation).
+                where(
+                    GuildAssociation.client_id == client.id,
+                    GuildAssociation.discorduser_id == client.discord_user_id,
+                    GuildAssociation.guild_id == ctx.guild_id
+                ).
+                values(client_id=None)
+            )
+        else:
+            await dbutils.delete_client(client, self.messenger)
+        await async_session.commit()
+
+        discord_user = await db_unique(
+            select(DiscordUser).filter_by(id=ctx.author_id),
+            clients=True, user=True
+        )
+        if len(discord_user.clients) == 0 and not discord_user.user:
+            await async_session.delete(discord_user)
+            await async_session.commit()
+        logging.info(f'Successfully unregistered user {ctx.author.display_name}')
 
     @cog_ext.cog_slash(
         name="unregister",
@@ -340,84 +391,73 @@ class RegisterCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def unregister(self, ctx):
-        client = await dbutils.get_client(
-            ctx.author.id, ctx.guild_id,
-            events=True,
-            discorduser=dict(global_associations=True)
-        )
-        event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False,
-                                        registrations=True)
-
-        if not event or client not in event.registrations:
-            event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active', throw_exceptions=False)
-
-        await ctx.defer(hidden=True)
 
         async def start_unregistration(ctx, selections: List[Client]):
+
+            event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False,
+                                            registrations=True)
+
+            client = selections[0]
+
+            if not event or client not in event.registrations:
+                event = await dbutils.get_event(
+                    ctx.guild_id,
+                    ctx.channel_id,
+                    state='active',
+                    throw_exceptions=False,
+                    registrations=True)
+
+            remove_guild = False
+            if not event:
+                if ctx.guild_id:
+                    remove_guild = await client.is_global(ctx.guild_id)
+                    if remove_guild:
+                        message = f'Do you really want to remove this account from _{ctx.guild.name}_?'
+                        success_message = f'Successfully unregistered you from _{ctx.guild.name}_.' \
+                                          f'\nIf you want to completely delete this account, repeat this process in the DM'
+                    else:
+                        raise InternalError(f"Client {client=} should be global, but {remove_guild}")
+                else:
+                    message = f'Do you really want to delete this account? **All your data will be gone**'
+                    success_message = f'Successfully deleted all data related to this account.'
+            else:
+                message = f'Do you really want to unregister from _{event.name}_?'
+                success_message = f'Successfully unregistered you from _{event.name}_'
 
             if not selections:
                 return
 
-            selection = selections[0]
-
-            async def unregister_user(ctx):
-
-                # When unregistering, one of the 2 cases applies:
-                # - Unregister a server bound global client
-                # - Unregister an event bound client
-                # - Unregister a server bound client from event
-
-                if event:
-                    selection.events.remove(event)
-                    if not selection.is_active and not selection.is_global(ctx.guild_id):
-                        await dbutils.delete_client(selection, self.messenger)
-                else:
-                    await dbutils.delete_client(selection, self.messenger)
-                await async_session.commit()
-
-                discord_user = await db_unique(
-                    select(DiscordUser).filter_by(id=ctx.author_id),
-                    clients=True, user=True
-                )
-                if len(discord_user.clients) == 0 and not discord_user.user:
-                    await db_del_filter(DiscordUser, user_id=ctx.author_id)
-                await async_session.commit()
-                logging.info(f'Successfully unregistered user {ctx.author.display_name}')
-
             buttons = create_yes_no_button_row(
                 slash=self.slash_cmd_handler,
                 author_id=ctx.author.id,
-                yes_callback=unregister_user,
-                yes_message="You were succesfully unregistered!",
+                yes_callback=lambda ctx: self.unregister_user(ctx, event, client, remove_guild),
+                yes_message=success_message,
                 no_message="Unregistration cancelled",
                 hidden=True
             )
             await ctx.send(
-                content=f'Do you really want to unregister from {event.name if event else await client.get_event_string()}? This will **delete all your data**.',
+                content=message,
                 embed=await client.get_discord_embed(),
                 components=[buttons],
                 hidden=True)
 
         if not ctx.guild_id:
-            user = await dbutils.get_discord_user(ctx.author_id, clients=dict(events=True))
-            client_select = create_selection(
-                self.slash_cmd_handler,
-                ctx.author_id,
-                options=[
-                    SelectionOption(
-                        name=client.name if client.name else client.exchange,
-                        value=str(client.id),
-                        description=f'{f"{client.name}, " if client.name else ""}{client.exchange}, from {await client.get_event_string()}',
-                        object=client
-                    )
-                    for client in user.clients
-                ],
-                callback=start_unregistration
-            )
-            await ctx.send(
-                content=f'Please select the client you want to delete',
-                components=[client_select],
-                hidden=True
-            )
+            user = await dbutils.get_discord_user(ctx.author_id, clients=dict(events=True), global_associations=True)
+            await ctx.defer()
+            if len(user.clients) > 1:
+                await ctx.send(
+                    content=f'Please select the client you want to delete',
+                    components=[
+                        await user.get_client_select(self.slash_cmd_handler, start_unregistration)
+                    ],
+                    hidden=True
+                )
+            else:
+                await start_unregistration(ctx, user.clients)
         else:
+            client = await dbutils.get_client(
+                ctx.author.id, ctx.guild_id,
+                client_eager=dict(events=True),
+                discord_user_eager=dict(global_associations=True)
+            )
             await start_unregistration(ctx, [client])

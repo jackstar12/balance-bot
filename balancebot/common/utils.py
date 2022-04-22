@@ -139,12 +139,12 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
                     f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
             except InternalError as e:
                 if ctx.deferred:
-                    await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
+                    await ctx.send(f'This is a bug in the test_bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
                 logging.error(
                     f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
             except Exception:
                 if ctx.deferred:
-                    await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
+                    await ctx.send('This is a bug in the test_bot. Please contact jacksn#9149.', hidden=True)
                 logging.critical(
                     f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
                 await async_session.rollback()
@@ -152,6 +152,11 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
         return wrapper
 
     return decorator
+
+
+def embed_add_value_safe(embed: discord.Embed, name, value, **kwargs):
+    if value:
+        embed.add_field(name=name, value=value, **kwargs)
 
 
 _regrex_pattern = re.compile("["
@@ -633,7 +638,7 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     ]
 
     date = None
-    now = datetime.now()
+    now = datetime.now(pytz.utc)
     for includes_date, time_format in formats:
         try:
             date = datetime.strptime(time_str, time_format)
@@ -650,6 +655,7 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
         hour = 0
         day = 0
         week = 0
+        second = 0
         args = time_str.split(' ')
         if len(args) > 0:
             for arg in args:
@@ -658,6 +664,8 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
                         hour += int(arg.rstrip('h'))
                     elif 'm' in arg:
                         minute += int(arg.rstrip('m'))
+                    elif 's' in arg:
+                        second += int(arg.rstrip('s'))
                     elif 'w' in arg:
                         week += int(arg.rstrip('w'))
                     elif 'd' in arg:
@@ -666,7 +674,7 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
                         raise UserInputError(f'Invalid time argument: {arg}')
                 except ValueError:  # Make sure both cases are treated the same
                     raise UserInputError(f'Invalid time argument: {arg}')
-        date = now - timedelta(hours=hour, minutes=minute, days=day, weeks=week)
+        date = now - timedelta(hours=hour, minutes=minute, days=day, weeks=week, seconds=second)
 
     if not date:
         raise UserInputError(f'Invalid time argument: {time_str}')
@@ -702,7 +710,10 @@ async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
         if inspect.iscoroutinefunction(fn):
             return await fn(*args, **kwargs)
         else:
-            return fn(*args, **kwargs)
+            res = fn(*args, **kwargs)
+            if inspect.isawaitable(res):
+                return await res
+            return res
 
 
 def create_yes_no_button_row(slash: SlashCommand,
@@ -827,7 +838,7 @@ def readable_time(time: datetime) -> str:
     :param time: Time to convert
     :return: Converted String
     """
-    now = datetime.now()
+    now = datetime.now(pytz.utc)
     if time is None:
         time_str = 'since start'
     else:

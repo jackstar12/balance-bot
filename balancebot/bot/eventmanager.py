@@ -7,6 +7,7 @@ from threading import RLock
 from typing import List, Callable
 
 import discord
+import pytz
 
 from balancebot.api.database import session
 from balancebot.api.dbmodels.event import Event
@@ -40,7 +41,7 @@ class EventManager:
             (event.registration_start, lambda: self._event_registration_start(event)),
             (event.registration_end, lambda: self._event_registration_end(event))
         ]
-        now = datetime.now()
+        now = datetime.now(tz=pytz.utc)
         for time, callback in event_callbacks:
             if time > now:
                 self._schedule(
@@ -103,7 +104,7 @@ class EventManager:
     async def _execute(self):
         while len(self._scheduled) > 0:
             cur_event = self._scheduled[0]
-            diff_seconds = (cur_event.time - datetime.now()).total_seconds()
+            diff_seconds = (cur_event.time - datetime.now(pytz.utc)).total_seconds()
             await asyncio.sleep(diff_seconds)
 
             try:

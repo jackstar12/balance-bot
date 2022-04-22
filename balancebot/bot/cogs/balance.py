@@ -60,12 +60,12 @@ class BalanceCog(CogBase):
 
             for user_client in user.clients:
                 usr_balance = await self.user_manager.get_client_balance(user_client, currency)
-                balance_message = f'Your balance ({await user_client.get_event_string()}): '
+                balance_message = f'Your balance ({await user_client.get_events_and_guilds_string()}): '
                 if usr_balance.error is None:
                     await ctx.send(f'{balance_message}{usr_balance.to_string()}')
                 else:
                     await ctx.send(
-                        f'Error while getting your balance ({await user_client.get_event_string()}): {usr_balance.error}')
+                        f'Error while getting your balance ({await user_client.get_events_and_guilds_string()}): {usr_balance.error}')
 
     @cog_ext.cog_slash(
         name="gain",
@@ -124,14 +124,14 @@ class BalanceCog(CogBase):
             if ctx.guild:
                 gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
             else:
-                gain_message = f"Your gain ({await user_gain.client.get_event_string()}): " if not guild else f"Your gain on {guild}: "
+                gain_message = f"Your gain ({await user_gain.client.get_events_and_guilds_string()}): " if not guild else f"Your gain on {guild}: "
             if user_gain.relative is None:
                 logging.info(
                     f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
                 if ctx.guild:
                     await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
                 else:
-                    await ctx.send(f'Not enough data for calculating your gain ({await user_gain.client.get_event_string()})')
+                    await ctx.send(f'Not enough data for calculating your gain ({await user_gain.client.get_events_and_guilds_string()})')
             else:
                 await ctx.send(
                     f'{gain_message}{round(user_gain.relative, ndigits=3)}% ({round(user_gain.absolute, ndigits=config.CURRENCY_PRECISION.get(currency, 3))}{currency})')

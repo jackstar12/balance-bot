@@ -12,6 +12,7 @@ import urllib.parse
 from datetime import datetime
 from typing import Dict
 
+import pytz
 from aiohttp import ClientResponse, ClientResponseError
 
 from balancebot.common import utils
@@ -41,13 +42,13 @@ class _BinanceBaseClient(ExchangeWorker):
 
             error = ''
             if response.status == 400:
-                error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
+                error = "400 Bad Request. This is probably a bug in the test_bot, please contact dev"
             elif response.status == 401:
                 error = f"401 Unauthorized ({response.reason}). You might want to check your API access"
             elif response.status == 403:
                 error = f"403 Access Denied ({response.reason}). You might want to check your API access"
             elif response.status == 404:
-                error = "404 Not Found. This is probably a bug in the bot, please contact dev"
+                error = "404 Not Found. This is probably a bug in the test_bot, please contact dev"
             elif response.status == 429:
                 error = "429 Rate Limit violated. Try again later"
             elif 500 <= response.status < 600:
@@ -87,7 +88,7 @@ class BinanceFutures(_BinanceBaseClient):
         return balance.Balance(
             amount=float(response.get('totalMarginBalance', 0)),
             currency='$',
-            time=time if time else datetime.now(),
+            time=time if time else datetime.now(pytz.utc),
             error=response.get('msg', None)
         )
 
@@ -116,7 +117,7 @@ class BinanceFutures(_BinanceBaseClient):
                     price=float(data['ap']) or float(data['p']),
                     qty=float(data['q']),
                     side=data['S'],
-                    time=datetime.now()
+                    time=datetime.now(pytz.utc)
                 )
                 await utils.call_unknown_function(self._on_execution, trade)
 

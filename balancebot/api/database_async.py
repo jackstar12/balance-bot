@@ -29,8 +29,11 @@ async def db(stmt):
     return await async_session.execute(stmt)
 
 
-def db_select_first(cls, **filters):
-    return db_first(select(cls).filter_by(**filters))
+def db_select(cls, eager=None, **filters):
+    if eager:
+        return db_unique(db_eager(select(cls), **eager).filter_by(**filters))
+    else:
+        return db_first(select(cls).filter_by(**filters))
 
 
 def db_select_all(cls, **filters):

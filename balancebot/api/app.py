@@ -210,7 +210,7 @@ async def db_test():
         delete(Guild).filter_by(id=234)
     )
     now = datetime.now(tz=pytz.UTC)
-    client = await sess.get(Client, 48)
+    client = await sess.get(Client, 53)
     history = await aio_db.db_all(client.history.statement.filter(
         Balance.time < now
     ))

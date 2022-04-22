@@ -3,6 +3,8 @@ import urllib.parse
 import hmac
 import logging
 from datetime import datetime
+
+import pytz
 from aiohttp import ClientResponse, ClientResponseError
 from balancebot.api.dbmodels.execution import Execution
 import balancebot.api.dbmodels.balance as balance
@@ -41,7 +43,7 @@ class FtxClient(ExchangeWorker):
                     side=data['side'].upper(),
                     price=float(data['price']),
                     qty=float(data['size']),
-                    time=datetime.now(),
+                    time=datetime.now(pytz.utc),
                     type=data.get('type')
                 )
             )

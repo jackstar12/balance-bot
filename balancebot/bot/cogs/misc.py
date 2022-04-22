@@ -28,7 +28,7 @@ class MiscCog(CogBase):
     )
     async def donate(self, ctx: SlashContext):
         embed = discord.Embed(
-            description="**Do you like this bot?**\n"
+            description="**Do you like this test_bot?**\n"
                         "If so, maybe consider helping out a poor student :cry:\n\n"
                         "**BTC**: 1NQuRagfTziZ1k4ijc38cuCmCncWQFthSQ\n"
                         "**ZBD**: jackstar12@zbd.gg\n"
@@ -44,7 +44,7 @@ class MiscCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def ping(self, ctx: SlashContext):
-        """Get the bot's current websocket and api latency."""
+        """Get the test_bot's current websocket and api latency."""
         start_time = time.time()
         message = discord.Embed(title="Testing Ping...")
         msg = await ctx.send(embed=message)
@@ -67,8 +67,8 @@ class MiscCog(CogBase):
             inline=False
         )
         embed.add_field(
-            name="Which information do I have to give the bot?",
-            value="The bot only requires an **read only** api access",
+            name="Which information do I have to give the test_bot?",
+            value="The test_bot only requires an **read only** api access",
             inline=False
         )
         # embed.add_field(

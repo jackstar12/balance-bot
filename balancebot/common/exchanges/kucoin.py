@@ -59,13 +59,13 @@ class KuCoinClient(ExchangeWorker):
 
             error = ''
             if response.status == 400:
-                error = "400 Bad Request. This is probably a bug in the bot, please contact dev"
+                error = "400 Bad Request. This is probably a bug in the test_bot, please contact dev"
             elif response.status == 401:
                 error = f"401 Unauthorized ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your api access"
             elif response.status == 403:
                 error = f"403 Access Denied ({response.reason}). Is your api key valid? Did you specify the right subaccount? You might want to check your api access"
             elif response.status == 404:
-                error = "404 Not Found. This is probably a bug in the bot, please contact dev"
+                error = "404 Not Found. This is probably a bug in the test_bot, please contact dev"
             elif response.status == 429:
                 error = "429 Rate Limit violated. Try again later"
             elif 500 <= response.status < 600:

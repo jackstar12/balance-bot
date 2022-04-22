@@ -9,7 +9,7 @@ PREFIX = "c "
 DATA_PATH = "C:/Users/jkran/PycharmProjects/BalanceBot/data/"
 ARCHIVE_PATH = "C:/Users/jkran/PycharmProjects/BalanceBot/archive/"
 FETCHING_INTERVAL_HOURS = 1
-REKT_THRESHOLD = 0.5
+REKT_THRESHOLD = 5000
 REGISTRATION_MINIMUM = 50
 REKT_MESSAGES = [
     "{name} hat sich mit der Leverage vergriffen :cry:",

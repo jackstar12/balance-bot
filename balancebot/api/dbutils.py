@@ -1,14 +1,15 @@
 from __future__ import annotations
 from datetime import datetime
 
-from sqlalchemy import select
+import pytz
+from sqlalchemy import select, desc
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import Select
 
 from balancebot.api.database import session
 import balancebot.api.dbmodels.client as db_client
 from balancebot.api.database_async import async_session, db_first, db_eager, db, db_del_filter, db_unique, db_all, \
-    db_select_first
+    db_select
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.discorduser import DiscordUser
 import balancebot.api.dbmodels.event as db_event
@@ -21,18 +22,20 @@ async def get_client(user_id: int,
                      guild_id: int = None,
                      registration=False,
                      throw_exceptions=True,
-                     **kwargs) -> Optional[db_client.Client]:
-    user = await get_discord_user(user_id, throw_exceptions=throw_exceptions, clients=kwargs, global_client=True, guilds=True)
+                     client_eager=True,
+                     discord_user_eager=None) -> Optional[db_client.Client]:
+    discord_user_eager = discord_user_eager or {}
+    user = await get_discord_user(user_id, throw_exceptions=throw_exceptions, clients=client_eager, global_client=True, guilds=True, **discord_user_eager)
     if user:
         if guild_id:
             if registration:
-                event = await get_event(guild_id, state='registration', throw_exceptions=False)
+                event = await get_event(guild_id, state='registration', throw_exceptions=False, registrations=True)
                 if event:
                     for client in event.registrations:
                         if client.discord_user_id == user_id:
                             return client
 
-            event = await get_event(guild_id, state='active', throw_exceptions=False)
+            event = await get_event(guild_id, state='active', throw_exceptions=False, registrations=True)
             if event:
                 for client in event.registrations:
                     if client.discord_user_id == user_id:
@@ -71,7 +74,7 @@ async def get_event(guild_id: int, channel_id: int = None, state: str = 'active'
     if not guild_id:
         return None
 
-    now = datetime.now()
+    now = datetime.now(pytz.utc)
 
     stmt = select(db_event.Event).filter(db_event.Event.guild_id == guild_id)
 
@@ -85,7 +88,10 @@ async def get_event(guild_id: int, channel_id: int = None, state: str = 'active'
         stmt.filter(now <= db_event.Event.registration_end)
 
     if state == 'archived':
-        events = await db_all(stmt, **eager_loads)
+        events = await db_first(
+            stmt.order_by(desc(db_event.Event.end)),
+            **eager_loads
+        )
         events.sort(key=lambda x: x.end, reverse=True)
         event = events[0]
     else:
@@ -141,7 +147,7 @@ async def get_discord_user(user_id: int, throw_exceptions=True, clients=True, **
 async def get_guild_start_end_times(guild_id, start, end, archived=False):
 
     start = datetime.fromtimestamp(0) if not start else start
-    end = datetime.now() if not end else end
+    end = datetime.now(pytz.utc) if not end else end
     event = await get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
 
     if event:

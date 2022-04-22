@@ -64,7 +64,7 @@ class HistoryCog(CogBase):
         else:
             registered_user = await dbutils.get_discord_user(user.id, clients=dict(events=True))
             registrations = [
-                (client, await client.get_event_string()) for client in registered_user.clients
+                (client, await client.get_events_and_guilds_string()) for client in registered_user.clients
             ]
 
         if compare:
