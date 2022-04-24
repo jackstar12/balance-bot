@@ -5,6 +5,7 @@ from discord_slash.utils.manage_commands import create_option
 from sqlalchemy import select, delete
 
 from balancebot.api.database_async import db_all, db, async_session, db_del_filter
+from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.common import utils
 from balancebot.api import dbutils
 from balancebot.api.database import session
@@ -62,7 +63,7 @@ class AlertCog(CogBase):
 
         symbol = symbol.upper()
 
-        discord_user = await dbutils.get_discord_user(ctx.author_id, alerts=True)
+        discord_user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[DiscordUser.alerts])
 
         alert = Alert(
             symbol=symbol,
@@ -77,7 +78,7 @@ class AlertCog(CogBase):
 
         await ctx.send('Alert created', embed=alert.get_discord_embed())
 
-        self.messenger.pub_channel(Category.ALERT, SubCategory.NEW, obj=alert.serialize(data=True, full=False))
+        self.messenger.pub_channel(Category.ALERT, SubCategory.NEW, obj=await alert.serialize(data=True, full=False))
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -95,7 +96,7 @@ class AlertCog(CogBase):
     @utils.log_and_catch_errors()
     async def delete_alert(self, ctx: SlashContext):
 
-        user = await dbutils.get_discord_user(ctx.author_id, alerts=True)
+        user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[DiscordUser.alerts])
 
         async def on_alert_select(selections: List[Alert]):
             for selection in selections:
@@ -143,7 +144,7 @@ class AlertCog(CogBase):
         if symbol:
             symbol = symbol.upper()
 
-        user = await dbutils.get_discord_user(ctx.author_id, alerts=True)
+        user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[DiscordUser.alerts])
 
         embeds = [
             alert.get_discord_embed() for alert in user.alerts if alert.symbol == symbol or not symbol

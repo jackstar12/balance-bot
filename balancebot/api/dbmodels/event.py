@@ -14,7 +14,7 @@ import balancebot.bot.config as config
 import discord
 
 from balancebot.api.database import Base, session as session
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table
 
 event_association = Table('association', Base.metadata,
@@ -37,8 +37,8 @@ class Event(Base, Serializer):
     name = Column(String, nullable=False)
     description = Column(String, nullable=False)
 
-    registrations = relationship('Client', lazy='raise', secondary=event_association, backref='events')
-    archive = relationship('Archive', backref='event', uselist=False, cascade="all, delete")
+    registrations = relationship('Client', lazy='raise', secondary=event_association, backref=backref('events', lazy='raise'))
+    archive = relationship('Archive', backref=backref('event', lazy='raise'), uselist=False, cascade="all, delete")
 
     @hybrid_property
     def is_active(self):

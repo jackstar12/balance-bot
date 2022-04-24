@@ -1,12 +1,15 @@
 from datetime import datetime
 
+
 import discord
 import pytz
 from discord.ext.commands import Bot
+from fastapi_users_db_sqlalchemy import GUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot.api.database import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger
 
 from balancebot.api.dbmodels.serializer import Serializer
 
@@ -16,8 +19,8 @@ class Alert(Base, Serializer):
     __serializer_forbidden__ = ["side"]
 
     id: int = Column(Integer, primary_key=True)
-    user_id: int = Column(Integer, ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
-    discord_user_id: int = Column(Integer, ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
+    user_uuid: UUID = Column(GUID, ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    discord_user_id: int = Column(BigInteger, ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
 
     symbol: str = Column(String, nullable=False)
     price: float = Column(Float, nullable=False)

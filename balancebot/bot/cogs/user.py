@@ -20,7 +20,7 @@ class UserCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def delete_all(self, ctx: SlashContext):
-        user = await dbutils.get_discord_user(ctx.author_id, clients=True)
+        user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[DiscordUser.clients])
 
         async def confirm_delete(ctx):
             for client in user.clients:
@@ -47,7 +47,7 @@ class UserCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def info(self, ctx: SlashContext):
-        user = await dbutils.get_discord_user(ctx.author_id, throw_exceptions=False, clients=dict(events=True))
+        user = await dbutils.get_discord_user(ctx.author_id, throw_exceptions=False, eager_loads=[(DiscordUser.clients, Client.events)])
         embeds = await user.get_discord_embed()
         await ctx.send(content='', embeds=embeds, hidden=True)
 

@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from balancebot.api.database_async import db_all
 from balancebot.api.dbmodels.client import Client
+from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.common import utils
 from balancebot.api import dbutils
 from balancebot.bot import config
@@ -54,7 +55,7 @@ class BalanceCog(CogBase):
             else:
                 await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
         else:
-            user = await dbutils.get_discord_user(ctx.author_id, clients=dict(events=True))
+            user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events)])
 
             await ctx.defer()
 
@@ -100,10 +101,10 @@ class BalanceCog(CogBase):
         currency = currency.upper()
 
         if ctx.guild:
-            registered_client = await dbutils.get_client(user.id, ctx.guild_id, events=True)
+            registered_client = await dbutils.get_client(user.id, ctx.guild_id, client_eager=[Client.events])
             clients = [registered_client]
         else:
-            discord_user = await dbutils.get_discord_user(ctx.author_id, clients=dict(events=True))
+            discord_user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events)])
             clients = discord_user.clients
 
         since_start = time is None

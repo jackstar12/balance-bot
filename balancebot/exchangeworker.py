@@ -14,6 +14,7 @@ from aiohttp import ClientResponse
 from typing import NamedTuple
 
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 import balancebot.api.database as db
 import balancebot.common.utils as utils
@@ -160,9 +161,10 @@ class ExchangeWorker:
                 Trade.symbol == execution.symbol,
                 Trade.client_id == self.client_id,
                 Trade.open_qty > 0.0
-            ),
-            executions=True,
-            initial=True
+            ).options(
+                joinedload(Trade.executions),
+                joinedload(Trade.initial),
+            )
         )
         #active_trade: Trade = db.session.query(Trade).filter(
         #    Trade.symbol == execution.symbol,
@@ -227,7 +229,8 @@ class ExchangeWorker:
             )
         else:
             trade = trade_from_execution(execution)
-            client.trades.append(trade)
+            trade.client_id = self.client_id
+            async_session.add(trade)
             asyncio.create_task(
                 user_manager.fetch_data([self.client])
             )

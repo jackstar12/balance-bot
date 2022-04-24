@@ -47,7 +47,7 @@ class Trade(Base, Serializer):
 
     initial: Execution = relationship(
         'Execution',
-        lazy='noload',
+        lazy='joined',
         foreign_keys=[initial_execution_id, symbol],
         post_update=True,
         primaryjoin='Execution.id == Trade.initial_execution_id',
@@ -57,15 +57,16 @@ class Trade(Base, Serializer):
 
     memo = Column(String, nullable=True)
 
-    def is_data(self):
+    @classmethod
+    def is_data(cls):
         return True
 
     @hybrid_property
     def is_open(self):
         return self.open_qty > 0.0
 
-    def serialize(self, data=True, full=True, *args, **kwargs):
-        s = super().serialize(data, full, *args, **kwargs)
+    async def serialize(self, data=True, full=True, *args, **kwargs):
+        s = await super().serialize(data, full, *args, **kwargs)
         if s:
             s['status'] = 'open' if self.open_qty > 0 else 'win' if self.realized_pnl > 0.0 else 'loss'
         return s

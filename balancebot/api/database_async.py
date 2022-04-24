@@ -1,15 +1,15 @@
 import asyncio
 from asyncio import current_task
+from typing import List, Tuple, Union
+
 import dotenv
 import os
 import aioredis
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, Column
 
-from sqlalchemy.orm import sessionmaker, joinedload, selectinload
+from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedAttribute
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession, create_async_engine
 from sqlalchemy.sql import Select
-
-from balancebot.api.database import Meta, Base
 
 dotenv.load_dotenv()
 
@@ -31,7 +31,7 @@ async def db(stmt):
 
 def db_select(cls, eager=None, **filters):
     if eager:
-        return db_unique(db_eager(select(cls), **eager).filter_by(**filters))
+        return db_unique(db_eager(select(cls), *eager).filter_by(**filters))
     else:
         return db_first(select(cls).filter_by(**filters))
 
@@ -40,21 +40,21 @@ def db_select_all(cls, **filters):
     return db_all(select(cls).filter_by(**filters))
 
 
-async def db_all(stmt: Select, **eager):
+async def db_all(stmt: Select, *eager):
     if eager:
-        stmt = db_eager(stmt, **eager)
+        stmt = db_eager(stmt, *eager)
     return (await async_session.scalars(stmt)).unique().all()
 
 
-async def db_first(stmt: Select, **eager):
+async def db_first(stmt: Select, *eager):
     if eager:
-        stmt = db_eager(stmt, **eager)
+        stmt = db_eager(stmt, *eager)
     return (await async_session.scalars(stmt.limit(1))).unique().first()
 
 
-async def db_unique(stmt: Select, **eager):
+async def db_unique(stmt: Select, *eager):
     if eager:
-        stmt = db_eager(stmt, **eager)
+        stmt = db_eager(stmt, *eager)
     return (await async_session.scalars(stmt.limit(1))).unique().first()
 
 
@@ -62,22 +62,40 @@ async def db_del_filter(cls, **kwargs):
     return await db(delete(cls).filter_by(**kwargs))
 
 
-def db_joins(option, **kwargs):
-    for key in kwargs.keys():
-        if isinstance(kwargs[key], bool):
-            option.joinedload(key)
-        if isinstance(kwargs[key], dict):
-            db_joins(option, **kwargs)
+def db_joins(stmt: Select, option, *eager: List[Union[InstrumentedAttribute, Tuple[Column, List]]]):
+    for col in eager:
+        if isinstance(col, Tuple):
+            option = option.joinedload(col[0])
+            if isinstance(col[1], list):
+                stmt = db_joins(stmt, option, *col[1])
+            elif isinstance(col[1], tuple):
+                stmt = db_joins(stmt, option, col[1])
+            elif col[1] == '*':
+                option.joinedload('*')
+        else:
+            stmt = stmt.options(option.joinedload(col))
+    return stmt
 
 
-def db_eager(stmt: Select, **kwargs):
-    options = []
-    for key in kwargs.keys():
-        option = joinedload(key)
-        if isinstance(kwargs[key], dict):
-            db_joins(option, **kwargs[key])
-        options.append(option)
-    return stmt.options(*options)
+def db_eager(stmt: Select, *eager: List[Union[InstrumentedAttribute, Tuple[Column, List]]], root=None):
+    for col in eager:
+        if isinstance(col, Tuple):
+            if root is None:
+                path = joinedload(col[0])
+            else:
+                path = root.joinedload(col[0])
+            if isinstance(col[1], list):
+                stmt = db_eager(stmt, *col[1], root=path)
+            elif isinstance(col[1], InstrumentedAttribute) or isinstance(col[1], Tuple):
+                stmt = db_eager(stmt, col[1], root=path)
+            elif col[1] == '*':
+                stmt = stmt.options(root.joinedload('*'))
+        else:
+            if root:
+                stmt = stmt.options(root.joinedload(col))
+            else:
+                stmt = stmt.options(joinedload(col))
+    return stmt
 
 
 

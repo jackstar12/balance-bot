@@ -13,5 +13,6 @@ class Archive(Base, Serializer):
     summary = Column(Text, nullable=True)
     history_path = Column(String, nullable=True)
 
-    def is_data(self):
+    @classmethod
+    def is_data(cls):
         return True

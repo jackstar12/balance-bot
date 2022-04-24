@@ -29,7 +29,7 @@ from balancebot.common.models.daily import Daily
 from balancebot.common.models.gain import Gain
 from balancebot.collector.usermanager import UserManager, db_match_balance_currency
 from balancebot.api.dbmodels.client import Client
-from balancebot.api import dbutils
+from balancebot.api import dbutils, utils
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.balance import Balance
 from balancebot.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
@@ -367,8 +367,7 @@ async def calc_daily(client: Client,
                 current_day = current_search
                 current_search = current_search + timedelta(days=1)
             prev_balance = balance
-        if callable(forEach):
-            forEach(balance)
+        await call_unknown_function(forEach, balance)
 
     if prev_balance.tz_time < current_search:
         values = Daily(
@@ -415,7 +414,7 @@ async def create_leaderboard(dc_client: discord.Client,
         raise InternalError(f'Provided guild_id is not valid!')
 
     if not event:
-        event = await dbutils.get_event(guild_id, throw_exceptions=False)
+        event = await dbutils.get_event(guild_id, throw_exceptions=False, eager_loads=[event.Event.registrations])
 
     if event:
         clients = event.registrations

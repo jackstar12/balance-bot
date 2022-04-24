@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Callable
 import discord
 from discord_slash import SlashCommand
+from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot import api as client
@@ -11,7 +12,7 @@ from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.serializer import Serializer
 
 from balancebot.api.database import Base, session as session
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy import select, Column, Integer, ForeignKey, String, BigInteger, Table
 
 from balancebot.common.models.selectionoption import SelectionOption
@@ -24,7 +25,6 @@ class DiscordUser(Base, Serializer):
 
     id = Column(BigInteger(), primary_key=True)
     name = Column(String(), nullable=True)
-    user = relationship('User', backref='discorduser', lazy=True, uselist=False)
     avatar = Column(String(), nullable=True)
 
     global_client_id = Column(Integer(), ForeignKey('client.id', ondelete="SET NULL"),  nullable=True)
@@ -32,13 +32,13 @@ class DiscordUser(Base, Serializer):
 
     global_associations = relationship('GuildAssociation', lazy='raise', cascade="all, delete")
 
-    alerts = relationship('Alert', backref='discorduser', lazy='raise', cascade="all, delete")
-    clients = relationship('Client', backref='discorduser', lazy='raise', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
+    alerts = relationship('Alert', backref=backref('discorduser', lazy='raise'), lazy='raise', cascade="all, delete")
+    clients = relationship('Client', backref=backref('discorduser', lazy='raise'), lazy='raise', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
 
-    async def get_global_client(self, guild_id, **eager):
+    async def get_global_client(self, guild_id, *eager):
         association = self.get_global_association(guild_id)
         if association:
-            return await db_unique(select(db_client.Client).filter_by(id=association.client_id), **eager)
+            return await db_unique(select(db_client.Client).filter_by(id=association.client_id), *eager)
 
     def get_global_association(self, guild_id = None, client_id = None):
         if not guild_id and not client_id:

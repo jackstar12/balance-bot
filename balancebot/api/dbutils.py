@@ -24,18 +24,23 @@ async def get_client(user_id: int,
                      throw_exceptions=True,
                      client_eager=True,
                      discord_user_eager=None) -> Optional[db_client.Client]:
-    discord_user_eager = discord_user_eager or {}
-    user = await get_discord_user(user_id, throw_exceptions=throw_exceptions, clients=client_eager, global_client=True, guilds=True, **discord_user_eager)
+    discord_user_eager = discord_user_eager or []
+    user = await get_discord_user(
+        user_id,
+        throw_exceptions=throw_exceptions,
+        eager_loads=[(DiscordUser.clients, client_eager), DiscordUser.global_client, DiscordUser.guilds, *discord_user_eager])
     if user:
         if guild_id:
             if registration:
-                event = await get_event(guild_id, state='registration', throw_exceptions=False, registrations=True)
+                event = await get_event(guild_id, state='registration', throw_exceptions=False,
+                                        eager_loads=[db_event.Event.registrations])
                 if event:
                     for client in event.registrations:
                         if client.discord_user_id == user_id:
                             return client
 
-            event = await get_event(guild_id, state='active', throw_exceptions=False, registrations=True)
+            event = await get_event(guild_id, state='active', throw_exceptions=False,
+                                    eager_loads=[db_event.Event.registrations])
             if event:
                 for client in event.registrations:
                     if client.discord_user_id == user_id:
@@ -66,13 +71,15 @@ async def get_client(user_id: int,
 
 async def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
                     throw_exceptions=True,
-                    **eager_loads) -> Optional[db_event.Event]:
+                    eager_loads=None) -> Optional[db_event.Event]:
 
     if not state:
         state = 'active'
 
     if not guild_id:
         return None
+
+    eager_loads = eager_loads or []
 
     now = datetime.now(pytz.utc)
 
@@ -90,12 +97,12 @@ async def get_event(guild_id: int, channel_id: int = None, state: str = 'active'
     if state == 'archived':
         events = await db_first(
             stmt.order_by(desc(db_event.Event.end)),
-            **eager_loads
+            *eager_loads
         )
         events.sort(key=lambda x: x.end, reverse=True)
         event = events[0]
     else:
-        event = await db_first(stmt, **eager_loads)
+        event = await db_first(stmt, *eager_loads)
 
     if not event and throw_exceptions:
         raise UserInputError(f'There is no {"event you can register for" if state == "registration" else "active event"}')
@@ -118,7 +125,7 @@ def get_all_events(guild_id: int, channel_id):
     pass
 
 
-async def get_discord_user(user_id: int, throw_exceptions=True, clients=True, **kwargs) -> Optional[DiscordUser]:
+async def get_discord_user(user_id: int, throw_exceptions=True, eager_loads=None) -> Optional[DiscordUser]:
     """
     Tries to find a matching entry for the user and guild id.
     :param user_id: id of user to get
@@ -128,11 +135,11 @@ async def get_discord_user(user_id: int, throw_exceptions=True, clients=True, **
     :return:
     The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
     """
+    eager = eager_loads or [db_client.Client]
     result = await db_unique(
         db_eager(
             select(DiscordUser),
-            clients=clients,
-            **kwargs
+            *eager
         ),
     )
 

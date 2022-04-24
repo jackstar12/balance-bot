@@ -1,9 +1,12 @@
-from fastapi import Depends
+from http import HTTPStatus
+
+from fastapi import Depends, Request, HTTPException
 from fastapi_jwt_auth import AuthJWT
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from balancebot.api.database_async import db_first
+from balancebot.api.authenticator import Authenticator
+from balancebot.api.database_async import db_first, redis, db_eager, db_unique
 from balancebot.api.settings import settings
 from balancebot.api.database import session
 from fastapi import Depends
@@ -11,49 +14,31 @@ from fastapi_jwt_auth import AuthJWT
 from balancebot.api.dbmodels.user import User
 
 
-class CurrentUser:
-    def __init__(self, clients=False, labels=False, alerts=False):
-        self.options = []
-        if clients:
-            self.options.append(joinedload('clients'))
-        if labels:
-            self.options.append(joinedload('labels'))
-        if alerts:
-            self.options.append(joinedload('alerts'))
+authenticator = Authenticator(
+    redis,
+    session_expiration=48 * 60 * 60,
+    session_cookie_name=settings.session_cookie_name
+)
 
-    async def __call__(self, Authorize: AuthJWT = Depends()):
-        if not settings.testing:
-            user = await db_first(
-                select(User).filter_by(id=Authorize.get_jwt_subject()).options(*self.options)
+
+def get_authenticator():
+    return authenticator
+
+
+class CurrentUser:
+    def __init__(self, *eager_loads):
+        self.base_stmt = db_eager(select(User), *eager_loads)
+
+    async def __call__(self, request: Request, authenticator = Depends(get_authenticator)):
+        uuid = await authenticator.read_uuid(request)
+        user = await db_unique(self.base_stmt.filter_by(id=uuid)) if uuid else None
+        user.discorduser.user = user
+        if not user:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail='Invalid session'
             )
-            # user = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
-        else:
-            user = await db_first(
-                select(User).options(*self.options)
-            )
-            # user = session.query(User).first()
         return user
 
 
-async def current_user(clients=False, labels=False, alerts=False, Authorize: AuthJWT = Depends()):
-    Authorize.jwt_required()
-
-    options = []
-    if clients:
-        options.append(joinedload('clients'))
-    if labels:
-        options.append(joinedload('labels'))
-    if alerts:
-        options.append(joinedload('alerts'))
-
-    if not settings.testing:
-        user = await db_first(
-            select(User).filter_by(id=Authorize.get_jwt_subject()).options(*options)
-        )
-        #user = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
-    else:
-        user = await db_first(
-            select(User).options(*options)
-        )
-        #user = session.query(User).first()
-    return user
+current_user = CurrentUser()

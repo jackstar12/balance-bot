@@ -6,7 +6,7 @@ import aiohttp
 import logging
 import math
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, TYPE_CHECKING
+from typing import List, Dict, Tuple, TYPE_CHECKING, Type
 
 import pytz
 from sqlalchemy import asc, desc, DateTime, delete
@@ -17,7 +17,9 @@ from balancebot.api.database_async import async_session, db as aio_db, db_first,
 
 from balancebot.api.dbmodels.balance import Balance
 import balancebot.api.dbmodels.client as db_client
+from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.api.dbmodels.execution import Execution
+from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution
 import balancebot.bot.config as config
 from balancebot.common.enums import Priority
@@ -93,17 +95,20 @@ class UserManager(Singleton):
             self._workers.append(worker)
             self._workers_by_client_id[worker.client.id] = worker
 
+            def worker_callback(category, sub_category):
+                async def callback(worker: ExchangeWorker, obj: Serializer):
+                    self.messenger.pub_channel(category, sub=sub_category,
+                                               channel_id=worker.client_id, obj=await obj.serialize())
+                return callback
+
             worker.set_trade_update_callback(
-                lambda worker, trade: self.messenger.pub_channel(Category.TRADE, sub=SubCategory.UPDATE,
-                                                                 channel_id=worker.client_id, obj=trade.serialize())
+                worker_callback(Category.TRADE, SubCategory.UPDATE)
             )
             worker.set_trade_callback(
-                lambda worker, trade: self.messenger.pub_channel(Category.TRADE, sub=SubCategory.NEW,
-                                                                 channel_id=worker.client_id, obj=trade.serialize())
+                worker_callback(Category.TRADE, SubCategory.NEW)
             )
             worker.set_balance_callback(
-                lambda worker, balance: self.messenger.pub_channel(Category.BALANCE, sub=SubCategory.NEW,
-                                                                   channel_id=worker.client_id, obj=balance.serialize())
+                worker_callback(Category.BALANCE, SubCategory.NEW)
             )
 
     def _remove_worker(self, worker: ExchangeWorker):
@@ -157,7 +162,11 @@ class UserManager(Singleton):
 
     async def synch_workers(self):
         #clients = db.session.query(db_client.Client).all()
-        clients = await db_all(select(db_client.Client), events=True, discorduser=dict(global_associations=True))
+        clients = await db_all(
+            select(db_client.Client),
+            db_client.Client.events,
+            (db_client.Client.discorduser, DiscordUser.global_associations)
+        )
 
         for client in clients:
             if await client.is_global() or client.is_active:

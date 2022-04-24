@@ -10,6 +10,7 @@ import pytz
 import balancebot.common.utils as utils
 from balancebot.api.database import redis
 from balancebot.api.database_async import db_first
+from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.client import Client, add_client_filters
 from balancebot.api.dbmodels.user import User
 from balancebot.api.models.websocket import WebsocketConfig
@@ -79,13 +80,17 @@ async def update_client_data_balance(cache: Dict, client: Client, config: Websoc
     result = {}
 
     new_history = []
+
+    async def append(balance: Balance):
+        new_history.append(await balance.serialize(full=True, data=True, currency=config.currency))
+
     daily = await utils.calc_daily(
         client=client,
         throw_exceptions=False,
         since=since_date,
         to=config.to,
         now=now,
-        forEach=lambda balance: new_history.append(balance.serialize(full=True, data=True, currency=config.currency))
+        forEach=append
     )
     result['history'] = new_history
     cache['history'] += new_history
@@ -142,7 +147,7 @@ async def create_cilent_data_serialized(client: Client, config: WebsocketConfig)
         s = cached
         s['source'] = 'cache'
     else:
-        s = client.serialize(full=True, data=False)
+        s = await client.serialize(full=False, data=False)
         s['trades'] = {}
         s['source'] = 'database'
 
@@ -164,7 +169,7 @@ async def create_cilent_data_serialized(client: Client, config: WebsocketConfig)
 
         await update_client_data_balance(s, client, config, save_cache=False)
 
-        trades = [trade.serialize(data=True) for trade in client.trades if since_date <= trade.initial.tz_time <= to_date]
+        trades = [await trade.serialize(data=True) for trade in client.trades if since_date <= trade.initial.tz_time <= to_date]
         update_client_data_trades(s, trades, config, save_cache=False)
 
         s['ts'] = now.timestamp()

@@ -108,10 +108,10 @@ class RegisterCog(CogBase):
                                                     ctx.channel_id,
                                                     state='registration',
                                                     throw_exceptions=False,
-                                                    registrations=True)
+                                                    eager_loads=[Event.registrations])
 
                     discord_user = await dbutils.get_discord_user(
-                        ctx.author_id, throw_exceptions=False, guilds=True, global_associations=True,
+                        ctx.author_id, throw_exceptions=False, eager_loads=[DiscordUser.guilds, DiscordUser.global_associations],
                     )
 
                     guilds = []
@@ -149,7 +149,7 @@ class RegisterCog(CogBase):
                             else:
                                 existing_clients = []
                                 for guild in guilds:
-                                    existing_client = await discord_user.get_global_client(guild.id, events=True)
+                                    existing_client = await discord_user.get_global_client(guild.id, Client.events)
                                     if existing_client:
                                         existing_clients.append(existing_client)
 
@@ -325,13 +325,13 @@ class RegisterCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def register_existing(self, ctx: SlashContext):
-        event = await dbutils.get_event(guild_id=ctx.guild_id, state='registration', registrations=True)
+        event = await dbutils.get_event(guild_id=ctx.guild_id, state='registration', eager_loads=[Event.registrations])
 
         if event.is_free_for_registration():
             for client in event.registrations:
                 if client.discord_user_id == ctx.author_id:
                     raise UserInputError('You are already registered for this event!')
-            user = await dbutils.get_discord_user(ctx.author_id, clients=dict(events=True), global_associations=True)
+            user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events), DiscordUser.global_associations])
             global_client = await user.get_global_client(ctx.guild_id)
             if global_client:
                 if global_client not in event.registrations:
@@ -395,7 +395,7 @@ class RegisterCog(CogBase):
         async def start_unregistration(ctx, selections: List[Client]):
 
             event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False,
-                                            registrations=True)
+                                            eager_loads=[Event.registrations])
 
             client = selections[0]
 
@@ -405,7 +405,7 @@ class RegisterCog(CogBase):
                     ctx.channel_id,
                     state='active',
                     throw_exceptions=False,
-                    registrations=True)
+                    eager_loads=[Event.registrations])
 
             remove_guild = False
             if not event:
@@ -442,7 +442,7 @@ class RegisterCog(CogBase):
                 hidden=True)
 
         if not ctx.guild_id:
-            user = await dbutils.get_discord_user(ctx.author_id, clients=dict(events=True), global_associations=True)
+            user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events), DiscordUser.global_associations])
             await ctx.defer()
             if len(user.clients) > 1:
                 await ctx.send(
@@ -457,7 +457,7 @@ class RegisterCog(CogBase):
         else:
             client = await dbutils.get_client(
                 ctx.author.id, ctx.guild_id,
-                client_eager=dict(events=True),
-                discord_user_eager=dict(global_associations=True)
+                client_eager=[Client.events],
+                discord_user_eager=[DiscordUser.global_associations]
             )
             await start_unregistration(ctx, [client])

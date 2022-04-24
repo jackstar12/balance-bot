@@ -81,7 +81,7 @@ class AlertService(Singleton, Observer):
             await async_session.commit()
 
     async def _finish_alert(self, finished: Alert):
-        self.messanger.pub_channel(MsgChannel.ALERT, SubCategory.FINISHED, obj=finished.serialize())
+        self.messanger.pub_channel(MsgChannel.ALERT, SubCategory.FINISHED, obj=await finished.serialize())
         self.remove_alert(finished)
         await db_del_filter(Alert, id=finished.id)
 

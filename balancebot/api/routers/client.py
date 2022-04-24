@@ -5,15 +5,17 @@ from typing import Optional, Dict, List
 import aiohttp
 import jwt
 import pytz
-from fastapi import APIRouter, Depends, Request, Response, WebSocket
+from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi_jwt_auth import AuthJWT
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import or_, delete, select
+from sqlalchemy.orm import joinedload
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from balancebot.api.database_async import db, db_first, async_session, db_all, db_unique
+from balancebot.api.authenticator import Authenticator
+from balancebot.api.database_async import db, db_first, async_session, db_all, db_unique, db_select
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody
@@ -21,7 +23,7 @@ from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
 from balancebot.api.utils.responses import BadRequest, InternalError, OK
 from balancebot.common import utils
 from balancebot.api.dbmodels.serializer import Serializer
-from balancebot.api.dependencies import current_user
+from balancebot.api.dependencies import current_user, CurrentUser, get_authenticator
 from balancebot.api.database import session, redis
 from balancebot.api.dbmodels.client import Client, add_client_filters
 from balancebot.api.dbmodels.user import User
@@ -40,15 +42,15 @@ router = APIRouter(
     tags=["client"],
     dependencies=[Depends(current_user)],
     responses={
-        401: {"msg": "Wrong Email or Password"},
-        400: {"msg": "Email is already used"}
+        401: {'detail': 'Wrong Email or Password'},
+        400: {'detail': "Email is already used"}
     }
 )
 
 
 @router.post('/client')
-async def register_client(body: RegisterBody, Authorize: AuthJWT = Depends()):
-    # Authorize.jwt_required()
+async def register_client(request: Request, body: RegisterBody, authenticator: Authenticator = Depends(get_authenticator)):
+    await authenticator.read_uuid(request)
     try:
         exchange_cls = EXCHANGES[body.exchange]
         if issubclass(exchange_cls, ExchangeWorker):
@@ -71,7 +73,7 @@ async def register_client(body: RegisterBody, Authorize: AuthJWT = Depends()):
                             f'You do not have any balance in your account. Please fund your account before registering.'
                         )
                     else:
-                        payload = client.serialize(full=True, data=True)
+                        payload = await  client.serialize(full=True, data=True)
                         # TODO: CHANGE THIS
                         payload['api_secret'] = client.api_secret
 
@@ -112,12 +114,11 @@ async def get_client(request: Request, response: Response,
         client: Optional[Client] = await db_first(
             add_client_filters(select(Client), user, id)
         )
-    elif len(user.clients) > 0:
-        client: Optional[Client] = user.clients[0]
-    elif user.discorduser:
-        client: Optional[Client] = user.discorduser.global_client
     else:
-        client = None
+        client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], user_uuid=user.id)
+        if not client:
+            client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], discord_user_id=user.discord_user_id)
+
     if client:
 
         s = await create_cilent_data_serialized(client,
@@ -143,7 +144,7 @@ async def get_client_analytics(id: Optional[int] = None, since: Optional[datetim
         avg_win, avg_loss = 0.0, 0.0
         for trade in client.trades:
             if since <= trade.initial.time <= to:
-                trade = trade.serialize(data=True)
+                trade = await trade.serialize(data=True)
                 if trade['status'] == 'win':
                     winners += 1
                     avg_win += trade['realized_pnl']
@@ -181,13 +182,11 @@ async def delete_client(body: DeleteBody, user: User = Depends(current_user)):
         add_client_filters(delete(Client), user, body.id)
     )
     await async_session.commit()
-    return {'msg': 'Success'}, HTTPStatus.OK
+    return OK(msg='Success')
 
 
 @router.patch('/client')
-async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
-    Authorize.jwt_required()
-    user = await db_unique(select(User).filter_by(id=Authorize.get_jwt_subject()), discorduser=True)
+async def update_client(body: UpdateBody, user: User = Depends(CurrentUser(User.discorduser))):
     client: Client = await db_first(
         add_client_filters(select(Client), user, body.id)
     )
@@ -207,14 +206,12 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
             client.discord_user_id = user.discord_user_id
             client.user_id = None
             if body.is_global is True:
-                if user.discorduser.global_client.is_active:
-                    return BadRequest('You can not change your global account while it is in an active event.')
-                user.discorduser.global_client_id = client.id
+
                 guilds: List[Guild] = await db_all(
                     select(Guild).filter(
                         or_(*[Guild.id == guild_id for guild_id in body.servers]),
                     ),
-                    users=True
+                    Guild.users
                 )
                 for guild in guilds:
                     if user.discorduser in guild.users:
@@ -257,20 +254,17 @@ async def update_client(body: UpdateBody, Authorize: AuthJWT = Depends()):
 
 
 @router.post('/client/confirm')
-async def confirm_client(body: ConfirmBody, Authorize: AuthJWT = Depends()):
-    Authorize.jwt_required()
-    user = session.query(User).filter_by(id=Authorize.get_jwt_subject()).first()
+async def confirm_client(body: ConfirmBody, user: User = Depends(current_user)):
     client_json = jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
     print(client_json)
     try:
         client = Client(**client_json)
-        user.clients.append(client)
-        session.add(client)
+        client.user_id = user.id
+        async_session.add(client)
         await async_session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     except TypeError as e:
         return BadRequest(msg='Invalid token')
-        return InternalError(msg='Internal Error')
 
 
 def create_ws_message(type: str, channel: str = None, data: Dict = None, error: str = None, *args):
@@ -283,9 +277,9 @@ def create_ws_message(type: str, channel: str = None, data: Dict = None, error: 
 
 
 @router.websocket('/client/ws')
-async def client_websocket(websocket: WebSocket, user: User = Depends(current_user)):
+async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  authenticator: Authenticator = Depends(get_authenticator)):
     await websocket.accept()
-
+    Authorize.jwt_required("websocket", websocket)
     user_manager = UserManager()
     subscribed_client: Optional[Client] = None
     config: Optional[WebsocketConfig] = None

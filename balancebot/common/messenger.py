@@ -21,6 +21,8 @@ class Category(Enum):
     EVENT = "event"
     COIN_STATS = "coinstats"
 
+    KEYSPACE = "__keyspace@0__"
+
 
 class SubCategory(Enum):
     NEW = "new"
@@ -31,6 +33,7 @@ class SubCategory(Enum):
     REKT = "rekt"
     VOLUME = "volume"
     OI = "oi"
+    SESSIONS = "sessions"
 
 
 class Messenger(Singleton):
@@ -41,11 +44,14 @@ class Messenger(Singleton):
         self._um = usermanager.UserManager()
         self._listening = False
 
-    def _wrap(self, coro):
+    def _wrap(self, coro, rcv_event=False):
         @wraps(coro)
         def wrapper(event: Dict, *args, **kwargs):
             logging.info(f'Redis Event: {event=} {args=} {kwargs=}')
-            data = msgpack.unpackb(event['data'], raw=False)
+            if rcv_event:
+                data = event
+            else:
+                data = msgpack.unpackb(event['data'], raw=False)
             asyncio.create_task(utils.call_unknown_function(coro, data, *args, **kwargs))
         return wrapper
 
@@ -53,7 +59,7 @@ class Messenger(Singleton):
         async for msg in self._pubsub.listen():
             logging.info(f'MSGG!!!! {msg}')
 
-    async def _sub(self, pattern=False, **kwargs):
+    async def sub(self, pattern=False, **kwargs):
         if pattern:
             await self._pubsub.psubscribe(**kwargs)
         else:
@@ -62,14 +68,14 @@ class Messenger(Singleton):
             self._listening = True
             asyncio.create_task(self.listen())
 
-    def sub_channel(self, category: Category, sub: SubCategory, callback: Callable, channel_id: int = None, pattern=False):
+    def sub_channel(self, category: Category, sub: SubCategory, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
         channel = self._join(category.value, sub.value, channel_id)
         if pattern:
             channel += '*'
         kwargs = {channel: self._wrap(callback)}
         if settings.testing:
             logging.info(f'Sub: {kwargs}')
-        asyncio.create_task(self._sub(pattern=pattern, **kwargs))
+        asyncio.create_task(self.sub(pattern=pattern, rcv_event=False, **kwargs))
 
     def unsub_channel(self, category: Category, sub: SubCategory, channel_id: int = None, pattern=False):
         channel = self._join(category.value, sub.value, channel_id)

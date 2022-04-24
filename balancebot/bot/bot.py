@@ -46,7 +46,7 @@ async def on_ready():
 
     db_guilds_by_id = {
         db_guild.id: db_guild for db_guild in await db_all(
-            select(Guild), users=True, global_clients=True
+            select(Guild), Guild.users, Guild.global_clients
         )
     }
     discord_users = await db_all(select(DiscordUser))
@@ -71,12 +71,6 @@ async def on_ready():
                 )
 
     await async_session.commit()
-
-    db_guilds_by_id = {
-        db_guild.id: db_guild for db_guild in await db_all(
-            select(Guild), users=True, global_clients=True
-        )
-    }
 
     logging.info('Bot Ready')
     print('Bot Ready')

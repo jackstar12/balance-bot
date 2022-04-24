@@ -111,7 +111,7 @@ async def add_label(body: AddLabel, user: User = Depends(current_user)):
     trade = await db_first(
         db_eager(
             await add_trade_filters(select(Trade), user, body.trade_id, body.label_id),
-            labels=True
+            Trade.labels
         )
     )
     if trade:
@@ -139,7 +139,7 @@ async def remove_label(body: RemoveLabel, user: User = Depends(current_user)):
     trade = await db_first(
         db_eager(
             await add_trade_filters(select(Trade), user, body.client_id, body.trade_id, body.label_id),
-            labels=True
+            Trade.labels
         )
     )
     if isinstance(trade, Trade):

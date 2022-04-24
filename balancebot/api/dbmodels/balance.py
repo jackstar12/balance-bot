@@ -47,7 +47,8 @@ class Balance(Base, Serializer):
 
         return string
 
-    def is_data(self):
+    @classmethod
+    def is_data(cls):
         return True
 
     def serialize(self, data=True, full=True, *args, **kwargs):

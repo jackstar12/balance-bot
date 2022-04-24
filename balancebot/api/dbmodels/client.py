@@ -1,7 +1,9 @@
 from typing import List, Optional, Union
 import discord
+from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc, \
     Boolean, select
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Query
 
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -37,7 +39,7 @@ class Client(Base, Serializer):
 
     # Identification
     id = Column(Integer, primary_key=True)
-    user_id = Column(BigInteger, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
+    user_uuid = Column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
     discord_user_id = Column(BigInteger, ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
 
     # User Information
@@ -50,7 +52,7 @@ class Client(Base, Serializer):
     # Data
     name = Column(String, nullable=True)
     rekt_on = Column(DateTime(timezone=True), nullable=True)
-    trades: AppenderQuery = relationship('Trade', backref='client', lazy=True, cascade="all, delete")
+    trades: AppenderQuery = relationship('Trade', backref='client', lazy='noload', cascade="all, delete")
     history: AppenderQuery = relationship('Balance', backref='client',
                                           cascade="all, delete", lazy='dynamic',
                                           order_by='Balance.time', foreign_keys='Balance.client_id')
@@ -140,8 +142,7 @@ class Client(Base, Serializer):
         return embed
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[
-    Select, Delete, Update]:
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[Select, Delete, Update]:
     user_checks = [Client.user_id == user.id]
     if user.discord_user_id:
         user_checks.append(Client.discord_user_id == user.discorduser.id)

@@ -1,9 +1,11 @@
 import argparse
 import json
 import logging
+import uuid
 from datetime import datetime, timedelta
 
 import pytz
+from sqlalchemy import func
 from sqlalchemy.orm import make_transient
 
 import balancebot.api.database as db
@@ -27,8 +29,40 @@ parser.add_argument("-u", "--users", action="store_true", help="Specifying this 
 parser.add_argument("-d", "--data", action="store_true", help="Specifying this puts the current data into a database.")
 parser.add_argument("-k", "--keys", action="store_true", help="Specifying this puts the current data into a database.")
 parser.add_argument("-c", "--discordids", action="store_true", help="Specifying this puts the migrates the discord user ids")
+parser.add_argument("--uuid", action="store_true", help="Specifying this puts the migrates the discord user ids")
 
 args = parser.parse_args()
+
+
+if args.uuid:
+    users = db.session.query(User).all()
+
+    for user in users:
+        user.uuid = uuid.uuid4()
+        for alert in user.alerts:
+            alert.user_uuid = user.uuid
+        for label in user.labels:
+            label.user_uuid = user.uuid
+        for client in user.alerts:
+            client.user_uuid = user.uuid
+    db.session.commit()
+
+    discord_users = db.session.query(DiscordUser).all()
+
+    users = db.session.query(User).all()
+    for user in users:
+        user.discord_user_id = user.discorduser.user_id
+
+    for client in db.session.query(Client).all():
+        if client.discorduser:
+            client.discord_user_id = client.discorduser.user_id
+
+    db.session.commit()
+
+    db.session.query(DiscordUser).filter(DiscordUser.id != DiscordUser.user_id).delete()
+    db.session.commit()
+    print('Migrated discorduser ids')
+
 
 if args.discordids:
     discord_users = db.session.query(DiscordUser).all()
