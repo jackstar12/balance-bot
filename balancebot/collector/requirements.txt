@@ -1,0 +1,14 @@
+pytest-shutil
+SQLAlchemy[asyncio]~=1.4.25
+python-dotenv~=0.19.0
+ccxt~=1.57.38
+aiohttp>=3.8.0
+fastapi~=0.68.0
+pydantic~=1.8.2
+uvicorn[standard]~=0.17.6
+pytz~=2021.1
+starlette~=0.14.2
+asgiref~=3.4.1
+aioredis~=2.0.1
+msgpack~=0.6.2
+asyncpg~=0.25.0
