@@ -5,6 +5,5 @@ archive
 log.txt
 LOGS
 balancebot/api/db.sqlite3
-alembic/versions
 migrations
 .env
