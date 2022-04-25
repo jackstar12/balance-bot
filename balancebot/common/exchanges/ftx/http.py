@@ -26,10 +26,7 @@ class FtxClient(ExchangeWorker):
                                      on_message_callback=self._on_message,
                                      session=self._session)
 
-    def connect(self):
-        asyncio.create_task(self._start_ws())
-
-    async def _start_ws(self):
+    async def connect(self):
         await self.ws.connect()
         await self.ws.get_fills()
 

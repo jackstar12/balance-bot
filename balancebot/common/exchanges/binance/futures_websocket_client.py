@@ -23,13 +23,14 @@ class FuturesWebsocketClient(WebsocketManager):
 
     async def _on_message(self, ws, message):
         event = message['e']
-        if event == "listenKeyExpired":
+        if event == 'listenKeyExpired':
             await self._renew_listen_key()
         elif callable(self._on_message):
             await utils.call_unknown_function(self._on_message, message)
 
     async def start(self):
         await self._renew_listen_key()
+        asyncio.create_task(self._keep_alive())
 
     def stop(self):
         self._listenKey = None
@@ -39,9 +40,11 @@ class FuturesWebsocketClient(WebsocketManager):
         await self.reconnect()
 
     async def _keep_alive(self):
-        while self.connected:
+        while self._ws and not self._ws.closed:
             # Ping binance every 50 minutes
             if self._listenKey:
-                logging.info('Trying to reconnect binance websocket')
-                self._listenKey = await self._client.keep_alive()
+                logging.info('Keep alive binance websocket')
+                await self._client.keep_alive()
                 await asyncio.sleep(50 * 60)
+            else:
+                break

@@ -4,7 +4,7 @@ from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc, \
     Boolean, select
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, Query
+from sqlalchemy.orm import relationship, Query, backref
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -39,7 +39,7 @@ class Client(Base, Serializer):
 
     # Identification
     id = Column(Integer, primary_key=True)
-    user_uuid = Column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
+    user_id = Column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
     discord_user_id = Column(BigInteger, ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
 
     # User Information
@@ -52,19 +52,17 @@ class Client(Base, Serializer):
     # Data
     name = Column(String, nullable=True)
     rekt_on = Column(DateTime(timezone=True), nullable=True)
-    trades: AppenderQuery = relationship('Trade', backref='client', lazy='noload', cascade="all, delete")
-    history: AppenderQuery = relationship('Balance', backref='client',
+    trades: AppenderQuery = relationship('Trade', backref=backref('client', lazy='noload'), lazy='noload', cascade="all, delete")
+    history: AppenderQuery = relationship('Balance', backref=backref('client', lazy='noload'),
                                           cascade="all, delete", lazy='dynamic',
                                           order_by='Balance.time', foreign_keys='Balance.client_id')
 
-    archived = Column(Boolean, nullable=True)
-    invalid = Column(Boolean, nullable=True)
+    archived = Column(Boolean, default=False)
+    invalid = Column(Boolean, default=False)
 
     currently_realized_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
     currently_realized = relationship('Balance', lazy='joined', foreign_keys=currently_realized_id,
                                       cascade="all, delete")
-
-    required_extra_args: List[str] = []
 
     async def full_history(self):
         return await db_all(self.history.statement)

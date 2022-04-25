@@ -102,8 +102,8 @@ class BinanceFutures(_BinanceBaseClient):
     async def keep_alive(self):
         await self._put('/fapi/v1/listenKey')
 
-    def connect(self):
-        asyncio.create_task(self._ws.start())
+    async def connect(self):
+        await self._ws.start()
 
     async def _on_message(self, ws, message):
         message = json.loads(message)

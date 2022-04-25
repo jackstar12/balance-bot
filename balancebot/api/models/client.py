@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import Dict, List, Set, Optional, Any
 
 import pydantic
-from pydantic import BaseModel
+from pydantic import BaseModel, UUID4
 
 
 class RegisterBody(BaseModel):
@@ -39,3 +40,23 @@ class UpdateBody(BaseModel):
     is_global: Optional[bool]
     servers: Optional[Set[int]]
     events: Optional[Set[int]]
+
+
+class ClientInfo(BaseModel):
+    id: int
+    user_id: Optional[UUID4]
+    discord_user_id: Optional[int]
+
+    api_key: str
+    exchange: str
+    subaccount: Optional[str]
+    extra_kwargs: Dict
+
+    name: Optional[str]
+    rekt_on: datetime
+
+    archived: bool
+    invalid: bool
+
+    class Config:
+        orm_mode = True

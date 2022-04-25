@@ -21,7 +21,14 @@ class User(Base, Serializer, SQLAlchemyBaseUserTable):
     discord_user_id = Column(BigInteger(), ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
     discorduser = relationship('DiscordUser', lazy='raise', backref=backref('user', lazy='noload', uselist=False), uselist=False, foreign_keys=discord_user_id)
 
+    all_clients = relationship(
+        'Client',
+        lazy='noload',
+        primaryjoin='or_(Client.user_id == User.id, Client.discord_user_id == User.discord_user_id)'
+    )
+
     # Data
-    clients = relationship('Client', backref='user', lazy='raise', cascade="all, delete", foreign_keys="[Client.user_uuid]")
+    clients = relationship(
+        'Client', backref='user', lazy='raise', cascade="all, delete", foreign_keys="[Client.user_id]")
     labels = relationship('Label', backref='client', lazy='raise', cascade="all, delete")
     alerts = relationship('Alert', backref='user', lazy='raise', cascade="all, delete")

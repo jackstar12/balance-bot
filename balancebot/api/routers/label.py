@@ -1,7 +1,7 @@
 from http import HTTPStatus
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Body
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
 from sqlalchemy import or_, select
@@ -14,6 +14,7 @@ from balancebot.api.dbmodels.client import Client, add_client_filters
 from balancebot.api.dbmodels.label import Label
 from balancebot.api.dbmodels.trade import Trade
 from balancebot.api.dbmodels.user import User
+from balancebot.api.models.label import SetLabels, RemoveLabel, AddLabel, PatchLabel, CreateLabel
 from balancebot.api.utils.responses import BadRequest, OK
 
 router = APIRouter(
@@ -38,11 +39,6 @@ def get_label(id: int, user: User):
         return {'msg': 'Invalid ID'}, HTTPStatus.BAD_REQUEST
 
 
-class CreateLabel(BaseModel):
-    name: str
-    color: str
-
-
 @router.post('/')
 async def create_label(body: CreateLabel, user: User = Depends(current_user)):
     label = Label(name=body.name, color=body.color, user_id=body.user.id)
@@ -51,25 +47,16 @@ async def create_label(body: CreateLabel, user: User = Depends(current_user)):
     return label.serialize(), HTTPStatus.OK
 
 
-class DeleteLabel(BaseModel):
-    id: int
-
 
 @router.delete('/')
-async def delete_label(body: DeleteLabel, user: User = Depends(current_user)):
-    result = get_label(body.id, user)
+async def delete_label(id: int = Body(...), user: User = Depends(current_user)):
+    result = get_label(id, user)
     if isinstance(result, Label):
         session.query(Label).filter_by(id=id).delete()
         await async_session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     else:
         return result
-
-
-class PatchLabel(BaseModel):
-    id: int
-    name: str
-    color: str
 
 
 @router.patch('/')
@@ -100,12 +87,6 @@ async def add_trade_filters(stmt, user: User, client_id: int, trade_id: int, lab
         )
 
 
-class AddLabel(BaseModel):
-    client_id: int
-    trade_id: int
-    label_id: int
-
-
 @router.post('/trade')
 async def add_label(body: AddLabel, user: User = Depends(current_user)):
     trade = await db_first(
@@ -126,12 +107,6 @@ async def add_label(body: AddLabel, user: User = Depends(current_user)):
                 return BadRequest('Trade already has this label')
         else:
             return BadRequest('Invalid Label ID')
-
-
-class RemoveLabel(BaseModel):
-    client_id: int
-    trade_id: int
-    label_id: int
 
 
 @router.delete('/trade')
@@ -156,12 +131,6 @@ async def remove_label(body: RemoveLabel, user: User = Depends(current_user)):
             return {'msg': 'Invalid Label ID'}, HTTPStatus.BAD_REQUEST
     else:
         return trade
-
-
-class SetLabels(BaseModel):
-    client_id: int
-    trade_id: int
-    label_ids: List[int]
 
 
 @router.patch('/trade')

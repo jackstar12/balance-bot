@@ -100,7 +100,7 @@ class ExchangeWorker:
     def clear_callbacks(self):
         self._on_balance = self._on_new_trade = self._on_update_trade = None
 
-    def connect(self):
+    async def connect(self):
         pass
 
     @abc.abstractmethod

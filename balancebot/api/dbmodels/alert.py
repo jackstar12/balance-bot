@@ -1,6 +1,5 @@
 from datetime import datetime
 
-
 import discord
 import pytz
 from discord.ext.commands import Bot
@@ -9,9 +8,10 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot.api.database import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, Enum
 
 from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.enums import Side
 
 
 class Alert(Base, Serializer):
@@ -19,13 +19,13 @@ class Alert(Base, Serializer):
     __serializer_forbidden__ = ["side"]
 
     id: int = Column(Integer, primary_key=True)
-    user_uuid: UUID = Column(GUID, ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    user_id: UUID = Column(GUID, ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
     discord_user_id: int = Column(BigInteger, ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
 
     symbol: str = Column(String, nullable=False)
     price: float = Column(Float, nullable=False)
     exchange: str = Column(String, nullable=False)
-    side: str = Column(String, nullable=True)
+    side: str = Column(Enum(Side), nullable=True)
     note: str = Column(String, nullable=True)
 
     def get_discord_embed(self):

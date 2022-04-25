@@ -178,7 +178,7 @@ class UserManager(Singleton):
         client_cls = self._exchanges[client.exchange]
         if issubclass(client_cls, exchange_worker.ExchangeWorker):
             worker = client_cls(client, self.session)
-            worker.connect()
+            asyncio.create_task(worker.connect())
             self._add_worker(worker)
             return worker
         else:

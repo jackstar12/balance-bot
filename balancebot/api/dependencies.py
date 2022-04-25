@@ -32,7 +32,6 @@ class CurrentUser:
     async def __call__(self, request: Request, authenticator = Depends(get_authenticator)):
         uuid = await authenticator.read_uuid(request)
         user = await db_unique(self.base_stmt.filter_by(id=uuid)) if uuid else None
-        user.discorduser.user = user
         if not user:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,

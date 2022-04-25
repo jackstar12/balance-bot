@@ -21,7 +21,7 @@ import balancebot.common.utils as utils
 
 class DiscordUser(Base, Serializer):
     __tablename__ = 'discorduser'
-    __serializer_forbidden__ = ['global_client']
+    __serializer_forbidden__ = ['global_client', 'global_associations']
 
     id = Column(BigInteger(), primary_key=True)
     name = Column(String(), nullable=True)
@@ -30,10 +30,10 @@ class DiscordUser(Base, Serializer):
     global_client_id = Column(Integer(), ForeignKey('client.id', ondelete="SET NULL"),  nullable=True)
     global_client = relationship('Client', lazy='noload', foreign_keys=global_client_id, post_update=True, uselist=False, cascade="all, delete")
 
-    global_associations = relationship('GuildAssociation', lazy='raise', cascade="all, delete")
+    global_associations = relationship('GuildAssociation', lazy='noload', cascade="all, delete")
 
-    alerts = relationship('Alert', backref=backref('discorduser', lazy='raise'), lazy='raise', cascade="all, delete")
-    clients = relationship('Client', backref=backref('discorduser', lazy='raise'), lazy='raise', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
+    alerts = relationship('Alert', backref=backref('discorduser', lazy=True), lazy='noload', cascade="all, delete")
+    clients = relationship('Client', backref=backref('discorduser', lazy=True), lazy='noload', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
 
     async def get_global_client(self, guild_id, *eager):
         association = self.get_global_association(guild_id)

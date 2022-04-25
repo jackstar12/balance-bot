@@ -1,5 +1,7 @@
 from datetime import datetime
+from typing import Optional
 
+from pydantic.main import BaseModel
 from sqlalchemy import select
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import joinedload, InstrumentedAttribute, selectinload, RelationshipProperty
@@ -19,7 +21,7 @@ class Serializer:
         return False
 
     # The full flag is needed to avoid cyclic serializations
-    async def serialize(self, full=False, data=True, *args, **kwargs):
+    async def serialize(self, model: Optional[BaseModel] = None, full=False, data=True, *args, **kwargs):
         if not self.__class__.__serializer_anti_recursion__:
             self.__class__.__serializer_anti_recursion__ = True
             try:

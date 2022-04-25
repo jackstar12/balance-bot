@@ -1,9 +1,10 @@
 from typing import List, Dict
 
 import aiohttp
+from sqlalchemy import select
 
 from balancebot.api.database import session
-from balancebot.api.database_async import async_session, db_del_filter
+from balancebot.api.database_async import async_session, db_del_filter, db_all
 from balancebot.api.dbmodels.alert import Alert
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common.messenger import Category as MsgChannel, SubCategory
@@ -23,7 +24,7 @@ class AlertService(Singleton, Observer):
         self._tickers: Dict[str, Ticker] = {}
 
     async def initialize_alerts(self):
-        alerts = session.query(Alert).all()
+        alerts = await db_all(select(Alert))
 
         for alert in alerts:
             await self.data_service.subscribe('ftx', Channel.TICKER, self, symbol=alert.symbol)

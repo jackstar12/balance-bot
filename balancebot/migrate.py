@@ -40,11 +40,11 @@ if args.uuid:
     for user in users:
         user.uuid = uuid.uuid4()
         for alert in user.alerts:
-            alert.user_uuid = user.uuid
+            alert.user_id = user.uuid
         for label in user.labels:
-            label.user_uuid = user.uuid
+            label.user_id = user.uuid
         for client in user.alerts:
-            client.user_uuid = user.uuid
+            client.user_id = user.uuid
     db.session.commit()
 
     discord_users = db.session.query(DiscordUser).all()

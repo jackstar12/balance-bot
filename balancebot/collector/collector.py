@@ -26,7 +26,6 @@ async def run(session: aiohttp.ClientSession):
     pnl_service = PnlService(session)
 
     await alert_service.initialize_alerts()
-    await pnl_service.initialize_positions()
     await asyncio.gather(
         user_manager.start_fetching(),
         pnl_service.run_forever(),
