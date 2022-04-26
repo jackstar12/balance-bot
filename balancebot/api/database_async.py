@@ -77,7 +77,21 @@ def db_joins(stmt: Select, option, *eager: List[Union[InstrumentedAttribute, Tup
     return stmt
 
 
-def db_eager(stmt: Select, *eager: List[Union[InstrumentedAttribute, Tuple[Column, List]]], root=None):
+def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False):
+    if root:
+        if joined:
+            stmt = stmt.options(root.joinedload(col))
+        else:
+            stmt = stmt.options(root.selectinload(col))
+    else:
+        if joined:
+            stmt = stmt.options(joinedload(col))
+        else:
+            stmt = stmt.options(selectinload(col))
+    return stmt
+
+
+def db_eager(stmt: Select, *eager: Union[Column, Tuple[Column, Union[Tuple, InstrumentedAttribute, List, str]]], root=None, joined=False):
     for col in eager:
         if isinstance(col, Tuple):
             if root is None:
@@ -89,17 +103,12 @@ def db_eager(stmt: Select, *eager: List[Union[InstrumentedAttribute, Tuple[Colum
             elif isinstance(col[1], InstrumentedAttribute) or isinstance(col[1], Tuple):
                 stmt = db_eager(stmt, col[1], root=path)
             elif col[1] == '*':
+                stmt = apply_option(stmt, '*', root=root, joined=joined)
                 stmt = stmt.options(root.joinedload('*'))
         else:
-            if root:
-                stmt = stmt.options(root.joinedload(col))
-            else:
-                stmt = stmt.options(joinedload(col))
+            stmt = apply_option(stmt, col, root=root, joined=joined)
     return stmt
-
 
 
 if __name__ == '__main__':
     print(asyncio.run(redis.get('test')))
-
-

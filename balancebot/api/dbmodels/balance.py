@@ -16,11 +16,17 @@ class Balance(Base, Serializer):
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
+    currency = Column(String(10), nullable=False)
     time: DateTime = Column(DateTime(timezone=True), nullable=False)
     amount = Column(Float, nullable=False)
-    currency = Column(String, nullable=False)
-    error = Column(String, nullable=True)
+
+    transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='SET NULL'), nullable=True)
+
     extra_currencies = Column(PickleType, nullable=True)
+
+    def __init__(self, error=None, *args, **kwargs):
+        self.error = error
+        super().__init__(*args, **kwargs)
 
     def to_json(self, currency=False):
         json = {

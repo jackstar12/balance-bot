@@ -48,10 +48,9 @@ class Trade(Base, Serializer):
     initial: Execution = relationship(
         'Execution',
         lazy='joined',
-        foreign_keys=[initial_execution_id, symbol],
+        foreign_keys=initial_execution_id,
         post_update=True,
         primaryjoin='Execution.id == Trade.initial_execution_id',
-        backref='init_trade',
         uselist=False
     )
 

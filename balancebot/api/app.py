@@ -21,6 +21,7 @@ from starlette_csrf import CSRFMiddleware
 import balancebot.api.database_async as aio_db
 from balancebot.api.dbmodels.trade import Trade
 
+from balancebot.api.dbmodels.transfer import Transfer
 from balancebot.api.dbmodels.user import User
 from balancebot.api.dependencies import current_user, CurrentUser
 from balancebot.api.models.user import UserInfo

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional, Union
 import discord
 from fastapi_users_db_sqlalchemy import GUID
@@ -25,6 +26,7 @@ import balancebot.bot.config as config
 from balancebot.api.database import Base, session
 from balancebot.api.dbmodels import balance
 import balancebot.common.utils as utils
+from balancebot.collector.usermanager import db_match_balance_currency
 
 dotenv.load_dotenv()
 
@@ -84,6 +86,18 @@ class Client(Base, Serializer):
             return bool(associations)
         elif self.user_id:
             return True
+
+    async def get_balance_at_time(self, time: datetime, post: bool, currency: str = None):
+        balance = await db_first(
+            self.history.statement.filter(
+                Balance.time > time if post else Balance.time < time
+            ).order_by(asc(Balance.time) if post else desc(Balance.time))
+        )
+
+        if currency:
+            return db_match_balance_currency(balance, currency)
+        return balance
+
 
     @hybrid_property
     def is_active(self):

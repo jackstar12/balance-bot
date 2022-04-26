@@ -7,7 +7,7 @@ import urllib.parse
 import math
 from asyncio import Future
 from datetime import datetime, timedelta
-from typing import List, Callable, Dict, Tuple, TYPE_CHECKING
+from typing import List, Callable, Dict, Tuple, TYPE_CHECKING, Optional
 import aiohttp.client
 import pytz
 from aiohttp import ClientResponse
@@ -24,6 +24,7 @@ from balancebot.api.dbmodels.trade import Trade, trade_from_execution
 import balancebot.collector.usermanager as um
 
 import balancebot.api.dbmodels.balance as db_balance
+from balancebot.api.dbmodels.transfer import Transfer
 from balancebot.common.config import PRIORITY_INTERVALS
 from balancebot.common.enums import Priority
 
@@ -70,7 +71,10 @@ class ExchangeWorker:
         self._on_new_trade = None
         self._on_update_trade = None
 
-    async def get_balance(self, priority: Priority = Priority.MEDIUM, time: datetime = None, force=False):
+    async def get_balance(self,
+                          priority: Priority = Priority.MEDIUM,
+                          time: datetime = None,
+                          force=False) -> Optional[db_balance.Balance]:
         if not time:
             time = datetime.now(tz=pytz.UTC)
         if force or (time - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]) and not self.client.rekt_on):
@@ -84,6 +88,21 @@ class ExchangeWorker:
             return db_balance.Balance(amount=0.0, currency='$', extra_currencies={}, error=None, time=time)
         else:
             return None
+
+    async def update_transfers(self,
+                               since: datetime,
+                               to: datetime):
+        transfers = await self.get_transfers(since, to)
+
+    async def get_transfers(self,
+                            since: datetime,
+                            to: datetime = None) -> List[Transfer]:
+        raise NotImplementedError(f'Exchange {self.exchange} does not implement get_transfers')
+
+    async def synchronize_positions(self,
+                                    since: datetime,
+                                    to: datetime):
+        raise NotImplementedError(f'Exchange {self.exchange} does not implement synchronize_positions')
 
     def set_balance_callback(self, callback: Callable):
         if callable(callback):
@@ -166,12 +185,6 @@ class ExchangeWorker:
                 joinedload(Trade.initial),
             )
         )
-        #active_trade: Trade = db.session.query(Trade).filter(
-        #    Trade.symbol == execution.symbol,
-        #    Trade.client_id == self.client_id,
-        #    Trade.open_qty > 0.0
-        #).first()
-
         client: client.Client = self.client
         user_manager = um.UserManager()
 
@@ -181,13 +194,19 @@ class ExchangeWorker:
             total = weights[0] + weights[1]
             return round(values[0] * (weights[0] / total) + values[1] * (weights[1] / total), ndigits=3)
 
+        asyncio.create_task(
+            self._update_realized_balance()
+        )
+
         if active_trade:
             # Update existing trade
             active_trade.executions.append(execution)
 
             if execution.side == active_trade.initial.side:
-                active_trade.entry = weighted_avg((active_trade.entry, execution.price),
-                                                  (active_trade.qty, execution.qty))
+                active_trade.entry = weighted_avg(
+                    (active_trade.entry, execution.price),
+                    (active_trade.qty, execution.qty)
+                )
                 active_trade.qty += execution.qty
                 active_trade.open_qty += execution.qty
             else:
@@ -202,10 +221,7 @@ class ExchangeWorker:
                     )
                     execution.qty = active_trade.open_qty
                     new_trade = trade_from_execution(new_execution)
-                    client.trades.append(new_trade)
-                    asyncio.create_task(
-                        self._update_realized_balance()
-                    )
+                    new_trade.client_id = client.id
                     asyncio.create_task(
                         utils.call_unknown_function(self._on_new_trade, self, new_trade)
                     )

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import NamedTuple
+from typing import NamedTuple, List, Optional
 
 import asyncio
 import hmac
@@ -15,6 +15,7 @@ from typing import Dict
 import pytz
 from aiohttp import ClientResponse, ClientResponseError
 
+from balancebot.api.dbmodels.transfer import Transfer
 from balancebot.common import utils
 from balancebot.common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from balancebot.api.settings import settings
@@ -60,6 +61,51 @@ class _BinanceBaseClient(ExchangeWorker):
         # OK
         if response.status == 200:
             return response_json
+
+    # https://binance-docs.github.io/apidocs/spot/en/#get-future-account-transaction-history-list-user_data
+    async def get_transfers(self,
+                            since: datetime,
+                            to: datetime = None) -> Optional[List[Transfer]]:
+        response = await self._get('/sapi/v1/futures/transfer')
+        if 'msg' in response:
+            pass
+        else:
+            """
+            {
+              "rows": [
+                {
+                  "asset": "USDT",
+                  "tranId": 100000001,
+                  "amount": "40.84624400",
+                  "type": "1",  // one of 1( from spot to USDT-Ⓜ), 2( from USDT-Ⓜ to spot), 3( from spot to COIN-Ⓜ), and 4( from COIN-Ⓜ to spot)
+                  "timestamp": 1555056425000,
+                  "status": "CONFIRMED" //one of PENDING (pending to execution), CONFIRMED (successfully transfered), FAILED (execution failed, nothing happened to your account);
+                }
+              ],
+              "total": 1
+            }
+            """
+            results = []
+            for row in response['rows']:
+                if row["status"] == "CONFIRMED":
+                    if row["type"] == 1:
+                        amount = row['amount']
+                    elif row["type"] == 2:
+                        amount = -row['amount']
+                    else:
+                        continue
+                    date = datetime.fromtimestamp(row['timestamp'], tz=pytz.utc)
+                    prev_balance = await self.client.get_balance_at_time(date, post=False)
+                    results.append(
+                        Transfer(
+                            amount=amount,
+                            balance=balance.Balance(
+                                amount=prev_balance.amount + amount,
+                                time=datetime.fromtimestamp(row['timestamp'], tz=pytz.utc)
+                            )
+                        )
+                    )
+            return results
 
 
 class _TickerCache(NamedTuple):

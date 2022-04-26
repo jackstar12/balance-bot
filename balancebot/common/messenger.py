@@ -11,6 +11,7 @@ import balancebot.collector.usermanager as usermanager
 from balancebot.api.settings import settings
 from balancebot.common import utils
 from balancebot.common.models.singleton import Singleton
+import balancebot.common.utils as utils
 
 
 class Category(Enum):
@@ -20,6 +21,7 @@ class Category(Enum):
     TRADE = "trade"
     EVENT = "event"
     COIN_STATS = "coinstats"
+    TICKER = "ticker"
 
     KEYSPACE = "__keyspace@0__"
 
@@ -69,7 +71,7 @@ class Messenger(Singleton):
             asyncio.create_task(self.listen())
 
     def sub_channel(self, category: Category, sub: SubCategory, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
-        channel = self._join(category.value, sub.value, channel_id)
+        channel = utils.join_args(category.value, sub.value, channel_id)
         if pattern:
             channel += '*'
         kwargs = {channel: self._wrap(callback)}
@@ -78,7 +80,7 @@ class Messenger(Singleton):
         asyncio.create_task(self.sub(pattern=pattern, rcv_event=False, **kwargs))
 
     def unsub_channel(self, category: Category, sub: SubCategory, channel_id: int = None, pattern=False):
-        channel = self._join(category.value, sub.value, channel_id)
+        channel = utils.join_args(category.value, sub.value, channel_id)
         if pattern:
             channel += '*'
         if pattern:
@@ -87,13 +89,10 @@ class Messenger(Singleton):
             asyncio.create_task(self._pubsub.unsubscribe(channel))
 
     def pub_channel(self, category: Category, sub: SubCategory, obj: object, channel_id: int = None):
-        ch = self._join(category.value, sub.value, channel_id)
+        ch = utils.join_args(category.value, sub.value, channel_id)
         if settings.testing:
             logging.info(f'Pub: {ch=} {obj=}')
         asyncio.create_task(self._redis.publish(ch, msgpack.packb(obj)))
-
-    def _join(self, *args, denominator=':'):
-        return denominator.join([str(arg) for arg in args if arg])
 
 
 if __name__ == '__main__':

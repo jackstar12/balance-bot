@@ -554,14 +554,15 @@ async def calc_gains(clients: List[Client],
         # )
 
         search, _ = dbutils.get_guild_start_end_times(event.guild_id, search, None)
-        balance_then = db_match_balance_currency(
-            await db_first(
-                client.history.statement.filter(
-                    Balance.time > search
-                ).order_by(asc(Balance.time))
-            ),
-            currency
-        )
+        balance_then = await client.get_balance_at_time(search, post=True, currency=currency)
+        #balance_then = db_match_balance_currency(
+        #    await db_first(
+        #        client.history.statement.filter(
+        #            Balance.time > search
+        #        ).order_by(asc(Balance.time))
+        #    ),
+        #    currency
+        #)
 
         balance_now = await client.latest()
 
@@ -849,3 +850,7 @@ def readable_time(time: datetime) -> str:
             time_str = f'since {time.strftime("%d.%m.%Y %H:%M")}'
 
     return time_str
+
+
+def join_args(*args, denominator=':'):
+    return denominator.join([str(arg) for arg in args if arg])

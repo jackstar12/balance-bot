@@ -39,11 +39,11 @@ if args.uuid:
 
     for user in users:
         user.uuid = uuid.uuid4()
-        for alert in user.alerts:
+        for alert in user._alerts:
             alert.user_id = user.uuid
         for label in user.labels:
             label.user_id = user.uuid
-        for client in user.alerts:
+        for client in user._alerts:
             client.user_id = user.uuid
     db.session.commit()
 
