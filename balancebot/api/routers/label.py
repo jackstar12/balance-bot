@@ -15,15 +15,15 @@ from balancebot.api.dbmodels.label import Label
 from balancebot.api.dbmodels.trade import Trade
 from balancebot.api.dbmodels.user import User
 from balancebot.api.models.label import SetLabels, RemoveLabel, AddLabel, PatchLabel, CreateLabel
-from balancebot.api.utils.responses import BadRequest, OK
+from balancebot.api.utils.responses import BadRequest, OK, Response
 
 router = APIRouter(
     prefix="/label",
     tags=["label"],
     dependencies=[Depends(current_user)],
     responses={
-        401: {"msg": "Wrong Email or Password"},
-        400: {"msg": "Email is already used"}
+        401: {"detail": "Wrong Email or Password"},
+        400: {"detail": "Email is already used"}
     }
 )
 
@@ -34,9 +34,9 @@ def get_label(id: int, user: User):
         if label.user_id == user.id:
             return label
         else:
-            return {'msg': 'You are not allowed to delete this Label'}, HTTPStatus.UNAUTHORIZED
+            return Response('You are not allowed to delete this label', code=40100, status=HTTPStatus.UNAUTHORIZED)
     else:
-        return {'msg': 'Invalid ID'}, HTTPStatus.BAD_REQUEST
+        BadRequest('Invalid ID')
 
 
 @router.post('/')
@@ -44,8 +44,7 @@ async def create_label(body: CreateLabel, user: User = Depends(current_user)):
     label = Label(name=body.name, color=body.color, user_id=body.user.id)
     session.add(label)
     await async_session.commit()
-    return label.serialize(), HTTPStatus.OK
-
+    return label.serialize()
 
 
 @router.delete('/')
@@ -68,7 +67,7 @@ async def update_label(body: PatchLabel, user: User = Depends(current_user)):
         if body.color:
             result.color = body.color
         await async_session.commit()
-        return {'msg': 'Success'}, HTTPStatus.OK
+        return OK('Success')
     else:
         return result
 

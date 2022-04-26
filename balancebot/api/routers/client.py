@@ -91,7 +91,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
                 )
                 args_readable = '\n'.join(exchange_cls.required_extra_args)
                 return BadRequest(
-                    msg=f'Need more keyword arguments for exchange {exchange_cls.exchange}.'
+                    detail=f'Need more keyword arguments for exchange {exchange_cls.exchange}.'
                         f'\nRequirements:\n {args_readable}',
                     code=40100
                 )
@@ -182,7 +182,7 @@ async def delete_client(body: DeleteBody, user: User = Depends(current_user)):
         add_client_filters(delete(Client), user, body.id)
     )
     await async_session.commit()
-    return OK(msg='Success')
+    return OK(detail='Success')
 
 
 @router.patch('/client')
@@ -264,7 +264,7 @@ async def confirm_client(body: ConfirmBody, user: User = Depends(current_user)):
         await async_session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     except TypeError as e:
-        return BadRequest(msg='Invalid token')
+        return BadRequest(detail='Invalid token')
 
 
 def create_ws_message(type: str, channel: str = None, data: Dict = None, error: str = None, *args):

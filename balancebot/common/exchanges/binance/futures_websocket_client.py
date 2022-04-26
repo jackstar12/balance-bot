@@ -23,6 +23,7 @@ class FuturesWebsocketClient(WebsocketManager):
 
     async def _on_message(self, ws, message):
         event = message['e']
+        print('BINANCE EVENT: ', event)
         if event == 'listenKeyExpired':
             await self._renew_listen_key()
         elif callable(self._on_message):
