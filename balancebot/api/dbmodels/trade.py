@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, Table
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, Table, orm
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 
@@ -18,6 +18,7 @@ class Trade(Base, Serializer):
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
+    client = relationship('Client')
     labels = relationship('Label', secondary=trade_association, backref='trades')
 
     symbol = Column(String, nullable=False)
@@ -26,13 +27,14 @@ class Trade(Base, Serializer):
     qty = Column(Float, nullable=False)
     open_qty = Column(Float, nullable=False)
     exit = Column(Float, nullable=True)
+
     realized_pnl = Column(Float, nullable=True)
 
-    max_upnl_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
-    max_upnl = relationship('Balance', lazy='joined', foreign_keys=max_upnl_id, uselist=False)
+    max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
+    max_pnl = relationship('PnlData', lazy='raise', foreign_keys=max_pnl_id, uselist=False)
 
-    min_upnl_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
-    min_upnl = relationship('Balance', lazy='joined', foreign_keys=min_upnl_id, uselist=False)
+    min_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
+    min_pnl = relationship('PnlData', lazy='raise', foreign_keys=min_pnl_id, uselist=False)
 
     # tp = Column(Float, nullable=True)
     # sl = Column(Float, nullable=True)
@@ -42,6 +44,11 @@ class Trade(Base, Serializer):
                               backref='trade',
                               lazy='noload',
                               cascade='all, delete')
+
+    pnl_data = relationship('PnlData',
+                            lazy='noload',
+                            cascade="all, delete",
+                            foreign_keys="PnlData.trade_id")
 
     initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
 
@@ -55,6 +62,14 @@ class Trade(Base, Serializer):
     )
 
     memo = Column(String, nullable=True)
+
+    @orm.reconstructor
+    def init_on_load(self):
+        self.upnl = None
+
+    def __init__(self, upnl: float = None, *args, **kwargs):
+        self.upnl = upnl
+        super().__init__(*args, **kwargs)
 
     @classmethod
     def is_data(cls):

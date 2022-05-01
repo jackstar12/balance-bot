@@ -1,0 +1,366 @@
+import logging
+
+from sqlalchemy import select, delete, and_
+from sqlalchemy.inspection import inspect
+import asyncio
+import time
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+
+import aiohttp
+import pytz
+from sqlalchemy.orm import subqueryload, selectinload
+
+from balancebot.api.database import session
+from balancebot.api.database_async import async_session, db_all, db_select_all, db_first, db, db_unique, db_eager
+from balancebot.api.dbmodels.balance import Balance
+from balancebot.api.dbmodels.client import Client
+from balancebot.api.dbmodels.discorduser import DiscordUser
+from balancebot.api.dbmodels.pnldata import PnlData
+from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.api.dbmodels.trade import Trade
+from balancebot.collector.services.baseservice import BaseService
+from balancebot.collector.services.dataservice import DataService, Channel
+from balancebot.common.enums import Priority
+from balancebot.common.messenger import NameSpace, Category
+from balancebot.common.messenger import ClientEdit
+from balancebot.exchangeworker import ExchangeWorker
+
+
+class BalanceService(BaseService):
+
+    def __init__(self,
+                 *args,
+                 data_service: DataService,
+                 exchanges: dict = None,
+                 fetching_interval_hours: int = 4,
+                 rekt_threshold: float = 2.5,
+                 data_path: str = '',
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Public parameters
+        self.interval_hours = fetching_interval_hours
+        self.rekt_threshold = rekt_threshold
+        self.data_path = data_path
+        self.backup_path = self.data_path + 'backup/'
+
+        self.data_service = data_service
+        self._exchanges = exchanges
+        self._base_workers_by_id: Dict[int, ExchangeWorker] = {}
+        self._premium_workers_by_id: Dict[int, ExchangeWorker] = {}
+
+        self._trades_by_id: Dict[int, Trade] = {}
+        self._trades_by_client_id: Dict[int, Dict] = {}
+        self._clients_by_id: Dict[int, Client] = {}
+
+        self._all_client_stmt = db_eager(
+            select(Client).filter(
+                Client.archived == False,
+                Client.invalid == False
+            ),
+            (Client.open_trades, [Trade.max_pnl, Trade.min_pnl]),
+            Client.discord_user,
+            Client.currently_realized,
+        )
+        self._active_client_stmt = self._all_client_stmt.join(
+            Trade,
+            and_(
+                Client.id == Trade.client_id,
+                Trade.open_qty > 0.0
+            )
+        )
+
+    async def _initialize_positions(self):
+        clients = await db_all(self._all_client_stmt)
+
+        for client in clients:
+            await self.add_client(client)
+
+        self._messenger.sub_channel(NameSpace.TRADE, sub=Category.UPDATE, callback=self._on_trade_update, pattern=True)
+        self._messenger.sub_channel(NameSpace.TRADE, sub=Category.NEW, callback=self._on_trade_delete, pattern=True)
+        self._messenger.sub_channel(NameSpace.TRADE, sub=Category.FINISHED, callback=self._on_trade_delete,
+                                    pattern=True)
+
+        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add, pattern=True)
+        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete,
+                                    pattern=True)
+
+    def _on_client_delete(self, data: Dict):
+        self._remove_worker(self._base_workers_by_id.get(data['client_id']))
+
+    async def _on_client_add(self, data: Dict):
+        await self._add_client_by_id(data['client_id'])
+
+    async def _on_client_edit(self, data: Dict):
+        edit = ClientEdit(**data)
+        if edit.archived or edit.invalid:
+            self._remove_worker(await self.get_worker(edit.id, create_if_missing=False))
+        elif edit.archived is False or edit.invalid is False:
+            await self._add_client_by_id(edit.id)
+
+    async def _on_trade_new(self, data: Dict):
+        worker = await self.get_worker(data['client_id'], create_if_missing=True)
+        if worker:
+            await async_session.refresh(worker.client.open_trades)
+            # Trade is already contained in session because of ^^, no SQL will be emitted
+            new = await async_session.get(Trade, data['trade_id'])
+            await self.data_service.subscribe(worker.client.exchange, Channel.TICKER, symbol=new.symbol)
+
+    async def _on_trade_update(self, data: Dict):
+        client_id = data['client_id']
+        trade_id = data['trade_id']
+        worker = await self.get_worker(client_id, create_if_missing=True)
+        if worker:
+            for trade in worker.client.open_trades:
+                if trade.id == trade_id:
+                    await async_session.refresh(trade)
+
+    async def _on_trade_delete(self, data: Dict):
+        worker = await self.get_worker(data['client_id'], create_if_missing=False)
+        if worker:
+            await async_session.refresh(worker.client.open_trades)
+            if len(worker.client.open_trades) == 0:
+                symbol = data['symbol']
+                # If there are no trades on the same exchange matching the deleted symbol, there is no need to keep it subscribed
+                unsubscribe_symbol = all(
+                    trade.symbol != symbol
+                    for cur_worker in self._premium_workers_by_id.values() if cur_worker.client.exchange == worker.client.exchange
+                    for trade in cur_worker.client.open_trades
+                )
+                if unsubscribe_symbol:
+                    await self.data_service.unsubscribe(worker.client.exchange, Channel.TICKER, symbol=symbol)
+                self._remove_worker(worker)
+
+    def update_pnl(self, pnl_data: PnlData, trade: Trade, amount: float, cmp_func):
+        if not pnl_data or cmp_func(amount, pnl_data.amount):
+            new = PnlData(
+                trade_id=trade.id,
+                amount=amount,
+                time=datetime.now(tz=pytz.utc),
+            )
+            async_session.add(new)
+            # TODO: Should the PNL objects be persisted in db before publishing them?
+            self._messenger.pub_channel(NameSpace.TRADE, Category.PNL, channel_id=trade.client_id,
+                                        obj={'id': trade.id, 'pnl': amount})
+            return new
+        return pnl_data
+
+    async def _add_client_by_id(self, client_id: int):
+        await self.add_client(
+            await db_unique(self._all_client_stmt.filter_by(id=client_id))
+        )
+
+    def _add_worker(self, worker: ExchangeWorker):
+        workers = self._premium_workers_by_id if worker.client.is_premium else self._base_workers_by_id
+        if worker.client.id not in workers:
+            workers[worker.client.id] = worker
+
+            def worker_callback(category, sub_category):
+                async def callback(worker: ExchangeWorker, obj: Serializer):
+                    self._messenger.pub_channel(category, sub=sub_category,
+                                                channel_id=worker.client_id, obj=await obj.serialize(full=False))
+
+                return callback
+
+            worker.set_trade_update_callback(
+                worker_callback(NameSpace.TRADE, Category.UPDATE)
+            )
+            worker.set_trade_callback(
+                worker_callback(NameSpace.TRADE, Category.NEW)
+            )
+            worker.set_balance_callback(
+                worker_callback(NameSpace.BALANCE, Category.NEW)
+            )
+
+    def _remove_worker(self, worker: ExchangeWorker, premium=False):
+        asyncio.create_task(worker.disconnect())
+        (self._premium_workers_by_id if premium else self._base_workers_by_id).pop(worker.client.id, None)
+
+    async def add_client(self, client) -> Optional[ExchangeWorker]:
+        client_cls = self._exchanges.get(client.exchange)
+        if issubclass(client_cls, ExchangeWorker):
+            worker = client_cls(client, self._http_session, self._messenger, self.rekt_threshold)
+            await worker.synchronize_positions()
+            if client.is_premium:
+                await worker.connect()
+            self._add_worker(worker)
+            return worker
+        else:
+            logging.error(
+                f'CRITICAL: Exchange class {client_cls} for exchange {client.exchange} does NOT subclass ClientWorker')
+
+    async def get_worker(self, client_id: int, create_if_missing=True) -> ExchangeWorker:
+        if client_id:
+            worker = self._base_workers_by_id.get(client_id)
+            if not worker and create_if_missing:
+                await self._add_client_by_id(client_id)
+            return worker
+
+    async def run_forever(self):
+        await self._initialize_positions()
+        while True:
+            ts = time.time()
+            changes = False
+
+            for worker in self._premium_workers_by_id.values():
+                new = False
+                for trade in worker.client.open_trades:
+                    ticker = self.data_service.get_ticker(trade.symbol, trade.client.exchange)
+                    if ticker:
+                        upnl = trade.calc_upnl(ticker.price)
+                        trade.max_pnl = self.update_pnl(trade.max_pnl, trade, upnl, float.__ge__)
+                        trade.min_pnl = self.update_pnl(trade.min_pnl, trade, upnl, float.__le__)
+                        self._messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=trade.client_id,
+                                                    obj={'id': trade.id, 'upnl': upnl})
+                        trade.upnl = upnl
+                        if inspect(trade.max_pnl).transient or inspect(trade.min_pnl).transient:
+                            new = True
+                balance = await worker.client.evaluate_balance(self._redis)
+                # TODO: Introduce new mechanisms determining when to save
+                if new:
+                    async_session.add(balance)
+            if changes:
+                await async_session.commit()
+            await asyncio.sleep(3 - (time.time() - ts))
+
+    async def start_fetching(self):
+        """
+        Start fetching data at specified interval
+        """
+        while True:
+            await self._async_fetch_data()
+            time = datetime.now(pytz.utc)
+            next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
+                                microsecond=0) + timedelta(hours=self.interval_hours)
+            delay = next - time
+            await asyncio.sleep(delay.total_seconds())
+
+    async def get_client_balance(self,
+                                 client: Client,
+                                 currency: str = None,
+                                 priority: Priority = Priority.HIGH,
+                                 force_fetch=False) -> Balance:
+
+        if currency is None:
+            currency = '$'
+
+        data = await self._async_fetch_data(workers=[self.get_worker(client.id)], keep_errors=True,
+                                            priority=priority,
+                                            force_fetch=force_fetch)
+
+        if data:
+            result = data[0]
+            # if result.error is None or result.error == '':
+            #     matched_balance = db_match_balance_currency(result, currency)
+            #     if matched_balance:
+            #         result = matched_balance
+            #     else:
+            #         result.error = f'User balance does not contain currency {currency}'
+        else:
+            result = await client.latest()
+
+        return result
+
+    async def synch_workers(self):
+        clients = await db_all(
+            select(Client),
+            Client.events,
+            (Client.discord_user, DiscordUser.global_associations)
+        )
+
+        for client in clients:
+            if await client.is_global() or client.is_active:
+                await self.add_client(client)
+            else:
+                self._remove_worker(await self.get_worker(client.id, create_if_missing=False))
+
+    async def clear_client_data(self,
+                                client: Client,
+                                start: datetime = None,
+                                end: datetime = None,
+                                update_initial_balance=False):
+        if start is None:
+            start = datetime.fromtimestamp(0)
+        if end is None:
+            end = datetime.now(pytz.utc)
+
+        await db(
+            delete(Balance).filter(
+                Balance.client_id == client.id,
+                Balance.time >= start,
+                Balance.time <= end
+            )
+        )
+
+        history_record = await db_first(client.history.statement)
+        if not history_record and update_initial_balance:
+            client.rekt_on = None
+            asyncio.create_task(self.get_client_balance(client, force_fetch=True))
+
+        await async_session.commit()
+
+    async def _async_fetch_data(self, workers: List[ExchangeWorker] = None,
+                                keep_errors: bool = False,
+                                priority: Priority = Priority.MEDIUM,
+                                force_fetch=False) -> List[Balance]:
+        """
+        :return:
+        Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
+        """
+        time = datetime.now(tz=pytz.UTC)
+
+        if workers is None:
+            workers = list(self._base_workers_by_id.values())
+
+        data = []
+        tasks = []
+
+        logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
+        results = await asyncio.gather(*[
+            worker.get_balance(time=time, priority=priority, force=force_fetch)
+            for worker in workers if (worker and worker.in_position) or force_fetch
+        ])
+
+        return results
+
+        tasks = []
+        for result in results:
+            if isinstance(result, Balance):
+                client = await db_select(Client, id=result.client_id)
+                if client:
+                    tasks.append(
+                        lambda: self._messenger.pub_channel(NameSpace.BALANCE, Category.NEW, channel_id=client.id,
+                                                            obj=result.id)
+                    )
+                    history = await db_all(client.history.order_by(desc(Balance.time)).limit(3))
+                    history_len = len(history)
+                    latest_balance = None if history_len == 0 else history[history_len - 1]
+                    if history_len > 2:
+                        # If balance hasn't changed at all, why bother keeping it?
+                        if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
+                                and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
+                            latest_balance.time = time
+                            data.append(latest_balance)
+                            continue
+                    if result.error:
+                        logging.error(f'Error while fetching {client.id=} balance: {result.error}')
+                        if keep_errors:
+                            data.append(result)
+                    else:
+                        async_session.add(result)
+                        data.append(result)
+                        if result.amount <= self.rekt_threshold and not client.rekt_on:
+                            client.rekt_on = time
+                            self._messenger.pub_channel(NameSpace.CLIENT, Category.REKT, channel_id=client.id,
+                                                        obj={'id': client.id})
+                else:
+                    logging.error(f'Worker with {result.client_id=} got no client object!')
+
+        await async_session.commit()
+
+        for task in tasks:
+            task()
+
+        logging.info(f'Done Fetching')
+        return data

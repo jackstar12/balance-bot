@@ -30,7 +30,7 @@ from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
 from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
-from balancebot.common.messenger import Messenger, Category, SubCategory
+from balancebot.common.messenger import Messenger, NameSpace, Category
 import balancebot.api.dbmodels.event as db_event
 from balancebot.common.utils import validate_kwargs
 
@@ -186,7 +186,7 @@ async def delete_client(body: DeleteBody, user: User = Depends(current_user)):
 
 
 @router.patch('/client')
-async def update_client(body: UpdateBody, user: User = Depends(CurrentUser(User.discorduser))):
+async def update_client(body: UpdateBody, user: User = Depends(CurrentUser(User.discord_user))):
     client: Client = await db_first(
         add_client_filters(select(Client), user, body.id)
     )
@@ -214,10 +214,10 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUser(User.
                     Guild.users
                 )
                 for guild in guilds:
-                    if user.discorduser in guild.users:
+                    if user.discord_user in guild.users:
                         guild.global_clients.append(
                             GuildAssociation(
-                                discorduser_id=user.discord_user_id,
+                                discord_user_id=user.discord_user_id,
                                 client_id=client.id
                             )
                         )
@@ -234,7 +234,7 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUser(User.
                     valid_events = []
                     for event in events:
                         if event.is_free_for_registration(now):
-                            if event.guild in user.discorduser.guilds:
+                            if event.guild in user.discord_user.guilds:
                                 valid_events.append(event)
                             else:
                                 return BadRequest(f'You are not eligible to join {event.name} (Not in server)')
@@ -298,10 +298,10 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  
 
     def unsub_client(client: Client):
         if client:
-            messenger.unsub_channel(Category.BALANCE, sub=SubCategory.NEW, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.NEW, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.UPDATE, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.UPNL, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.BALANCE, sub=Category.NEW, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.NEW, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.UPDATE, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.UPNL, channel_id=client.id)
 
     async def update_client(old: Client, new: Client):
 
@@ -349,22 +349,22 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  
             )
 
         messenger.sub_channel(
-            Category.BALANCE, sub=SubCategory.NEW, channel_id=new.id,
+            NameSpace.BALANCE, sub=Category.NEW, channel_id=new.id,
             callback=send_balance_update
         )
 
         messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.NEW, channel_id=new.id,
+            NameSpace.TRADE, sub=Category.NEW, channel_id=new.id,
             callback=send_trade_update
         )
 
         messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.UPDATE, channel_id=new.id,
+            NameSpace.TRADE, sub=Category.UPDATE, channel_id=new.id,
             callback=send_trade_update
         )
 
         messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.UPNL, channel_id=new.id,
+            NameSpace.TRADE, sub=Category.UPNL, channel_id=new.id,
             callback=send_upnl_update
         )
 

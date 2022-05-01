@@ -11,7 +11,7 @@ from balancebot.api import dbutils
 from balancebot.api.database import session
 from balancebot.api.dbmodels.alert import Alert
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.common.messenger import Category, SubCategory
+from balancebot.common.messenger import NameSpace, Category
 from balancebot.common.models.selectionoption import SelectionOption
 
 
@@ -31,7 +31,7 @@ class AlertCog(CogBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.messenger.sub_channel(Category.ALERT, sub=SubCategory.FINISHED, callback=self.on_alert_trigger)
+        self.messenger.sub_channel(NameSpace.ALERT, sub=Category.FINISHED, callback=self.on_alert_trigger)
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -78,7 +78,7 @@ class AlertCog(CogBase):
 
         await ctx.send('Alert created', embed=alert.get_discord_embed())
 
-        self.messenger.pub_channel(Category.ALERT, SubCategory.NEW, obj=await alert.serialize(data=True, full=False))
+        self.messenger.pub_channel(NameSpace.ALERT, Category.NEW, obj=await alert.serialize(data=True, full=False))
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -101,7 +101,7 @@ class AlertCog(CogBase):
         async def on_alert_select(selections: List[Alert]):
             for selection in selections:
                 await db_del_filter(Alert, id=selection.id)
-                self.messenger.pub_channel(Category.ALERT, SubCategory.DELETE, selection.id)
+                self.messenger.pub_channel(NameSpace.ALERT, Category.DELETE, selection.id)
             await async_session.commit()
 
         if len(user.alerts) > 1:

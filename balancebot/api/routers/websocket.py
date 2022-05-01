@@ -13,7 +13,7 @@ from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.user import User
 from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
-from balancebot.common.messenger import Messenger, Category, SubCategory
+from balancebot.common.messenger import Messenger, NameSpace, Category
 
 from balancebot.collector.usermanager import UserManager
 
@@ -60,10 +60,10 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
 
     def unsub_client(client: Client):
         if client:
-            messenger.unsub_channel(Category.BALANCE, sub=SubCategory.NEW, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.NEW, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.UPDATE, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.UPNL, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.BALANCE, sub=Category.NEW, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.NEW, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.UPDATE, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.UPNL, channel_id=client.id)
 
     async def update_client(old: Client, new: Client):
 
@@ -111,22 +111,22 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
             )
 
         messenger.sub_channel(
-            Category.BALANCE, sub=SubCategory.NEW, channel_id=new.id,
+            NameSpace.BALANCE, sub=Category.NEW, channel_id=new.id,
             callback=send_balance_update
         )
 
         messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.NEW, channel_id=new.id,
+            NameSpace.TRADE, sub=Category.NEW, channel_id=new.id,
             callback=send_trade_update
         )
 
         messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.UPDATE, channel_id=new.id,
+            NameSpace.TRADE, sub=Category.UPDATE, channel_id=new.id,
             callback=send_trade_update
         )
 
         messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.UPNL, channel_id=new.id,
+            NameSpace.TRADE, sub=Category.UPNL, channel_id=new.id,
             callback=send_upnl_update
         )
 

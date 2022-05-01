@@ -19,7 +19,7 @@ class KuCoinClient(ExchangeWorker):
     ]
 
     # https://docs.kucoin.com/#get-account-balance-of-a-sub-account
-    async def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime, upnl=True):
         response = await self._get(
             '/api/v1/account-overview',
             params={'currency': 'USDT'}

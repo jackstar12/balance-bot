@@ -1,28 +1,31 @@
 from datetime import datetime
 
 import pytz
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot.api.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType
 
 import balancebot.bot.config as config
+from balancebot.api.dbmodels.amountmixin import AmountMixin
 from balancebot.api.dbmodels.serializer import Serializer
 
 
-class Balance(Base, Serializer):
+class Balance(Base, AmountMixin, Serializer):
     __tablename__ = 'balance'
     __serializer_forbidden__ = ['id', 'error', 'client_id']
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
-    currency = Column(String(10), nullable=False)
-    time: DateTime = Column(DateTime(timezone=True), nullable=False)
-    amount = Column(Float, nullable=False)
+    #currency = Column(String(10), nullable=False)
+    #time: DateTime = Column(DateTime(timezone=True), nullable=False)
+    #amount = Column(Float, nullable=False)
 
     transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='SET NULL'), nullable=True)
 
-    extra_currencies = Column(PickleType, nullable=True)
+    #extra_currencies = Column(PickleType, nullable=True)
+    #extra_currencies = Column(JSONB, nullable=True)
 
     def __init__(self, error=None, *args, **kwargs):
         self.error = error
@@ -41,7 +44,7 @@ class Balance(Base, Serializer):
         return json
 
     def to_string(self, display_extras=True):
-        string = f'{round(self.amount, ndigits=config.CURRENCY_PRECISION.get(self.currency, 3))}{self.currency}'
+        string = f'{round(self.amount, ndigits=config.CURRENCY_PRECISION.get("$", 3))}"$"'
 
         if self.extra_currencies and display_extras:
             first = True

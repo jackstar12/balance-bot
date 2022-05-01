@@ -2,10 +2,14 @@ import asyncio
 import urllib.parse
 import hmac
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Union
 
 import pytz
 from aiohttp import ClientResponse, ClientResponseError
+from sqlalchemy import select
+import ccxt.async_support as ccxt
+from balancebot.api.database_async import db_first
 from balancebot.api.dbmodels.execution import Execution
 import balancebot.api.dbmodels.balance as balance
 from balancebot.exchangeworker import ExchangeWorker
@@ -25,6 +29,17 @@ class FtxClient(ExchangeWorker):
                                      subaccount=self._subaccount,
                                      on_message_callback=self._on_message,
                                      session=self._session)
+        self._ccxt = ccxt.ftx(
+            config={
+                'apiKey': self._api_key,
+                'secret': self._api_secret,
+                'session': self._session
+            }
+        )
+        if self._subaccount:
+            self._ccxt.headers = {
+                'FTX-SUBACCOUNT': self._subaccount
+            }
 
     async def connect(self):
         await self.ws.connect()
@@ -46,17 +61,33 @@ class FtxClient(ExchangeWorker):
             )
 
     # https://docs.ftx.com/#account
-    async def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime, upnl=True):
         response = await self._get('/api/account')
         if response['success']:
             amount = response['result']['totalAccountValue']
         else:
             amount = 0
-        return balance.Balance(amount=amount, currency='$', error=response.get('error'), time=time)
+        return balance.Balance(amount=amount, error=response.get('error'), time=time)
+
+    async def get_executions(self,
+                             since: datetime):
+        # Offset by 1 millisecond because otherwise the same executions are refetched (ftx probably compares with >=)
+        trades = await self._ccxt.fetch_my_trades(since=since.timestamp() * 1000 + 1)
+        return [
+            Execution(
+                symbol=trade['symbol'],
+                price=trade['price'],
+                qty=trade['amount'],
+                side=trade['side'],
+                time=self._parse_ts(trade['timestamp'])
+            )
+            for trade in trades
+        ]
 
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
-        signature_payload = f'{ts}{method}{path}'.encode()
+
+        signature_payload = f'{ts}{method}{path}{self._query_string(params)}'.encode()
         if data:
             signature_payload += data
         signature = hmac.new(self._api_secret.encode(), signature_payload, 'sha256').hexdigest()
@@ -92,5 +123,8 @@ class FtxClient(ExchangeWorker):
 
         if response.status == 200:
             return response_json
+
+    def _parse_ts(self, ts: Union[int, float]):
+        return datetime.fromtimestamp(ts / 1000, pytz.utc)
 
 

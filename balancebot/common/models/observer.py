@@ -24,16 +24,6 @@ class Observer(object):
     """
     __metaclass__ = ABCMeta
 
-    _object_counter = 0
-
-    def __init__(self, name=None):
-        """
-        :param name: A name may be set for the subtyping class object for easy identification.
-        if not set, the class name is used with a class object counter.
-        """
-        self.name = name if name else self.__class__.__name__ + str(Observer._object_counter)
-        Observer._object_counter += 1
-
     @abstractmethod
     async def update(self, *new_state):
         """
@@ -42,18 +32,6 @@ class Observer(object):
         :type new_state: A tuple of arbitrary content.
         """
         pass
-
-    @property
-    def object_counter(self):
-        """
-        Returns the number of created objects of this class.
-        :return: the number of created objects class attribute.
-        """
-        return Observer._object_counter
-
-    @classmethod
-    def __subclasshook__(cls, sub_class):  # correct behavior when isinstance, issubclass is called
-        return any(cls.update.__str__() in klazz.__dict__ for klazz in sub_class.__mro__) != []
 
 
 class Observable(object):

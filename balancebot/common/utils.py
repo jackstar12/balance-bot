@@ -19,15 +19,15 @@ from discord_slash import SlashCommand, ComponentContext
 from datetime import datetime, timedelta
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any
 
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, select
 
-import balancebot.api.dbmodels.event as event
+import balancebot.api.dbmodels.event as db_event
 from balancebot.api.database import session
-from balancebot.api.database_async import async_session, db_first
+from balancebot.api.database_async import async_session, db_first, db_all
+from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.models.daily import Daily
 from balancebot.common.models.gain import Gain
-from balancebot.collector.usermanager import UserManager, db_match_balance_currency
 from balancebot.api.dbmodels.client import Client
 from balancebot.api import dbutils, utils
 from balancebot.api.dbmodels.discorduser import DiscordUser
@@ -187,7 +187,7 @@ def de_emojify(text):
 
 
 async def create_history(to_graph: List[Tuple[Client, str]],
-                         event: event.Event,
+                         event: db_event.Event,
                          start: datetime,
                          end: datetime,
                          currency_display: str,
@@ -215,15 +215,15 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     first = True
     title = ''
 
-    um = UserManager()
-    await um.fetch_data([graph[0] for graph in to_graph])
+    #um = UserManager()
+    #await um.fetch_data([graph[0] for graph in to_graph])
     for registered_client, name in to_graph:
 
-        history = await um.get_client_history(registered_client,
-                                              event=event,
-                                              since=start,
-                                              to=end,
-                                              currency=currency)
+        history = await dbutils.get_client_history(registered_client,
+                                                   event=event,
+                                                   since=start,
+                                                   to=end,
+                                                   currency=currency)
 
         if len(history.data) == 0:
             if throw_exceptions:
@@ -332,8 +332,6 @@ async def calc_daily(client: Client,
         if event and event.start > daily_start:
             daily_start = event.start
 
-    um = UserManager()
-
     current_day = daily_start
     current_search = daily_start + timedelta(days=1)
     prev_balance = db_match_balance_currency(history[0], currency)
@@ -398,7 +396,7 @@ def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
 async def create_leaderboard(dc_client: discord.Client,
                              guild_id: int,
                              mode: str,
-                             event: event.Event = None,
+                             event: db_event.Event = None,
                              time: datetime = None,
                              archived=False) -> discord.Embed:
     user_scores: List[Tuple[DiscordUser, float]] = []
@@ -414,22 +412,25 @@ async def create_leaderboard(dc_client: discord.Client,
         raise InternalError(f'Provided guild_id is not valid!')
 
     if not event:
-        event = await dbutils.get_event(guild_id, throw_exceptions=False, eager_loads=[event.Event.registrations])
+        event = await dbutils.get_event(guild_id, throw_exceptions=False, eager_loads=[db_event.Event.registrations])
 
     if event:
         clients = event.registrations
     else:
-        clients = []
         # All global clients
-        users = session.query(DiscordUser).filter(DiscordUser.global_client_id is not None).all()
-        for user in users:
-            member = guild.get_member(user.user_id)
-            if member and user.global_client:
-                clients.append(user.global_client)
+        clients = await db_all(
+            select(Client).
+            filter(
+                Client.id.in_(
+                    select(GuildAssociation.client_id).
+                    filter_by(guild_id=guild.id)
+                )
+            )
+        )
 
-    if not archived:
-        user_manager = UserManager()
-        await user_manager.fetch_data(clients=clients)
+    # if not archived:
+    #     user_manager = UserManager()
+    #     await user_manager.fetch_data(clients=clients)
 
     if mode == 'balance':
         for client in clients:
@@ -474,14 +475,14 @@ async def create_leaderboard(dc_client: discord.Client,
                 dc_client.change_presence(
                     activity=discord.Activity(
                         type=discord.ActivityType.watching,
-                        name=f'Best Trader: {user_scores[0][0].discorduser.get_display_name(dc_client, guild_id)}'
+                        name=f'Best Trader: {user_scores[0][0].discord_user.get_display_name(dc_client, guild_id)}'
                     )
                 )
             )
 
         prev_score = None
         for client, score in user_scores:
-            member = guild.get_member(client.discorduser.user_id)
+            member = guild.get_member(client.discord_user.user_id)
             if member:
                 if prev_score is not None and score < prev_score:
                     rank = rank_true
@@ -496,7 +497,7 @@ async def create_leaderboard(dc_client: discord.Client,
     if len(users_rekt) > 0:
         description += f'\n**Rekt**\n'
         for user_rekt in users_rekt:
-            member = guild.get_member(user_rekt.discorduser.user_id)
+            member = guild.get_member(user_rekt.discord_user.user_id)
             if member:
                 description += f'{member.display_name}'
                 if user_rekt.rekt_on:
@@ -506,7 +507,7 @@ async def create_leaderboard(dc_client: discord.Client,
     if len(clients_missing) > 0:
         description += f'\n**Missing**\n'
         for client_missing in clients_missing:
-            member = guild.get_member(client_missing.discorduser.user_id)
+            member = guild.get_member(client_missing.discord_user.user_id)
             if member:
                 description += f'{member.display_name}\n'
 
@@ -520,7 +521,7 @@ async def create_leaderboard(dc_client: discord.Client,
 
 
 async def calc_gains(clients: List[Client],
-                     event: event.Event,
+                     event: db_event.Event,
                      search: datetime,
                      currency: str = None) -> List[Gain]:
     """
@@ -537,7 +538,6 @@ async def calc_gains(clients: List[Client],
         currency = '$'
 
     results = []
-    user_manager = UserManager()
     for client in clients:
         if not client:
             logging.info('calc_gains: A none client was passed in?')
@@ -850,6 +850,32 @@ def readable_time(time: datetime) -> str:
             time_str = f'since {time.strftime("%d.%m.%Y %H:%M")}'
 
     return time_str
+
+
+def db_match_balance_currency(balance: Balance, currency: str):
+    result = None
+
+    if balance is None:
+        return None
+
+    result = None
+
+    if balance.currency != currency:
+        if balance.extra_currencies:
+            result_currency = balance.extra_currencies.get(currency)
+            if not result_currency:
+                result_currency = balance.extra_currencies.get(config.CURRENCY_ALIASES.get(currency))
+            if result_currency:
+                result = Balance(
+                    amount=result_currency,
+                    currency=currency,
+                    time=balance.time
+                )
+    else:
+        result = balance
+
+    return result
+
 
 
 def join_args(*args, denominator=':'):

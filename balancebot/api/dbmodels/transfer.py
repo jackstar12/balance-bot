@@ -18,6 +18,11 @@ class Transfer(Base):
     __tablename__ = 'transfer'
 
     id = Column(BigInteger, primary_key=True)
+    client_id = Column(
+        Integer,
+        ForeignKey('client.id', ondelete="CASCADE"),
+        nullable=False
+    )
     amount = Column(Numeric, nullable=False)
     note = Column(String, nullable=True)
 

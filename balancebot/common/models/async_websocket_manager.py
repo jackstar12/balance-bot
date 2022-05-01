@@ -50,7 +50,8 @@ class WebsocketManager:
 
     async def _run(self):
         async with self._session.ws_connect(self._get_url(), autoping=True) as ws:
-            self._ws = ws
+
+            self._ws: aiohttp.ClientWebSocketResponse = ws
             async for msg in ws:
                 msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
                 if msg.type == aiohttp.WSMsgType.PING:

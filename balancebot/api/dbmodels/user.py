@@ -15,16 +15,20 @@ class User(Base, Serializer, SQLAlchemyBaseUserTable):
 
     # Identity
     # id = Column(Integer, primary_key=True)
-    #email = Column(String, unique=True, nullable=False)
-    #password = Column(String, unique=True, nullable=False)
-    #salt = Column(String, nullable=False)
+    # email = Column(String, unique=True, nullable=False)
+    # password = Column(String, unique=True, nullable=False)
+    # salt = Column(String, nullable=False)
     discord_user_id = Column(BigInteger(), ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
-    discorduser = relationship('DiscordUser', lazy='raise', backref=backref('user', lazy='noload', uselist=False), uselist=False, foreign_keys=discord_user_id)
+    discord_user = relationship('DiscordUser', lazy='raise', backref=backref('user', lazy='noload', uselist=False),
+                                uselist=False, foreign_keys=discord_user_id)
 
     all_clients = relationship(
         'Client',
         lazy='noload',
-        primaryjoin='or_(Client.user_id == User.id, Client.discord_user_id == User.discord_user_id)'
+        primaryjoin='or_('
+                    'Client.user_id == User.id,'
+                    'Client.discord_user_id == User.discord_user_id'
+                    ')'
     )
 
     # Data

@@ -63,7 +63,7 @@ class Event(Base, Serializer):
         if registrations:
             value = ''
             for registration in self.registrations:
-                value += f'{registration.discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                value += f'{registration.discord_user.get_display_name(dc_client, self.guild_id)}\n'
             if value:
                 embed.add_field(name="Registrations", value=value, inline=False)
             self._archive.registrations = value
@@ -92,15 +92,15 @@ class Event(Base, Serializer):
         gains.sort(key=key, reverse=True)
 
         description += f'**Best Trader :crown:**\n' \
-                       f'{gains[0].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{gains[0].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         description += f'\n**Worst Trader :disappointed_relieved:**\n' \
-                       f'{gains[len(gains) - 1].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{gains[len(gains) - 1].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         gains.sort(key=lambda x: x.absolute, reverse=True)
 
         description += f'\n**Highest Stakes :moneybag:**\n' \
-                       f'{gains[0].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{gains[0].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         def non_null_balances(history):
             balances = []
@@ -122,10 +122,10 @@ class Event(Base, Serializer):
         volatility.sort(key=lambda x: x[1], reverse=True)
 
         description += f'\n**Most Degen Trader :grimacing:**\n' \
-                       f'{volatility[0].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{volatility[0].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         description += f'\n**Still HODLing :sleeping:**\n' \
-                       f'{volatility[len(volatility) - 1].client.discorduser.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{volatility[len(volatility) - 1].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         cum_percent = 0.0
         cum_dollar = 0.0
@@ -150,7 +150,7 @@ class Event(Base, Serializer):
         await utils.create_history(
             custom_title=f'Complete history for {self.name}',
             to_graph=[
-                (client, client.discorduser.get_display_name(dc_client, self.guild_id))
+                (client, client.discord_user.get_display_name(dc_client, self.guild_id))
                 for client in self.registrations
             ],
             event=self,

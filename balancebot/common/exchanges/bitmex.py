@@ -15,7 +15,7 @@ class BitmexClient(ExchangeWorker):
     _ENDPOINT = 'https://www.bitmex.com'
 
     # https://www.bitmex.com/api/explorer/#!/User/User_getWallet
-    async def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime, upnl=True):
         # Could do something like that for displaying a trade history
         # request = Request(
         #     'GET',

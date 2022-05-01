@@ -62,7 +62,7 @@ def make_session(*, token=None, state=None, scope=None, request: Request = None)
 
 @router.get('/connect')
 def register_discord(request: Request, user: User = Depends(current_user)):
-    if user.discorduser:
+    if user.discord_user:
         return {'msg': 'Discord is already connected'}, HTTPStatus.BAD_REQUEST
     else:
         discord = make_session(scope=['identify'], request=request)
@@ -75,7 +75,7 @@ def register_discord(request: Request, user: User = Depends(current_user)):
 
 @router.get('/disconnect')
 async def disconnect_discord(request: Request, user: User = Depends(current_user)):
-    if not user.discorduser:
+    if not user.discord_user:
         return {'msg': 'Discord is not connected'}, HTTPStatus.BAD_REQUEST
     else:
         user.discord_user_id = None
@@ -108,7 +108,7 @@ async def callback(request: Request, error: Optional[str] = None, user: User = D
     discord_user.name = user_json['username']
     discord_user.avatar = user_json['avatar']
 
-    user.discorduser = discord_user
+    user.discord_user = discord_user
 
     await async_session.commit()
     return RedirectResponse(url='/app/profile')

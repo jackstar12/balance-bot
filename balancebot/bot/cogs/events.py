@@ -153,7 +153,7 @@ class EventsCog(CogBase):
                 if os.path.exists:
                     history = discord.File(config.DATA_PATH + archive.history_path, "history.png")
 
-                info = archive.event.get_discord_embed(
+                info = archive.db_event.get_discord_embed(
                     self.bot, registrations=False
                 ).add_field(name="Registrations", value=archive.registrations, inline=False)
 
@@ -168,7 +168,7 @@ class EventsCog(CogBase):
                 )
 
                 await ctx.send(
-                    content=f'Archived results for {archive.event.name}',
+                    content=f'Archived results for {archive.db_event.name}',
                     embeds=[
                         info, leaderboard, summary
                     ],

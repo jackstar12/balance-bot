@@ -51,11 +51,11 @@ if args.uuid:
 
     users = db.session.query(User).all()
     for user in users:
-        user.discord_user_id = user.discorduser.user_id
+        user.discord_user_id = user.discord_user.user_id
 
     for client in db.session.query(Client).all():
-        if client.discorduser:
-            client.discord_user_id = client.discorduser.user_id
+        if client.discord_user:
+            client.discord_user_id = client.discord_user.user_id
 
     db.session.commit()
 
@@ -79,11 +79,11 @@ if args.discordids:
 
     users = db.session.query(User).all()
     for user in users:
-        user.discord_user_id = user.discorduser.user_id
+        user.discord_user_id = user.discord_user.user_id
 
     for client in db.session.query(Client).all():
-        if client.discorduser:
-            client.discord_user_id = client.discorduser.user_id
+        if client.discord_user:
+            client.discord_user_id = client.discord_user.user_id
 
     db.session.commit()
 

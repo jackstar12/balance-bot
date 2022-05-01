@@ -1,8 +1,9 @@
 import asyncio
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 import msgpack
 
@@ -14,7 +15,7 @@ from balancebot.common.models.singleton import Singleton
 import balancebot.common.utils as utils
 
 
-class Category(Enum):
+class NameSpace(Enum):
     CLIENT = "client"
     ALERT = "alert"
     BALANCE = "balance"
@@ -22,20 +23,28 @@ class Category(Enum):
     EVENT = "event"
     COIN_STATS = "coinstats"
     TICKER = "ticker"
-
+    PNL = "pnl"
     KEYSPACE = "__keyspace@0__"
 
 
-class SubCategory(Enum):
+class Category(Enum):
     NEW = "new"
     DELETE = "delete"
     UPDATE = "update"
     FINISHED = "finished"
     UPNL = "upnl"
+    PNL = "pnl"
     REKT = "rekt"
     VOLUME = "volume"
     OI = "oi"
     SESSIONS = "sessions"
+
+
+@dataclass
+class ClientEdit:
+    id: int
+    archived: Optional[bool]
+    invalid: Optional[bool]
 
 
 class Messenger(Singleton):
@@ -70,7 +79,7 @@ class Messenger(Singleton):
             self._listening = True
             asyncio.create_task(self.listen())
 
-    def sub_channel(self, category: Category, sub: SubCategory, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
+    def sub_channel(self, category: NameSpace, sub: Category, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
         channel = utils.join_args(category.value, sub.value, channel_id)
         if pattern:
             channel += '*'
@@ -79,7 +88,7 @@ class Messenger(Singleton):
             logging.info(f'Sub: {kwargs}')
         asyncio.create_task(self.sub(pattern=pattern, rcv_event=False, **kwargs))
 
-    def unsub_channel(self, category: Category, sub: SubCategory, channel_id: int = None, pattern=False):
+    def unsub_channel(self, category: NameSpace, sub: Category, channel_id: int = None, pattern=False):
         channel = utils.join_args(category.value, sub.value, channel_id)
         if pattern:
             channel += '*'
@@ -88,7 +97,7 @@ class Messenger(Singleton):
         else:
             asyncio.create_task(self._pubsub.unsubscribe(channel))
 
-    def pub_channel(self, category: Category, sub: SubCategory, obj: object, channel_id: int = None):
+    def pub_channel(self, category: NameSpace, sub: Category, obj: object, channel_id: int = None):
         ch = utils.join_args(category.value, sub.value, channel_id)
         if settings.testing:
             logging.info(f'Pub: {ch=} {obj=}')

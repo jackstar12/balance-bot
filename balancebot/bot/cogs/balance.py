@@ -49,7 +49,8 @@ class BalanceCog(CogBase):
 
             await ctx.defer()
 
-            usr_balance = await self.user_manager.get_client_balance(registered_user, currency)
+            #usr_balance = await self.user_manager.get_client_balance(registered_user, currency)
+            usr_balance = await registered_user.get_balance(self.redis, currency)
             if usr_balance and usr_balance.error is None:
                 await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
             else:
@@ -60,7 +61,8 @@ class BalanceCog(CogBase):
             await ctx.defer()
 
             for user_client in user.clients:
-                usr_balance = await self.user_manager.get_client_balance(user_client, currency)
+                #usr_balance = await self.user_manager.get_client_balance(user_client, currency)
+                usr_balance = await user_client.get_balance(self.redis, currency)
                 balance_message = f'Your balance ({await user_client.get_events_and_guilds_string()}): '
                 if usr_balance.error is None:
                     await ctx.send(f'{balance_message}{usr_balance.to_string()}')
@@ -111,7 +113,7 @@ class BalanceCog(CogBase):
         time_str = utils.readable_time(time)
 
         await ctx.defer()
-        await self.user_manager.fetch_data(clients=clients)
+        #await self.user_manager.fetch_data(clients=clients)
 
         user_gains = await utils.calc_gains(
             clients,

@@ -19,7 +19,7 @@ class OkxClient(ExchangeWorker):
             'password': self._extra_kwargs['passphrase']
         })
 
-    def _get_balance(self, time: datetime):
+    def _get_balance(self, time: datetime, upnl=True):
 
         # Could do something like that for displaying a trade history
         # request = Request(

@@ -3,9 +3,8 @@ import time
 
 import pytz
 from sqlalchemy import inspect, select
-
-from balancebot.api.database import session
 from balancebot.api.database_async import db_all, async_session
+from balancebot.collector.services.baseservice import BaseService
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common.models.observer import Observable, Observer
 import ccxt.async_support as ccxt
@@ -20,30 +19,31 @@ from balancebot.common.models.singleton import Singleton
 import aiohttp
 
 
-class CoinTracker(Singleton, Observer):
+class CoinTracker(Observer, BaseService):
     _ENDPOINT = 'https://ftx.com'
 
     VolumeObservable = Observable()
     OpenInterestObservable = Observable()
 
-    def init(self,
-             session: aiohttp.ClientSession = None,
-             time_window: timedelta = timedelta(seconds=14400),
-             max_time_range: timedelta = timedelta(days=13),
-             time_frames: List[timedelta] = None,
-             *args,
-             **kwargs):
+    def __init__(self,
+                 *args,
+                 data_service,
+                 time_window: timedelta = timedelta(seconds=14400),
+                 max_time_range: timedelta = timedelta(days=13),
+                 time_frames: List[timedelta] = None,
+                 **kwargs):
 
-        self._session = session
+        super().__init__(*args, **kwargs)
+
         self._time_window = time_window
         self._max_time_range = max_time_range
         self._coins_by_name: Dict[str, Coin] = {}
         self._current_coin_volume: Dict[Coin, Volume] = {}
-        self.data_service = DataService()
+        self.data_service = data_service
 
         self._ccxt = ccxt.ftx(
             config={
-                'session': self._session
+                'session': self._http_session
             }
         )
 
@@ -54,7 +54,7 @@ class CoinTracker(Singleton, Observer):
         self._on_open_interest_update = None
 
     async def _get(self, path: str, **kwargs):
-        async with self._session.request('GET', self._ENDPOINT + path, **kwargs) as response:
+        async with self._http_session.request('GET', self._ENDPOINT + path, **kwargs) as response:
             if response.status == 200:
                 j = await response.json()
                 if j.get('success'):
@@ -83,10 +83,10 @@ class CoinTracker(Singleton, Observer):
     async def run(self, http_session: aiohttp.ClientSession = None):
 
         if http_session:
-            self._session = http_session
+            self._http_session = http_session
 
-        if self._session is None:
-            self._session = aiohttp.ClientSession()
+        if self._http_session is None:
+            self._http_session = aiohttp.ClientSession()
 
         spot_markets_by_name = await self._get_markets_by_name(params={"type": "spot"})
         perp_markets_by_name = await self._get_markets_by_name(params={"type": "future"})

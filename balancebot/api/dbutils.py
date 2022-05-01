@@ -10,12 +10,64 @@ from balancebot.api.database import session
 import balancebot.api.dbmodels.client as db_client
 from balancebot.api.database_async import async_session, db_first, db_eager, db, db_del_filter, db_unique, db_all, \
     db_select
+from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.discorduser import DiscordUser
 import balancebot.api.dbmodels.event as db_event
 from typing import Optional
 from balancebot.common.errors import UserInputError
-from balancebot.common.messenger import Messenger, Category, SubCategory
+from balancebot.common.messenger import Messenger, NameSpace, Category
+from balancebot.common.models.history import History
+
+
+async def get_client_history(client: db_client.Client,
+                             event: db_event.Event,
+                             since: datetime = None,
+                             to: datetime = None,
+                             currency: str = None) -> History:
+    since = since or datetime.fromtimestamp(0, tz=pytz.utc)
+    to = to or datetime.now(pytz.utc)
+
+    if event:
+        # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
+        since = max(since, event.start)
+        to = min(to, event.end)
+
+    if currency is None:
+        currency = '$'
+
+    results = []
+    initial = None
+
+    filter_time = event.start if event else since
+
+    history = await db_all(client.history.statement.filter(
+        Balance.time > filter_time, Balance.time < to
+    ))
+
+    for balance in history:
+        if since <= balance.time:
+            results.append(balance)
+        elif event and event.start <= balance.time and not initial:
+            initial = balance
+
+    if results:
+        results.insert(0, Balance(
+            time=since,
+            amount=results[0].amount,
+            currency=results[0].currency
+        ))
+
+    if not initial:
+        try:
+            initial = results[0]
+        except (ValueError, IndexError):
+            pass
+
+    return History(
+        data=results,
+        initial=initial
+    )
 
 
 async def get_client(user_id: int,
@@ -28,7 +80,7 @@ async def get_client(user_id: int,
     user = await get_discord_user(
         user_id,
         throw_exceptions=throw_exceptions,
-        eager_loads=[(DiscordUser.clients, client_eager), DiscordUser.global_client, DiscordUser.guilds, *discord_user_eager])
+        eager_loads=[(DiscordUser.clients, client_eager), DiscordUser.guilds, *discord_user_eager])
     if user:
         if guild_id:
             if registration:
@@ -54,15 +106,6 @@ async def get_client(user_id: int,
             return client
         elif throw_exceptions:
             raise UserInputError("User")
-
-        if len(user.global_associations) == 1:
-            return
-        if user.global_client:
-            if not guild_id:
-                return user.global_client
-            for guild in user.global_client.guilds:
-                if guild.id == guild_id:
-                    return user.global_client
         elif throw_exceptions:
             raise UserInputError("User {name} does not have a global registration", user_id)
     elif throw_exceptions:
@@ -112,13 +155,13 @@ async def get_event(guild_id: int, channel_id: int = None, state: str = 'active'
 async def delete_client(client: db_client.Client, messenger: Messenger, commit=False):
     await db_del_filter(db_client.Client, id=client.id)
     #session.query(db_client.Client).filter_by(id=client.id).delete()
-    messenger.pub_channel(Category.CLIENT, SubCategory.DELETE, obj=client.id)
+    messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj=client.id)
     if commit:
         await async_session.commit()
 
 
 def add_client(client: db_client.Client, messenger: Messenger):
-    messenger.pub_channel(Category.CLIENT, SubCategory.NEW, obj=client.id)
+    messenger.pub_channel(NameSpace.CLIENT, Category.NEW, obj=client.id)
 
 
 def get_all_events(guild_id: int, channel_id):

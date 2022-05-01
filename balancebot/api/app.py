@@ -83,7 +83,7 @@ async def delete_user(user: User = Depends(current_user)):
 
 
 user_info = CurrentUser(
-        #(User.discorduser, (
+        #(User.discord_user, (
         #    DiscordUser.guilds,
         #    Guild.events
         #)),
@@ -119,8 +119,8 @@ async def info(user: User = Depends(user_info)):
     #                       (User.clients, Client.events),
     #                       User.alerts,
     #                       User.labels,
-    #                       (User.discorduser, [(DiscordUser.clients, Client.events)]),
-    #                       (User.discorduser, [(DiscordUser.clients, Client.trades)]),
+    #                       (User.discord_user, [(DiscordUser.clients, Client.events)]),
+    #                       (User.discord_user, [(DiscordUser.clients, Client.trades)]),
     #                       )
 
     #test2 = await aio_db.db_unique(stmt)
@@ -247,7 +247,7 @@ async def on_start():
         ).options(
             selectinload(User.alerts)
         ).options(
-            selectinload(User.discorduser).selectinload(DiscordUser.clients).selectinload(Client.trades).selectinload(Trade.executions)
+            selectinload(User.discord_user).selectinload(DiscordUser.clients).selectinload(Client.trades).selectinload(Trade.executions)
         )
 
     print(len(str(stmt2)))
@@ -258,7 +258,7 @@ async def on_start():
     stmt = aio_db.db_eager(select(User),
                            (User.clients, [Client.trades, Client.events]),
                            User.alerts,
-                           (User.discorduser, (DiscordUser.clients, (Client.trades, Trade.executions)))
+                           (User.discord_user, (DiscordUser.clients, (Client.trades, Trade.executions)))
                            )
 
     res = await aio_db.db_unique(stmt)

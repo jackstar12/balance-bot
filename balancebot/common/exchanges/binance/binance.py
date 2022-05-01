@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import NamedTuple, List, Optional
+from typing import NamedTuple, List, Optional, Union
 
 import asyncio
 import hmac
@@ -7,14 +7,16 @@ import json
 import logging
 import sys
 import time
-import ccxt
+import ccxt.async_support as ccxt
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict
 
 import pytz
 from aiohttp import ClientResponse, ClientResponseError
+from sqlalchemy import select
 
+from balancebot.api.database_async import db_select_all, db_all
 from balancebot.api.dbmodels.transfer import Transfer
 from balancebot.common import utils
 from balancebot.common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
@@ -63,10 +65,15 @@ class _BinanceBaseClient(ExchangeWorker):
             return response_json
 
     # https://binance-docs.github.io/apidocs/spot/en/#get-future-account-transaction-history-list-user_data
-    async def get_transfers(self,
-                            since: datetime,
-                            to: datetime = None) -> Optional[List[Transfer]]:
-        response = await self._get('/sapi/v1/futures/transfer')
+    async def _get_transfers(self,
+                             since: datetime,
+                             to: datetime = None) -> Optional[List[Transfer]]:
+        response = await self._get(
+            '/sapi/v1/futures/transfer',
+            params={
+                'startTime': self._parse_datetime(since)
+            }
+        )
         if 'msg' in response:
             pass
         else:
@@ -85,6 +92,7 @@ class _BinanceBaseClient(ExchangeWorker):
               "total": 1
             }
             """
+            # TODO: Possible coin-m behaviour? calculate in usd? or add extra currency?
             results = []
             for row in response['rows']:
                 if row["status"] == "CONFIRMED":
@@ -95,7 +103,9 @@ class _BinanceBaseClient(ExchangeWorker):
                     else:
                         continue
                     date = datetime.fromtimestamp(row['timestamp'], tz=pytz.utc)
+
                     prev_balance = await self.client.get_balance_at_time(date, post=False)
+
                     results.append(
                         Transfer(
                             amount=amount,
@@ -107,6 +117,12 @@ class _BinanceBaseClient(ExchangeWorker):
                     )
             return results
 
+    def _parse_ts(self, ts: Union[int, float]):
+        return datetime.fromtimestamp(ts / 1000, pytz.utc)
+
+    def _parse_datetime(self, date: datetime):
+        # Offset by 1 in order to not include old entries on some endpoints
+        return str(int(date.timestamp()) * 1000 + 1)
 
 class _TickerCache(NamedTuple):
     ticker: dict
@@ -127,13 +143,76 @@ class BinanceFutures(_BinanceBaseClient):
         })
         self._ccxt.set_sandbox_mode(True)
 
+    async def get_executions(self,
+                             since: datetime = None) -> List[Execution]:
+
+        since_ts = self._parse_datetime(since or datetime.now(pytz.utc) - timedelta(days=180))
+        # https://binance-docs.github.io/apidocs/futures/en/#get-income-history-user_data
+        incomes = await self._get(
+            '/fapi/v1/income',
+            params={
+                'startTime': since_ts
+            }
+        )
+        symbols_done = set()
+        results = []
+        current_commision_trade_id = None
+        for income in incomes:
+            symbol = income.get('symbol')
+            if symbol not in symbols_done:
+                if income["incomeType"] == "COMMISSION":
+                    current_commision_trade_id = income.get('tradeId')
+                if income["incomeType"] == "REALIZED_PNL" and income.get('tradeId') != current_commision_trade_id:
+                    # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
+                    symbols_done.add(symbol)
+                    trades = await self._get('/fapi/v1/userTrades', params={
+                        'symbol': symbol,
+                        'fromId': income["tradeId"] if since is not None else current_commision_trade_id
+                    })
+                    """
+                    [
+                      {
+                        "buyer": false,
+                        "commission": "-0.07819010",
+                        "commissionAsset": "USDT",
+                        "id": 698759,
+                        "maker": false,
+                        "orderId": 25851813,
+                        "price": "7819.01",
+                        "qty": "0.002",
+                        "quoteQty": "15.63802",
+                        "realizedPnl": "-0.91539999",
+                        "side": "SELL",
+                        "positionSide": "SHORT",
+                        "symbol": "BTCUSDT",
+                        "time": 1569514978020
+                      }
+                    ]
+                    """
+                    from decimal import Decimal
+                    # -1790.6910700000062
+                    # -1695.67399983
+                    all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
+                    results.extend(
+                        Execution(
+                            symbol=symbol,
+                            qty=float(trade['qty']),
+                            price=float(trade['price']),
+                            side=trade['side'],
+                            time=self._parse_ts(trade['time']),
+                            commission=float(trade['commission'])
+                        ) for trade in trades
+                    )
+        return results
+
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
-    async def _get_balance(self, time: datetime = None):
+    async def _get_balance(self, time: datetime, upnl=True):
         response = await self._get('/fapi/v2/account')
 
         return balance.Balance(
-            amount=float(response.get('totalMarginBalance', 0)),
-            currency='$',
+            amount=float(
+                response.get('totalMarginBalance' if upnl else 'totalWalletBalance', 0)
+            ),
             time=time if time else datetime.now(pytz.utc),
             error=response.get('msg', None)
         )
@@ -163,7 +242,7 @@ class BinanceFutures(_BinanceBaseClient):
                     price=float(data['ap']) or float(data['p']),
                     qty=float(data['q']),
                     side=data['S'],
-                    time=datetime.now(pytz.utc)
+                    time=self._parse_ts(message['e']),
                 )
                 await utils.call_unknown_function(self._on_execution, trade)
 
@@ -174,7 +253,7 @@ class BinanceSpot(_BinanceBaseClient):
     exchange = 'binance-spot'
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
-    async def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime, upnl=True):
 
         results = await asyncio.gather(
             self._get('/account'),

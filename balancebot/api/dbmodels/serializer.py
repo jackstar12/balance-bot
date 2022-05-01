@@ -8,6 +8,7 @@ from sqlalchemy.orm import joinedload, InstrumentedAttribute, selectinload, Rela
 from sqlalchemy.orm.dynamic import AppenderQuery
 from sqlalchemy.sql import Select
 
+from balancebot.api.database import Base
 from balancebot.api.database_async import db_all
 
 

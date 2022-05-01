@@ -21,8 +21,10 @@ engine = create_async_engine(
 )
 async_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=current_task)
-
-redis = aioredis.Redis()
+# }+dg}E\w37/jWpSP
+redis = aioredis.Redis(host='redis-16564.c300.eu-central-1-1.ec2.cloud.redislabs.com',
+                       port=16564,
+                       password='usTzjlI4SKy92HE6PGXgvTsaIQMdYWgo')
 
 
 async def db(stmt):
@@ -36,7 +38,9 @@ def db_select(cls, eager=None, **filters):
         return db_first(select(cls).filter_by(**filters))
 
 
-def db_select_all(cls, **filters):
+def db_select_all(cls, eager=None, **filters):
+    if eager:
+        return db_all(db_eager(select(cls), *eager).filter_by(**filters))
     return db_all(select(cls).filter_by(**filters))
 
 

@@ -20,7 +20,7 @@ class BybitClient(ExchangeWorker):
     type = str
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
-    async def _get_balance(self, time: datetime):
+    async def _get_balance(self, time: datetime, upnl=True):
 
         results = await asyncio.gather(
             self._get('/v2/private/wallet/balance'),

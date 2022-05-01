@@ -10,9 +10,9 @@ from balancebot.api.dbmodels.alert import Alert
 from balancebot.collector import config
 from balancebot.collector.errors import InvalidExchangeError
 from balancebot.collector.exchangeticker import ExchangeTicker
-from balancebot.collector.services.BaseService import BaseService
+from balancebot.collector.services.baseservice import BaseService
 from balancebot.common import utils
-from balancebot.common.messenger import Category
+from balancebot.common.messenger import NameSpace
 from balancebot.common.models.observer import Observer
 from balancebot.common.models.singleton import Singleton
 from balancebot.common.models.ticker import Ticker
@@ -25,8 +25,8 @@ class Channel(Enum):
 
 class DataService(BaseService, Observer):
 
-    def init(self, *args, **kwargs):
-        super().init(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._exchanges: Dict[str, ExchangeTicker] = {}
         self._tickers: Dict[str, Ticker] = {}
 
@@ -50,6 +50,11 @@ class DataService(BaseService, Observer):
         else:
             asyncio.create_task(ticker.subscribe(channel, self, **kwargs))
 
+    async def unsubscribe(self, exchange: str, channel: Channel, **kwargs):
+        ticker = self._exchanges.get(exchange)
+        if ticker:
+            await ticker.unsubscribe(channel, )
+
     async def update(self, *new_state):
         ticker: Ticker = new_state[0]
         self._tickers[f'{ticker.exchange}:{ticker.symbol}'] = ticker
@@ -64,7 +69,7 @@ class DataService(BaseService, Observer):
         while True:
             for ticker in self._tickers.values():
                 await self._redis.set(
-                    utils.join_args(Category.TICKER, ticker.exchange, ticker.symbol),
+                    utils.join_args(NameSpace.TICKER, ticker.exchange, ticker.symbol),
                     ticker.price
                 )
             await asyncio.sleep(1)

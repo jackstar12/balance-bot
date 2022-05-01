@@ -1,6 +1,7 @@
 from typing import List
 
 import discord
+from aioredis import Redis
 from discord import Embed
 from discord.ext.commands import Bot
 from discord.ext.commands.cog import Cog
@@ -14,12 +15,12 @@ from balancebot.common.messenger import Messenger
 class CogBase(Cog):
 
     @classmethod
-    def setup(cls, bot: Bot, user_manager: UserManager, event_manager: EventManager, messenger: Messenger, slash_cmd_handler: SlashCommand):
-        bot.add_cog(cls(bot, user_manager, event_manager, messenger, slash_cmd_handler))
+    def setup(cls, bot: Bot, redis: Redis, event_manager: EventManager, messenger: Messenger, slash_cmd_handler: SlashCommand):
+        bot.add_cog(cls(bot, redis, event_manager, messenger, slash_cmd_handler))
 
-    def __init__(self, bot: Bot, user_manager: UserManager, event_manager: EventManager, messenger: Messenger, slash_cmd_handler: SlashCommand):
+    def __init__(self, bot: Bot, redis: Redis, event_manager: EventManager, messenger: Messenger, slash_cmd_handler: SlashCommand):
         self.bot = bot
-        self.user_manager = user_manager
+        self.redis = redis
         self.event_manager = event_manager
         self.messenger = messenger
         self.slash_cmd_handler = slash_cmd_handler

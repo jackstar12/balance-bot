@@ -1,6 +1,7 @@
 import logging
 from typing import List
 
+import aiohttp
 import pytz
 from asgiref import typing
 from datetime import datetime
@@ -23,7 +24,7 @@ from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.bot.config import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
-from balancebot.common.messenger import Category, SubCategory
+from balancebot.common.messenger import NameSpace, Category
 from balancebot.common.models.selectionoption import SelectionOption
 from balancebot.exchangeworker import ExchangeWorker
 from balancebot.common.utils import create_yes_no_button_row, create_selection, validate_kwargs
@@ -168,8 +169,10 @@ class RegisterCog(CogBase):
                         async def start_registration(ctx):
 
                             new_client = get_new_client()
-                            worker: ExchangeWorker = exchange_cls(new_client, self.user_manager.session)
-                            init_balance = await worker.get_balance(time=datetime.now(tz=pytz.UTC))
+                            async with aiohttp.ClientSession() as session:
+                                worker: ExchangeWorker = exchange_cls(new_client, session)
+
+                                init_balance = await worker.get_balance(time=datetime.now(tz=pytz.UTC))
 
                             button_row = None
                             if init_balance.error is None:
@@ -296,7 +299,7 @@ class RegisterCog(CogBase):
             async_session.add(GuildAssociation(
                 guild_id=guild.id,
                 client_id=new_client.id,
-                discorduser_id=discord_user.id
+                discord_user_id=discord_user.id
             ))
 
         await async_session.commit()
@@ -366,7 +369,7 @@ class RegisterCog(CogBase):
                 update(GuildAssociation).
                 where(
                     GuildAssociation.client_id == client.id,
-                    GuildAssociation.discorduser_id == client.discord_user_id,
+                    GuildAssociation.discord_user_id == client.discord_user_id,
                     GuildAssociation.guild_id == ctx.guild_id
                 ).
                 values(client_id=None)

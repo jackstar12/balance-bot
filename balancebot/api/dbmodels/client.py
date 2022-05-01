@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import List, Optional, Union
 import discord
+import pytz
+from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc, \
     Boolean, select
@@ -26,7 +28,8 @@ import balancebot.bot.config as config
 from balancebot.api.database import Base, session
 from balancebot.api.dbmodels import balance
 import balancebot.common.utils as utils
-from balancebot.collector.usermanager import db_match_balance_currency
+# from balancebot.collector.usermanager import db_match_balance_currency
+from balancebot.common.messenger import NameSpace
 
 dotenv.load_dotenv()
 
@@ -50,21 +53,56 @@ class Client(Base, Serializer):
     exchange = Column(String, nullable=False)
     subaccount = Column(String, nullable=True)
     extra_kwargs = Column(PickleType, nullable=True)
+    currency = Column(String(10), nullable=True)
 
     # Data
     name = Column(String, nullable=True)
     rekt_on = Column(DateTime(timezone=True), nullable=True)
-    trades: AppenderQuery = relationship('Trade', backref=backref('client', lazy='noload'), lazy='noload', cascade="all, delete")
+    trades: AppenderQuery = relationship('Trade', lazy='raise',
+                                         cascade="all, delete", back_populates='client')
+    open_trades = relationship('Trade', lazy='raise',
+                               cascade="all, delete", back_populates='client',
+                               primaryjoin="and_(Trade.client_id == Client.id, Trade.open_qty > 0.0)")
     history: AppenderQuery = relationship('Balance', backref=backref('client', lazy='noload'),
                                           cascade="all, delete", lazy='dynamic',
                                           order_by='Balance.time', foreign_keys='Balance.client_id')
+    transfers = relationship('Transfer', backref=backref('client', lazy='noload'),
+                             cascade='all, delete', lazy='noload')
 
     archived = Column(Boolean, default=False)
     invalid = Column(Boolean, default=False)
 
     currently_realized_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
-    currently_realized = relationship('Balance', lazy='joined', foreign_keys=currently_realized_id,
+    currently_realized = relationship('Balance', lazy='noload', foreign_keys=currently_realized_id,
                                       cascade="all, delete")
+
+    last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
+
+    async def get_balance(self, redis: Redis, currency=None):
+        return await redis.get(utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id))
+
+    async def evaluate_balance(self, redis: Redis):
+        if not self.currently_realized:
+            return
+        amount = self.currently_realized.amount
+        for trade in self.open_trades:
+            if trade.upnl:
+                amount += trade.upnl
+            else:
+                price = await redis.get(
+                    utils.join_args(NameSpace.TICKER, trade.client.exchange, trade.symbol)
+                )
+                if price:
+                    amount += trade.calc_upnl(float(price))
+        new = Balance(
+            amount=amount,
+            time=datetime.now(pytz.utc)
+        )
+        #await redis.set(
+        #    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id),
+        #    new.serialize(data=True)
+        #)
+        return new
 
     async def full_history(self):
         return await db_all(self.history.statement)
@@ -80,9 +118,11 @@ class Client(Base, Serializer):
     async def is_global(self, guild_id: int = None):
         if self.discord_user_id:
             if guild_id:
-                associations = await db_select_all(GuildAssociation, discorduser_id=self.discord_user_id, client_id=self.id, guild_id=guild_id)
+                associations = await db_select_all(GuildAssociation, discord_user_id=self.discord_user_id,
+                                                   client_id=self.id, guild_id=guild_id)
             else:
-                associations = await db_select_all(GuildAssociation, discorduser_id=self.discord_user_id, client_id=self.id)
+                associations = await db_select_all(GuildAssociation, discord_user_id=self.discord_user_id,
+                                                   client_id=self.id)
             return bool(associations)
         elif self.user_id:
             return True
@@ -94,14 +134,17 @@ class Client(Base, Serializer):
             ).order_by(asc(Balance.time) if post else desc(Balance.time))
         )
 
-        if currency:
-            return db_match_balance_currency(balance, currency)
+        # if currency:
+        #    return db_match_balance_currency(balance, currency)
         return balance
-
 
     @hybrid_property
     def is_active(self):
         return not all(not event.is_active for event in self.events)
+
+    @hybrid_property
+    def is_premium(self):
+        return bool(self.user_id or self.discord_user.user_id)
 
     async def initial(self):
         try:
@@ -124,7 +167,7 @@ class Client(Base, Serializer):
 
         associations = await db_select_all(GuildAssociation,
                                            client_id=self.id,
-                                           discorduser_id=self.discord_user_id)
+                                           discord_user_id=self.discord_user_id)
 
         guilds += await db_all(
             select(Guild).filter(
@@ -154,7 +197,8 @@ class Client(Base, Serializer):
         return embed
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[Select, Delete, Update]:
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[
+    Select, Delete, Update]:
     user_checks = [Client.user_id == user.id]
     if user.discord_user_id:
         user_checks.append(Client.discord_user_id == user.discord_user_id)

@@ -48,4 +48,5 @@ class FuturesWebsocketClient(WebsocketManager):
                 await self._client.keep_alive()
                 await asyncio.sleep(50 * 60)
             else:
+                await self.reconnect()
                 break

@@ -17,7 +17,7 @@ from discord_slash import SlashCommand
 from discord_slash.utils.manage_commands import create_choice
 from balancebot.api.app import app
 from balancebot.api.database import session
-from balancebot.api.database_async import async_session, db_all, db_unique
+from balancebot.api.database_async import async_session, db_all, db_unique, redis
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.discorduser import DiscordUser
@@ -25,10 +25,8 @@ from balancebot.api.dbmodels.guild import Guild
 from balancebot.bot.config import *
 from balancebot.bot.cogs import *
 from balancebot.bot.eventmanager import EventManager
-from balancebot.collector.services.alertservice import AlertService
-from balancebot.collector.usermanager import UserManager
 from balancebot.common.enums import Tier
-from balancebot.common.messenger import Messenger, Category, SubCategory
+from balancebot.common.messenger import Messenger, NameSpace, Category
 
 intents = discord.Intents().default()
 intents.members = True
@@ -40,9 +38,7 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
-    await user_manager.synch_workers()
     event_manager.initialize_events()
-    asyncio.create_task(user_manager.start_fetching())
 
     db_guilds_by_id = {
         db_guild.id: db_guild for db_guild in await db_all(
@@ -153,7 +149,7 @@ async def on_member_leave(member: discord.Member):
 
 async def on_rekt_async(data: Dict):
     client = await async_session.get(Client, data.get('id'))
-    logging.info(f'Use {client.discorduser} is rekt')
+    logging.info(f'Use {client.discord_user} is rekt')
 
     message = random.Random().choice(seq=REKT_MESSAGES)
 
@@ -171,11 +167,6 @@ async def on_rekt_async(data: Dict):
         except AttributeError as e:
             logging.error(f'Error while sending message to guild {e}')
 
-
-user_manager = UserManager(exchanges=EXCHANGES,
-                           fetching_interval_hours=FETCHING_INTERVAL_HOURS,
-                           data_path=DATA_PATH,
-                           rekt_threshold=REKT_THRESHOLD)
 
 parser = argparse.ArgumentParser(description="Run the test_bot.")
 parser.add_argument("-r", "--reset", action="store_true", help="Archives the current data and resets it.")
@@ -195,7 +186,7 @@ for cog in [
     user.UserCog,
     alert.AlertCog
 ]:
-    cog.setup(bot, user_manager, event_manager, messenger, slash)
+    cog.setup(bot, redis, event_manager, messenger, slash)
 
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
@@ -221,7 +212,7 @@ async def run(http_session: aiohttp.ClientSession = None):
         return logger
 
     setup_logger()
-    messenger.sub_channel(Category.CLIENT, SubCategory.REKT, callback=on_rekt_async, channel_id=53)
+    messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, channel_id=53)
 
     if http_session:
         pass

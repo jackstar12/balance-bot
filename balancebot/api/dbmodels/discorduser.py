@@ -32,8 +32,8 @@ class DiscordUser(Base, Serializer):
 
     global_associations = relationship('GuildAssociation', lazy='noload', cascade="all, delete")
 
-    alerts = relationship('Alert', backref=backref('discorduser', lazy=True), lazy='noload', cascade="all, delete")
-    clients = relationship('Client', backref=backref('discorduser', lazy=True), lazy='noload', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
+    alerts = relationship('Alert', backref=backref('discord_user', lazy=True), lazy='noload', cascade="all, delete")
+    clients = relationship('Client', backref=backref('discord_user', lazy=True), lazy='noload', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
 
     async def get_global_client(self, guild_id, *eager):
         association = self.get_global_association(guild_id)

@@ -18,7 +18,9 @@ class Execution(Base, Serializer):
     time = Column(DateTime(timezone=True), nullable=False)
     type = Column(String, nullable=True)
 
+    commission = Column(Float, nullable=True)
+    realized_pnl = Column(Float, nullable=True)
+
     @hybrid_property
     def tz_time(self, tz=pytz.UTC):
         return self.time.replace(tzinfo=tz)
-
