@@ -6,30 +6,25 @@ import aiohttp
 import logging
 import math
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, TYPE_CHECKING, Type
+from typing import List, Dict, TYPE_CHECKING
 
 import pytz
-from sqlalchemy import asc, desc, DateTime, delete
+from sqlalchemy import desc, delete
 
 import balancebot.api.database as db
-import balancebot.api.dbmodels.event as db_event
 from balancebot.api.database_async import async_session, db as aio_db, db_first, db_all, db_select
 
 from balancebot.api.dbmodels.balance import Balance
 import balancebot.api.dbmodels.client as db_client
 from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.serializer import Serializer
-from balancebot.api.dbmodels.trade import Trade, trade_from_execution
-import balancebot.bot.config as config
 from balancebot.common.enums import Priority
 from balancebot.common.messenger import Messenger, NameSpace, Category
-from balancebot.common.models.history import History
 from balancebot.common.models.singleton import Singleton
-import balancebot.exchangeworker as exchange_worker
+import balancebot.common.exchanges.exchangeworker as exchange_worker
 
 if TYPE_CHECKING:
-    from balancebot.exchangeworker import ExchangeWorker
+    from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 
 
 class UserManager(Singleton):

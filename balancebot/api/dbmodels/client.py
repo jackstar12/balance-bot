@@ -46,6 +46,7 @@ class Client(Base, Serializer):
     id = Column(Integer, primary_key=True)
     user_id = Column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
     discord_user_id = Column(BigInteger, ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
+    discord_user = relationship('DiscordUser')
 
     # User Information
     api_key = Column(String(), nullable=False)
@@ -96,7 +97,8 @@ class Client(Base, Serializer):
                     amount += trade.calc_upnl(float(price))
         new = Balance(
             amount=amount,
-            time=datetime.now(pytz.utc)
+            time=datetime.now(pytz.utc),
+            client_id=self.id
         )
         #await redis.set(
         #    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id),

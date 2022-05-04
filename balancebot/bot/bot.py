@@ -177,17 +177,6 @@ event_manager = EventManager(discord_client=bot)
 
 messenger = Messenger()
 
-for cog in [
-    balance.BalanceCog,
-    history.HistoryCog,
-    events.EventsCog,
-    misc.MiscCog,
-    register.RegisterCog,
-    user.UserCog,
-    alert.AlertCog
-]:
-    cog.setup(bot, redis, event_manager, messenger, slash)
-
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
@@ -214,6 +203,17 @@ async def run(http_session: aiohttp.ClientSession = None):
     setup_logger()
     messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, channel_id=53)
 
+    for cog in [
+        balance.BalanceCog,
+        history.HistoryCog,
+        events.EventsCog,
+        misc.MiscCog,
+        register.RegisterCog,
+        user.UserCog,
+        alert.AlertCog
+    ]:
+        cog.setup(bot, redis, event_manager, messenger, slash)
+
     if http_session:
         pass
         # user_manager.session = http_session
@@ -221,4 +221,4 @@ async def run(http_session: aiohttp.ClientSession = None):
 
 
 if __name__ == '__main__':
-    run()
+    asyncio.run(run())

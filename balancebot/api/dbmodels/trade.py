@@ -31,10 +31,10 @@ class Trade(Base, Serializer):
     realized_pnl = Column(Float, nullable=True)
 
     max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
-    max_pnl = relationship('PnlData', lazy='raise', foreign_keys=max_pnl_id, uselist=False)
+    max_pnl = relationship('PnlData', lazy='noload', foreign_keys=max_pnl_id, uselist=False)
 
     min_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
-    min_pnl = relationship('PnlData', lazy='raise', foreign_keys=min_pnl_id, uselist=False)
+    min_pnl = relationship('PnlData', lazy='noload', foreign_keys=min_pnl_id, uselist=False)
 
     # tp = Column(Float, nullable=True)
     # sl = Column(Float, nullable=True)

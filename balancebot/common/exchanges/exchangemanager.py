@@ -5,31 +5,44 @@ import logging
 import time
 import urllib.parse
 import math
-from asyncio import Future
+from asyncio import Future, Task
 from datetime import datetime, timedelta
-from typing import List, Callable, Dict, Tuple, TYPE_CHECKING, Optional, Union
+from enum import Enum
+from typing import List, Callable, Dict, Tuple, TYPE_CHECKING, Optional, Union, Set
 import aiohttp.client
 import pytz
-from aiohttp import ClientResponse
+from aiohttp import ClientResponse, ClientResponseError
 from typing import NamedTuple
+from asyncio.queues import PriorityQueue
+from dataclasses import dataclass
 
+from ccxt.async_support.base.throttler import Throttler
 from sqlalchemy import select, desc
 from sqlalchemy.orm import joinedload
 
 import balancebot.api.database as db
 import balancebot.common.utils as utils
 from balancebot.api.database_async import async_session, db_unique, db_all, db_select, db_first
+from balancebot.api.dbmodels import balance
 from balancebot.api.dbmodels.execution import Execution
 from balancebot.api.dbmodels.trade import Trade, trade_from_execution
 import balancebot.collector.usermanager as um
 
 import balancebot.api.dbmodels.balance as db_balance
-from balancebot.api.dbmodels.transfer import Transfer
+from balancebot.api.dbmodels.transfer import Transfer, RawTransfer
 from balancebot.common.config import PRIORITY_INTERVALS
 from balancebot.common.enums import Priority
+from balancebot.common.errors import RateLimitExceeded, ExchangeUnavailable, ExchangeMaintenance, ResponseError
 from balancebot.common.messenger import NameSpace, Category, Messenger
 
 from balancebot.api.dbmodels.client import Client
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from balancebot.api.dbmodels.balance import Balance
+
+
+logger = logging.getLogger(__name__)
 
 
 class Cached(NamedTuple):
@@ -44,14 +57,65 @@ class TaskCache(NamedTuple):
     expires: float
 
 
-class ExchangeWorker:
+class RequestItem(NamedTuple):
+    priority: Priority
+    future: Future
+    cache: bool
+    weight: Optional[int]
+    request: Request
+
+    def __gt__(self, other):
+        return self.priority.value > other.priority.value
+
+    def __lt__(self, other):
+        return self.priority.value < other.priority.value
+
+
+class State(Enum):
+    OK = 1
+    RATE_LIMIT = 2
+    MAINTANENANCE = 3
+    OFFLINE = 4
+
+
+class Request(NamedTuple):
+    method: str
+    url: str
+    path: str
+    headers: Optional[Dict]
+    params: Optional[Dict]
+    json: Optional[Dict]
+
+
+class ExchangeManager:
+
+    state = State.OK
+    exchange: str = ''
+    required_extra_args: Set[str] = set()
+
     _ENDPOINT = ''
     _cache: Dict[str, Cached] = {}
 
-    exchange: str = ''
-    required_extra_args: List[str] = []
+    # Networking
+    _response_result = ''
+    _request_queue: PriorityQueue[RequestItem] = None
+    _response_error = ''
+    _request_task: Task = None
+    _session = None
 
-    def __init__(self, client: Client, session: aiohttp.ClientSession, messenger: Messenger = None, rekt_threshold: float = None):
+    # Rate Limiting
+    _max_weight = 60
+    _weight_available = _max_weight
+    _default_weight = 1
+    _last_request_ts = None
+
+    def __init__(self,
+                 client: Client,
+                 session: aiohttp.ClientSession,
+                 messenger: Messenger = None,
+                 rekt_threshold: float = None,
+                 execution_dedupe_seconds: float = 5e-3):
+
         self.client = client
         self.client_id = client.id
         self.in_position = True
@@ -71,6 +135,13 @@ class ExchangeWorker:
         self._on_balance = None
         self._on_new_trade = None
         self._on_update_trade = None
+        self._execution_dedupe_delay = execution_dedupe_seconds
+        # dummy future
+        self._waiter = Future()
+
+        self._session = session
+        self._request_task = asyncio.create_task(self._request_handler())
+        self._request_queue = PriorityQueue()
 
     async def get_balance(self,
                           priority: Priority = Priority.MEDIUM,
@@ -81,7 +152,14 @@ class ExchangeWorker:
             time = datetime.now(tz=pytz.UTC)
         if force or (time - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]) and not self.client.rekt_on):
             self._last_fetch = time
-            balance = await self._get_balance(time, upnl=upnl)
+            try:
+                balance = await self._get_balance(time, upnl=upnl)
+            except ResponseError as e:
+                return db_balance.Balance(
+                    amount=0,
+                    time=time,
+                    error=e.human
+                )
             if not balance.time:
                 balance.time = time
             balance.client_id = self.client_id
@@ -95,7 +173,18 @@ class ExchangeWorker:
                              since: datetime) -> List[Execution]:
         return []
 
-    async def intelligent_get_balance(self, keep_errors=False):
+    async def intelligent_get_balance(self, keep_errors=False, commit=True) -> Optional["Balance"]:
+        """
+        Fetch the clients balance, only saving if it makes sense to do so.
+        :param keep_errors:
+        whether to return the balance if it resulted in an error
+        :param commit:
+        whether to not commit the new balance. Can be used if calling this function
+        multiple times.
+        NOTE: after calling all you should also publish the balances accordingly
+        :return:
+        new balance object
+        """
         client = await async_session.get(Client, self.client_id)
         if client:
 
@@ -115,7 +204,7 @@ class ExchangeWorker:
                         and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
                     latest_balance.time = time
             if result.error:
-                logging.error(f'Error while fetching {client.id=} balance: {result.error}')
+                logger.error(f'Error while fetching {client.id=} balance: {result.error}')
                 if keep_errors:
                     return result
             else:
@@ -124,10 +213,10 @@ class ExchangeWorker:
                     client.rekt_on = time
                     self.messenger.pub_channel(NameSpace.CLIENT, Category.REKT, channel_id=client.id,
                                                obj={'id': client.id})
-
-            await async_session.commit()
-            self.messenger.pub_channel(NameSpace.BALANCE, Category.NEW, channel_id=client.id,
-                                       obj=result.id)
+            if commit:
+                await async_session.commit()
+                self.messenger.pub_channel(NameSpace.BALANCE, Category.NEW, channel_id=client.id,
+                                           obj=result.id)
             return result
 
     async def update_transfers(self):
@@ -136,12 +225,22 @@ class ExchangeWorker:
         :param since:
         :return:
         """
-        transfers = await self._get_transfers(
-            self.client.currently_realized.time if self.client.currently_realized
+        raw_transfers = await self._get_transfers(
+            self.client.currently_realized.time if self.client.currently_realized and False
             else datetime.now(pytz.utc) - timedelta(days=180)
         )
-        if transfers:
-            transfers.sort(key=lambda transfer: transfer.balance.time)
+        if raw_transfers:
+            raw_transfers.sort(key=lambda transfer: transfer.time)
+            transfers = [
+                Transfer(
+                    amount=await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time),
+                    time=raw_transfer.time,
+                    extra_currencies={raw_transfer.coin: raw_transfer.amount}
+                    if raw_transfer.coin != "USD" and raw_transfer.coin != "USDT" else None,
+                    client_id=self.client_id
+                )
+                for raw_transfer in raw_transfers
+            ]
             to_update: List[db_balance.Balance] = await db_all(self.client.history.statement.filter(
                 db_balance.Balance.time > self.client.currently_realized.time
             ))
@@ -169,11 +268,6 @@ class ExchangeWorker:
         self.client.last_transfer_sync = datetime.now(tz=pytz.utc)
         await async_session.commit()
 
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> List[Transfer]:
-        raise NotImplementedError(f'Exchange {self.exchange} does not implement get_transfers')
-
     async def synchronize_positions(self,
                                     since: datetime = None,
                                     to: datetime = None):
@@ -183,7 +277,7 @@ class ExchangeWorker:
                 desc(Execution.time)
             ).outerjoin(Trade, Execution.trade_id == Trade.id).filter(
                 Trade.client_id == self.client_id,
-            )
+                )
         )
 
         executions = await self.get_executions(latest.time if latest else None)
@@ -213,20 +307,11 @@ class ExchangeWorker:
                         offset += execution.realized_pnl
                 balance.amount += offset
 
-        #db_executions_by_symbol = {
-        #    trade.client_id: trade.executions
-        #    for trade in await db_all(
-        #        select(Trade).filter(
-        #            # Execution.time > since,
-        #            #Trade.initial.time > since,
-#
-        #        ),
-        #        Trade.executions
-        #    )
-        #}
-        #for symbol in executions_by_symbol:
-        #    pass
         await self._update_realized_balance()
+
+    async def _convert_to_usd(self, amount: float, coin: str, date: datetime):
+        if coin == "USD" or coin == "USDT":
+            return amount
 
     def set_balance_callback(self, callback: Callable):
         if callable(callback):
@@ -249,63 +334,27 @@ class ExchangeWorker:
     async def disconnect(self):
         pass
 
-    @abc.abstractmethod
-    async def _get_balance(self, time: datetime, upnl=True):
-        logging.error(f'Exchange {self.exchange} does not implement _get_balance')
-        raise NotImplementedError(f'Exchange {self.exchange} does not implement _get_balance')
-
-    @abc.abstractmethod
-    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
-        logging.error(f'Exchange {self.exchange} does not implement _sign_request')
-
-    @abc.abstractmethod
-    async def _process_response(self, response: ClientResponse):
-        logging.error(f'Exchange {self.exchange} does not implement _process_response')
-
-    async def _request(self, method: str, path: str, headers=None, params=None, data=None, sign=True, cache=False,
-                       dedupe=False, **kwargs):
-        headers = headers or {}
-        params = params or {}
-        url = self._ENDPOINT + path
-        if cache:
-            cached = ExchangeWorker._cache.get(url)
-            if cached and time.time() < cached.expires:
-                return cached.response
-        if sign:
-            self._sign_request(method, path, headers, params, data)
-        async with self._session.request(method, url, headers=headers, params=params, data=data, **kwargs) as resp:
-            resp = await self._process_response(resp)
-            if cache:
-                ExchangeWorker._cache[url] = Cached(
-                    url=url,
-                    response=resp,
-                    expires=time.time() + 5
-                )
-            return resp
-
-    async def _get(self, path: str, **kwargs):
-        return await self._request('GET', path, **kwargs)
-
-    async def _post(self, path: str, **kwargs):
-        return await self._request('POST', path, **kwargs)
-
-    async def _put(self, path: str, **kwargs):
-        return await self._request('PUT', path, **kwargs)
-
-    def _query_string(self, params: Dict):
-        query_string = urllib.parse.urlencode(params)
-        return f"?{query_string}" if query_string else ""
+    async def _get_transfers(self,
+                             since: datetime,
+                             to: datetime = None) -> List[RawTransfer]:
+        logger.warning(f'Exchange {self.exchange} does not implement get_transfers')
 
     async def _update_realized_balance(self):
+        self._waiter = asyncio.sleep(self._execution_dedupe_delay)
+        await self._waiter
         await self.update_transfers()
         balance = await self.get_balance(Priority.FORCE, datetime.now(pytz.utc), upnl=False)
         if balance:
-        #balance = await self.intelligent_get_balance(self.client, priority=Priority.FORCE)
-        #balance = await um.UserManager().get_client_balance(self.client, priority=Priority.FORCE)
+            #balance = await self.intelligent_get_balance(self.client, priority=Priority.FORCE)
+            #balance = await um.UserManager().get_client_balance(self.client, priority=Priority.FORCE)
             self.client.currently_realized = balance
             await async_session.commit()
 
     async def _on_execution(self, execution: Execution, realtime=True):
+
+        if realtime and not self._waiter.done():
+            self._waiter.cancel()
+
         active_trade: Trade = await db_unique(
             select(Trade).filter(
                 Trade.symbol == execution.symbol,
@@ -377,7 +426,7 @@ class ExchangeWorker:
                     rpnl = active_trade.calc_rpnl()
                     # Only set realized pnl if it isn't given by exchange implementation
                     if execution.realized_pnl is None:
-                        execution.realized_pnl = rpnl - active_trade.realized_pnl
+                        execution.realized_pnl = rpnl - (active_trade.realized_pnl or 0)
                     active_trade.realized_pnl = rpnl
             if realtime:
                 asyncio.create_task(
@@ -397,12 +446,147 @@ class ExchangeWorker:
 
         await async_session.commit()
 
-    @classmethod
-    async def get_ticker(self, symbol: str):
+    @abc.abstractmethod
+    async def _get_balance(self, time: datetime, upnl=True):
+        logger.error(f'Exchange {self.exchange} does not implement _get_balance')
+        raise NotImplementedError(f'Exchange {self.exchange} does not implement _get_balance')
+
+    @abc.abstractmethod
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
+        logger.error(f'Exchange {self.exchange} does not implement _sign_request')
+
+    @abc.abstractmethod
+    def _set_rate_limit_parameters(self, response: ClientResponse):
         pass
+
+    @classmethod
+    @abc.abstractmethod
+    async def _process_response(cls, response: ClientResponse) -> dict:
+        response_json = await response.json()
+        try:
+            response.raise_for_status()
+        except ClientResponseError as e:
+            logger.error(f'{e}\n{response_json=}\n{response.reason=}')
+
+            error = ''
+            if response.status == 400:
+                error = "400 Bad Request. This is probably a bug in the test_bot, please contact dev"
+            elif response.status == 401:
+                error = f"401 Unauthorized ({response.reason}). You might want to check your API access"
+            elif response.status == 403:
+                error = f"403 Access Denied ({response.reason}). You might want to check your API access"
+            elif response.status == 404:
+                error = f"404 Not Found. This is probably a bug in the test_bot, please contact dev"
+            elif response.status == 429:
+                raise RateLimitExceeded(
+                    root_error=e,
+                    human="429 Rate Limit Exceeded. Please try again later."
+                )
+            elif 500 <= response.status < 600:
+                raise ExchangeUnavailable(
+                    root_error=e,
+                    human=f"{response.status} Problem or Maintenance on {cls.exchange} servers."
+                )
+
+            raise ResponseError(
+                root_error=e,
+                human=error
+            )
+
+        # OK
+        if response.status == 200:
+            if cls._response_result:
+                return response_json[cls._response_result]
+            return response_json
+
+    @classmethod
+    async def _request_handler(cls):
+        while True:
+            try:
+                item = await cls._request_queue.get()
+                request = item.request
+                async with cls._session.request(request.method,
+                                                request.url,
+                                                params=request.params,
+                                                headers=request.headers,
+                                                json=request.json) as resp:
+
+                    try:
+                        resp = await cls._process_response(resp)
+
+                        if item.cache:
+                            cls._cache[item.request.url] = Cached(
+                                url=item.request.url,
+                                response=resp,
+                                expires=time.time() + 5
+                            )
+
+                        item.future.set_result(resp)
+                    except RateLimitExceeded as e:
+                        cls.state = State.RATE_LIMIT
+                    except ExchangeUnavailable as e:
+                        cls.state = State.OFFLINE
+                    except ExchangeMaintenance as e:
+                        cls.state = State.MAINTANENANCE
+                    except Exception as e:
+                        logger.exception(f'Exception while execution request {item}')
+                        item.future.set_exception(e)
+                    finally:
+                        cls._request_queue.task_done()
+            except Exception:
+                logger.exception('why')
+
+    async def _request(self, method: str, path: str, headers=None, params=None, data=None, sign=True, cache=False,
+                       dedupe=False, weight=None, **kwargs):
+        url = self._ENDPOINT + path
+        request = Request(
+            method,
+            url,
+            path,
+            headers or {},
+            params or {},
+            data
+        )
+        if cache:
+            cached = ExchangeWorker._cache.get(url)
+            if cached and time.time() < cached.expires:
+                return cached.response
+        if sign:
+            self._sign_request(request.method, request.path, request.headers, request.params, request.json)
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        await self.__class__._request_queue.put(
+            RequestItem(
+                priority=Priority.MEDIUM,
+                future=future,
+                cache=cache,
+                weight=None,
+                request=request
+            )
+        )
+        return await future
+
+    def _get(self, path: str, **kwargs):
+        return self._request('GET', path, **kwargs)
+
+    def _post(self, path: str, **kwargs):
+        return self._request('POST', path, **kwargs)
+
+    def _put(self, path: str, **kwargs):
+        return self._request('PUT', path, **kwargs)
+
+    def _query_string(self, params: Dict):
+        query_string = urllib.parse.urlencode(params)
+        return f"?{query_string}" if query_string else ""
 
     def _parse_ts(self, ts: Union[int, float]):
         pass
+
+    def _ts_for_ccxt(self, datetime: datetime):
+        return int(datetime.timestamp() * 1000)
+
+    def _date_from_ccxt(self, ts):
+        return datetime.fromtimestamp(ts / 1000, pytz.utc)
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'

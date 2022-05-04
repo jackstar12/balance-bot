@@ -4,11 +4,9 @@ import pytz
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from balancebot.api.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType
 
-import balancebot.bot.config as config
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.api.database import Base
 
 
 class AmountMixin:

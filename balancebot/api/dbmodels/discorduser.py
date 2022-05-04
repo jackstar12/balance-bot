@@ -27,16 +27,14 @@ class DiscordUser(Base, Serializer):
     name = Column(String(), nullable=True)
     avatar = Column(String(), nullable=True)
 
-    global_client_id = Column(Integer(), ForeignKey('client.id', ondelete="SET NULL"),  nullable=True)
-    global_client = relationship('Client', lazy='noload', foreign_keys=global_client_id, post_update=True, uselist=False, cascade="all, delete")
-
     global_associations = relationship('GuildAssociation', lazy='noload', cascade="all, delete")
 
     alerts = relationship('Alert', backref=backref('discord_user', lazy=True), lazy='noload', cascade="all, delete")
-    clients = relationship('Client', backref=backref('discord_user', lazy=True), lazy='noload', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
+    clients = relationship('Client', back_populates='discord_user', lazy='noload', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
 
     async def get_global_client(self, guild_id, *eager):
         association = self.get_global_association(guild_id)
+
         if association:
             return await db_unique(select(db_client.Client).filter_by(id=association.client_id), *eager)
 

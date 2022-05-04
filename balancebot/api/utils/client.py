@@ -184,7 +184,7 @@ async def get_user_client(user: User, id: int = None):
         client = await db_first(add_client_filters(select(Client), user, id))
     elif user.discord_user:
         # TODO: Load client seperately?
-        client = await db_first(user.discord_user.global_client.statement)
+        pass
     elif len(user.clients) > 0:
         client = user.clients[0]
     return client

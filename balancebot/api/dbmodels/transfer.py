@@ -1,12 +1,15 @@
 import enum
+from datetime import datetime
+from decimal import Decimal
+from typing import NamedTuple, Dict, Optional
+
 import sqlalchemy as sa
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, Table, BigInteger, Numeric
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot.api.database import Base, Meta
-from balancebot.api.dbmodels.serializer import Serializer
-from balancebot.api.dbmodels.execution import Execution
+from balancebot.api.dbmodels.amountmixin import AmountMixin
 
 
 class Type(enum.Enum):
@@ -14,7 +17,13 @@ class Type(enum.Enum):
     WITHDRAW = "withdraw"
 
 
-class Transfer(Base):
+class RawTransfer(NamedTuple):
+    amount: float
+    time: datetime
+    coin: str
+
+
+class Transfer(Base, AmountMixin):
     __tablename__ = 'transfer'
 
     id = Column(BigInteger, primary_key=True)
@@ -23,7 +32,6 @@ class Transfer(Base):
         ForeignKey('client.id', ondelete="CASCADE"),
         nullable=False
     )
-    amount = Column(Numeric, nullable=False)
     note = Column(String, nullable=True)
 
     balance = relationship(

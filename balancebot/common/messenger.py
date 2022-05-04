@@ -52,7 +52,6 @@ class Messenger(Singleton):
     def init(self):
         self._redis = redis
         self._pubsub = self._redis.pubsub()
-        self._um = usermanager.UserManager()
         self._listening = False
 
     def _wrap(self, coro, rcv_event=False):

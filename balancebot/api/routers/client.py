@@ -7,24 +7,21 @@ import jwt
 import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query
 from fastapi.encoders import jsonable_encoder
-from fastapi_jwt_auth import AuthJWT
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from sqlalchemy import or_, delete, select
-from sqlalchemy.orm import joinedload
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
 from balancebot.api.authenticator import Authenticator
-from balancebot.api.database_async import db, db_first, async_session, db_all, db_unique, db_select
+from balancebot.api.database_async import db, db_first, async_session, db_all, db_select
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.api.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody
 from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
-from balancebot.api.utils.responses import BadRequest, InternalError, OK
+from balancebot.api.utils.responses import BadRequest, OK
 from balancebot.common import utils
-from balancebot.api.dbmodels.serializer import Serializer
 from balancebot.api.dependencies import current_user, CurrentUser, get_authenticator
-from balancebot.api.database import session, redis
+from balancebot.api.database import session
 from balancebot.api.dbmodels.client import Client, add_client_filters
 from balancebot.api.dbmodels.user import User
 from balancebot.api.settings import settings
@@ -34,7 +31,7 @@ from balancebot.common.messenger import Messenger, NameSpace, Category
 import balancebot.api.dbmodels.event as db_event
 from balancebot.common.utils import validate_kwargs
 
-from balancebot.exchangeworker import ExchangeWorker
+from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.bot.config import EXCHANGES
 from balancebot.collector.usermanager import UserManager
 

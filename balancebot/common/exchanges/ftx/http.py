@@ -1,18 +1,16 @@
-import asyncio
+import json
 import urllib.parse
 import hmac
 import logging
 from datetime import datetime, timedelta
-from typing import Union
+from typing import Union, List, Optional, Dict
 
 import pytz
-from aiohttp import ClientResponse, ClientResponseError
-from sqlalchemy import select
 import ccxt.async_support as ccxt
-from balancebot.api.database_async import db_first
 from balancebot.api.dbmodels.execution import Execution
 import balancebot.api.dbmodels.balance as balance
-from balancebot.exchangeworker import ExchangeWorker
+from balancebot.api.dbmodels.transfer import RawTransfer
+from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 import time
 
 from balancebot.common.exchanges.ftx.websocket import FtxWebsocketClient
@@ -21,6 +19,9 @@ from balancebot.common.exchanges.ftx.websocket import FtxWebsocketClient
 class FtxClient(ExchangeWorker):
     exchange = 'ftx'
     _ENDPOINT = 'https://ftx.com'
+
+    _response_error = 'error'
+    _response_result = 'result'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -63,14 +64,12 @@ class FtxClient(ExchangeWorker):
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime, upnl=True):
         response = await self._get('/api/account')
-        if response['success']:
-            amount = response['result']['totalAccountValue']
-        else:
-            amount = 0
-        return balance.Balance(amount=amount, error=response.get('error'), time=time)
+        amount = response['totalAccountValue'] if upnl else response['collateral']
+        return balance.Balance(amount=amount, time=time)
 
     async def get_executions(self,
-                             since: datetime):
+                             since: datetime = None):
+        since = since or datetime.now(pytz.utc) - timedelta(days=180)
         # Offset by 1 millisecond because otherwise the same executions are refetched (ftx probably compares with >=)
         trades = await self._ccxt.fetch_my_trades(since=since.timestamp() * 1000 + 1)
         return [
@@ -84,47 +83,53 @@ class FtxClient(ExchangeWorker):
             for trade in trades
         ]
 
+    def _parse_date(self, date: datetime):
+        return str(int(date.timestamp()))
+
+    async def _convert_to_usd(self, amount: float, coin: str, date: datetime):
+        if coin == "USD":
+            return amount
+        ts = int(date.timestamp())
+        ticker = await self._get(f'/api/markets/{coin}/USD/candles', params={
+            'resolution': 15,
+            'start_time': str(ts),
+            'end_time': str(ts + 15)
+        })
+        return amount * ticker[0]["open"]
+
+    def _generate_transfers(self, transfers: List[Dict], withdrawal: bool):
+        return [
+            RawTransfer(
+                -transfer['size'] if withdrawal else transfer['size'],
+                datetime.fromisoformat(transfer['time']),
+                transfer['coin']
+            )
+            for transfer in transfers
+        ]
+
+    async def _get_transfers(self,
+                             since: datetime,
+                             to: datetime = None) -> Optional[List[RawTransfer]]:
+        withdrawals = await self._get('/api/wallet/withdrawals', params={'start_time': self._parse_date(since)})
+        deposits = await self._get('/api/wallet/deposits', params={'start_time': self._parse_date(since)})
+
+        withdrawals_data = self._generate_transfers(withdrawals, withdrawal=True)
+        deposits_data = self._generate_transfers(deposits, withdrawal=False)
+
+        return withdrawals_data + deposits_data
+
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
 
-        signature_payload = f'{ts}{method}{path}{self._query_string(params)}'.encode()
+        signature_payload = f'{ts}{method}{path}{self._query_string(params)}'
         if data:
-            signature_payload += data
-        signature = hmac.new(self._api_secret.encode(), signature_payload, 'sha256').hexdigest()
+            signature_payload += json.dumps(data)
+        signature = hmac.new(self._api_secret.encode('utf-8'), signature_payload.encode('utf-8'), 'sha256').hexdigest()
         headers['FTX-KEY'] = self._api_key
         headers['FTX-SIGN'] = signature
         headers['FTX-TS'] = str(ts)
         if self._subaccount:
             headers['FTX-SUBACCOUNT'] = urllib.parse.quote(self._subaccount)
 
-    async def _process_response(self, response: ClientResponse) -> dict:
-        response_json = await response.json()
-        try:
-            response.raise_for_status()
-        except ClientResponseError as e:
-            logging.error(f'{e}\n{response_json}')
-
-            error = ''
-            if response.status == 400:
-                error = f"400 Bad Request. This is probably a bug in the bot, please contact dev"
-            elif response.status == 401:
-                error = f"401 Unauthorized ({response_json['error']}).\nIs your api key valid? Did you specify the right subaccount? You might want to check your API access"
-            elif response.status == 403:
-                error = f"403 Access Denied ({response_json['error']}).\nIs your api key valid? Did you specify the right subaccount? You might want to check your API access"
-            elif response.status == 404:
-                error = f"404 Not Found. This is probably a bug in the bot, please contact dev"
-            elif response.status == 429:
-                error = f"429 Rate Limit violated. Try again later"
-            elif 500 <= response.status < 600:
-                error = f"{response.status} ({response_json['error']}).\nProblem or Maintenance on {self.exchange} servers."
-
-            response_json['error'] = error
-            return response_json
-
-        if response.status == 200:
-            return response_json
-
     def _parse_ts(self, ts: Union[int, float]):
         return datetime.fromtimestamp(ts / 1000, pytz.utc)
-
-

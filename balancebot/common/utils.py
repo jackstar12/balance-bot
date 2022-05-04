@@ -877,6 +877,5 @@ def db_match_balance_currency(balance: Balance, currency: str):
     return result
 
 
-
 def join_args(*args, denominator=':'):
     return denominator.join([str(arg) for arg in args if arg])

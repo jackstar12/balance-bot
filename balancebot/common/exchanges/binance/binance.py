@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+from abc import ABC
+from enum import Enum
 from typing import NamedTuple, List, Optional, Union
 
 import asyncio
@@ -13,20 +16,28 @@ from datetime import datetime, timedelta
 from typing import Dict
 
 import pytz
-from aiohttp import ClientResponse, ClientResponseError
-from sqlalchemy import select
+from aiohttp import ClientResponse
 
-from balancebot.api.database_async import db_select_all, db_all
-from balancebot.api.dbmodels.transfer import Transfer
+from balancebot.api.dbmodels.transfer import RawTransfer
 from balancebot.common import utils
 from balancebot.common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from balancebot.api.settings import settings
-from balancebot.exchangeworker import ExchangeWorker
+from balancebot.common.exchanges.exchangeworker import ExchangeWorker, Limit, create_limit
 import balancebot.api.dbmodels.balance as balance
 from balancebot.api.dbmodels.execution import Execution
 
 
-class _BinanceBaseClient(ExchangeWorker):
+logger = logging.getLogger(__name__)
+
+
+class Type(Enum):
+    SPOT = 1
+    USDM = 2
+    COINM = 3
+
+
+class _BinanceBaseClient(ExchangeWorker, ABC):
+    _ENDPOINT = 'https://testnet.binance.vision' if settings.testing else 'https://api.binance.com'
 
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
@@ -36,93 +47,69 @@ class _BinanceBaseClient(ExchangeWorker):
         signature = hmac.new(self._api_secret.encode(), query_string.encode(), 'sha256').hexdigest()
         params['signature'] = signature
 
-    async def _process_response(self, response: ClientResponse) -> dict:
-        response_json = await response.json()
-        try:
-            response.raise_for_status()
-        except ClientResponseError as e:
-            logging.error(f'{e}\n{response_json=}\n{response.reason=}')
-
-            error = ''
-            if response.status == 400:
-                error = "400 Bad Request. This is probably a bug in the test_bot, please contact dev"
-            elif response.status == 401:
-                error = f"401 Unauthorized ({response.reason}). You might want to check your API access"
-            elif response.status == 403:
-                error = f"403 Access Denied ({response.reason}). You might want to check your API access"
-            elif response.status == 404:
-                error = "404 Not Found. This is probably a bug in the test_bot, please contact dev"
-            elif response.status == 429:
-                error = "429 Rate Limit violated. Try again later"
-            elif 500 <= response.status < 600:
-                error = f"{response.status} Problem or Maintenance on {self.exchange} servers."
-
-            response_json['msg'] = error
-            return response_json
-
-        # OK
-        if response.status == 200:
-            return response_json
-
     # https://binance-docs.github.io/apidocs/spot/en/#get-future-account-transaction-history-list-user_data
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> Optional[List[Transfer]]:
+    async def _get_internal_transfers(self,
+                                      type: Type,
+                                      since: datetime,
+                                      to: datetime = None) -> Optional[List[RawTransfer]]:
+        if settings.testing:
+            return
         response = await self._get(
             '/sapi/v1/futures/transfer',
             params={
                 'startTime': self._parse_datetime(since)
-            }
+            },
+            endpoint=_BinanceBaseClient._ENDPOINT
         )
-        if 'msg' in response:
-            pass
-        else:
-            """
+
+        """
+        {
+          "rows": [
             {
-              "rows": [
-                {
-                  "asset": "USDT",
-                  "tranId": 100000001,
-                  "amount": "40.84624400",
-                  "type": "1",  // one of 1( from spot to USDT-Ⓜ), 2( from USDT-Ⓜ to spot), 3( from spot to COIN-Ⓜ), and 4( from COIN-Ⓜ to spot)
-                  "timestamp": 1555056425000,
-                  "status": "CONFIRMED" //one of PENDING (pending to execution), CONFIRMED (successfully transfered), FAILED (execution failed, nothing happened to your account);
-                }
-              ],
-              "total": 1
+              "asset": "USDT",
+              "tranId": 100000001,
+              "amount": "40.84624400",
+              "type": "1",  // one of 1( from spot to USDT-Ⓜ), 2( from USDT-Ⓜ to spot), 3( from spot to COIN-Ⓜ), and 4( from COIN-Ⓜ to spot)
+              "timestamp": 1555056425000,
+              "status": "CONFIRMED" //one of PENDING (pending to execution), CONFIRMED (successfully transfered), FAILED (execution failed, nothing happened to your account);
             }
-            """
-            # TODO: Possible coin-m behaviour? calculate in usd? or add extra currency?
-            results = []
-            for row in response['rows']:
-                if row["status"] == "CONFIRMED":
-                    if row["type"] == 1:
-                        amount = row['amount']
-                    elif row["type"] == 2:
-                        amount = -row['amount']
-                    else:
-                        continue
-                    date = datetime.fromtimestamp(row['timestamp'], tz=pytz.utc)
+          ],
+          "total": 1
+        }
+        """
+        # Tuples with one element look so weird
+        if type == Type.USDM:
+            deposit, withdraw = (1,), (2,)
+        elif type == Type.COINM:
+            deposit, withdraw = (3,), (4,)
+        elif type == Type.SPOT:
+            deposit, withdraw = (2, 4), (1, 3)
+        else:
+            logger.error(f'Received invalid internal type: {type}')
+            return
 
-                    prev_balance = await self.client.get_balance_at_time(date, post=False)
+        results = []
+        for row in response['rows']:
+            if row["status"] == "CONFIRMED":
+                if row["type"] in deposit:
+                    amount = row['amount']
+                elif row["type"] in withdraw:
+                    amount = -row['amount']
+                else:
+                    continue
+                date = datetime.fromtimestamp(row['timestamp'], tz=pytz.utc)
+                results.append(
+                    RawTransfer(amount, date, row["asset"])
+                )
+        return results
 
-                    results.append(
-                        Transfer(
-                            amount=amount,
-                            balance=balance.Balance(
-                                amount=prev_balance.amount + amount,
-                                time=datetime.fromtimestamp(row['timestamp'], tz=pytz.utc)
-                            )
-                        )
-                    )
-            return results
-
-    def _parse_ts(self, ts: Union[int, float]):
-        return datetime.fromtimestamp(ts / 1000, pytz.utc)
+    def _parse_ts(self, ts: Union[int, float, str]):
+        return datetime.fromtimestamp(float(ts) / 1000, pytz.utc)
 
     def _parse_datetime(self, date: datetime):
         # Offset by 1 in order to not include old entries on some endpoints
         return str(int(date.timestamp()) * 1000 + 1)
+
 
 class _TickerCache(NamedTuple):
     ticker: dict
@@ -133,6 +120,13 @@ class BinanceFutures(_BinanceBaseClient):
     _ENDPOINT = 'https://testnet.binancefuture.com' if settings.testing else 'https://fapi.binance.com'
     exchange = 'binance-futures'
 
+    _limits = [
+        create_limit(interval_seconds=60, max_amount=1200, default_weight=20)
+    ]
+
+    _response_error = 'msg'
+    _response_result = None
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -142,6 +136,11 @@ class BinanceFutures(_BinanceBaseClient):
             'secret': self._api_secret
         })
         self._ccxt.set_sandbox_mode(True)
+
+    async def _get_transfers(self,
+                             since: datetime,
+                             to: datetime = None) -> List[RawTransfer]:
+        return await self._get_internal_transfers(Type.USDM, since, to)
 
     async def get_executions(self,
                              since: datetime = None) -> List[Execution]:
@@ -162,7 +161,7 @@ class BinanceFutures(_BinanceBaseClient):
             if symbol not in symbols_done:
                 if income["incomeType"] == "COMMISSION":
                     current_commision_trade_id = income.get('tradeId')
-                if income["incomeType"] == "REALIZED_PNL" and income.get('tradeId') != current_commision_trade_id:
+                if (income["incomeType"] == "REALIZED_PNL" and income.get('tradeId') != current_commision_trade_id) or since:
                     # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
                     symbols_done.add(symbol)
                     trades = await self._get('/fapi/v1/userTrades', params={
@@ -213,8 +212,7 @@ class BinanceFutures(_BinanceBaseClient):
             amount=float(
                 response.get('totalMarginBalance' if upnl else 'totalWalletBalance', 0)
             ),
-            time=time if time else datetime.now(pytz.utc),
-            error=response.get('msg', None)
+            time=time if time else datetime.now(pytz.utc)
         )
 
     async def start_user_stream(self):
@@ -242,22 +240,31 @@ class BinanceFutures(_BinanceBaseClient):
                     price=float(data['ap']) or float(data['p']),
                     qty=float(data['q']),
                     side=data['S'],
-                    time=self._parse_ts(message['e']),
+                    time=self._parse_ts(message['E']),
                 )
                 await utils.call_unknown_function(self._on_execution, trade)
+
+    @classmethod
+    def set_weights(cls, weight: int, response: ClientResponse):
+        limit = cls._limits[0]
+        used = response.headers.get('X-MBX-USED-WEIGHT-1M')
+        if used:
+            limit.amount = limit.max_amount - float(used)
+        else:
+            limit.amount -= weight or limit.default_weight
 
 
 class BinanceSpot(_BinanceBaseClient):
 
-    _ENDPOINT = 'https://testnet.binance.vision/api/v3' if settings.testing else 'https://api.binance.com/api/v3'
+    _ENDPOINT = 'https://testnet.binance.vision' if settings.testing else 'https://api.binance.com'
     exchange = 'binance-spot'
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
     async def _get_balance(self, time: datetime, upnl=True):
 
         results = await asyncio.gather(
-            self._get('/account'),
-            self._get('/ticker/price', sign=False, cache=True)
+            self._get('/api/v3/account'),
+            self._get('/api/v3/ticker/price', sign=False, cache=True)
         )
 
         if isinstance(results[0], dict):
@@ -269,23 +276,24 @@ class BinanceSpot(_BinanceBaseClient):
 
         total_balance = 0
         extra_currencies: Dict[str, float] = {}
-        err_msg = None
 
-        if response.get('msg') is None:
-            data = response['balances']
-            ticker_prices = {
-                ticker['symbol']: ticker['price'] for ticker in tickers
-            }
-            for cur_balance in data:
-                currency = cur_balance['asset']
-                amount = float(cur_balance['free']) + float(cur_balance['locked'])
-                price = 0
-                if currency == 'USDT':
-                    price = 1
-                elif amount > 0 and currency != 'LDUSDT' and currency != 'LDSRM':
-                    price = float(ticker_prices.get(f'{currency}USDT', 0))
-                total_balance += amount * price
-        else:
-            err_msg = response['msg']
+        ticker_prices = {
+            ticker['symbol']: ticker['price'] for ticker in tickers
+        }
+        data = response['balances']
+        for cur_balance in data:
+            currency = cur_balance['asset']
+            amount = float(cur_balance['free']) + float(cur_balance['locked'])
+            price = 0
+            if currency == 'USDT':
+                price = 1
+            elif amount > 0 and currency != 'LDUSDT' and currency != 'LDSRM':
+                price = float(ticker_prices.get(f'{currency}USDT', 0.0))
+            total_balance += amount * price
 
-        return balance.Balance(amount=total_balance, currency='$', extra_currencies=extra_currencies, error=err_msg)
+        return balance.Balance(amount=total_balance, time=time)
+
+    async def _get_transfers(self,
+                             since: datetime,
+                             to: datetime = None) -> List[RawTransfer]:
+        return await self._get_internal_transfers(Type.SPOT, since, to)

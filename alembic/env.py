@@ -16,7 +16,7 @@ fileConfig(config.config_file_name)
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-from balancebot.api.app import *
+from balancebot.api.app import app
 from balancebot.api.database import Base
 target_metadata = Base.metadata
 

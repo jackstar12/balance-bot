@@ -10,23 +10,21 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import inspect, select, or_, update, insert
 
-from balancebot.api.database_async import async_session, db_del_filter, db_unique, db_select, db_all, db
+from balancebot.api.database_async import async_session, db_unique, db_all, db
 from balancebot.api.dbmodels.balance import Balance
 from balancebot.api.dbmodels.event import Event, event_association
 from balancebot.api.dbmodels.guild import Guild
 from balancebot.api.dbmodels.guildassociation import GuildAssociation
 from balancebot.common import utils
 from balancebot.api import dbutils
-from balancebot.api.database import session
 from balancebot.api.dbmodels.client import Client
 from balancebot.api.dbmodels.discorduser import DiscordUser
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.bot.config import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
-from balancebot.common.messenger import NameSpace, Category
 from balancebot.common.models.selectionoption import SelectionOption
-from balancebot.exchangeworker import ExchangeWorker
+from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.utils import create_yes_no_button_row, create_selection, validate_kwargs
 
 

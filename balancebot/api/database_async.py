@@ -27,43 +27,37 @@ redis = aioredis.Redis(host='redis-16564.c300.eu-central-1-1.ec2.cloud.redislabs
                        password='usTzjlI4SKy92HE6PGXgvTsaIQMdYWgo')
 
 
-async def db(stmt):
-    return await async_session.execute(stmt)
+async def db(stmt, session=None):
+    return await (session or async_session).execute(stmt)
 
 
-def db_select(cls, eager=None, **filters):
-    if eager:
-        return db_unique(db_eager(select(cls), *eager).filter_by(**filters))
-    else:
-        return db_first(select(cls).filter_by(**filters))
+def db_select(cls, eager=None, session=None, **filters):
+    stmt = db_eager(select(cls), *eager) if eager else select(cls)
+    return db_first(stmt.filter_by(**filters), session=session)
 
 
-def db_select_all(cls, eager=None, **filters):
-    if eager:
-        return db_all(db_eager(select(cls), *eager).filter_by(**filters))
-    return db_all(select(cls).filter_by(**filters))
+def db_select_all(cls, eager=None, session=None, **filters):
+    stmt = db_eager(select(cls), *eager) if eager else select(cls)
+    return db_all(stmt.filter_by(**filters), session=session)
 
 
-async def db_all(stmt: Select, *eager):
+async def db_all(stmt: Select, *eager, session=None):
     if eager:
         stmt = db_eager(stmt, *eager)
-    return (await async_session.scalars(stmt)).unique().all()
+    return (await (session or async_session).scalars(stmt)).unique().all()
 
 
-async def db_first(stmt: Select, *eager):
+async def db_unique(stmt: Select, *eager, session=None):
     if eager:
         stmt = db_eager(stmt, *eager)
-    return (await async_session.scalars(stmt.limit(1))).unique().first()
+    return (await (session or async_session).scalars(stmt.limit(1))).unique().first()
 
 
-async def db_unique(stmt: Select, *eager):
-    if eager:
-        stmt = db_eager(stmt, *eager)
-    return (await async_session.scalars(stmt.limit(1))).unique().first()
+db_first = db_unique
 
 
-async def db_del_filter(cls, **kwargs):
-    return await db(delete(cls).filter_by(**kwargs))
+async def db_del_filter(cls, session=None, **kwargs):
+    return await db(delete(cls).filter_by(**kwargs), session)
 
 
 def db_joins(stmt: Select, option, *eager: List[Union[InstrumentedAttribute, Tuple[Column, List]]]):

@@ -50,9 +50,6 @@ class CoinTracker(Observer, BaseService):
         self.volume_observable = Observable()
         self.oi_observable = Observable()
 
-        self._on_volume_update = None
-        self._on_open_interest_update = None
-
     async def _get(self, path: str, **kwargs):
         async with self._http_session.request('GET', self._ENDPOINT + path, **kwargs) as response:
             if response.status == 200:
@@ -80,6 +77,9 @@ class CoinTracker(Observer, BaseService):
             **kwargs
         )
 
+    def _parse_date(self, date: datetime):
+        return str(date.timestamp())
+
     async def run(self, http_session: aiohttp.ClientSession = None):
 
         if http_session:
@@ -87,6 +87,11 @@ class CoinTracker(Observer, BaseService):
 
         if self._http_session is None:
             self._http_session = aiohttp.ClientSession()
+
+        res = await self._get(f'/api/spot_margin/history', params={
+            'start_time': self._parse_date(datetime(2021, 11, 1)),
+            'end_time': self._parse_date(datetime(2021, 12, 1))
+        })
 
         spot_markets_by_name = await self._get_markets_by_name(params={"type": "spot"})
         perp_markets_by_name = await self._get_markets_by_name(params={"type": "future"})

@@ -26,7 +26,6 @@ class EventManager:
         self._scheduled: List[FutureCallback] = []
         self._schedule_lock = RLock()
         self._cur_timer = None
-        self._user_manager = UserManager()
         self._dc_client = discord_client
 
     def initialize_events(self):
@@ -56,7 +55,6 @@ class EventManager:
         return guild.get_channel(event.channel_id)
 
     async def _event_start(self, event: Event):
-        await self._user_manager.synch_workers()
         await self._get_event_channel(event).send(content=f'Event **{event.name}** just started!',
                                                   embed=event.get_discord_embed(dc_client=self._dc_client, registrations=True))
 
@@ -72,8 +70,6 @@ class EventManager:
             embed=summary.set_image(url=f'attachment://{complete_history.filename}'),
             file=complete_history
         )
-
-        await self._user_manager.synch_workers()
 
     async def _event_registration_start(self, event: Event):
         await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has started!')
