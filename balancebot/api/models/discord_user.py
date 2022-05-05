@@ -2,8 +2,6 @@ from typing import List
 
 from pydantic import BaseModel
 
-from balancebot.api.dbmodels.alert import Alert
-from balancebot.api.models.event import Event
 from balancebot.api.models.guild import Guild
 
 

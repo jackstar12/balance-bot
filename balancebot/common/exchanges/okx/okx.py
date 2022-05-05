@@ -1,4 +1,4 @@
-import balancebot.api.dbmodels.balance as balance
+import balancebot.common.dbmodels.balance as balance
 import ccxt.async_support
 from datetime import datetime
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker

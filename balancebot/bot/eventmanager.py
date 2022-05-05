@@ -9,9 +9,8 @@ from typing import List, Callable
 import discord
 import pytz
 
-from balancebot.api.database import session
-from balancebot.api.dbmodels.event import Event
-from balancebot.collector.usermanager import UserManager
+from balancebot.common.database import session
+from balancebot.common.dbmodels.event import Event
 
 
 @dataclass

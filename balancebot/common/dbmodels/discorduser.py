@@ -2,18 +2,16 @@ from datetime import datetime
 from typing import List, Callable
 import discord
 from discord_slash import SlashCommand
-from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot import api as client
-from balancebot.api.database_async import async_session, db_unique, db_select
-import  balancebot.api.dbmodels.client as db_client
-from balancebot.api.dbmodels.guildassociation import GuildAssociation
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.database_async import async_session, db_unique
+import  balancebot.common.dbmodels.client as db_client
+from balancebot.common.dbmodels.serializer import Serializer
 
-from balancebot.api.database import Base, session as session
+from balancebot.common.database import Base, session as session
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import select, Column, Integer, ForeignKey, String, BigInteger, Table
+from sqlalchemy import select, Column, String, BigInteger
 
 from balancebot.common.models.selectionoption import SelectionOption
 import balancebot.common.utils as utils

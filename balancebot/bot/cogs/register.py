@@ -10,18 +10,17 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import inspect, select, or_, update, insert
 
-from balancebot.api.database_async import async_session, db_unique, db_all, db
-from balancebot.api.dbmodels.balance import Balance
-from balancebot.api.dbmodels.event import Event, event_association
-from balancebot.api.dbmodels.guild import Guild
-from balancebot.api.dbmodels.guildassociation import GuildAssociation
-from balancebot.common import utils
-from balancebot.api import dbutils
-from balancebot.api.dbmodels.client import Client
-from balancebot.api.dbmodels.discorduser import DiscordUser
+from balancebot.common.database_async import async_session, db_unique, db_all, db
+from balancebot.common.dbmodels.balance import Balance
+from balancebot.common.dbmodels.event import Event, event_association
+from balancebot.common.dbmodels.guild import Guild
+from balancebot.common.dbmodels.guildassociation import GuildAssociation
+from balancebot.common import utils, dbutils
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.bot.config import EXCHANGES
+from balancebot.common.exchanges import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.models.selectionoption import SelectionOption
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
@@ -170,7 +169,7 @@ class RegisterCog(CogBase):
                             async with aiohttp.ClientSession() as session:
                                 worker: ExchangeWorker = exchange_cls(new_client, session)
 
-                                init_balance = await worker.get_balance(time=datetime.now(tz=pytz.UTC))
+                                init_balance = await worker.get_balance(date=datetime.now(tz=pytz.UTC))
 
                             button_row = None
                             if init_balance.error is None:

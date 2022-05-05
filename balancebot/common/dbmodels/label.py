@@ -1,9 +1,8 @@
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy.dialects.postgresql import UUID
 
-from balancebot.api.database import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.database import Base
+from sqlalchemy import Column, Integer, ForeignKey, String
+from balancebot.common.dbmodels.serializer import Serializer
 
 
 class Label(Base, Serializer):

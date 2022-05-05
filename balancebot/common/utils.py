@@ -2,7 +2,6 @@ from __future__ import annotations
 import re
 import logging
 import traceback
-
 from functools import wraps
 
 import discord
@@ -19,21 +18,30 @@ from discord_slash import SlashCommand, ComponentContext
 from datetime import datetime, timedelta
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any
 
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, select
 
-import balancebot.api.dbmodels.event as db_event
-from balancebot.api.database import session
-from balancebot.api.database_async import async_session, db_first, db_all
-from balancebot.api.dbmodels.guildassociation import GuildAssociation
+import balancebot.common.dbmodels.event as db_event
+import balancebot.common.dbmodels.client as db_client
+from balancebot.common.database_async import async_session, db_all
+from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.models.daily import Daily
 from balancebot.common.models.gain import Gain
-from balancebot.api.dbmodels.client import Client
-from balancebot.api import dbutils, utils
-from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.balance import Balance
+from balancebot.common import dbutils
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.balance import Balance
 from balancebot.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
 from balancebot.common.models.selectionoption import SelectionOption
+import balancebot.common.config as config
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from balancebot.common.dbmodels.client import Client
+
+
+def validate_kwargs(kwargs: Dict, required: List[str]):
+    return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
+
 
 
 def admin_only(coro, cog=True):
@@ -73,10 +81,6 @@ def set_author_default(name: str, cog=True):
         return wrapper
 
     return decorator
-
-
-def validate_kwargs(kwargs: Dict, required: List[str]):
-    return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
 
 
 def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
@@ -419,9 +423,9 @@ async def create_leaderboard(dc_client: discord.Client,
     else:
         # All global clients
         clients = await db_all(
-            select(Client).
+            select(db_client.Client).
             filter(
-                Client.id.in_(
+                db_client.Client.id.in_(
                     select(GuildAssociation.client_id).
                     filter_by(guild_id=guild.id)
                 )

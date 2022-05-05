@@ -1,5 +1,4 @@
 import logging
-
 from apscheduler.job import Job
 from sqlalchemy import select, delete, and_
 from sqlalchemy.inspection import inspect
@@ -14,12 +13,13 @@ from apscheduler.triggers.interval import IntervalTrigger
 from collections import deque
 import pytz
 
-from balancebot.api.database_async import db_all, db_first, db, db_unique, db_eager, async_maker
-from balancebot.api.dbmodels.balance import Balance
-from balancebot.api.dbmodels.client import Client
-from balancebot.api.dbmodels.pnldata import PnlData
-from balancebot.api.dbmodels.serializer import Serializer
-from balancebot.api.dbmodels.trade import Trade
+from balancebot.common.database_async import db_all, db_first, db, db_unique, db_eager, async_maker
+from balancebot.common.dbmodels.balance import Balance
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.pnldata import PnlData
+from balancebot.common.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.trade import Trade
 from balancebot.collector.services.baseservice import BaseService
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common import utils
@@ -43,7 +43,7 @@ async def update_worker_queue(queue: Deque[ExchangeWorker]):
 
 
 def reschedule(exchange_job: ExchangeJob):
-    trigger = IntervalTrigger(seconds=3600 // len(exchange_job.deque))
+    trigger = IntervalTrigger(seconds=15 // len(exchange_job.deque))
     exchange_job.job.reschedule(trigger)
 
 
@@ -53,14 +53,12 @@ class BalanceService(BaseService):
                  *args,
                  data_service: DataService,
                  exchanges: dict = None,
-                 fetching_interval_hours: int = 4,
                  rekt_threshold: float = 2.5,
                  data_path: str = '',
                  **kwargs):
         super().__init__(*args, **kwargs)
 
         # Public parameters
-        self.interval_hours = fetching_interval_hours
         self.rekt_threshold = rekt_threshold
         self.data_path = data_path
         self.backup_path = self.data_path + 'backup/'
@@ -75,7 +73,7 @@ class BalanceService(BaseService):
         self._clients_by_id: Dict[int, Client] = {}
 
         self._all_client_stmt = db_eager(
-            select(Client, Trade).filter(
+            select(Client, Trade, DiscordUser).filter(
                 Client.archived == False,
                 Client.invalid == False
             ),
@@ -273,10 +271,11 @@ class BalanceService(BaseService):
                     self._db.add(balance)
             if changes:
                 await self._db.commit()
-            await self._redis.mset({
-                utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, balance.client_id): balance.amount
-                for balance in balances
-            })
+            if balances:
+                await self._redis.mset({
+                    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, balance.client_id): balance.amount
+                    for balance in balances
+                })
             await asyncio.sleep(3 - (time.time() - ts))
 
     async def start_fetching(self):
@@ -361,7 +360,7 @@ class BalanceService(BaseService):
 
         logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
         results = await asyncio.gather(*[
-            worker.get_balance(time=time, priority=priority, force=force_fetch)
+            worker.get_balance(date=time, priority=priority, force=force_fetch)
             for worker in workers if (worker and worker.in_position) or force_fetch
         ])
 

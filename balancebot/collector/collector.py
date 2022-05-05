@@ -1,14 +1,14 @@
 import asyncio
 import aiohttp
+import balancebot.common.dbmodels
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import balancebot.api.app
-from balancebot.api.database import redis
-from balancebot.bot.config import EXCHANGES, FETCHING_INTERVAL_HOURS, DATA_PATH, REKT_THRESHOLD
+from balancebot.common.database_async import redis
+from balancebot.common.config import DATA_PATH, REKT_THRESHOLD
+from balancebot.common.exchanges import EXCHANGES
 from balancebot.collector.services.cointracker import CoinTracker
 from balancebot.collector.services.alertservice import AlertService
 from balancebot.collector.services.dataservice import DataService
 from balancebot.collector.services.balanceservice import BalanceService
-from balancebot.collector.usermanager import UserManager
 from balancebot.common.messenger import Messenger
 
 
@@ -22,7 +22,6 @@ async def run(session: aiohttp.ClientSession):
     pnl_service = BalanceService(session, Messenger(), redis, scheduler,
                                  data_service=data_service,
                                  exchanges=EXCHANGES,
-                                 fetching_interval_hours=FETCHING_INTERVAL_HOURS,
                                  data_path=DATA_PATH,
                                  rekt_threshold=REKT_THRESHOLD)
 

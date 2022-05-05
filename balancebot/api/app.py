@@ -1,46 +1,37 @@
-import functools
 from datetime import datetime
 
-import cachetools
 import pytz
 import uvicorn
 import asyncio
 import aiohttp
-from fastapi.encoders import jsonable_encoder
 
-from sqlalchemy import select, delete, or_
+from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload, noload, selectinload, lazyload
-from sqlalchemy.inspection import inspect
-from starlette.responses import JSONResponse
+from sqlalchemy.orm import selectinload
 
 from fastapi import Depends
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from starlette_csrf import CSRFMiddleware
 
-import balancebot.api.database_async as aio_db
-from balancebot.api.dbmodels.trade import Trade
+import balancebot.common.database_async as aio_db
+from balancebot.common.dbmodels.trade import Trade
 
-from balancebot.api.dbmodels.transfer import Transfer
-from balancebot.api.dbmodels.user import User
+from balancebot.common.dbmodels.user import User
 from balancebot.api.dependencies import current_user, CurrentUser
 from balancebot.api.models.user import UserInfo
 from balancebot.api.settings import settings
-from balancebot.api.database import Base, engine, session, redis
+from balancebot.common.database import Base, engine
 
 import balancebot.api.routers.authentication as auth
 import balancebot.api.routers.client as client
 import balancebot.api.routers.label as label
-from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.guild import Guild
-from balancebot.api.dbmodels.balance import Balance
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.guild import Guild
 import balancebot.api.routers.discordauth as discord
 
 import balancebot.collector.collector as collector
 from balancebot.api.users import fastapi_users
-from balancebot.api.utils.responses import OK
 from balancebot.common.enums import Tier
-from balancebot.common.messenger import Messenger
 
 app = FastAPI(
     docs_url='/api/v1/docs',
@@ -95,8 +86,6 @@ user_info = CurrentUser(
 
 @app.get('/api/v1/info', response_model=UserInfo)
 async def info(user: User = Depends(user_info)):
-
-    from balancebot.api.dbmodels.client import Client
 
     return UserInfo.from_orm(user)
 
@@ -231,8 +220,8 @@ async def on_start():
 
 
     from balancebot.bot import bot
-    from balancebot.api.dbmodels.client import Client
-    from balancebot.api.dbmodels.event import Event
+    from balancebot.common.dbmodels.client import Client
+    from balancebot.common.dbmodels.event import Event
 
     async with aio_db.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -278,8 +267,8 @@ async def db_test():
     async with aio_db.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    from balancebot.api.dbmodels.client import Client
-    from balancebot.api.dbmodels.balance import Balance
+    from balancebot.common.dbmodels.client import Client
+    from balancebot.common.dbmodels.balance import Balance
 
     sess = aio_db.async_session
 

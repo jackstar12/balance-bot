@@ -1,17 +1,13 @@
 from http import HTTPStatus
 
-from fastapi import Depends, Request, HTTPException
-from fastapi_jwt_auth import AuthJWT
+from fastapi import Request, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
 
 from balancebot.api.authenticator import Authenticator
-from balancebot.api.database_async import db_first, redis, db_eager, db_unique
+from balancebot.common.database_async import redis, db_eager, db_unique
 from balancebot.api.settings import settings
-from balancebot.api.database import session
 from fastapi import Depends
-from fastapi_jwt_auth import AuthJWT
-from balancebot.api.dbmodels.user import User
+from balancebot.common.dbmodels.user import User
 
 
 authenticator = Authenticator(

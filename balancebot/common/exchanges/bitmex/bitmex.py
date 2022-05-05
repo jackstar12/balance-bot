@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 
-import balancebot.api.dbmodels.balance as db_balance
+import balancebot.common.dbmodels.balance as db_balance
 
 
 class BitmexClient(ExchangeWorker):

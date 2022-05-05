@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import List, Deque, Optional
 from dataclasses import dataclass
-from balancebot.api.database import Base
 
 
 @dataclass

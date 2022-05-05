@@ -31,3 +31,4 @@ asgiref~=3.4.1
 aioredis~=2.0.1
 msgpack~=0.6.2
 asyncpg~=0.25.0
+apscheduler~=3.5.0

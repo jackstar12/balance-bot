@@ -2,18 +2,18 @@ import asyncio
 
 import pytz
 
-from balancebot.api.database_async import async_session
+from balancebot.common.database_async import async_session
 from balancebot.common import utils
 import numpy
 from balancebot.common.models.gain import Gain
-from balancebot.api.dbmodels.archive import Archive
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.archive import Archive
+from balancebot.common.dbmodels.serializer import Serializer
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property
-import balancebot.bot.config as config
+import balancebot.common.config as config
 import discord
 
-from balancebot.api.database import Base, session as session
+from balancebot.common.database import Base, session as session
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table
 

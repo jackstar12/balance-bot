@@ -7,9 +7,9 @@ from typing import Union, List, Optional, Dict
 
 import pytz
 import ccxt.async_support as ccxt
-from balancebot.api.dbmodels.execution import Execution
-import balancebot.api.dbmodels.balance as balance
-from balancebot.api.dbmodels.transfer import RawTransfer
+from balancebot.common.dbmodels.execution import Execution
+import balancebot.common.dbmodels.balance as balance
+from balancebot.common.dbmodels.transfer import RawTransfer
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 import time
 

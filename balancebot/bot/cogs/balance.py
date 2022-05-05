@@ -5,13 +5,10 @@ from datetime import datetime
 
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
-from sqlalchemy import select
 
-from balancebot.api.database_async import db_all
-from balancebot.api.dbmodels.client import Client
-from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.common import utils
-from balancebot.api import dbutils
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common import utils, dbutils
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.utils import de_emojify
@@ -44,7 +41,7 @@ class BalanceCog(CogBase):
             currency = '$'
         currency = currency.upper()
 
-        if ctx.guild is not None:
+        if ctx.guild:
             registered_user = await dbutils.get_client(user.id, ctx.guild.id)
 
             await ctx.defer()
@@ -56,12 +53,13 @@ class BalanceCog(CogBase):
             else:
                 await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
         else:
-            user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events)])
+            user: DiscordUser = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events)])
 
             await ctx.defer()
 
             for user_client in user.clients:
                 #usr_balance = await self.user_manager.get_client_balance(user_client, currency)
+                k = await self.redis.keys()
                 usr_balance = await user_client.get_balance(self.redis, currency)
                 balance_message = f'Your balance ({await user_client.get_events_and_guilds_string()}): '
                 if usr_balance.error is None:

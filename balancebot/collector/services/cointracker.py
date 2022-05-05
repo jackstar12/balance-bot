@@ -2,20 +2,19 @@ import asyncio
 import time
 
 import pytz
-from sqlalchemy import inspect, select
-from balancebot.api.database_async import db_all, async_session
+from sqlalchemy import select
+from balancebot.common.database_async import db_all, async_session
 from balancebot.collector.services.baseservice import BaseService
-from balancebot.collector.services.dataservice import DataService, Channel
+from balancebot.collector.services.dataservice import Channel
 from balancebot.common.models.observer import Observable, Observer
 import ccxt.async_support as ccxt
 from datetime import datetime, timedelta
 from collections import deque
-from balancebot.api.dbmodels.coin import Coin, Volume, OI
+from balancebot.common.dbmodels.coin import Coin, Volume, OI
 from balancebot.common.models.trade import Trade
 from balancebot.common.models.volumeratio import VolumeRatio
 from typing import Dict, List
 
-from balancebot.common.models.singleton import Singleton
 import aiohttp
 
 

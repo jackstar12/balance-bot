@@ -1,8 +1,8 @@
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.serializer import Serializer
 
-from balancebot.api.database import Base, session as session
+from balancebot.common.database import Base
 from sqlalchemy.orm import relationship
-from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Enum, Table
+from sqlalchemy import Column, String, BigInteger, Enum
 
 from balancebot.common.enums import Tier
 

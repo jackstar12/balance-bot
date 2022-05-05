@@ -7,10 +7,8 @@ from typing import Callable, Dict, Optional
 
 import msgpack
 
-from balancebot.api.database import redis
-import balancebot.collector.usermanager as usermanager
+from balancebot.common.database import redis
 from balancebot.api.settings import settings
-from balancebot.common import utils
 from balancebot.common.models.singleton import Singleton
 import balancebot.common.utils as utils
 

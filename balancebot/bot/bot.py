@@ -14,14 +14,12 @@ import discord
 import discord.errors
 from discord.ext import commands
 from discord_slash import SlashCommand
-from discord_slash.utils.manage_commands import create_choice
-from balancebot.api.app import app
-from balancebot.api.database import session
-from balancebot.api.database_async import async_session, db_all, db_unique, redis
-from balancebot.api.dbmodels.guildassociation import GuildAssociation
-from balancebot.api.dbmodels.client import Client
-from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.guild import Guild
+from balancebot.common.database import session
+from balancebot.common.database_async import async_session, db_all, redis
+from balancebot.common.dbmodels.guildassociation import GuildAssociation
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.guild import Guild
 from balancebot.bot.config import *
 from balancebot.bot.cogs import *
 from balancebot.bot.eventmanager import EventManager
