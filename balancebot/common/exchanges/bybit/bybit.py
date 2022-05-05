@@ -5,7 +5,7 @@ import logging
 import hmac
 from datetime import datetime
 
-from balancebot.common.exchanges.exchangeworker import ExchangeWorker
+from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_limit
 from balancebot.api.dbmodels.balance import Balance
 from typing import Dict
 
@@ -16,6 +16,13 @@ class BybitClient(ExchangeWorker):
 
     amount = float
     type = str
+
+    _limits = [
+        create_limit(interval_seconds=5, max_amount=5*70, default_weight=1),
+        create_limit(interval_seconds=5, max_amount=5*50, default_weight=1),
+        create_limit(interval_seconds=120, max_amount=120*50, default_weight=1),
+        create_limit(interval_seconds=120, max_amount=120*20, default_weight=1)
+    ]
 
     _response_error = 'ret_msg'
     _response_result = 'result'
