@@ -1,15 +1,12 @@
 import secrets
 from http import HTTPStatus
 from typing import Optional, Union
-from uuid import UUID
 
 from fastapi import Response, Request, HTTPException
 from aioredis import Redis
-from fastapi_users.manager import UserNotExists
 from pydantic import UUID4
 
-from balancebot.api.database_async import db_select
-from balancebot.api.dbmodels.user import User
+from balancebot.common.dbmodels.user import User
 from balancebot.api.models.user import UserDB
 from balancebot.api.settings import settings
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import NamedTuple, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import balancebot.api.dbmodels.client as c
+    import balancebot.common.dbmodels.client as c
 
 
 class Gain(NamedTuple):

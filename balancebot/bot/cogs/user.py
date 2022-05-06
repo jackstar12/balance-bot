@@ -1,12 +1,9 @@
 from discord_slash import cog_ext, SlashContext
-from sqlalchemy import select
 
-from balancebot.api.database_async import db_del_filter, async_session, db_all, db_eager
-from balancebot.api.dbmodels.client import Client
-from balancebot.common import utils
-from balancebot.api import dbutils
-from balancebot.api.database import session
-from balancebot.api.dbmodels.discorduser import DiscordUser
+from balancebot.common.database_async import db_del_filter, async_session
+from balancebot.common.dbmodels.client import Client
+from balancebot.common import utils, dbutils
+from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.utils import create_yes_no_button_row
 

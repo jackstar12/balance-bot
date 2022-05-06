@@ -1,11 +1,9 @@
 import asyncio
-from asyncio import current_task
-from flask_migrate import Migrate
 from sqlalchemy import create_engine, MetaData
 import dotenv
 import os
 import aioredis
-
+import psycopg2
 from sqlalchemy.orm import sessionmaker, scoped_session, Session
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession
@@ -29,8 +27,6 @@ Meta = MetaData()
 # app = Flask(__name__)
 # app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 # db = SQLAlchemy(app=app, session_options={'autoflush': False})
-
-migrate = Migrate()
 
 redis = aioredis.Redis()
 

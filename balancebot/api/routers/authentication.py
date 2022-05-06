@@ -1,12 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi_jwt_auth import AuthJWT
 from starlette.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
 from balancebot.api.authenticator import Authenticator
-from balancebot.api.database import session
-from balancebot.api.database_async import async_session, db_select
-from balancebot.api.dbmodels.user import User
+from balancebot.common.database_async import db_select
+from balancebot.common.dbmodels.user import User
 import bcrypt
 
 from balancebot.api.dependencies import get_authenticator

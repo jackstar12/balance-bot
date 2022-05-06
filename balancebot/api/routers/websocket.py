@@ -1,16 +1,13 @@
-import logging
-from datetime import datetime
-from http import HTTPStatus
 from typing import Optional, Dict
-from fastapi import APIRouter, Depends, Request, Response, WebSocket
+from fastapi import APIRouter, Depends, WebSocket
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
 from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
 from balancebot.api.dependencies import current_user
-from balancebot.api.dbmodels.client import Client
-from balancebot.api.dbmodels.user import User
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels.user import User
 from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
 from balancebot.common.messenger import Messenger, NameSpace, Category

@@ -5,7 +5,7 @@ from datetime import datetime
 
 import time
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
-from balancebot.api.dbmodels.balance import Balance
+from balancebot.common.dbmodels.balance import Balance
 
 
 class KuCoinClient(ExchangeWorker):

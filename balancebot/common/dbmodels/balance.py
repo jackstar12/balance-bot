@@ -1,15 +1,14 @@
 from datetime import datetime
 
 import pytz
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from balancebot.api.database import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType
+from balancebot.common.database import Base
+from sqlalchemy import Column, Integer, ForeignKey
 
-import balancebot.bot.config as config
-from balancebot.api.dbmodels.amountmixin import AmountMixin
-from balancebot.api.dbmodels.serializer import Serializer
+import balancebot.common.config as config
+from balancebot.common.dbmodels.amountmixin import AmountMixin
+from balancebot.common.dbmodels.serializer import Serializer
 
 
 class Balance(Base, AmountMixin, Serializer):

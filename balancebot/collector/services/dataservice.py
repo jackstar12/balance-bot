@@ -1,12 +1,7 @@
 import asyncio
 from enum import Enum
-from typing import List, Dict
+from typing import Dict
 
-import aiohttp
-
-from balancebot.api.database import session
-from balancebot.api.database_async import db_select_all
-from balancebot.api.dbmodels.alert import Alert
 from balancebot.collector import config
 from balancebot.collector.errors import InvalidExchangeError
 from balancebot.collector.exchangeticker import ExchangeTicker
@@ -14,7 +9,6 @@ from balancebot.collector.services.baseservice import BaseService
 from balancebot.common import utils
 from balancebot.common.messenger import NameSpace
 from balancebot.common.models.observer import Observer
-from balancebot.common.models.singleton import Singleton
 from balancebot.common.models.ticker import Ticker
 
 

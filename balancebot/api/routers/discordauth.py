@@ -4,13 +4,12 @@ from http import HTTPStatus
 from typing import Optional
 
 from requests_oauthlib import OAuth2Session
-from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse, JSONResponse
 
-from balancebot.api.database import session
-from balancebot.api.database_async import async_session
-from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.user import User
+from balancebot.common.database import session
+from balancebot.common.database_async import async_session
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.user import User
 from balancebot.api.dependencies import current_user
 
 from fastapi import APIRouter, Depends, Request

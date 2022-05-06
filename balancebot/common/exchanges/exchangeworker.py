@@ -1,7 +1,6 @@
 from __future__ import annotations
 import abc
 import asyncio
-import functools
 import logging
 import time
 import urllib.parse
@@ -9,7 +8,7 @@ import math
 from asyncio import Future, Task
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import List, Callable, Dict, Tuple, TYPE_CHECKING, Optional, Union, Set
+from typing import List, Callable, Dict, Tuple, Optional, Union, Set
 import aiohttp.client
 import pytz
 from aiohttp import ClientResponse, ClientResponseError
@@ -17,30 +16,26 @@ from typing import NamedTuple
 from asyncio.queues import PriorityQueue
 from dataclasses import dataclass
 
-from ccxt.async_support.base.throttler import Throttler
 from sqlalchemy import select, desc
 from sqlalchemy.orm import joinedload
 
-import balancebot.api.database as db
 import balancebot.common.utils as utils
-from balancebot.api.database_async import async_session, db_unique, db_all, db_select, db_first
-from balancebot.api.dbmodels import balance
-from balancebot.api.dbmodels.execution import Execution
-from balancebot.api.dbmodels.trade import Trade, trade_from_execution
-import balancebot.collector.usermanager as um
+from balancebot.common.database_async import async_session, db_unique, db_all, db_first
+from balancebot.common.dbmodels.execution import Execution
+from balancebot.common.dbmodels.trade import Trade, trade_from_execution
 
-import balancebot.api.dbmodels.balance as db_balance
-from balancebot.api.dbmodels.transfer import Transfer, RawTransfer
+import balancebot.common.dbmodels.balance as db_balance
+from balancebot.common.dbmodels.transfer import Transfer, RawTransfer
 from balancebot.common.config import PRIORITY_INTERVALS
 from balancebot.common.enums import Priority
 from balancebot.common.errors import RateLimitExceeded, ExchangeUnavailable, ExchangeMaintenance, ResponseError
 from balancebot.common.messenger import NameSpace, Category, Messenger
 
-from balancebot.api.dbmodels.client import Client
+from balancebot.common.dbmodels.client import Client
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from balancebot.api.dbmodels.balance import Balance
+    from balancebot.common.dbmodels.balance import Balance
 
 
 logger = logging.getLogger(__name__)
@@ -184,27 +179,27 @@ class ExchangeWorker:
 
     async def get_balance(self,
                           priority: Priority = Priority.MEDIUM,
-                          time: datetime = None,
+                          date: datetime = None,
                           force=False,
                           upnl=True) -> Optional[db_balance.Balance]:
-        if not time:
-            time = datetime.now(tz=pytz.UTC)
-        if force or (time - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]) and not self.client.rekt_on):
-            self._last_fetch = time
+        if not date:
+            date = datetime.now(tz=pytz.UTC)
+        if force or (date - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]) and not self.client.rekt_on):
+            self._last_fetch = date
             try:
-                balance = await self._get_balance(time, upnl=upnl)
+                balance = await self._get_balance(date, upnl=upnl)
             except ResponseError as e:
                 return db_balance.Balance(
                     amount=0,
-                    time=time,
+                    time=date,
                     error=e.human
                 )
             if not balance.time:
-                balance.time = time
+                balance.time = date
             balance.client_id = self.client_id
             return balance
         elif self.client.rekt_on:
-            return db_balance.Balance(amount=0.0, error=None, time=time)
+            return db_balance.Balance(amount=0.0, error=None, time=date)
         else:
             return None
 
@@ -212,9 +207,10 @@ class ExchangeWorker:
                              since: datetime) -> List[Execution]:
         return []
 
-    async def intelligent_get_balance(self, keep_errors=False, commit=True) -> Optional["Balance"]:
+    async def intelligent_get_balance(self, keep_errors=False, commit=True, date: datetime = None) -> Optional["Balance"]:
         """
         Fetch the clients balance, only saving if it makes sense to do so.
+        :param date:
         :param keep_errors:
         whether to return the balance if it resulted in an error
         :param commit:
@@ -226,8 +222,11 @@ class ExchangeWorker:
         """
         client = await async_session.get(Client, self.client_id)
         if client:
+            date = date or datetime.now(pytz.utc)
+            result = await self.get_balance(date=date)
 
-            result = await self.get_balance()
+            if not result:
+                return
 
             history = await db_all(
                 client.history.order_by(
@@ -241,7 +240,7 @@ class ExchangeWorker:
                 # If balance hasn't changed at all, why bother keeping it?
                 if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
                         and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
-                    latest_balance.time = time
+                    latest_balance.time = date
             if result.error:
                 logger.error(f'Error while fetching {client.id=} balance: {result.error}')
                 if keep_errors:
@@ -297,7 +296,7 @@ class ExchangeWorker:
             next_transfer = transfers[1] if len(transfers) > 1 else None
 
             for update in to_update:
-                if next_transfer and update.time > next_transfer:
+                if next_transfer and update.time > next_transfer.time:
                     cur_offset += next_transfer.amount
                     next_index = transfers.index(next_transfer) + 1
                     next_transfer = transfers[next_index] if len(transfers) > next_index else None
@@ -379,7 +378,7 @@ class ExchangeWorker:
         logger.warning(f'Exchange {self.exchange} does not implement get_transfers')
 
     async def _update_realized_balance(self):
-        self._waiter = asyncio.sleep(self._execution_dedupe_delay)
+        self._waiter = asyncio.ensure_future(asyncio.sleep(self._execution_dedupe_delay))
         await self._waiter
         await self.update_transfers()
         balance = await self.get_balance(Priority.FORCE, datetime.now(pytz.utc), upnl=False)
@@ -491,6 +490,10 @@ class ExchangeWorker:
         pass
 
     @classmethod
+    def _check_for_error(cls, response_json: Dict, response: ClientResponse):
+        pass
+
+    @classmethod
     @abc.abstractmethod
     async def _process_response(cls, response: ClientResponse) -> dict:
         response_json = await response.json()
@@ -523,6 +526,8 @@ class ExchangeWorker:
                 root_error=e,
                 human=error
             )
+
+        cls._check_for_error(response_json, response)
 
         # OK
         if response.status == 200:

@@ -4,10 +4,9 @@ import discord
 import pytz
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, BigInteger, or_, desc, asc, \
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, BigInteger, or_, desc, asc, \
     Boolean, select
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, Query, backref
+from sqlalchemy.orm import relationship, backref
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -17,18 +16,14 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
-from balancebot.api.database_async import db_first, db_all, async_session, db_select_all
-from balancebot.api.dbmodels.balance import Balance
-from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.guild import Guild
-from balancebot.api.dbmodels.guildassociation import GuildAssociation
-from balancebot.api.dbmodels.serializer import Serializer
-from balancebot.api.dbmodels.user import User
-import balancebot.bot.config as config
-from balancebot.api.database import Base, session
-from balancebot.api.dbmodels import balance
+from balancebot.common.database_async import db_first, db_all, db_select_all
+import balancebot.common.dbmodels.balance as db_balance
+from balancebot.common.dbmodels.guild import Guild
+from balancebot.common.dbmodels.guildassociation import GuildAssociation
+from balancebot.common.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.user import User
+from balancebot.common.database import Base
 import balancebot.common.utils as utils
-# from balancebot.collector.usermanager import db_match_balance_currency
 from balancebot.common.messenger import NameSpace
 
 dotenv.load_dotenv()
@@ -79,9 +74,12 @@ class Client(Base, Serializer):
 
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
 
-    async def get_balance(self, redis: Redis, currency=None):
-        return await redis.get(utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id))
-
+    async def get_balance(self, redis: Redis, currency=None) -> float:
+        amount = await redis.get(utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id))
+        return db_balance.Balance(
+            amount=float(amount),
+            time=None
+        )
     async def evaluate_balance(self, redis: Redis):
         if not self.currently_realized:
             return
@@ -95,7 +93,7 @@ class Client(Base, Serializer):
                 )
                 if price:
                     amount += trade.calc_upnl(float(price))
-        new = Balance(
+        new = db_balance.Balance(
             amount=amount,
             time=datetime.now(pytz.utc),
             client_id=self.id
@@ -112,7 +110,7 @@ class Client(Base, Serializer):
     async def latest(self):
         try:
             return await db_first(
-                self.history.statement.order_by(None).order_by(desc(Balance.time))
+                self.history.statement.order_by(None).order_by(desc(db_balance.Balance.time))
             )
         except ValueError:
             return None
@@ -132,8 +130,8 @@ class Client(Base, Serializer):
     async def get_balance_at_time(self, time: datetime, post: bool, currency: str = None):
         balance = await db_first(
             self.history.statement.filter(
-                Balance.time > time if post else Balance.time < time
-            ).order_by(asc(Balance.time) if post else desc(Balance.time))
+                db_balance.Balance.time > time if post else db_balance.Balance.time < time
+            ).order_by(asc(db_balance.Balance.time) if post else desc(db_balance.Balance.time))
         )
 
         # if currency:
@@ -146,14 +144,15 @@ class Client(Base, Serializer):
 
     @hybrid_property
     def is_premium(self):
-        return bool(self.user_id or self.discord_user.user_id)
+        return bool(self.user_id or self.discord_user.user)
 
     async def initial(self):
         try:
             if self.id:
-                return await db_first(self.history.statement.order_by(asc(Balance.time)))
+                return await db_first(self.history.statement.order_by(asc(db_balance.Balance.time)))
         except ValueError:
-            return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
+            raise
+            # return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
     async def get_events_and_guilds_string(self, guilds: Optional[List[Guild]] = None):
         return ', '.join([await self.get_guilds_string(guilds), self.get_event_string()])

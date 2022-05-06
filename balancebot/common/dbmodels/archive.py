@@ -1,6 +1,6 @@
-from balancebot.api.database import Base
+from balancebot.common.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, Text, String
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.serializer import Serializer
 
 
 class Archive(Base, Serializer):

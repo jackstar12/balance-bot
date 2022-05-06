@@ -11,13 +11,13 @@ from typing import List, Dict, TYPE_CHECKING
 import pytz
 from sqlalchemy import desc, delete
 
-import balancebot.api.database as db
-from balancebot.api.database_async import async_session, db as aio_db, db_first, db_all, db_select
+import balancebot.common.database as db
+from balancebot.common.database_async import async_session, db as aio_db, db_first, db_all, db_select
 
-from balancebot.api.dbmodels.balance import Balance
-import balancebot.api.dbmodels.client as db_client
-from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.balance import Balance
+import balancebot.common.dbmodels.client as db_client
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.enums import Priority
 from balancebot.common.messenger import Messenger, NameSpace, Category
 from balancebot.common.models.singleton import Singleton
@@ -204,7 +204,7 @@ class UserManager(Singleton):
 
         logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
         results = await asyncio.gather(*[
-            worker.get_balance(time=time, priority=priority, force=force_fetch)
+            worker.get_balance(date=time, priority=priority, force=force_fetch)
             for worker in workers if (worker and worker.in_position) or force_fetch
         ])
 

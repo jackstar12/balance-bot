@@ -1,12 +1,9 @@
-import uuid
-
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTable
-from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship, backref
 
-from balancebot.api.database import Base
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.database import Base
+from balancebot.common.dbmodels.serializer import Serializer
 
 
 class User(Base, Serializer, SQLAlchemyBaseUserTable):

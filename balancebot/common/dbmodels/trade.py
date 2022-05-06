@@ -1,10 +1,10 @@
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float, PickleType, Table, orm
+from sqlalchemy import Column, Integer, ForeignKey, String, Float, Table, orm
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from balancebot.api.database import Base, Meta
-from balancebot.api.dbmodels.serializer import Serializer
-from balancebot.api.dbmodels.execution import Execution
+from balancebot.common.database import Base
+from balancebot.common.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.execution import Execution
 
 trade_association = Table('trade_association', Base.metadata,
                           Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
@@ -80,7 +80,7 @@ class Trade(Base, Serializer):
         return self.open_qty > 0.0
 
     async def serialize(self, data=True, full=True, *args, **kwargs):
-        s = await super().serialize(data, full, *args, **kwargs)
+        s = await super().serialize(*args, data=data, full=full, **kwargs)
         if s:
             s['status'] = 'open' if self.open_qty > 0 else 'win' if self.realized_pnl > 0.0 else 'loss'
         return s

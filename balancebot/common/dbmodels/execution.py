@@ -1,9 +1,9 @@
 import pytz
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from balancebot.api.database import Base
+from balancebot.common.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float
-from balancebot.api.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.serializer import Serializer
 
 
 class Execution(Base, Serializer):

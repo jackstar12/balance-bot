@@ -3,8 +3,7 @@ from datetime import datetime
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
-from balancebot.common import utils
-from balancebot.api import dbutils
+from balancebot.common import utils, dbutils
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.utils import create_yes_no_button_row

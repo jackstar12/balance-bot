@@ -5,7 +5,7 @@ import discord
 from discord_slash import cog_ext, SlashContext
 
 from balancebot.common import utils
-from balancebot.bot import config
+import  balancebot.common.config as config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.utils import de_emojify
 

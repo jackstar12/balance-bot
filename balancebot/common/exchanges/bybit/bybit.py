@@ -5,14 +5,18 @@ import logging
 import hmac
 from datetime import datetime
 
-from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_limit
-from balancebot.api.dbmodels.balance import Balance
+from aiohttp import ClientResponseError, ClientResponse
+
+from balancebot.api.settings import settings
+from balancebot.common.errors import ResponseError
+from balancebot.common.exchanges.exchangeworker import ExchangeWorker
+from balancebot.common.dbmodels.balance import Balance
 from typing import Dict
 
 
 class BybitClient(ExchangeWorker):
     exchange = 'bybit'
-    _ENDPOINT = 'https://api.bybit.com'
+    _ENDPOINT = 'https://api-testnet.bybit.com' if settings.testing else 'https://api.bybit.com'
 
     amount = float
     type = str
@@ -70,3 +74,11 @@ class BybitClient(ExchangeWorker):
         query_string = urllib.parse.urlencode(params)
         sign = hmac.new(self._api_secret.encode('utf-8'), query_string.encode('utf-8'), 'sha256').hexdigest()
         params['sign'] = sign
+
+    @classmethod
+    def _check_for_error(cls, response_json: Dict, response: ClientResponse):
+        if response_json['ret_code'] != 0:
+            raise ResponseError(
+                root_error=ClientResponseError(response.request_info, (response,)),
+                human=response_json['ret_msg']
+            )

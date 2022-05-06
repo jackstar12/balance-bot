@@ -13,26 +13,26 @@ from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
 from balancebot.api.authenticator import Authenticator
-from balancebot.api.database_async import db, db_first, async_session, db_all, db_select
-from balancebot.api.dbmodels.guildassociation import GuildAssociation
-from balancebot.api.dbmodels.guild import Guild
+from balancebot.common.database_async import db, db_first, async_session, db_all, db_select
+from balancebot.common.dbmodels.guildassociation import GuildAssociation
+from balancebot.common.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody
 from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
 from balancebot.api.utils.responses import BadRequest, OK
 from balancebot.common import utils
 from balancebot.api.dependencies import current_user, CurrentUser, get_authenticator
-from balancebot.api.database import session
-from balancebot.api.dbmodels.client import Client, add_client_filters
-from balancebot.api.dbmodels.user import User
+from balancebot.common.database import session
+from balancebot.common.dbmodels.client import Client, add_client_filters
+from balancebot.common.dbmodels.user import User
 from balancebot.api.settings import settings
 from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
 from balancebot.common.messenger import Messenger, NameSpace, Category
-import balancebot.api.dbmodels.event as db_event
+import balancebot.common.dbmodels.event as db_event
 from balancebot.common.utils import validate_kwargs
 
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
-from balancebot.bot.config import EXCHANGES
+from balancebot.common.exchanges import EXCHANGES
 from balancebot.collector.usermanager import UserManager
 
 router = APIRouter(
@@ -63,7 +63,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
                 )
                 async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session)
-                    init_balance = await worker.get_balance(time=datetime.now(pytz.utc))
+                    init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
                 if init_balance.error is None:
                     if round(init_balance.amount, ndigits=2) == 0.0:
                         return BadRequest(

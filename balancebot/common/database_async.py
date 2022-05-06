@@ -22,10 +22,10 @@ engine = create_async_engine(
 async_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=current_task)
 # }+dg}E\w37/jWpSP
-redis = aioredis.Redis(host='redis-16564.c300.eu-central-1-1.ec2.cloud.redislabs.com',
-                       port=16564,
-                       password='usTzjlI4SKy92HE6PGXgvTsaIQMdYWgo')
-
+#redis = aioredis.Redis(host='redis-16564.c300.eu-central-1-1.ec2.cloud.redislabs.com',
+#                       port=16564,
+#                       password='usTzjlI4SKy92HE6PGXgvTsaIQMdYWgo')
+redis = aioredis.Redis()
 
 async def db(stmt, session=None):
     return await (session or async_session).execute(stmt)

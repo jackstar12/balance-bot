@@ -1,19 +1,17 @@
 from http import HTTPStatus
-from typing import List
 
 from fastapi import APIRouter, Depends, Body
 from fastapi.exceptions import HTTPException
-from pydantic import BaseModel
 from sqlalchemy import or_, select
 
-from balancebot.api.database_async import async_session, db_first, db_eager, db_all
+from balancebot.common.database_async import async_session, db_first, db_eager, db_all
 from balancebot.api.dependencies import current_user
-from balancebot.api.database import session
+from balancebot.common.database import session
 
-from balancebot.api.dbmodels.client import Client, add_client_filters
-from balancebot.api.dbmodels.label import Label
-from balancebot.api.dbmodels.trade import Trade
-from balancebot.api.dbmodels.user import User
+from balancebot.common.dbmodels.client import Client, add_client_filters
+from balancebot.common.dbmodels.label import Label
+from balancebot.common.dbmodels.trade import Trade
+from balancebot.common.dbmodels.user import User
 from balancebot.api.models.label import SetLabels, RemoveLabel, AddLabel, PatchLabel, CreateLabel
 from balancebot.api.utils.responses import BadRequest, OK, Response
 
