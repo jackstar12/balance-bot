@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Dict
 
 from sqlalchemy import select
@@ -6,7 +7,8 @@ from balancebot.common.database import session
 from balancebot.common.database_async import async_session, db_del_filter, db_all
 from balancebot.common.dbmodels.alert import Alert
 from balancebot.collector.services.baseservice import BaseService
-from balancebot.collector.services.dataservice import Channel
+from balancebot.collector.services.dataservice import Channel, DataService
+from balancebot.common.enums import Side
 from balancebot.common.messenger import NameSpace as MsgChannel, Category
 from balancebot.common.models.observer import Observer
 from balancebot.common.models.ticker import Ticker
@@ -14,7 +16,7 @@ from balancebot.common.models.ticker import Ticker
 
 class AlertService(BaseService, Observer):
 
-    def __init__(self, *args, data_service, **kwargs):
+    def __init__(self, *args, data_service: DataService, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_service = data_service
         self.alerts_by_symbol: Dict[str, List[Alert]] = {}
@@ -42,13 +44,20 @@ class AlertService(BaseService, Observer):
         if alerts and alert in alerts:
             alerts.remove(alert)
 
-    def _update(self, data: Dict):
-        new: Alert = session.query(Alert).filter_by(id=data.get('id')).first()
+    async def _update(self, data: Dict):
+        new: Alert = await async_session.get(Alert, data['id'])
         symbol = f'{new.symbol}:{new.exchange}'
-        if new.price > self._tickers.get(symbol).price:
-            new.side = 'up'
+        ticker = self._tickers.get(symbol)
+        if not ticker:
+            await self.data_service.subscribe(new.exchange, Channel.TICKER, self, symbol=new.symbol)
+            while ticker is None:
+                await asyncio.sleep(0.1)
+                ticker = self._tickers.get(symbol)
+        if new.price > ticker.price:
+            new.side = Side.BUY
         else:
-            new.side = 'down'
+            new.side = Side.SELL
+        await async_session.commit()
         self.add_alert(new)
 
     def _delete(self, data: Dict):
@@ -68,11 +77,11 @@ class AlertService(BaseService, Observer):
         if alerts:
             changes = False
             for alert in self.alerts_by_symbol.get(symbol):
-                if alert.side == 'up':
+                if alert.side == Side.BUY:
                     if ticker.price > alert.price:
                         await self._finish_alert(alert)
                         changes = True
-                elif alert.side == 'down':
+                elif alert.side == Side.SELL:
                     if ticker.price < alert.price:
                         await self._finish_alert(alert)
                         changes = True

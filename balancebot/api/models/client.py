@@ -15,7 +15,9 @@ class RegisterBody(BaseModel):
 
     @pydantic.root_validator(pre=True)
     def build_extra(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        all_required_field_names = {field.alias for field in cls.__fields__.values() if field.alias != 'extra'}  # to support alias
+        all_required_field_names = {
+            field.alias for field in cls.__fields__.values() if field.alias != 'extra'
+        }  # to support alias
 
         extra: Dict[str, Any] = {}
         for field_name in list(values):
@@ -37,7 +39,6 @@ class UpdateBody(BaseModel):
     id: int
     archived: Optional[bool]
     discord: Optional[bool]
-    is_global: Optional[bool]
     servers: Optional[Set[int]]
     events: Optional[Set[int]]
 
@@ -53,7 +54,7 @@ class ClientInfo(BaseModel):
     extra_kwargs: Dict
 
     name: Optional[str]
-    rekt_on: datetime
+    rekt_on: Optional[datetime]
 
     archived: bool
     invalid: bool

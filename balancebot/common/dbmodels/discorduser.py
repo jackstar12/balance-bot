@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Callable
 import discord
 from discord_slash import SlashCommand
+from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot import api as client
@@ -11,7 +12,7 @@ from balancebot.common.dbmodels.serializer import Serializer
 
 from balancebot.common.database import Base, session as session
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import select, Column, String, BigInteger
+from sqlalchemy import select, Column, String, BigInteger, ForeignKey
 
 from balancebot.common.models.selectionoption import SelectionOption
 import balancebot.common.utils as utils
@@ -25,10 +26,16 @@ class DiscordUser(Base, Serializer):
     name = Column(String(), nullable=True)
     avatar = Column(String(), nullable=True)
 
-    global_associations = relationship('GuildAssociation', lazy='noload', cascade="all, delete")
+    global_associations = relationship('GuildAssociation', lazy='noload', cascade="all, delete", backref='discord_user')
+    alerts = relationship('Alert', backref=backref('discord_user', lazy='noload'), lazy='noload', cascade="all, delete")
+    clients = relationship(
+        'Client',
+        back_populates='discord_user',
+        lazy='noload',
+        cascade='all, delete'
+    )
 
-    alerts = relationship('Alert', backref=backref('discord_user', lazy=True), lazy='noload', cascade="all, delete")
-    clients = relationship('Client', back_populates='discord_user', lazy='noload', uselist=True, foreign_keys='[Client.discord_user_id]', cascade='all, delete')
+    user_id = Column(GUID, ForeignKey('user.id'), nullable=True)
 
     async def get_global_client(self, guild_id, *eager):
         association = self.get_global_association(guild_id)
@@ -42,7 +49,7 @@ class DiscordUser(Base, Serializer):
                 return self.global_associations[0]
         else:
             for association in self.global_associations:
-                if association.guild_id == guild_id or association.client_id == client_id:
+                if association.guild_id == guild_id or (association.client_id == client_id and client_id):
                     return association
 
     async def get_client_select(self, slash_cmd_handler: SlashCommand, callback: Callable):

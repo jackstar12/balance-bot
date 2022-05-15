@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 import discord
@@ -28,4 +29,7 @@ class CogBase(Cog):
     async def send_dm(self, user_id: int, message: str, embed: discord.Embed = None):
         user: discord.User = self.bot.get_user(user_id)
         if user:
-            await user.send(content=message, embed=embed)
+            try:
+                await user.send(content=message, embed=embed)
+            except discord.Forbidden as e:
+                logging.exception(f'Not allowed to send messages to {user}')

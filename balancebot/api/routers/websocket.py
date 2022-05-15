@@ -8,7 +8,7 @@ from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
 from balancebot.api.dependencies import current_user
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.user import User
-from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
+from balancebot.api.utils.client import create_client_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
 from balancebot.common.messenger import Messenger, NameSpace, Category
 
@@ -48,7 +48,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
         msg = jsonable_encoder(create_ws_message(
             type=type,
             channel=channel,
-            data=await create_cilent_data_serialized(
+            data=await create_client_data_serialized(
                 client,
                 config
             )

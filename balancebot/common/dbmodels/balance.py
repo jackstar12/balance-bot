@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytz
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import relationship
 
 from balancebot.common.database import Base
 from sqlalchemy import Column, Integer, ForeignKey
@@ -17,11 +18,13 @@ class Balance(Base, AmountMixin, Serializer):
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
+    client = relationship('Client')
     #currency = Column(String(10), nullable=False)
     #time: DateTime = Column(DateTime(timezone=True), nullable=False)
     #amount = Column(Float, nullable=False)
 
     transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='SET NULL'), nullable=True)
+    transfer = relationship('Transfer')
 
     #extra_currencies = Column(PickleType, nullable=True)
     #extra_currencies = Column(JSONB, nullable=True)

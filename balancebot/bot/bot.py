@@ -50,17 +50,17 @@ async def on_ready():
     for guild in bot.guilds:
         db_guild = db_guilds_by_id.get(guild.id)
         if not db_guild:
-            db_guild = Guild(id=guild.id, name=guild.name, tier=Tier.BASE)
+            db_guild = Guild(id=guild.id, name=guild.name, tier=Tier.BASE, avatar=guild.banner)
             async_session.add(db_guild)
         if db_guild.name != guild.name:
             db_guild.name = guild.name
         for discord_user in discord_users:
-            if guild.get_member(discord_user.user_id) and discord_user not in db_guild.users:
+            if guild.get_member(discord_user.id) and discord_user not in db_guild.users:
                 async_session.add(
                     GuildAssociation(
                         guild_id=guild.id,
-                        discorduser_id=discord_user.id,
-                        client_id=discord_user.global_client_id
+                        discord_user_id=discord_user.id,
+                        client_id=None
                     )
                 )
 
@@ -103,7 +103,7 @@ async def on_guild_join(guild: discord.Guild):
 
     discord_users = session.query(DiscordUser).all()
     for discord_user in discord_users:
-        member = guild.get_member(discord_user.user_id)
+        member = guild.get_member(discord_user.id)
         if member:
             discord_user.guilds.append(db_guild)
 

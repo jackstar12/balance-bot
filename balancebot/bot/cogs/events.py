@@ -111,21 +111,19 @@ class EventsCog(CogBase):
             channel_id=ctx.channel_id
         )
 
-        async def register(ctx: SlashContext):
-            async_session.add(event)
-            await async_session.commit()
-            self.event_manager.register(event)
-
-        row = create_yes_no_button_row(
-            slash=self.slash_cmd_handler,
-            author_id=ctx.author_id,
-            yes_callback=register,
-            yes_message="Event was successfully created",
+        ctx, consent = await utils.ask_for_consent(
+            ctx, ctx.slash,
+            msg_content=f'Do you want to create this event?',
+            msg_embeds=[event.get_discord_embed(dc_client=self.bot)],
             no_message="Event creation cancelled",
             hidden=True
         )
 
-        await ctx.send(embed=event.get_discord_embed(dc_client=self.bot), components=[row], hidden=True)
+        if consent:
+            async_session.add(event)
+            await async_session.commit()
+            self.event_manager.register(event)
+            await ctx.send("Event was successfully created")
 
     @cog_ext.cog_slash(
         name="archive",
@@ -180,7 +178,7 @@ class EventsCog(CogBase):
             options=[
                 SelectionOption(
                     name=event.name,
-                    description=f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
+                    description=f'From {event.time.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
                     value=str(event.id),
                     object=event,
                 )

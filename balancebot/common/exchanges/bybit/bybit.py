@@ -9,7 +9,7 @@ from aiohttp import ClientResponseError, ClientResponse
 
 from balancebot.api.settings import settings
 from balancebot.common.errors import ResponseError
-from balancebot.common.exchanges.exchangeworker import ExchangeWorker
+from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_limit
 from balancebot.common.dbmodels.balance import Balance
 from typing import Dict
 
@@ -56,7 +56,7 @@ class BybitClient(ExchangeWorker):
                 extra_currencies[currency] = amount
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {currency}:\n{ticker_prices}')
-                    err_msg = 'This is a bug in the ByBit test_bot implementation.'
+                    err_msg = 'This is a bug in the ByBit implementation.'
                     break
             total_balance += amount * float(price)
 

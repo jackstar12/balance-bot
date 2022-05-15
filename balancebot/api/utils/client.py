@@ -139,7 +139,7 @@ async def set_cached_data(data: Dict, config: WebsocketConfig):
     await redis.set(redis_key, msgpack.packb(data))
 
 
-async def create_cilent_data_serialized(client: Client, config: WebsocketConfig):
+async def create_client_data_serialized(client: Client, config: WebsocketConfig):
 
     cached = await get_cached_data(config)
 
@@ -169,7 +169,7 @@ async def create_cilent_data_serialized(client: Client, config: WebsocketConfig)
 
         await update_client_data_balance(s, client, config, save_cache=False)
 
-        trades = [await trade.serialize(data=True) for trade in client.trades if since_date <= trade.initial.tz_time <= to_date]
+        trades = [await trade.serialize(data=True) for trade in client.trades if since_date <= trade.initial.time <= to_date]
         update_client_data_trades(s, trades, config, save_cache=False)
 
         s['ts'] = now.timestamp()

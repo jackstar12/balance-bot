@@ -31,7 +31,7 @@ class Category(Enum):
     UPDATE = "update"
     FINISHED = "finished"
     UPNL = "upnl"
-    PNL = "pnl"
+    SIGNIFICANT_PNL = "significantpnl"
     REKT = "rekt"
     VOLUME = "volume"
     OI = "oi"

@@ -3,17 +3,19 @@ import urllib.parse
 import hmac
 import logging
 from datetime import datetime, timedelta
-from typing import Union, List, Optional, Dict
+from typing import Union, List, Optional, Dict, Iterator
 
 import pytz
 import ccxt.async_support as ccxt
 from balancebot.common.dbmodels.execution import Execution
 import balancebot.common.dbmodels.balance as balance
 from balancebot.common.dbmodels.transfer import RawTransfer
+from balancebot.common.enums import Side
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 import time
 
 from balancebot.common.exchanges.ftx.websocket import FtxWebsocketClient
+from balancebot.common.models.ohlc import OHLC
 
 
 class FtxClient(ExchangeWorker):
@@ -67,18 +69,19 @@ class FtxClient(ExchangeWorker):
         amount = response['totalAccountValue'] if upnl else response['collateral']
         return balance.Balance(amount=amount, time=time)
 
-    async def get_executions(self,
-                             since: datetime = None):
+    async def _get_executions(self,
+                              since: datetime = None) -> Iterator[Execution]:
         since = since or datetime.now(pytz.utc) - timedelta(days=180)
         # Offset by 1 millisecond because otherwise the same executions are refetched (ftx probably compares with >=)
-        trades = await self._ccxt.fetch_my_trades(since=since.timestamp() * 1000 + 1)
+        trades = await self._get('/api/fills', params={'start_time': self._parse_date(since), 'order': 'asc'})
         return [
             Execution(
-                symbol=trade['symbol'],
+                symbol=trade['market'],
                 price=trade['price'],
-                qty=trade['amount'],
-                side=trade['side'],
-                time=self._parse_ts(trade['timestamp'])
+                qty=trade['size'],
+                side=Side.BUY if trade['side'] == 'buy' else Side.SELL,
+                time=datetime.fromisoformat(trade["time"]),
+                commission=trade["fee"]
             )
             for trade in trades
         ]
@@ -87,15 +90,38 @@ class FtxClient(ExchangeWorker):
         return str(int(date.timestamp()))
 
     async def _convert_to_usd(self, amount: float, coin: str, date: datetime):
-        if coin == "USD":
+        if self._usd_like(coin):
             return amount
-        ts = int(date.timestamp())
-        ticker = await self._get(f'/api/markets/{coin}/USD/candles', params={
-            'resolution': 15,
-            'start_time': str(ts),
-            'end_time': str(ts + 15)
-        })
-        return amount * ticker[0]["open"]
+        ticker = await self._get_ohlc(f'{coin}/USD', since=date, limit=1)
+        return amount * ticker[0].open
+
+    async def _get_ohlc(self, market: str, since: datetime = None, to: datetime = None, resolution_s: int = None, limit: int = None) -> List[OHLC]:
+
+        resolution_s = resolution_s or 15
+        params = {'resolution': resolution_s}
+
+        if since:
+            params['start_time'] = int(since.timestamp())
+            if not to:
+                params['end_time'] = params['start_time'] + resolution_s * limit
+        if to:
+            params['end_time'] = int(to.timestamp())
+            if not since:
+                params['start_time'] = params['end_time'] - resolution_s * limit
+
+        res = await self._get(f'/api/markets/{market}/candles', params=params)
+
+        return [
+            OHLC(
+                open=candle['open'],
+                high=candle['high'],
+                low=candle['low'],
+                close=candle['close'],
+                volume=candle['volume'],
+                time=datetime.fromisoformat(candle['startTime'])
+            )
+            for candle in res
+        ]
 
     def _generate_transfers(self, transfers: List[Dict], withdrawal: bool):
         return [

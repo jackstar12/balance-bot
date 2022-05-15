@@ -30,14 +30,25 @@ class Transfer(Base, AmountMixin):
         ForeignKey('client.id', ondelete="CASCADE"),
         nullable=False
     )
+    client = relationship('Client')
     note = Column(String, nullable=True)
+    coin = Column(String, nullable=True)
 
-    balance = relationship(
-        'Balance',
-        lazy='joined',
+    execution_id = Column(Integer, ForeignKey('execution.id'), nullable=True)
+    execution = relationship(
+        'Execution',
+        foreign_keys=execution_id,
         uselist=False,
-        backref=backref('transfer', lazy='joined')
+        cascade='all, delete',
+        lazy='noload'
     )
+
+    #balance = relationship(
+    #    'Balance',
+    #    back_populates='transfer',
+    #    lazy='joined',
+    #    uselist=False
+    #)
 
     @hybrid_property
     def type(self) -> Type:

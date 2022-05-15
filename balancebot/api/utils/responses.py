@@ -1,6 +1,7 @@
 from http import HTTPStatus
 from typing import Dict
 
+from fastapi.responses import UJSONResponse
 from starlette.responses import JSONResponse
 
 
@@ -17,7 +18,7 @@ def OK(detail: str, code: int = None, **kwargs):
 
 
 def Response(detail: str, code: int, status: int, **kwargs):
-    return JSONResponse(
+    return UJSONResponse(
         {'detail': detail, 'code': code, **kwargs},
         status_code=status
     )

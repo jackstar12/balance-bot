@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import itertools
 from abc import ABC
+from decimal import Decimal
 from enum import Enum
-from typing import NamedTuple, List, Optional, Union
+from typing import NamedTuple, List, Optional, Union, Iterator
 
 import asyncio
 import hmac
@@ -142,8 +144,8 @@ class BinanceFutures(_BinanceBaseClient):
                              to: datetime = None) -> List[RawTransfer]:
         return await self._get_internal_transfers(Type.USDM, since, to)
 
-    async def get_executions(self,
-                             since: datetime = None) -> List[Execution]:
+    async def _get_executions(self,
+                              since: datetime = None) -> Iterator[Execution]:
 
         since_ts = self._parse_datetime(since or datetime.now(pytz.utc) - timedelta(days=180))
         # https://binance-docs.github.io/apidocs/futures/en/#get-income-history-user_data
@@ -156,6 +158,7 @@ class BinanceFutures(_BinanceBaseClient):
         symbols_done = set()
         results = []
         current_commision_trade_id = None
+
         for income in incomes:
             symbol = income.get('symbol')
             if symbol not in symbols_done:
@@ -188,19 +191,21 @@ class BinanceFutures(_BinanceBaseClient):
                       }
                     ]
                     """
-                    from decimal import Decimal
                     # -1790.6910700000062
                     # -1695.67399983
                     all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
                     results.extend(
-                        Execution(
-                            symbol=symbol,
-                            qty=float(trade['qty']),
-                            price=float(trade['price']),
-                            side=trade['side'],
-                            time=self._parse_ts(trade['time']),
-                            commission=float(trade['commission'])
-                        ) for trade in trades
+                        (
+                            Execution(
+                                symbol=symbol,
+                                qty=Decimal(trade['qty']),
+                                price=Decimal(trade['price']),
+                                side=trade['side'],
+                                time=self._parse_ts(trade['time']),
+                                commission=Decimal(trade['commission'])
+                            )
+                            for trade in trades
+                        )
                     )
         return results
 
@@ -209,7 +214,7 @@ class BinanceFutures(_BinanceBaseClient):
         response = await self._get('/fapi/v2/account')
 
         return balance.Balance(
-            amount=float(
+            amount=Decimal(
                 response.get('totalMarginBalance' if upnl else 'totalWalletBalance', 0)
             ),
             time=time if time else datetime.now(pytz.utc)
@@ -237,8 +242,8 @@ class BinanceFutures(_BinanceBaseClient):
             if data['X'] == 'FILLED':
                 trade = Execution(
                     symbol=data['s'],
-                    price=float(data['ap']) or float(data['p']),
-                    qty=float(data['q']),
+                    price=Decimal(data['ap']) or Decimal(data['p']),
+                    qty=Decimal(data['q']),
                     side=data['S'],
                     time=self._parse_ts(message['E']),
                 )
@@ -249,7 +254,7 @@ class BinanceFutures(_BinanceBaseClient):
         limit = cls._limits[0]
         used = response.headers.get('X-MBX-USED-WEIGHT-1M')
         if used:
-            limit.amount = limit.max_amount - float(used)
+            limit.amount = limit.max_amount - int(used)
         else:
             limit.amount -= weight or limit.default_weight
 
@@ -283,12 +288,12 @@ class BinanceSpot(_BinanceBaseClient):
         data = response['balances']
         for cur_balance in data:
             currency = cur_balance['asset']
-            amount = float(cur_balance['free']) + float(cur_balance['locked'])
+            amount = Decimal(cur_balance['free']) + Decimal(cur_balance['locked'])
             price = 0
             if currency == 'USDT':
                 price = 1
             elif amount > 0 and currency != 'LDUSDT' and currency != 'LDSRM':
-                price = float(ticker_prices.get(f'{currency}USDT', 0.0))
+                price = Decimal(ticker_prices.get(f'{currency}USDT', 0.0))
             total_balance += amount * price
 
         return balance.Balance(amount=total_balance, time=time)

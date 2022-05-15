@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from starlette_csrf import CSRFMiddleware
 
 import balancebot.common.database_async as aio_db
+from balancebot.api.db_session_middleware import DbSessionMiddleware
 from balancebot.common.dbmodels.trade import Trade
 
 from balancebot.common.dbmodels.user import User
@@ -53,6 +54,7 @@ app = FastAPI(
 
 # app.add_middleware(SessionMiddleware, secret_key='SECRET')
 app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
+app.add_middleware(DbSessionMiddleware)
 
 app.include_router(fastapi_users.get_verify_router(), prefix='/api/v1')
 app.include_router(fastapi_users.get_reset_password_router(), prefix='/api/v1')
@@ -70,40 +72,41 @@ Base.metadata.create_all(bind=engine)
 async def delete_user(user: User = Depends(current_user)):
     await aio_db.db_del_filter(User, id=user.id)
     await aio_db.async_session.commit()
+
     return {'msg': 'Success'}
 
 
 user_info = CurrentUser(
-        #(User.discord_user, (
-        #    DiscordUser.guilds,
-        #    Guild.events
-        #)),
-        User.all_clients,
-        User.labels,
-        User.alerts
-    )
+    (
+        User.discord_user, [
+            DiscordUser.global_associations,
+            (DiscordUser.guilds, Guild.events)
+        ]
+    ),
+    User.all_clients,
+    User.labels,
+    User.alerts
+)
 
 
 @app.get('/api/v1/info', response_model=UserInfo)
 async def info(user: User = Depends(user_info)):
-
     return UserInfo.from_orm(user)
-
-    #as_dict = user.__dict__
-    #as_dict['clients'] = [client.__dict__ for client in user.all_clients]
-    #jsonable_encoder
-    #return JSONResponse(dict(
+    # as_dict = user.__dict__
+    # as_dict['clients'] = [client.__dict__ for client in user.all_clients]
+    # jsonable_encoder
+    # return JSONResponse(dict(
     #    clients=[
     #        dict(
-#
+    #
     #        )
     #    ]
-    #))
-#
-    #return UserInfo.construct(**as_dict)
+    # ))
+    #
+    # return UserInfo.construct(**as_dict)
     # This generates a UserInfo model, however, for performance reasons, it's not converted to one.
 
-    #stmt = aio_db.db_eager(select(User),
+    # stmt = aio_db.db_eager(select(User),
     #                       (User.clients, Client.trades),
     #                       (User.clients, Client.events),
     #                       User.alerts,
@@ -112,14 +115,12 @@ async def info(user: User = Depends(user_info)):
     #                       (User.discord_user, [(DiscordUser.clients, Client.trades)]),
     #                       )
 
-    #test2 = await aio_db.db_unique(stmt)
-#
-    #stmt2 = Client.construct_load_options(full=False, data=True)
-    #test2 = await aio_db.db_unique(stmt2)
-    #stmt3 = Client.construct_load_options(full=True, data=False)
-    #test = await aio_db.db_unique(stmt3)
-    return await test.serialize(full=True, data=False)
-
+    # test2 = await aio_db.db_unique(stmt)
+    #
+    # stmt2 = Client.construct_load_options(full=False, data=True)
+    # test2 = await aio_db.db_unique(stmt2)
+    # stmt3 = Client.construct_load_options(full=True, data=False)
+    # test = await aio_db.db_unique(stmt3)
 
 # apiutils.create_endpoint(
 #    route='/api/v1/client',
@@ -217,8 +218,6 @@ async def info(user: User = Depends(user_info)):
 
 @app.on_event("startup")
 async def on_start():
-
-
     from balancebot.bot import bot
     from balancebot.common.dbmodels.client import Client
     from balancebot.common.dbmodels.event import Event
@@ -232,12 +231,13 @@ async def on_start():
 
     c = Client.events
     stmt2 = select(User).options(
-            selectinload(User.clients).selectinload(Client.trades)
-        ).options(
-            selectinload(User.alerts)
-        ).options(
-            selectinload(User.discord_user).selectinload(DiscordUser.clients).selectinload(Client.trades).selectinload(Trade.executions)
-        )
+        selectinload(User.clients).selectinload(Client.trades)
+    ).options(
+        selectinload(User.alerts)
+    ).options(
+        selectinload(User.discord_user).selectinload(DiscordUser.clients).selectinload(Client.trades).selectinload(
+            Trade.executions)
+    )
 
     print(len(str(stmt2)))
 

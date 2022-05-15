@@ -10,7 +10,7 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import inspect, select, or_, update, insert
 
-from balancebot.common.database_async import async_session, db_unique, db_all, db
+from balancebot.common.database_async import async_session, db_unique, db_all, db, db_select
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.event import Event, event_association
 from balancebot.common.dbmodels.guild import Guild
@@ -22,6 +22,7 @@ from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.exchanges import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
+from balancebot.common.messenger import NameSpace, Category
 from balancebot.common.models.selectionoption import SelectionOption
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.utils import create_yes_no_button_row, create_selection, validate_kwargs
@@ -80,6 +81,7 @@ class RegisterCog(CogBase):
                            api_secret: str,
                            subaccount: typing.Optional[str] = None,
                            args: str = None):
+        slash = ctx.slash
         await ctx.defer(hidden=True)
 
         kwargs = {}
@@ -109,154 +111,133 @@ class RegisterCog(CogBase):
                                                     eager_loads=[Event.registrations])
 
                     discord_user = await dbutils.get_discord_user(
-                        ctx.author_id, throw_exceptions=False, eager_loads=[DiscordUser.guilds, DiscordUser.global_associations],
+                        ctx.author_id, throw_exceptions=False,
+                        eager_loads=[DiscordUser.guilds, DiscordUser.global_associations],
                     )
 
                     guilds = []
-                    available_guilds = []
+                    existing_clients = []
 
-                    if not event:
-                        available_guilds = discord_user.guilds
-                        if not ctx.guild_id:
-                            if not available_guilds:
-                                raise UserInputError("You are not in any servers you can register for")
+                    if discord_user:
+                        if event:
+                            for client in event.registrations:
+                                if client.discord_user_id == ctx.author_id:
+                                    existing_clients = [client]
+                                    break
                         else:
-                            available_guilds = list(filter(lambda guild: guild.id == ctx.guild_id, available_guilds))
-
-                    async def registration(ctx):
-                        nonlocal discord_user, guilds, event
-
-                        existing_clients = None
-                        if not discord_user:
-                            guilds = await db_all(
-                                select(Guild).filter(
-                                    or_(*[guild.id for guild in ctx.author.mutual_guilds])
+                            available_guilds = discord_user.guilds
+                            if not ctx.guild_id:
+                                if not available_guilds:
+                                    raise UserInputError("You are not in any servers you can register for")
+                            else:
+                                available_guilds = list(filter(lambda guild: guild.id == ctx.guild_id, available_guilds))
+                            if len(available_guilds) > 1:
+                                ctx, guilds = await utils.new_create_selection(
+                                    ctx,
+                                    options=[
+                                        SelectionOption(
+                                            name=guild.name,
+                                            value=str(guild.id),
+                                            description=guild.name,
+                                            object=guild
+                                        )
+                                        for guild in discord_user.guilds
+                                    ],
+                                    msg_content="Please select the guild you want to register for first",
                                 )
-                            )
-                            discord_user = DiscordUser(
-                                id=ctx.author.id,
-                                name=ctx.author.name,
-                                guilds=guilds
-                            )
-                        else:
-                            if event:
-                                for client in event.registrations:
-                                    if client.discord_user_id == ctx.author_id:
-                                        existing_clients = [client]
-                                        break
                             else:
-                                existing_clients = []
-                                for guild in guilds:
-                                    existing_client = await discord_user.get_global_client(guild.id, Client.events)
-                                    if existing_client:
-                                        existing_clients.append(existing_client)
-
-                        def get_new_client() -> Client:
-                            new_client = Client(
-                                api_key=api_key,
-                                api_secret=api_secret,
-                                subaccount=subaccount,
-                                extra_kwargs=kwargs,
-                                exchange=exchange_name
+                                guilds = available_guilds
+                            for guild in guilds:
+                                existing_client = await discord_user.get_global_client(guild.id, Client.events)
+                                if existing_client:
+                                    existing_clients.append(existing_client)
+                    else:
+                        guilds = await db_all(
+                            select(Guild).filter(
+                                or_(*[Guild.id == guild.id for guild in ctx.author.mutual_guilds])
                             )
-                            if event:
-                                new_client.events.append(event)
-                            return new_client
+                        )
+                        discord_user = DiscordUser(
+                            id=ctx.author.id,
+                            name=ctx.author.name,
+                            guilds=guilds
+                        )
 
-                        async def start_registration(ctx):
+                    new_client = Client(
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        subaccount=subaccount,
+                        extra_kwargs=kwargs,
+                        exchange=exchange_name
+                    )
 
-                            new_client = get_new_client()
-                            async with aiohttp.ClientSession() as session:
-                                worker: ExchangeWorker = exchange_cls(new_client, session)
-
-                                init_balance = await worker.get_balance(date=datetime.now(tz=pytz.UTC))
-
-                            button_row = None
-                            if init_balance.error is None:
-                                if init_balance.amount < config.REGISTRATION_MINIMUM:
-                                    message = f'You do not have enough balance in your account ' \
-                                              f'(Minimum: {config.REGISTRATION_MINIMUM}$, Your Balance: {init_balance.amount}$).\n' \
-                                              f'Please fund your account before registering.'
-                                else:
-                                    message = f'Your balance: **{init_balance.to_string()}**. This will be used as your initial balance. Is this correct?\nYes will register you, no will cancel the process.'
-
-                                    button_row = create_yes_no_button_row(
-                                        slash=self.slash_cmd_handler,
-                                        author_id=ctx.author.id,
-                                        yes_callback=lambda ctx: self.register_user(
-                                            existing_clients, get_new_client(), discord_user, init_balance, guilds,
-                                            event,
-                                        ),
-                                        yes_message="You were successfully registered!",
-                                        no_message="Registration cancelled",
-                                        hidden=True
-                                    )
-                            else:
-                                message = f'An error occured while getting your balance: {init_balance.error}.'
-
-                            await ctx.send(
-                                content=message,
-                                embed=await new_client.get_discord_embed(guilds=guilds),
-                                hidden=True,
-                                components=[button_row] if button_row else None
-                            )
-
-                            # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
-                            # if the registration is cancelled, causing bugs
-                            async_session.add(new_client)
-                            async_session.expunge(new_client)
-                            await async_session.commit()
-
-                        if not existing_clients:
-                            await start_registration(ctx)
-                        else:
-                            buttons = create_yes_no_button_row(
-                                slash=self.slash_cmd_handler,
-                                author_id=ctx.author_id,
-                                yes_callback=lambda ctx: start_registration(ctx),
-                                no_message="Registration cancelled",
-                                hidden=True
-                            )
-                            existing = ", ".join(
-                                [await existing_client.get_events_and_guilds_string() for existing_client in existing_clients]
-                            )
-                            await ctx.send(
-                                content=f'You are already registered for _{existing}_.\n'
+                    if existing_clients:
+                        existing = ", ".join(
+                            [await existing_client.get_events_and_guilds_string() for existing_client in existing_clients]
+                        )
+                        ctx, consent = await utils.ask_for_consent(
+                            ctx, slash,
+                            msg_content=f'You are already registered for _{existing}_.\n'
                                         f'Continuing the registration will delete your old data for _{existing}_.\n'
                                         f'Do you want to proceed?',
-                                components=[buttons],
-                                hidden=True
+                            no_message="Registration cancelled",
+                            hidden=True
+                        )
+                        if not consent:
+                            return
+
+                    async with aiohttp.ClientSession() as session:
+                        worker: ExchangeWorker = exchange_cls(new_client, session)
+                        init_balance = await worker.get_balance(date=datetime.now(tz=pytz.UTC), return_cls=Balance)
+
+                    button_row = None
+                    if init_balance.error is None:
+                        if init_balance.amount < config.REGISTRATION_MINIMUM:
+                            error = f'You do not have enough balance in your account ' \
+                                    f'(Minimum: {config.REGISTRATION_MINIMUM}$, Your Balance: {init_balance.amount}$).\n' \
+                                    f'Please fund your account before registering.'
+                        else:
+                            ctx, consent = await utils.ask_for_consent(
+                                ctx, slash,
+                                msg_content=f'Your balance: **{init_balance.to_string()}**.\n'
+                                            f'This will be used as your initial balance. Is this correct?\n'
+                                            f'Yes will register you, no will cancel the process.',
+                                msg_embeds=[await new_client.get_discord_embed(guilds=guilds)],
+                                yes_message="You were successfully registered!",
+                                no_message="Registration cancelled",
+                                hidden=True,
+                                timeout_seconds=90
                             )
-
-                    if not event and len(available_guilds) > 1:
-                        async def on_guilds_select(ctx, selected_guilds):
-                            nonlocal guilds
-                            guilds = selected_guilds
-                            await registration(ctx)
-
-                        guild_selection = create_selection(
-                            self.slash_cmd_handler,
-                            author_id=ctx.author_id,
-                            callback=on_guilds_select,
-                            options=[
-                                SelectionOption(
-                                    name=guild.name,
-                                    value=str(guild.id),
-                                    description=guild.name,
-                                    object=guild
+                            if consent:
+                                await self.register_user(
+                                    existing_clients, new_client, discord_user, init_balance, guilds, event
                                 )
-                                for guild in discord_user.guilds
-                            ]
-                        )
-                        await ctx.send(
-                            content="Please select the guild you want to register for first",
-                            components=[guild_selection],
-                            hidden=False
-                        )
+                            return
+                            #button_row = create_yes_no_button_row(
+                            #    slash=self.slash_cmd_handler,
+                            #    author_id=ctx.author.id,
+                            #    yes_callback=lambda component_ctx: self.register_user(
+                            #        existing_clients, new_client, discord_user, init_balance, guilds,
+                            #        event,
+                            #    ),
+                            #    yes_message="You were successfully registered!",
+                            #    no_message="Registration cancelled",
+                            #    hidden=True
+                            #)
                     else:
-                        guilds = available_guilds
-                        await registration(ctx)
+                        error = f'An error occured while getting your balance: {init_balance.error}.'
 
+                    await ctx.send(
+                        content=error,
+                        embed=await new_client.get_discord_embed(guilds=guilds),
+                        hidden=True,
+                    )
+
+                    # The new client has to be removed and can't be reused for register_user because in this case it would persist in memory
+                    # if the registration is cancelled, causing bugs
+                    async_session.add(new_client)
+                    async_session.expunge(new_client)
+                    await async_session.commit()
                 else:
                     logging.error(
                         f'Not enough kwargs for exchange {exchange_cls.exchange} were given.\nGot: {kwargs}\nRequired: {exchange_cls.required_extra_args}')
@@ -283,7 +264,6 @@ class RegisterCog(CogBase):
                 await dbutils.delete_client(existing_client, self.messenger, commit=False)
 
         new_client.discord_user_id = discord_user.id
-        dbutils.add_client(new_client, self.messenger)
 
         if inspect(discord_user).transient:
             async_session.add(discord_user)
@@ -293,15 +273,18 @@ class RegisterCog(CogBase):
         await async_session.refresh(new_client)
 
         for guild in guilds:
-            async_session.add(GuildAssociation(
-                guild_id=guild.id,
-                client_id=new_client.id,
-                discord_user_id=discord_user.id
-            ))
+            await db(
+                update(GuildAssociation).where(
+                    GuildAssociation.discord_user_id == new_client.discord_user_id,
+                    GuildAssociation.guild_id == guild.id
+                ).values(client_id=new_client.id)
+            )
 
         await async_session.commit()
-        await async_session.refresh(new_client)
-
+        if event:
+            await db(
+                insert(event_association).values(event_id=event.id, client_id=new_client.id)
+            )
         init_balance.client_id = new_client.id
 
         dbutils.add_client(new_client, self.messenger)
@@ -310,8 +293,7 @@ class RegisterCog(CogBase):
 
     async def register_client(self, ctx, event: Event, client: Client):
         await db(
-            insert(event_association)
-            .values(event_id=event.id, client_id=client.id)
+            insert(event_association).values(event_id=event.id, client_id=client.id)
         )
         await async_session.commit()
         await ctx.send(f'You are now registered for _{event.name}_!', hidden=True)
@@ -331,7 +313,8 @@ class RegisterCog(CogBase):
             for client in event.registrations:
                 if client.discord_user_id == ctx.author_id:
                     raise UserInputError('You are already registered for this event!')
-            user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events), DiscordUser.global_associations])
+            user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events),
+                                                                              DiscordUser.global_associations])
             global_client = await user.get_global_client(ctx.guild_id)
             if global_client:
                 if global_client not in event.registrations:
@@ -363,21 +346,20 @@ class RegisterCog(CogBase):
                 await dbutils.delete_client(client, self.messenger)
         elif remove_guild:
             await db(
-                update(GuildAssociation).
-                where(
+                update(GuildAssociation).where(
                     GuildAssociation.client_id == client.id,
                     GuildAssociation.discord_user_id == client.discord_user_id,
                     GuildAssociation.guild_id == ctx.guild_id
-                ).
-                values(client_id=None)
+                ).values(client_id=None)
             )
         else:
             await dbutils.delete_client(client, self.messenger)
         await async_session.commit()
 
-        discord_user = await db_unique(
-            select(DiscordUser).filter_by(id=ctx.author_id),
-            clients=True, user=True
+        discord_user = await db_select(
+            DiscordUser,
+            eager=[DiscordUser.clients, DiscordUser.user],
+            id=ctx.author_id
         )
         if len(discord_user.clients) == 0 and not discord_user.user:
             await async_session.delete(discord_user)
@@ -442,7 +424,8 @@ class RegisterCog(CogBase):
                 hidden=True)
 
         if not ctx.guild_id:
-            user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events), DiscordUser.global_associations])
+            user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events),
+                                                                              DiscordUser.global_associations])
             await ctx.defer()
             if len(user.clients) > 1:
                 await ctx.send(

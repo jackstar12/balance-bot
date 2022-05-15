@@ -8,7 +8,7 @@ import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
-from sqlalchemy import or_, delete, select
+from sqlalchemy import or_, delete, select, update
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
@@ -25,7 +25,7 @@ from balancebot.common.database import session
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User
 from balancebot.api.settings import settings
-from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
+from balancebot.api.utils.client import create_client_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
 from balancebot.common.messenger import Messenger, NameSpace, Category
 import balancebot.common.dbmodels.event as db_event
@@ -118,7 +118,7 @@ async def get_client(request: Request, response: Response,
 
     if client:
 
-        s = await create_cilent_data_serialized(client,
+        s = await create_client_data_serialized(client,
                                                 WebsocketConfig(id=client.id, since=since, to=to, currency=currency))
         response = JSONResponse(jsonable_encoder(s))
         # response.set_cookie('client-since', value=since, expires='session')
@@ -195,59 +195,77 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUser(User.
     if body.discord is False:
         client.discord_user_id = None
         client.user_id = user.id
-
-        await async_session.commit()
+        await db(
+            update(GuildAssociation).where(
+                GuildAssociation.client_id == client.id
+            ).values(client_id=None)
+        )
 
     elif body.discord is True:
         if user.discord_user_id:
             client.discord_user_id = user.discord_user_id
             client.user_id = None
-            if body.is_global is True:
+            if body.servers is not None:
 
-                guilds: List[Guild] = await db_all(
-                    select(Guild).filter(
-                        or_(*[Guild.id == guild_id for guild_id in body.servers]),
-                    ),
-                    Guild.users
-                )
-                for guild in guilds:
-                    if user.discord_user in guild.users:
-                        guild.global_clients.append(
-                            GuildAssociation(
-                                discord_user_id=user.discord_user_id,
-                                client_id=client.id
-                            )
-                        )
-                    else:
-                        return BadRequest(f'You are not eligible to register in guild {guild.name}')
+                if body.servers:
+                    await db(
+                        update(GuildAssociation).where(
+                            GuildAssociation.discord_user_id == user.discord_user_id,
+                            GuildAssociation.guild_id.in_(body.servers)
+                        ).values(client_id=client.id)
+                    )
+
+                #await db(
+                #    update(GuildAssociation).where(
+                #        GuildAssociation.discord_user_id == user.discord_user_id,
+                #        GuildAssociation.guild_id.not_in(body.servers)
+                #    ).values(client_id=None)
+                #)
+
+                #guilds: List[Guild] = await db_all(
+                #    select(Guild).filter(
+                #        or_(*[Guild.id == guild_id for guild_id in body.servers]),
+                #    ),
+                #    Guild.users
+                #)
+                #for guild in guilds:
+                #    if user.discord_user in guild.users:
+                #        guild.global_clients.append(
+                #            GuildAssociation(
+                #                discord_user_id=user.discord_user_id,
+                #                client_id=client.id
+                #            )
+                #        )
+                #    else:
+                #        return BadRequest(f'You are not eligible to register in guild {guild.name}')
                 await async_session.commit()
-                return OK('Changes applied')
-            elif body.is_global is False:
-                if body.events:
-                    now = datetime.now(tz=pytz.UTC)
-                    events = session.query(db_event.Event).filter(
-                        or_(*[db_event.Event.id == event_id for event_id in body.events])
-                    ).all()
-                    valid_events = []
-                    for event in events:
-                        if event.is_free_for_registration(now):
-                            if event.guild in user.discord_user.guilds:
-                                valid_events.append(event)
-                            else:
-                                return BadRequest(f'You are not eligible to join {event.name} (Not in server)')
+            if body.events is not None:
+                now = datetime.now(tz=pytz.UTC)
+                events = session.query(db_event.Event).filter(
+                    or_(*[db_event.Event.id == event_id for event_id in body.events])
+                ).all()
+                valid_events = []
+                for event in events:
+                    if event.is_free_for_registration(now):
+                        if event.guild in user.discord_user.guilds:
+                            valid_events.append(event)
                         else:
-                            return BadRequest(f'Event {event.name} is not free for registration')
-                    if valid_events:
-                        for valid in valid_events:
-                            client.events.append(valid)
-                        await async_session.commit()
-                        return OK('Changes applied')
+                            return BadRequest(f'You are not eligible to join {event.name} (Not in server)')
                     else:
-                        return BadRequest('No valid events were provided')
+                        return BadRequest(f'Event {event.name} is not free for registration')
+                if valid_events:
+                    for valid in valid_events:
+                        client.events.append(valid)
                 else:
-                    return BadRequest('Events need to be provided')
+                    return BadRequest('No valid events were provided')
+
+            if body.servers is None and body.events is None:
+                return BadRequest('Either servers or events have to be provided')
         else:
             return BadRequest('No discord account found')
+
+        await async_session.commit()
+        return OK('Changes applied')
 
 
 @router.post('/client/confirm')
@@ -256,11 +274,11 @@ async def confirm_client(body: ConfirmBody, user: User = Depends(current_user)):
     print(client_json)
     try:
         client = Client(**client_json)
-        client.user_id = user.id
+        client.user = user
         async_session.add(client)
         await async_session.commit()
-        return {'msg': 'Success'}, HTTPStatus.OK
-    except TypeError as e:
+        return OK('Success')
+    except TypeError:
         return BadRequest(detail='Invalid token')
 
 
@@ -286,7 +304,7 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  
         msg = jsonable_encoder(create_ws_message(
             type=type,
             channel=channel,
-            data=await create_cilent_data_serialized(
+            data=await create_client_data_serialized(
                 client,
                 config
             )

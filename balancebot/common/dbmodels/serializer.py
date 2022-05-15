@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic.main import BaseModel
@@ -19,7 +20,7 @@ class Serializer:
         return False
 
     # The full flag is needed to avoid cyclic serializations
-    async def serialize(self, model: Optional[BaseModel] = None, full=False, data=True, *args, **kwargs):
+    async def serialize(self, model: Optional[BaseModel] = None, full=False, data=True, include_none=True, *args, **kwargs):
         if not self.__class__.__serializer_anti_recursion__:
             self.__class__.__serializer_anti_recursion__ = True
             try:
@@ -30,6 +31,8 @@ class Serializer:
                         forbidden = self.__serializer_data_forbidden__ if data else self.__serializer_forbidden__
                         if k not in forbidden:
                             v = getattr(self, k)
+                            if v is None:
+                                continue
                             if issubclass(type(v), list):
                                 v = await Serializer.serialize_list(v, data=data, full=full, *args, **kwargs)
                             elif isinstance(v, AppenderQuery):
@@ -40,9 +43,11 @@ class Serializer:
                                     v = []
                             elif isinstance(v, datetime):
                                 v = v.timestamp()
+                            elif issubclass(type(v), Enum):
+                                v = v.value
                             elif issubclass(type(v), Serializer):
                                 if full:
-                                    v = await v.serialize(full=full, data=data, *args, **kwargs)
+                                    v = await v.serialize(full=full, data=data, include_none=include_none, *args, **kwargs)
                                 else:
                                     continue
                             s[k] = v
@@ -89,12 +94,11 @@ class Serializer:
                     raise e
             cls.__serializer_anti_recursion__ = False
 
-
     @staticmethod
-    async def serialize_list(l, data=True, full=False, *args, **kwargs):
+    async def serialize_list(l, data=True, full=False, include_none=True, *args, **kwargs):
         r = []
         for m in l:
-            s = await m.serialize(full, data, *args, **kwargs)
+            s = await m.serialize(full, data, *args, include_none=include_none, **kwargs)
             if s:
                 r.append(s)
         return r

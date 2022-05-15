@@ -1,11 +1,14 @@
 import logging
+from asyncio import Queue
+from inspect import currentframe
+
 from apscheduler.job import Job
 from sqlalchemy import select, delete, and_
 from sqlalchemy.inspection import inspect
 import asyncio
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Deque, NamedTuple
+from typing import Dict, List, Optional, Deque, NamedTuple, Generic, Type
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.executors.asyncio import AsyncIOExecutor
@@ -35,15 +38,8 @@ class ExchangeJob(NamedTuple):
     deque: Deque[ExchangeWorker]
 
 
-async def update_worker_queue(queue: Deque[ExchangeWorker]):
-    if queue:
-        worker = queue[0]
-        await worker.intelligent_get_balance(commit=True)
-        queue.rotate()
-
-
 def reschedule(exchange_job: ExchangeJob):
-    trigger = IntervalTrigger(seconds=15 // len(exchange_job.deque))
+    trigger = IntervalTrigger(seconds=15 // (len(exchange_job.deque) or 1))
     exchange_job.job.reschedule(trigger)
 
 
@@ -73,7 +69,7 @@ class BalanceService(BaseService):
         self._clients_by_id: Dict[int, Client] = {}
 
         self._all_client_stmt = db_eager(
-            select(Client, Trade, DiscordUser).filter(
+            select(Client).filter(
                 Client.archived == False,
                 Client.invalid == False
             ),
@@ -96,8 +92,10 @@ class BalanceService(BaseService):
         )
 
         self._exchange_jobs: Dict[str, ExchangeJob] = {}
+        self._balance_queue = Queue()
 
         self._db = async_maker()
+        self._balance_session = None
         self._scheduler.start()
 
     async def _initialize_positions(self):
@@ -107,25 +105,28 @@ class BalanceService(BaseService):
         self._messenger.sub_channel(NameSpace.TRADE, sub=Category.FINISHED, callback=self._on_trade_delete,
                                     pattern=True)
 
-        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add, pattern=True)
-        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete,
-                                    pattern=True)
+        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add)
+        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete)
 
         clients = await db_all(self._all_client_stmt, session=self._db)
 
         for exchange in self._exchanges:
             exchange_queue = deque()
-            job = self._scheduler.add_job(update_worker_queue, IntervalTrigger(seconds=3600), args=(exchange_queue,))
+            job = self._scheduler.add_job(
+                self.update_worker_queue,
+                IntervalTrigger(seconds=3600),
+                args=(exchange_queue,)
+            )
             self._exchange_jobs[exchange] = ExchangeJob(exchange, job, exchange_queue)
 
         for client in clients:
             await self.add_client(client)
 
     def _on_client_delete(self, data: Dict):
-        self._remove_worker(self._base_workers_by_id.get(data['client_id']))
+        self._remove_worker(self._base_workers_by_id.get(data['id']))
 
     async def _on_client_add(self, data: Dict):
-        await self._add_client_by_id(data['client_id'])
+        await self._add_client_by_id(data['id'])
 
     async def _on_client_edit(self, data: Dict):
         edit = ClientEdit(**data)
@@ -166,20 +167,6 @@ class BalanceService(BaseService):
                 if unsubscribe_symbol:
                     await self.data_service.unsubscribe(worker.client.exchange, Channel.TICKER, symbol=symbol)
                 self._remove_worker(worker)
-
-    def update_pnl(self, pnl_data: PnlData, trade: Trade, amount: float, cmp_func):
-        if not pnl_data or cmp_func(amount, pnl_data.amount):
-            new = PnlData(
-                trade_id=trade.id,
-                amount=amount,
-                time=datetime.now(tz=pytz.utc),
-            )
-            self._db.add(new)
-            # TODO: Should the PNL objects be persisted in db before publishing them?
-            self._messenger.pub_channel(NameSpace.TRADE, Category.PNL, channel_id=trade.client_id,
-                                        obj={'id': trade.id, 'pnl': amount})
-            return new
-        return pnl_data
 
     async def _add_client_by_id(self, client_id: int):
         await self.add_client(
@@ -226,8 +213,8 @@ class BalanceService(BaseService):
         client_cls = self._exchanges.get(client.exchange)
         if issubclass(client_cls, ExchangeWorker):
             worker = client_cls(client, self._http_session, self._messenger, self.rekt_threshold)
-            await worker.synchronize_positions()
             if client.is_premium:
+                await worker.synchronize_positions(db_session=self._db)
                 await worker.connect()
             self._add_worker(worker)
             return worker
@@ -242,8 +229,18 @@ class BalanceService(BaseService):
                 await self._add_client_by_id(client_id)
             return worker
 
+    async def update_worker_queue(self, worker_queue: Deque[ExchangeWorker]):
+        if worker_queue:
+            worker = worker_queue[0]
+            balance = await worker.intelligent_get_balance(commit=False, db_session=self._balance_session)
+            if balance:
+                await self._balance_queue.put(balance)
+            worker_queue.rotate()
+
     async def run_forever(self):
         await self._initialize_positions()
+
+        asyncio.create_task(self._balance_collector())
 
         while True:
             ts = time.time()
@@ -256,12 +253,7 @@ class BalanceService(BaseService):
                 for trade in worker.client.open_trades:
                     ticker = self.data_service.get_ticker(trade.symbol, trade.client.exchange)
                     if ticker:
-                        upnl = trade.calc_upnl(ticker.price)
-                        trade.max_pnl = self.update_pnl(trade.max_pnl, trade, upnl, float.__ge__)
-                        trade.min_pnl = self.update_pnl(trade.min_pnl, trade, upnl, float.__le__)
-                        self._messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=trade.client_id,
-                                                    obj={'id': trade.id, 'upnl': upnl})
-                        trade.upnl = upnl
+                        trade.update_pnl(ticker.price, realtime=True)
                         if inspect(trade.max_pnl).transient or inspect(trade.min_pnl).transient:
                             new = True
                 balance = await worker.client.evaluate_balance(self._redis)
@@ -269,8 +261,7 @@ class BalanceService(BaseService):
                 # TODO: Introduce new mechanisms determining when to save
                 if new:
                     self._db.add(balance)
-            if changes:
-                await self._db.commit()
+            await self._db.commit()
             if balances:
                 await self._redis.mset({
                     utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, balance.client_id): balance.amount
@@ -289,6 +280,20 @@ class BalanceService(BaseService):
                                 microsecond=0) + timedelta(hours=self.interval_hours)
             delay = next - time
             await asyncio.sleep(delay.total_seconds())
+
+    async def _balance_collector(self):
+        async with async_maker() as session:
+            self._balance_session = session
+            while True:
+                balances = [await self._balance_queue.get()]
+
+                await asyncio.sleep(2)
+
+                while not self._balance_queue.empty():
+                    balances.append(self._balance_queue.get_nowait())
+
+                session.add_all(balances)
+                await session.commit()
 
     async def get_client_balance(self,
                                  client: Client,

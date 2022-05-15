@@ -1,17 +1,20 @@
 from aiohttp import ClientResponseError
+from discord_slash import SlashContext
 
 
 class UserInputError(Exception):
-    def __init__(self, reason: str, user_id: int = None, *args):
+    def __init__(self, reason: str, user_id: int = None, ctx: SlashContext = None, *args):
         super().__init__(*args)
         self.reason = reason
         self.user_id = user_id
+        self.ctx = ctx
 
 
 class InternalError(Exception):
-    def __init__(self, reason: str, *args):
+    def __init__(self, reason: str, ctx: SlashContext = None, *args):
         super().__init__(*args)
         self.reason = reason
+        self.ctx = ctx
 
 
 class ResponseError(Exception):

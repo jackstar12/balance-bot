@@ -40,9 +40,9 @@ class DataService(BaseService, Observer):
                 raise InvalidExchangeError()
 
         if observer:
-            asyncio.create_task(ticker.subscribe(channel, observer, **kwargs))
+            await ticker.subscribe(channel, observer, **kwargs)
         else:
-            asyncio.create_task(ticker.subscribe(channel, self, **kwargs))
+            await ticker.subscribe(channel, self, **kwargs)
 
     async def unsubscribe(self, exchange: str, channel: Channel, **kwargs):
         ticker = self._exchanges.get(exchange)

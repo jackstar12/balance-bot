@@ -1,7 +1,11 @@
 from __future__ import annotations
+
+import asyncio
 import re
 import logging
 import traceback
+from asyncio import Future
+from decimal import Decimal
 from functools import wraps
 
 import discord
@@ -14,7 +18,7 @@ from prettytable import PrettyTable
 from discord_slash.utils.manage_components import create_button, create_actionrow, create_select_option
 import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
-from discord_slash import SlashCommand, ComponentContext
+from discord_slash import SlashCommand, ComponentContext, SlashContext
 from datetime import datetime, timedelta
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any
 
@@ -133,6 +137,9 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
                 await coro(*args, **kwargs)
                 logging.info(f'Done executing {type} {coro.__name__}')
             except UserInputError as e:
+                # If the exception is raised after components have been used, the component ctx should be used
+                # (old might be invalid)
+                ctx = e.ctx or ctx
                 if e.user_id:
                     if ctx.guild:
                         e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
@@ -141,14 +148,16 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
                 await ctx.send(e.reason, hidden=True)
                 logging.info(
                     f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
+            except TimeoutError:
+                logging.info(f'{type} {coro.__name__} timed out')
             except InternalError as e:
-                if ctx.deferred:
-                    await ctx.send(f'This is a bug in the test_bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
+                ctx = e.ctx or ctx
+                await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
                 logging.error(
                     f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
             except Exception:
                 if ctx.deferred:
-                    await ctx.send('This is a bug in the test_bot. Please contact jacksn#9149.', hidden=True)
+                    await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
                 logging.critical(
                     f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
                 await async_session.rollback()
@@ -349,8 +358,8 @@ async def calc_daily(client: Client,
     else:
         results = []
     for balance in history:
-        if since <= balance.tz_time <= to:
-            if balance.tz_time >= current_search:
+        if since <= balance.time <= to:
+            if balance.time >= current_search:
 
                 daily = db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
                 daily.time = daily.time.replace(minute=0, second=0)
@@ -371,7 +380,7 @@ async def calc_daily(client: Client,
             prev_balance = balance
         await call_unknown_function(forEach, balance)
 
-    if prev_balance.tz_time < current_search:
+    if prev_balance.time < current_search:
         values = Daily(
             current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
             prev_balance.amount,
@@ -386,15 +395,16 @@ async def calc_daily(client: Client,
     return results
 
 
-def calc_percentage(then: float, now: float, string=True) -> Union[str, float]:
+def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], string=True) -> Union[str, float]:
     diff = now - then
+    num_cls = type(then)
     if diff == 0.0:
-        result = '0' if string else 0.0
+        result = '0'
     elif then > 0:
-        result = f'{round(100 * (diff / then), ndigits=3)}' if string else round(100 * (diff / then), ndigits=3)
+        result = f'{round(100 * (diff / then), ndigits=3)}'
     else:
-        result = 'nan' if string else 0.0
-    return result
+        result = 'NaN'
+    return result if string else num_cls(result)
 
 
 async def create_leaderboard(dc_client: discord.Client,
@@ -403,10 +413,10 @@ async def create_leaderboard(dc_client: discord.Client,
                              event: db_event.Event = None,
                              time: datetime = None,
                              archived=False) -> discord.Embed:
-    user_scores: List[Tuple[DiscordUser, float]] = []
-    value_strings: Dict[DiscordUser, str] = {}
-    users_rekt: List[DiscordUser] = []
-    clients_missing: List[DiscordUser] = []
+    client_scores: List[Tuple[Client, float]] = []
+    value_strings: Dict[Client, str] = {}
+    clients_rekt: List[Client] = []
+    clients_missing: List[Client] = []
 
     footer = ''
     description = ''
@@ -439,15 +449,15 @@ async def create_leaderboard(dc_client: discord.Client,
     if mode == 'balance':
         for client in clients:
             if client.rekt_on:
-                users_rekt.append(client)
+                clients_rekt.append(client)
                 continue
             balance = await client.latest()
             if balance and not (event and balance.time < event.start):
                 if balance.amount > REKT_THRESHOLD:
-                    user_scores.append((client, balance.amount))
+                    client_scores.append((client, balance.amount))
                     value_strings[client] = balance.to_string(display_extras=False)
                 else:
-                    users_rekt.append(client)
+                    clients_rekt.append(client)
             else:
                 clients_missing.append(client)
 
@@ -460,33 +470,33 @@ async def create_leaderboard(dc_client: discord.Client,
         for gain in client_gains:
             if gain.relative is not None:
                 if gain.client.rekt_on:
-                    users_rekt.append(gain.client)
+                    clients_rekt.append(gain.client)
                 else:
-                    user_scores.append((gain.client, gain.relative))
+                    client_scores.append((gain.client, gain.relative))
                     value_strings[gain.client] = f'{gain.relative}% ({gain.absolute}$)'
             else:
                 clients_missing.append(gain.client)
     else:
         raise InternalError(f'Unknown mode {mode} was passed in')
 
-    user_scores.sort(key=lambda x: x[1], reverse=True)
+    client_scores.sort(key=lambda x: x[1], reverse=True)
     rank = 1
     rank_true = 1
 
-    if len(user_scores) > 0:
+    if len(client_scores) > 0:
         if mode == 'gain' and not archived:
             dc_client.loop.create_task(
                 dc_client.change_presence(
                     activity=discord.Activity(
                         type=discord.ActivityType.watching,
-                        name=f'Best Trader: {user_scores[0][0].discord_user.get_display_name(dc_client, guild_id)}'
+                        name=f'Best Trader: {client_scores[0][0].discord_user.get_display_name(dc_client, guild_id)}'
                     )
                 )
             )
 
         prev_score = None
-        for client, score in user_scores:
-            member = guild.get_member(client.discord_user.user_id)
+        for client, score in client_scores:
+            member = guild.get_member(client.discord_user.id)
             if member:
                 if prev_score is not None and score < prev_score:
                     rank = rank_true
@@ -498,10 +508,10 @@ async def create_leaderboard(dc_client: discord.Client,
                     logging.error(f'Missing value string for {client=} even though hes in user_scores')
                 prev_score = score
 
-    if len(users_rekt) > 0:
+    if len(clients_rekt) > 0:
         description += f'\n**Rekt**\n'
-        for user_rekt in users_rekt:
-            member = guild.get_member(user_rekt.discord_user.user_id)
+        for user_rekt in clients_rekt:
+            member = guild.get_member(user_rekt.discord_user.id)
             if member:
                 description += f'{member.display_name}'
                 if user_rekt.rekt_on:
@@ -511,7 +521,7 @@ async def create_leaderboard(dc_client: discord.Client,
     if len(clients_missing) > 0:
         description += f'\n**Missing**\n'
         for client_missing in clients_missing:
-            member = guild.get_member(client_missing.discord_user.user_id)
+            member = guild.get_member(client_missing.discord_user.id)
             if member:
                 description += f'{member.display_name}\n'
 
@@ -557,7 +567,7 @@ async def calc_gains(clients: List[Client],
         #    currency
         # )
 
-        search, _ = dbutils.get_guild_start_end_times(event.guild_id, search, None)
+        search, _ = await dbutils.get_guild_start_end_times(event.guild_id, search, None)
         balance_then = await client.get_balance_at_time(search, post=True, currency=currency)
         #balance_then = db_match_balance_currency(
         #    await db_first(
@@ -711,13 +721,46 @@ def calc_xs_ys(data: List[Balance],
 
 async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
     if callable(fn):
-        if inspect.iscoroutinefunction(fn):
-            return await fn(*args, **kwargs)
-        else:
-            res = fn(*args, **kwargs)
-            if inspect.isawaitable(res):
-                return await res
-            return res
+        try:
+            if inspect.iscoroutinefunction(fn):
+                return await fn(*args, **kwargs)
+            else:
+                res = fn(*args, **kwargs)
+                if inspect.isawaitable(res):
+                    return await res
+                return res
+        except Exception:
+            logging.exception(
+                f'Exception occured while execution {fn} {args=} {kwargs=}'
+            )
+
+
+async def ask_for_consent(ctx: Union[ComponentContext, SlashContext],
+                          slash: SlashCommand,
+                          msg_content: str = None,
+                          msg_embeds: List[discord.Embed] = None,
+                          yes_message: str = None,
+                          no_message: str = None,
+                          hidden=False,
+                          timeout_seconds: float = 60) -> Future[Tuple[ComponentContext, bool]]:
+
+    future = asyncio.get_running_loop().create_future()
+
+    component_row = create_yes_no_button_row(
+        slash,
+        ctx.author_id,
+        yes_message=yes_message,
+        no_message=no_message,
+        yes_callback=lambda component_ctx: future.set_result((component_ctx, True)),
+        no_callback=lambda component_ctx: future.set_result((component_ctx, False)),
+        hidden=hidden
+    )
+
+    await ctx.send(content=msg_content,
+                   embeds=msg_embeds,
+                   components=[component_row])
+
+    return await asyncio.wait_for(future, timeout_seconds)
 
 
 def create_yes_no_button_row(slash: SlashCommand,
@@ -726,7 +769,7 @@ def create_yes_no_button_row(slash: SlashCommand,
                              no_callback: Callable = None,
                              yes_message: str = None,
                              no_message: str = None,
-                             hidden=False):
+                             hidden=False) -> Dict:
     """
 
     Utility method for creating a yes/no interaction
@@ -780,6 +823,29 @@ def create_yes_no_button_row(slash: SlashCommand,
     wrap_callback(no_id, no_callback, no_message)
 
     return create_actionrow(*buttons)
+
+
+async def new_create_selection(ctx: SlashContext,
+                               options: List[SelectionOption],
+                               msg_content: str = None,
+                               msg_embeds: List[discord.Embed] = None,
+                               timeout_seconds: float = 60,
+                               **kwargs) -> Future[Tuple[ComponentContext, List]]:
+
+    future = asyncio.get_running_loop().create_future()
+
+    component_row = create_selection(
+        ctx.slash,
+        ctx.author_id,
+        options,
+        callback=lambda component_ctx, selections: future.set_result((component_ctx, selections)),
+        **kwargs
+    )
+
+    await ctx.send(content=msg_content,
+                   embeds=msg_embeds,
+                   components=[component_row])
+    return await asyncio.wait_for(future, timeout_seconds)
 
 
 def create_selection(slash: SlashCommand,

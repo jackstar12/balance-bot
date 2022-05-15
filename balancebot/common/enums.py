@@ -39,3 +39,16 @@ class Priority(Enum):
     MEDIUM = 2
     HIGH = 3
     FORCE = 4
+
+
+class Filter(Enum):
+    WEEKDAY = "weekday"
+    SESSION = "session"
+    LABEL = "label"
+
+
+class ExecType(Enum):
+    TRADE = 1
+    STOP = 3
+    TP = 4
+    TRANSFER = 2

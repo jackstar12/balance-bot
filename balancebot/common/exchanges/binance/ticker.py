@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from typing import List
 
 from balancebot.api.settings import settings
@@ -46,7 +47,7 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
             await self._callbacks.get(Channel.TICKER.value).notify(
                 Ticker(
                     symbol=msg['s'],
-                    price=float(msg['p']),
+                    price=Decimal(msg['p']),
                     ts=msg['T'],
                     exchange='binance-futures'
                 )

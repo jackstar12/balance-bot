@@ -1,12 +1,12 @@
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import List, Optional, Union, TYPE_CHECKING
 import discord
 import pytz
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, BigInteger, or_, desc, asc, \
-    Boolean, select
-from sqlalchemy.orm import relationship, backref
+    Boolean, select, func, subquery, and_
+from sqlalchemy.orm import relationship, aliased
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -18,13 +18,19 @@ import dotenv
 
 from balancebot.common.database_async import db_first, db_all, db_select_all
 import balancebot.common.dbmodels.balance as db_balance
+from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
+from balancebot.common.dbmodels.pnldata import PnlData
+from balancebot.common.dbmodels.realizedbalance import RealizedBalance
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.user import User
 from balancebot.common.database import Base
 import balancebot.common.utils as utils
 from balancebot.common.messenger import NameSpace
+
+if TYPE_CHECKING:
+    from balancebot.common.dbmodels.trade import Trade
 
 dotenv.load_dotenv()
 
@@ -54,25 +60,42 @@ class Client(Base, Serializer):
     # Data
     name = Column(String, nullable=True)
     rekt_on = Column(DateTime(timezone=True), nullable=True)
-    trades: AppenderQuery = relationship('Trade', lazy='raise',
-                                         cascade="all, delete", back_populates='client')
-    open_trades = relationship('Trade', lazy='raise',
-                               cascade="all, delete", back_populates='client',
-                               primaryjoin="and_(Trade.client_id == Client.id, Trade.open_qty > 0.0)")
-    history: AppenderQuery = relationship('Balance', backref=backref('client', lazy='noload'),
+
+    trades: AppenderQuery = relationship('Trade', lazy='noload',
+                                         cascade="all, delete",
+                                         back_populates='client')
+
+    open_trades = relationship('Trade', lazy='noload',
+                                              cascade="all, delete",
+                                              back_populates='client',
+                                              primaryjoin="and_(Trade.client_id == Client.id, Trade.open_qty > 0.0)")
+
+    history: AppenderQuery = relationship('Balance',
+                                          back_populates='client',
                                           cascade="all, delete", lazy='dynamic',
-                                          order_by='Balance.time', foreign_keys='Balance.client_id')
-    transfers = relationship('Transfer', backref=backref('client', lazy='noload'),
+                                          order_by='Balance.time',
+                                          foreign_keys='Balance.client_id')
+
+    transfers = relationship('Transfer', back_populates='client',
                              cascade='all, delete', lazy='noload')
 
     archived = Column(Boolean, default=False)
     invalid = Column(Boolean, default=False)
 
-    currently_realized_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
-    currently_realized = relationship('Balance', lazy='noload', foreign_keys=currently_realized_id,
+    currently_realized_id = Column(Integer, ForeignKey('realizedbalance.id', ondelete='SET NULL'), nullable=True)
+    currently_realized = relationship('RealizedBalance',
+                                      lazy='noload',
+                                      foreign_keys=currently_realized_id,
                                       cascade="all, delete")
 
+    realized_history = relationship('RealizedBalance',
+                                    back_populates='client',
+                                    cascade="all, delete", lazy='dynamic',
+                                    order_by='RealizedBalance.time',
+                                    foreign_keys='RealizedBalance.client_id')
+
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
+    last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
     async def get_balance(self, redis: Redis, currency=None) -> float:
         amount = await redis.get(utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id))
@@ -80,13 +103,14 @@ class Client(Base, Serializer):
             amount=float(amount),
             time=None
         )
+
     async def evaluate_balance(self, redis: Redis):
         if not self.currently_realized:
             return
         amount = self.currently_realized.amount
         for trade in self.open_trades:
-            if trade.upnl:
-                amount += trade.upnl
+            if trade.current_pnl:
+                amount += trade.current_pnl.amount
             else:
                 price = await redis.get(
                     utils.join_args(NameSpace.TICKER, trade.client.exchange, trade.symbol)
@@ -98,10 +122,10 @@ class Client(Base, Serializer):
             time=datetime.now(pytz.utc),
             client_id=self.id
         )
-        #await redis.set(
+        # await redis.set(
         #    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id),
         #    new.serialize(data=True)
-        #)
+        # )
         return new
 
     async def full_history(self):
@@ -128,11 +152,75 @@ class Client(Base, Serializer):
             return True
 
     async def get_balance_at_time(self, time: datetime, post: bool, currency: str = None):
+        pre = aliased(db_balance.Balance)
+        post = aliased(db_balance.Balance)
+
+        # pre_stmt = select(
+        #    pre,
+        #    func.row_number().over(order_by=desc(pre.time)).label('count')
+        # ).filter(
+        #    pre.time < time,
+        #    pre.client_id == self.id
+        # ).limit(1).subquery()
+        #
+        # stmt = select(
+        #    post,
+        #    pre_stmt
+        # ).filter(
+        #    post.client_id == self.id,
+        #    or_(
+        #        post.time > pre_stmt.c.time,
+        #        pre_stmt.c.count == 0
+        #    )
+        # ).order_by(
+        #    asc(post.time)
+        # ).limit(1)
+
+        if self.premium:
+            base_stmt = self.realized_history.statement
+            amount_cls = RealizedBalance
+        else:
+            base_stmt = self.history.statement
+            amount_cls = db_balance.Balance
+
         balance = await db_first(
-            self.history.statement.filter(
-                db_balance.Balance.time > time if post else db_balance.Balance.time < time
-            ).order_by(asc(db_balance.Balance.time) if post else desc(db_balance.Balance.time))
+            base_stmt.filter(
+                amount_cls.time > time if post else amount_cls.time < time
+            ).order_by(asc(amount_cls.time) if post else desc(amount_cls.time))
         )
+
+        if self.premium:
+            subq = select(
+                func.row_number().over(
+                    order_by=asc(PnlData.time), partition_by=Trade.symbol
+                ).label('row_number')
+            ).join(
+                PnlData.trade
+            ).join(
+                Trade.initial, Execution.time <= balance.time
+            ).filter(
+                PnlData.time > balance.time
+            ).subquery()
+
+            pnl_data = await db_all(
+                select(
+                    PnlData,
+                    subq
+                ).filter(
+                    subq.c.row_number <= 1
+                )
+            )
+
+            return db_balance.Balance(
+                amount=balance.amount + sum(pnl.amount for pnl in pnl_data),
+                time=balance.time,
+
+            )
+
+        else:
+            return balance
+
+        # balance = await db_first(stmt)
 
         # if currency:
         #    return db_match_balance_currency(balance, currency)
@@ -144,7 +232,9 @@ class Client(Base, Serializer):
 
     @hybrid_property
     def is_premium(self):
-        return bool(self.user_id or self.discord_user.user)
+        return bool(
+            True or self.user_id or getattr(self.discord_user, 'user', None)
+        )
 
     async def initial(self):
         try:
@@ -170,11 +260,12 @@ class Client(Base, Serializer):
                                            client_id=self.id,
                                            discord_user_id=self.discord_user_id)
 
-        guilds += await db_all(
-            select(Guild).filter(
-                or_(*[Guild.id == association.guild_id for association in associations])
+        if associations:
+            guilds += await db_all(
+                select(Guild).filter(
+                    or_(*[Guild.id == association.guild_id for association in associations])
+                )
             )
-        )
 
         return ', '.join(f'_{guild.name}_' for guild in guilds)
 
@@ -196,6 +287,15 @@ class Client(Base, Serializer):
             embed.add_field(name='Initial Balance', value=initial.to_string())
 
         return embed
+
+
+# recent_history = select(
+#    Client.id.label('id'),
+#
+#    Client.history.order_by(
+#        desc(db_balance.Balance.time)
+#    ).limit(3)
+# ).alias()
 
 
 def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[

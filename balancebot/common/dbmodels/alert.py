@@ -3,7 +3,7 @@ from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy.dialects.postgresql import UUID
 
 from balancebot.common.database import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, Float, BigInteger, Enum
+from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Enum, Numeric
 
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.enums import Side
@@ -11,14 +11,14 @@ from balancebot.common.enums import Side
 
 class Alert(Base, Serializer):
     __tablename__ = "alert"
-    __serializer_forbidden__ = ["side"]
+    __serializer_data_forbidden__ = ["user", "discord_user"]
 
     id: int = Column(Integer, primary_key=True)
     user_id: UUID = Column(GUID, ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
     discord_user_id: int = Column(BigInteger, ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
 
     symbol: str = Column(String, nullable=False)
-    price: float = Column(Float, nullable=False)
+    price: float = Column(Numeric, nullable=False)
     exchange: str = Column(String, nullable=False)
     side: str = Column(Enum(Side), nullable=True)
     note: str = Column(String, nullable=True)

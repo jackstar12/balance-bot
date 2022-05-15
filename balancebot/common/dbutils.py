@@ -5,7 +5,8 @@ import pytz
 from sqlalchemy import select, desc
 
 import balancebot.common.dbmodels.client as db_client
-from balancebot.common.database_async import async_session, db_first, db_eager, db_del_filter, db_unique, db_all
+from balancebot.common.database_async import async_session, db_first, db_eager, db_del_filter, db_unique, db_all, \
+    db_select
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.discorduser import DiscordUser
 import balancebot.common.dbmodels.event as db_event
@@ -149,21 +150,20 @@ async def get_event(guild_id: int, channel_id: int = None, state: str = 'active'
 
 async def delete_client(client: db_client.Client, messenger: Messenger, commit=False):
     await db_del_filter(db_client.Client, id=client.id)
-    #session.query(db_client.Client).filter_by(id=client.id).delete()
-    messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj=client.id)
+    messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj={'id': client.id})
     if commit:
         await async_session.commit()
 
 
 def add_client(client: db_client.Client, messenger: Messenger):
-    messenger.pub_channel(NameSpace.CLIENT, Category.NEW, obj=client.id)
+    messenger.pub_channel(NameSpace.CLIENT, Category.NEW, obj={'id': client.id})
 
 
 def get_all_events(guild_id: int, channel_id):
     pass
 
 
-async def get_discord_user(user_id: int, throw_exceptions=True, eager_loads=None) -> Optional[DiscordUser]:
+async def get_discord_user(user_id: int, throw_exceptions=True, require_registrations=True, eager_loads=None) -> Optional[DiscordUser]:
     """
     Tries to find a matching entry for the user and guild id.
     :param user_id: id of user to get
@@ -174,24 +174,20 @@ async def get_discord_user(user_id: int, throw_exceptions=True, eager_loads=None
     The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
     """
     eager = eager_loads or [db_client.Client]
-    result = await db_unique(
-        db_eager(
-            select(DiscordUser),
-            *eager
-        ),
-    )
+    result = await db_select(DiscordUser, eager=eager, id=user_id)
 
     #result = session.query(DiscordUser).filter_by(user_id=user_id).first()
-    if not result and throw_exceptions:
-        raise UserInputError("User {name} is not registered", user_id)
-    if len(result.clients) == 0 and throw_exceptions:
+    if not result:
+        if throw_exceptions:
+            raise UserInputError("User {name} is not registered", user_id)
+    elif len(result.clients) == 0 and throw_exceptions and require_registrations:
         raise UserInputError("User {name} does not have any registrations", user_id)
     return result
 
 
 async def get_guild_start_end_times(guild_id, start, end, archived=False):
 
-    start = datetime.fromtimestamp(0) if not start else start
+    start = datetime.fromtimestamp(0, pytz.utc) if not start else start
     end = datetime.now(pytz.utc) if not end else end
     event = await get_event(guild_id, state='archived' if archived else 'active', throw_exceptions=False)
 

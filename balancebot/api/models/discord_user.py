@@ -1,15 +1,16 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
-from balancebot.api.models.guild import Guild
+from balancebot.api.models.guild import Guild, GuildAssociation
 
 
 class DiscordUserInfo(BaseModel):
     id: int
     name: str
-    avatar: str
+    avatar: Optional[str]
     guilds: List[Guild]
+    global_associations: List[GuildAssociation]
 
     class Config:
         orm_mode = True

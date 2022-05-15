@@ -1,4 +1,7 @@
-from sqlalchemy import Column, Integer, ForeignKey, BigInteger
+from sqlalchemy import Column, Integer, ForeignKey, BigInteger, DateTime, Numeric
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import relationship
 
 from balancebot.common.database import Base
 from balancebot.common.dbmodels.amountmixin import AmountMixin
@@ -10,10 +13,21 @@ class PNLType(PyEnum):
     RPNL = 1
 
 
-class PnlData(Base, AmountMixin):
+class PnlData(Base):
     __tablename__ = 'pnldata'
 
     id = Column(BigInteger, primary_key=True)
     trade_id = Column(Integer, ForeignKey('trade.id'), nullable=False)
+    trade = relationship('Trade', foreign_keys=trade_id)
+
+    realized = Column(Numeric, nullable=False)
+    unrealized = Column(Numeric, nullable=False)
+
+    time = Column(DateTime(timezone=True), nullable=False, index=True)
+    extra_currencies = Column(JSONB, nullable=True)
+
+    @hybrid_property
+    def total(self):
+        return self.realized + self.unrealized
 
     # type = Column(Enum(PNLType), nullable=False)

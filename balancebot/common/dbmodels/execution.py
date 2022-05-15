@@ -2,8 +2,9 @@ import pytz
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot.common.database import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Float
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Numeric, Enum
 from balancebot.common.dbmodels.serializer import Serializer
+from balancebot.common.enums import ExecType, Side
 
 
 class Execution(Base, Serializer):
@@ -12,15 +13,15 @@ class Execution(Base, Serializer):
     trade_id = Column(Integer, ForeignKey('trade.id', ondelete='CASCADE'), nullable=True)
 
     symbol = Column(String, nullable=False)
-    price = Column(Float, nullable=False)
-    qty = Column(Float, nullable=False)
-    side = Column(String, nullable=False)
+    price = Column(Numeric, nullable=False)
+    qty = Column(Numeric, nullable=False)
+    side = Column(Enum(Side), nullable=False)
     time = Column(DateTime(timezone=True), nullable=False)
-    type = Column(String, nullable=True)
+    type = Column(Enum(ExecType), nullable=True)
 
-    commission = Column(Float, nullable=True)
-    realized_pnl = Column(Float, nullable=True)
+    commission = Column(Numeric, nullable=True)
+    realized_pnl = Column(Numeric, nullable=True)
 
     @hybrid_property
-    def tz_time(self, tz=pytz.UTC):
-        return self.time.replace(tzinfo=tz)
+    def effective_qty(self):
+        return self.qty * (1 if self.side == Side.BUY else -1)

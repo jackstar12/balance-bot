@@ -44,7 +44,10 @@ class UserCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def info(self, ctx: SlashContext):
-        user = await dbutils.get_discord_user(ctx.author_id, throw_exceptions=False, eager_loads=[(DiscordUser.clients, Client.events)])
+        user = await dbutils.get_discord_user(
+            ctx.author_id,
+            eager_loads=[(DiscordUser.clients, Client.events)]
+        )
         embeds = await user.get_discord_embed()
         await ctx.send(content='', embeds=embeds, hidden=True)
 

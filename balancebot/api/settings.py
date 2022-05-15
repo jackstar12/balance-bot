@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     authjwt_denylist_enabled: bool = True
 
     session_cookie_name: str = 'session'
+    session_csfr_token_name: str = 'csrf'
 
     testing: bool = os.environ.get('TESTING') == 'True'
     # authjwt_cookie_samesite: str = 'lax'
