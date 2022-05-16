@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 import balancebot.common.utils as utils
+from balancebot.common import customjson
 from balancebot.common.database_async import async_session, db_unique, db_all, db_first
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.execution import Execution
@@ -30,7 +31,7 @@ from balancebot.common.dbmodels.realizedbalance import RealizedBalance
 from balancebot.common.dbmodels.trade import Trade, trade_from_execution
 
 import balancebot.common.dbmodels.balance as db_balance
-from balancebot.common.dbmodels.transfer import Transfer, RawTransfer
+from balancebot.common.dbmodels.transfer import Transfer, RawTransfer, TransferType
 from balancebot.common.config import PRIORITY_INTERVALS
 from balancebot.common.enums import Priority, ExecType, Side
 from balancebot.common.errors import RateLimitExceeded, ExchangeUnavailable, ExchangeMaintenance, ResponseError
@@ -51,16 +52,6 @@ logger = logging.getLogger(__name__)
 def weighted_avg(values: Tuple[float, float], weights: Tuple[float, float]):
     total = weights[0] + weights[1]
     return round(values[0] * (weights[0] / total) + values[1] * (weights[1] / total), ndigits=3)
-
-
-def loads(obj: Any):
-    return json.loads(obj, parse_float=Decimal)
-
-
-def json_default(obj: Any):
-    if isinstance(obj, Decimal):
-        return str(obj)
-    raise TypeError
 
 
 class Cached(NamedTuple):
@@ -232,25 +223,25 @@ class ExchangeWorker:
         return []
 
     async def get_executions(self,
-                             since: datetime) -> Tuple[Dict[str, List[Execution]], List[Execution]]:
+                             since: datetime,
+                             db_session: AsyncSession = None) -> Tuple[Dict[str, List[Execution]], List[Execution]]:
         grouped = {}
         transfers, execs = await asyncio.gather(
-            self.get_transfers(since),
+            self.update_transfers(since, db_session),
             self._get_executions(since)
         )
         for transfer in transfers:
             if not self._usd_like(transfer.coin) and transfer.coin:
                 raw_amount = transfer.extra_currencies[transfer.coin]
-                execs.append(
-                    Execution(
-                        symbol=self._symbol(transfer.coin),
-                        qty=raw_amount,
-                        price=transfer.amount / raw_amount,
-                        side=transfer.type.value,
-                        time=transfer.time,
-                        type=ExecType.TRANSFER
-                    )
+                transfer.execution = Execution(
+                    symbol=self._symbol(transfer.coin),
+                    qty=abs(raw_amount),
+                    price=transfer.amount / raw_amount,
+                    side=Side.BUY if transfer.type == TransferType.DEPOSIT else Side.SELL,
+                    time=transfer.time,
+                    type=ExecType.TRANSFER
                 )
+                execs.append(transfer.execution)
         execs.sort(key=lambda e: e.time)
         for execution in execs:
             if execution.symbol not in grouped:
@@ -320,7 +311,7 @@ class ExchangeWorker:
         if not since:
             since = (
                 self.client.currently_realized.time if self.client.currently_realized
-                else datetime.now(pytz.utc) - timedelta(days=180)
+                else datetime.now(pytz.utc) - timedelta(days=365)
             )
         raw_transfers = await self._get_transfers(since)
         if raw_transfers:
@@ -337,15 +328,16 @@ class ExchangeWorker:
                 for raw_transfer in raw_transfers
             ]
 
-    async def update_transfers(self):
+    async def update_transfers(self, since: datetime, db_session: AsyncSession = None) -> List[Transfer]:
         """
         :param since:
         :return:
         """
-        transfers = await self.get_transfers()
+        transfers = await self.get_transfers(since)
         if self.client.currently_realized:
             to_update: List[db_balance.Balance] = await db_all(self.client.history.statement.filter(
-                db_balance.Balance.time > self.client.currently_realized.time
+                db_balance.Balance.time > self.client.currently_realized.time,
+                session=db_session
             ))
             """
             to_update   transfers
@@ -361,16 +353,17 @@ class ExchangeWorker:
             """
             cur_offset = transfers[0].amount
             transfer_iter = iter(transfers)
-            next_transfer = next(transfer_iter)
+            next_transfer = next(transfer_iter, None)
             for update in to_update:
                 if next_transfer and update.time > next_transfer.time:
                     cur_offset += next_transfer.amount
-                    next_transfer = next(transfer_iter)
+                    next_transfer = next(transfer_iter, None)
                 update.amount += cur_offset
 
-        async_session.add_all(transfers)
+        db_session.add_all(transfers)
         self.client.last_transfer_sync = datetime.now(tz=pytz.utc)
-        await async_session.commit()
+        await db_session.commit()
+        return transfers
 
     async def synchronize_positions(self,
                                     since: datetime = None,
@@ -399,12 +392,14 @@ class ExchangeWorker:
             session=db_session
         )
 
-        executions_by_symbol, all_executions = await self.get_executions(getattr(latest, 'time', None))
+        executions_by_symbol, all_executions = await self.get_executions(getattr(latest, 'time', None), db_session=db_session)
 
         if executions_by_symbol:
             for symbol, executions in executions_by_symbol.items():
+                if not symbol:
+                    continue
                 exec_iter = iter(executions)
-                to_exec = next(exec_iter)
+                to_exec = next(exec_iter, None)
 
                 # In order to avoid unnecesary OHLC data between trades being fetched
                 # we preflight the executions in a way where the executions which
@@ -432,7 +427,7 @@ class ExchangeWorker:
                         to=current_executions[len(current_executions) - 1].time
                     )
 
-                    to_exec = next(exec_iter)
+                    to_exec = next(exec_iter, None)
 
                     timeline = sorted(ohlc_data + current_executions, key=lambda item: item.time)
                     current_trade = None
@@ -535,12 +530,11 @@ class ExchangeWorker:
                 Trade.symbol == execution.symbol,
                 Trade.client_id == self.client_id,
                 Trade.open_qty > 0.0
-            ).options(
-                joinedload(Trade.executions),
-                joinedload(Trade.initial),
-            )
+            ),
+            Trade.executions,
+            Trade.initial,
+            session=db_session
         )
-        client: Client = await db_session.get(Client, self.client_id)
 
         self.in_position = True
 
@@ -554,7 +548,10 @@ class ExchangeWorker:
             execution.trade_id = active_trade.id
             db_session.add(execution)
 
-            if execution.side == active_trade.initial.side:
+            if execution.type == ExecType.TRANSFER:
+                active_trade.transferred_qty += execution.qty
+                active_trade.qty += execution.qty
+            elif execution.side == active_trade.initial.side:
                 active_trade.entry = weighted_avg(
                     (active_trade.entry, execution.price),
                     (active_trade.qty, execution.qty)
@@ -574,13 +571,13 @@ class ExchangeWorker:
                     execution.qty = active_trade.open_qty
 
                     new_trade = trade_from_execution(new_execution)
-                    new_trade.client_id = client.id
+                    new_trade.client_id = self.client_id
                     db_session.add(new_trade)
 
                     asyncio.create_task(
                         utils.call_unknown_function(self._on_new_trade, self, new_trade)
                     )
-                if execution.qty <= active_trade.qty:
+                if execution.qty <= active_trade.open_qty:
                     if active_trade.exit is None:
                         active_trade.exit = execution.price
                     else:
@@ -631,7 +628,7 @@ class ExchangeWorker:
     @classmethod
     @abc.abstractmethod
     async def _process_response(cls, response: ClientResponse) -> dict:
-        response_json = await response.json(loads=loads)
+        response_json = await response.json(loads=customjson.loads)
         try:
             response.raise_for_status()
         except ClientResponseError as e:

@@ -10,7 +10,7 @@ from balancebot.common.database import Base
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 
 
-class Type(enum.Enum):
+class TransferType(enum.Enum):
     DEPOSIT = "deposit"
     WITHDRAW = "withdraw"
 
@@ -34,7 +34,7 @@ class Transfer(Base, AmountMixin):
     note = Column(String, nullable=True)
     coin = Column(String, nullable=True)
 
-    execution_id = Column(Integer, ForeignKey('execution.id'), nullable=True)
+    execution_id = Column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=True)
     execution = relationship(
         'Execution',
         foreign_keys=execution_id,
@@ -51,5 +51,5 @@ class Transfer(Base, AmountMixin):
     #)
 
     @hybrid_property
-    def type(self) -> Type:
-        return Type.DEPOSIT if self.amount > 0 else Type.WITHDRAW
+    def type(self) -> TransferType:
+        return TransferType.DEPOSIT if self.amount > 0 else TransferType.WITHDRAW

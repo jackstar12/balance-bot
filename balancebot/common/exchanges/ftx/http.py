@@ -7,10 +7,12 @@ from typing import Union, List, Optional, Dict, Iterator
 
 import pytz
 import ccxt.async_support as ccxt
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from balancebot.common.dbmodels.execution import Execution
 import balancebot.common.dbmodels.balance as balance
 from balancebot.common.dbmodels.transfer import RawTransfer
-from balancebot.common.enums import Side
+from balancebot.common.enums import Side, ExecType
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 import time
 
@@ -69,19 +71,23 @@ class FtxClient(ExchangeWorker):
         amount = response['totalAccountValue'] if upnl else response['collateral']
         return balance.Balance(amount=amount, time=time)
 
-    async def _get_executions(self,
-                              since: datetime = None) -> Iterator[Execution]:
-        since = since or datetime.now(pytz.utc) - timedelta(days=180)
+    async def _get_executions(self, since: datetime) -> Iterator[Execution]:
+        since = since or datetime.now(pytz.utc) - timedelta(days=365)
         # Offset by 1 millisecond because otherwise the same executions are refetched (ftx probably compares with >=)
-        trades = await self._get('/api/fills', params={'start_time': self._parse_date(since), 'order': 'asc'})
+        trades = await self._get('/api/fills', params={
+            'start_time': self._parse_date(since),
+            'end_time': str(time.time()),
+            'order': 'asc'
+        })
         return [
             Execution(
-                symbol=trade['market'],
+                symbol=trade['market'] if trade['market'] else f'{trade["baseCurrency"]}/{trade["quoteCurrency"]}',
                 price=trade['price'],
                 qty=trade['size'],
                 side=Side.BUY if trade['side'] == 'buy' else Side.SELL,
                 time=datetime.fromisoformat(trade["time"]),
-                commission=trade["fee"]
+                commission=trade["fee"],
+                type=ExecType.TRADE
             )
             for trade in trades
         ]

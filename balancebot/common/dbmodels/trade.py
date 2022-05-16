@@ -13,7 +13,7 @@ from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.execution import Execution
-from balancebot.common.enums import Side
+from balancebot.common.enums import Side, ExecType
 from balancebot.common.messenger import NameSpace, Category
 
 trade_association = Table('trade_association', Base.metadata,
@@ -36,9 +36,9 @@ class Trade(Base, Serializer):
 
     qty = Column(Numeric, nullable=False)
     open_qty = Column(Numeric, nullable=False)
+    transferred_qty = Column(Numeric, nullable=True)
 
     exit = Column(Numeric, nullable=True)
-    transferred_qty = Column(Numeric, nullable=True)
     realized_pnl = Column(Numeric, nullable=True, default=Decimal('0.0'))
 
     max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
@@ -145,7 +145,7 @@ class Trade(Base, Serializer):
         return s
 
     def calc_rpnl(self):
-        realized_qty = self.qty - self.open_qty
+        realized_qty = self.qty - self.open_qty - self.transferred_qty
         return (self.exit * realized_qty - self.entry * realized_qty) * (Decimal('1') if self.initial.side == Side.BUY else Decimal('-1'))
 
     def calc_upnl(self, price: Decimal):
@@ -156,7 +156,8 @@ def trade_from_execution(execution: Execution):
     return Trade(
         entry=execution.price,
         qty=execution.qty,
-        open_qty=execution.qty,
+        open_qty=execution.qty if execution.type != ExecType.TRADE else Decimal(0),
+        transferred_qty=execution.qty if execution.type == ExecType.TRANSFER else Decimal(0),
         initial=execution,
         symbol=execution.symbol,
         executions=[execution]

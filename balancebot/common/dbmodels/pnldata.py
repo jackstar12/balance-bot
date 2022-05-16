@@ -17,7 +17,7 @@ class PnlData(Base):
     __tablename__ = 'pnldata'
 
     id = Column(BigInteger, primary_key=True)
-    trade_id = Column(Integer, ForeignKey('trade.id'), nullable=False)
+    trade_id = Column(Integer, ForeignKey('trade.id', ondelete="CASCADE"), nullable=False)
     trade = relationship('Trade', foreign_keys=trade_id)
 
     realized = Column(Numeric, nullable=False)

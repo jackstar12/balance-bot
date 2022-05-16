@@ -11,13 +11,17 @@ from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedA
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession, create_async_engine
 from sqlalchemy.sql import Select
 
+from balancebot.common import customjson
+
 dotenv.load_dotenv()
 
 SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI')
 assert SQLALCHEMY_DATABASE_URI
 
 engine = create_async_engine(
-    'postgresql+asyncpg://postgres:postgres@localhost:5432/single-user'
+    'postgresql+asyncpg://postgres:postgres@localhost:5432/single-user',
+    json_serializer=customjson.dumps,
+    json_deserializer=customjson.loads
 )
 async_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=current_task)

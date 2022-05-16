@@ -144,8 +144,7 @@ class BinanceFutures(_BinanceBaseClient):
                              to: datetime = None) -> List[RawTransfer]:
         return await self._get_internal_transfers(Type.USDM, since, to)
 
-    async def _get_executions(self,
-                              since: datetime = None) -> Iterator[Execution]:
+    async def _get_executions(self, since: datetime) -> Iterator[Execution]:
 
         since_ts = self._parse_datetime(since or datetime.now(pytz.utc) - timedelta(days=180))
         # https://binance-docs.github.io/apidocs/futures/en/#get-income-history-user_data
