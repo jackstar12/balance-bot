@@ -124,11 +124,13 @@ class Trade(Base, Serializer):
 
     @hybrid_property
     def risk_to_reward(self):
-        return (self.tp - self.entry) / (self.entry - self.sl)
+        if self.tp and self.sl:
+            return (self.tp - self.entry) / (self.entry - self.sl)
 
     @hybrid_property
     def realized_r(self):
-        return (self.exit - self.entry) / (self.entry - self.sl)
+        if self.sl:
+            return (self.exit - self.entry) / (self.entry - self.sl)
 
     @hybrid_property
     def fomo_ratio(self):

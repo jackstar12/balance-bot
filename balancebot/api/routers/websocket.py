@@ -4,7 +4,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
-from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
+from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
 from balancebot.api.dependencies import current_user
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.user import User
@@ -41,7 +41,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
 
     user_manager = UserManager()
     subscribed_client: Optional[Client] = None
-    config: Optional[WebsocketConfig] = None
+    config: Optional[ClientConfig] = None
     messenger = Messenger()
 
     async def send_client_snapshot(client: Client, type: str, channel: str):
@@ -149,7 +149,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
 
             elif msg.type == 'update':
                 if msg.channel == 'config':
-                    config = WebsocketConfig(**msg.data)
+                    config = ClientConfig(**msg.data)
                     new_client = await get_user_client(user, config.id)
                     if not new_client:
                         await websocket.send_json(create_ws_message(

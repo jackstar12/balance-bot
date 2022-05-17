@@ -10,7 +10,7 @@ class WebsocketMessage(BaseModel):
     data: Optional[Dict]
 
 
-class WebsocketConfig(BaseModel):
+class ClientConfig(BaseModel):
     id: Optional[int]
     since: Optional[datetime]
     to: Optional[datetime]

@@ -1,74 +1,48 @@
 from decimal import Decimal
-from typing import List, Dict, TypeVar
+from typing import List, Dict, TypeVar, NamedTuple, Optional, Any, Tuple
 
 from pydantic import BaseModel
-from balancebot.common.enums import Filter
 
+from balancebot.api.models.execution import Execution
+from balancebot.api.models.trade import Trade
+from balancebot.common.enums import Filter, Side
+import balancebot.api.models as models
 
 T = TypeVar('T')
 
 
-class TradeAnalytics(BaseModel):
-    id: int
-
-    labels = relationship('Label', secondary=trade_association, backref='trades')
-
-    symbol: str
-    entry: Decimal
-
-    qty: Decimal
-    open_qty: Decimal
-
-    exit: Decimal
-    transferred_qty: Decimal
-    realized_pnl: Decimal
-
-    max_pnl = relationship('PnlData', lazy='noload', foreign_keys=max_pnl_id, uselist=False)
-
-    min_pnl = relationship('PnlData', lazy='noload', foreign_keys=min_pnl_id, uselist=False)
-
-    tp = Decimal
-    sl = Decimal
-
-    order_count = Column(Integer, nullable=True)
-
-    executions = relationship('Execution',
-                              foreign_keys='[Execution.trade_id]',
-                              backref='trade',
-                              lazy='noload',
-                              cascade='all, delete')
-
-    pnl_data = relationship('PnlData',
-                            lazy='noload',
-                            cascade="all, delete",
-                            back_populates='trade',
-                            foreign_keys="PnlData.trade_id")
-
-    initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
-
-    initial: Execution = relationship(
-        'Execution',
-        lazy='joined',
-        foreign_keys=initial_execution_id,
-        post_update=True,
-        primaryjoin='Execution.id == Trade.initial_execution_id',
-        uselist=False
-    )
-
-    memo = Column(String, nullable=True)
+class PnlData(NamedTuple):
+    realized: Decimal
+    unrealized: Decimal
 
 
+class TradeAnalytics(Trade):
+    tp = Optional[Decimal]
+    sl = Optional[Decimal]
+
+    max_pnl: PnlData
+    min_pnl: PnlData
+    # order_count: int
+
+    executions: List[Execution]
+    pnl_data: List[PnlData]
+
+    fomo_ratio: Decimal
+    greed_ratio: Decimal
+    risk_to_reward: Optional[Decimal]
+    realized_r: Optional[Decimal]
+    memo: Optional[str]
 
 
-class Performance(BaseModel):
+class Performance(NamedTuple):
     relative: Decimal
     absolute: Decimal
-    filter_values: Dict[Filter, Decimal]
+    filter_values: Dict[Filter, Any]
 
 
 class FilteredPerformance(BaseModel):
-    filters: List[filter]
-    performance: Performance
+    filters: Tuple[Filter, ...]
+    performance: List[Performance]
 
 
 class ClientAnalytics(BaseModel):

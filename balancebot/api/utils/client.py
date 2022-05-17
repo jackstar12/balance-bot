@@ -13,7 +13,7 @@ from balancebot.common.database_async import db_first
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User
-from balancebot.api.models.websocket import WebsocketConfig
+from balancebot.api.models.websocket import ClientConfig
 
 
 def ratio(a: float, b: float):
@@ -25,7 +25,7 @@ def update_dicts(*dicts: Dict, **kwargs):
         arg.update(kwargs)
 
 
-def update_client_data_trades(cache: Dict, trades: List[Dict], config: WebsocketConfig, save_cache=True):
+def update_client_data_trades(cache: Dict, trades: List[Dict], config: ClientConfig, save_cache=True):
 
     result = {}
     new_trades = {}
@@ -67,7 +67,7 @@ def update_client_data_trades(cache: Dict, trades: List[Dict], config: Websocket
     return result
 
 
-async def update_client_data_balance(cache: Dict, client: Client, config: WebsocketConfig, save_cache=True) -> Dict:
+async def update_client_data_balance(cache: Dict, client: Client, config: ClientConfig, save_cache=True) -> Dict:
 
     cached_date = datetime.fromtimestamp(cache.get('ts', 0), tz=pytz.UTC)
     now = datetime.now(tz=pytz.UTC)
@@ -127,19 +127,19 @@ async def update_client_data_balance(cache: Dict, client: Client, config: Websoc
     return result
 
 
-async def get_cached_data(config: WebsocketConfig):
+async def get_cached_data(config: ClientConfig):
     redis_key = f'client:data:{config.id}:{config.since.timestamp() if config.since else None}:{config.to.timestamp() if config.to else None}:{config.currency}'
     cached = await redis.get(redis_key)
     if cached:
         return msgpack.unpackb(cached, raw=False)
 
 
-async def set_cached_data(data: Dict, config: WebsocketConfig):
+async def set_cached_data(data: Dict, config: ClientConfig):
     redis_key = f'client:data:{config.id}:{config.since.timestamp() if config.since else None}:{config.to.timestamp() if config.to else None}:{config.currency}'
     await redis.set(redis_key, msgpack.packb(data))
 
 
-async def create_client_data_serialized(client: Client, config: WebsocketConfig):
+async def create_client_data_serialized(client: Client, config: ClientConfig):
 
     cached = await get_cached_data(config)
 

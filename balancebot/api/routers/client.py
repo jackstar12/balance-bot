@@ -13,11 +13,12 @@ from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
 from balancebot.api.authenticator import Authenticator
+from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance
 from balancebot.common.database_async import db, db_first, async_session, db_all, db_select
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody
-from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
+from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
 from balancebot.api.utils.responses import BadRequest, OK
 from balancebot.common import utils
 from balancebot.api.dependencies import current_user, CurrentUser, get_authenticator
@@ -119,7 +120,7 @@ async def get_client(request: Request, response: Response,
     if client:
 
         s = await create_client_data_serialized(client,
-                                                WebsocketConfig(id=client.id, since=since, to=to, currency=currency))
+                                                ClientConfig(id=client.id, since=since, to=to, currency=currency))
         response = JSONResponse(jsonable_encoder(s))
         # response.set_cookie('client-since', value=since, expires='session')
         # response.set_cookie('client-to', value=to, expires='session')
@@ -166,6 +167,13 @@ async def get_client_analytics(id: Optional[int] = None, since: Optional[datetim
         intraday_performance = []
         for trade in client.trades:
             weekday_performance[trade.initial.time.weekday()] += trade.realized_pnl
+
+        return ClientAnalytics(
+            id=client.id,
+            filtered_performance=FilteredPerformance(
+
+            )
+        )
 
         return {
             'label_performance': label_performance,
@@ -297,7 +305,7 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  
     Authorize.jwt_required("websocket", websocket)
     user_manager = UserManager()
     subscribed_client: Optional[Client] = None
-    config: Optional[WebsocketConfig] = None
+    config: Optional[ClientConfig] = None
     messenger = Messenger()
 
     async def send_client_snapshot(client: Client, type: str, channel: str):
@@ -405,7 +413,7 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  
 
             elif msg.type == 'update':
                 if msg.channel == 'config':
-                    config = WebsocketConfig(**msg.data)
+                    config = ClientConfig(**msg.data)
                     logging.info(config)
                     new_client = await get_user_client(user, config.id)
                     if not new_client:
