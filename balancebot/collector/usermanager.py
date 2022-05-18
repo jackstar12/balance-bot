@@ -211,38 +211,38 @@ class UserManager(Singleton):
         return results
 
         tasks = []
-        for result in results:
-            if isinstance(result, Balance):
-                client = await db_select(db_client.Client, id=result.client_id)
-                if client:
-                    tasks.append(
-                        lambda: self.messenger.pub_channel(NameSpace.BALANCE, Category.NEW, channel_id=client.id,
-                                                           obj=result.id)
-                    )
-                    history = await db_all(client.history.order_by(desc(Balance.time)).limit(3))
-                    history_len = len(history)
-                    latest_balance = None if history_len == 0 else history[history_len - 1]
-                    if history_len > 2:
-                        # If balance hasn't changed at all, why bother keeping it?
-                        if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
-                                and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
-                            latest_balance.time = time
-                            data.append(latest_balance)
-                            continue
-                    if result.error:
-                        logging.error(f'Error while fetching {client.id=} balance: {result.error}')
-                        if keep_errors:
-                            data.append(result)
-                    else:
-                        async_session.add(result)
-                        data.append(result)
-                        if result.amount <= self.rekt_threshold and not client.rekt_on:
-                            client.rekt_on = time
-                            self.messenger.pub_channel(NameSpace.CLIENT, Category.REKT, channel_id=client.id,
-                                                       obj={'id': client.id})
-                else:
-                    logging.error(f'Worker with {result.client_id=} got no client object!')
-
+#        for result in results:
+#            if isinstance(result, Balance):
+#                client = await db_select(db_client.Client, id=result.client_id)
+#                if client:
+#                    tasks.append(
+#                        lambda: self.messenger.pub_channel(NameSpace.BALANCE, Category.NEW, channel_id=client.id,
+#                                                           obj=result.id)
+#                    )
+#                    history = await db_all(client.history.order_by(desc(Balance.time)).limit(3))
+#                    history_len = len(history)
+#                    latest_balance = None if history_len == 0 else history[history_len - 1]
+#                    if history_len > 2:
+#                        # If balance hasn't changed at all, why bother keeping it?
+#                        if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
+#                                and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
+#                            latest_balance.time = time
+#                            data.append(latest_balance)
+#                            continue
+#                    if result.error:
+#                        logging.error(f'Error while fetching {client.id=} balance: {result.error}')
+#                        if keep_errors:
+#                            data.append(result)
+#                    else:
+#                        async_session.add(result)
+#                        data.append(result)
+#                        if result.amount <= self.rekt_threshold and not client.rekt_on:
+#                            client.rekt_on = time
+#                            self.messenger.pub_channel(NameSpace.CLIENT, Category.REKT, channel_id=client.id,
+#                                                       obj={'id': client.id})
+#                else:
+#                    logging.error(f'Worker with {result.client_id=} got no client object!')
+#
         await async_session.commit()
 
         for task in tasks:

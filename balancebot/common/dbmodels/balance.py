@@ -1,11 +1,13 @@
 from datetime import datetime
+from decimal import Decimal
 
 import pytz
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
 from balancebot.common.database import Base
-from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime
 
 import balancebot.common.config as config
 from balancebot.common.dbmodels.amountmixin import AmountMixin
@@ -18,16 +20,34 @@ class Balance(Base, AmountMixin, Serializer):
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
-    client = relationship('Client')
+    client = relationship('Client', foreign_keys=client_id)
     #currency = Column(String(10), nullable=False)
-    #time: DateTime = Column(DateTime(timezone=True), nullable=False)
+    time: datetime = Column(DateTime(timezone=True), nullable=False, index=True)
     #amount = Column(Float, nullable=False)
+
+    realized: Decimal = Column(Numeric, nullable=False)
+    unrealized: Decimal = Column(Numeric, nullable=False)
+    total_transfered: Decimal = Column(Numeric, nullable=False)
+    extra_currencies = Column(JSONB, nullable=True)
 
     transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='SET NULL'), nullable=True)
     transfer = relationship('Transfer')
 
-    #extra_currencies = Column(PickleType, nullable=True)
-    #extra_currencies = Column(JSONB, nullable=True)
+    @hybrid_property
+    def total(self):
+        return self.realized + self.unrealized
+
+    @hybrid_property
+    def total_transfers_corrected(self):
+        return self.total + self.total_transfered
+
+    # Backwards compatability
+    @hybrid_property
+    def amount(self):
+        return self.unrealized
+
+    def __eq__(self, other):
+        return self.realized == other.realized and self.unrealized == other.unrealized
 
     def __init__(self, error=None, *args, **kwargs):
         self.error = error

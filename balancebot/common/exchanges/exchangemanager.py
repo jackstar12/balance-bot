@@ -196,8 +196,11 @@ class ExchangeManager:
             latest_balance = None if history_len == 0 else history[history_len - 1]
             if history_len > 2:
                 # If balance hasn't changed at all, why bother keeping it?
-                if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
-                        and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
+                if (
+                    latest_balance.unrealized == result.unrealized
+                    and
+                    history[history_len - 2].unrealized, result.unrealized
+                ):
                     latest_balance.time = time
             if result.error:
                 logger.error(f'Error while fetching {client.id=} balance: {result.error}')

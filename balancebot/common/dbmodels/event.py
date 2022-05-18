@@ -105,8 +105,8 @@ class Event(Base, Serializer):
         def non_null_balances(history):
             balances = []
             for balance in history:
-                balances.append(balance.amount)
-                if balance.amount == 0.0:
+                balances.append(balance.unrealized)
+                if balance.unrealized == 0.0:
                     break
             return balances
 
@@ -115,7 +115,7 @@ class Event(Base, Serializer):
                 client,
                 numpy.array(
                     non_null_balances(client.history)
-                ).std() / client.history[0].amount
+                ).std() / client.history[0].unrealized
             )
             for client in self.registrations
         ]

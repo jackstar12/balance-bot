@@ -1,6 +1,7 @@
 from __future__ import annotations
 import abc
 import asyncio
+import itertools
 import json
 import logging
 import time
@@ -27,7 +28,6 @@ from balancebot.common import customjson
 from balancebot.common.database_async import async_session, db_unique, db_all, db_first
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.execution import Execution
-from balancebot.common.dbmodels.realizedbalance import RealizedBalance
 from balancebot.common.dbmodels.trade import Trade, trade_from_execution
 
 import balancebot.common.dbmodels.balance as db_balance
@@ -195,8 +195,7 @@ class ExchangeWorker:
                           date: datetime = None,
                           force=False,
                           upnl=True,
-                          return_cls: Type[AmountMixin] = None) -> Optional[AmountMixin]:
-        return_cls = return_cls or db_balance.Balance
+                          return_cls: Type[AmountMixin] = None) -> Optional[Balance]:
         if not date:
             date = datetime.now(tz=pytz.UTC)
         if force or (date - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]) and not self.client.rekt_on):
@@ -212,6 +211,9 @@ class ExchangeWorker:
             if not balance.time:
                 balance.time = date
             balance.client_id = self.client_id
+            balance.total_transfered = getattr(
+                self.client.currently_realized, 'total_transfered', Decimal(0)
+            )
             return balance
         elif self.client.rekt_on:
             return db_balance.Balance(amount=0.0, error=None, time=date)
@@ -223,9 +225,11 @@ class ExchangeWorker:
         return []
 
     async def get_executions(self,
-                             since: datetime,
+                             since: datetime = None,
                              db_session: AsyncSession = None) -> Tuple[Dict[str, List[Execution]], List[Execution]]:
         grouped = {}
+        since = since or self.client.last_execution_sync
+        self.client.last_execution_sync = datetime.now(pytz.utc)
         transfers, execs = await asyncio.gather(
             self.update_transfers(since, db_session),
             self._get_executions(since)
@@ -287,8 +291,7 @@ class ExchangeWorker:
             latest_balance = None if history_len == 0 else history[history_len - 1]
             if history_len > 2:
                 # If balance hasn't changed at all, why bother keeping it?
-                if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
-                        and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
+                if latest_balance == result and history[history_len - 2] == result:
                     latest_balance.time = date
                     return None
             if result.error:
@@ -310,35 +313,34 @@ class ExchangeWorker:
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
         if not since:
             since = (
-                self.client.currently_realized.time if self.client.currently_realized
-                else datetime.now(pytz.utc) - timedelta(days=365)
+                self.client.last_transfer_sync or datetime.now(pytz.utc) - timedelta(days=365)
             )
         raw_transfers = await self._get_transfers(since)
         if raw_transfers:
             raw_transfers.sort(key=lambda transfer: transfer.time)
-            return [
-                Transfer(
-                    amount=await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time),
-                    time=raw_transfer.time,
-                    extra_currencies={raw_transfer.coin: raw_transfer.amount}
-                    if not self._usd_like(raw_transfer.coin) else None,
-                    coin=raw_transfer.coin,
-                    client_id=self.client_id
-                )
-                for raw_transfer in raw_transfers
-            ]
+        return [
+            Transfer(
+                amount=await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time),
+                time=raw_transfer.time,
+                extra_currencies={raw_transfer.coin: raw_transfer.amount}
+                if not self._usd_like(raw_transfer.coin) else None,
+                coin=raw_transfer.coin,
+                client_id=self.client_id
+            )
+            for raw_transfer in raw_transfers
+        ]
 
-    async def update_transfers(self, since: datetime, db_session: AsyncSession = None) -> List[Transfer]:
-        """
-        :param since:
-        :return:
-        """
+    async def update_transfers(self, since: datetime = None, db_session: AsyncSession = None) -> List[Transfer]:
+        db_session = db_session or async_session
         transfers = await self.get_transfers(since)
-        if self.client.currently_realized:
-            to_update: List[db_balance.Balance] = await db_all(self.client.history.statement.filter(
-                db_balance.Balance.time > self.client.currently_realized.time,
+        self.client.last_transfer_sync = datetime.now(tz=pytz.utc)
+        if transfers:
+            to_update: List[db_balance.Balance] = await db_all(
+                self.client.history.statement.filter(
+                    db_balance.Balance.time > transfers[0].time
+                ),
                 session=db_session
-            ))
+            )
             """
             to_update   transfers
             1.1. 100
@@ -351,17 +353,16 @@ class ExchangeWorker:
             3.1. 200 (300 - 100)
             5.1. 600 (500 - 100 + 200 = 500 + 100)
             """
-            cur_offset = transfers[0].amount
             transfer_iter = iter(transfers)
             next_transfer = next(transfer_iter, None)
+            cur_offset = Decimal(0)
             for update in to_update:
                 if next_transfer and update.time > next_transfer.time:
                     cur_offset += next_transfer.amount
                     next_transfer = next(transfer_iter, None)
-                update.amount += cur_offset
+                update.total_transfered += cur_offset
 
         db_session.add_all(transfers)
-        self.client.last_transfer_sync = datetime.now(tz=pytz.utc)
         await db_session.commit()
         return transfers
 
@@ -370,29 +371,39 @@ class ExchangeWorker:
                                     to: datetime = None,
                                     db_session: AsyncSession = None):
 
-        client = await db_session.get(Client, self.client_id)
-        latest = await db_first(
-            select(Execution).order_by(
-                desc(Execution.time)
-            ).outerjoin(Trade, Execution.trade_id == Trade.id).filter(
-                Trade.client_id == self.client_id,
-            ),
-            session=db_session
+        self.client = await db_session.get(
+            Client,
+            self.client_id,
+            options=(
+                selectinload(Client.open_trades).selectinload(Trade.executions)
+            )
         )
+        since = self.client.last_execution_sync
 
-        check_executions_by_symbol = await db_all(
+        check_executions = await db_all(
             select(Execution).order_by(
                 asc(Execution.time)
             ).outerjoin(
-                Trade, Execution.trade_id == Trade.id
+                Execution.trade
             ).filter(
                 Trade.client_id == self.client_id,
-                Trade.time > client.last_execution_sync if client.last_execution_sync else True
+                Execution.time > since if since else True
             ),
             session=db_session
         )
 
-        executions_by_symbol, all_executions = await self.get_executions(getattr(latest, 'time', None), db_session=db_session)
+        executions_by_symbol, all_executions = await self.get_executions(since, db_session=db_session)
+
+        valid_until = since
+
+        for execution, check in zip(check_executions, all_executions):
+            if execution.time != check.time:
+                for trade in self.client.open_trades:
+                    await trade.reverse_to(since, db_session=db_session, commit=False)
+                break
+            else:
+                valid_until = execution.time
+        await db_session.commit()
 
         if executions_by_symbol:
             for symbol, executions in executions_by_symbol.items():
@@ -406,67 +417,41 @@ class ExchangeWorker:
                 # form a trade can be extracted.
 
                 while to_exec:
+                    if to_exec.time > valid_until:
+                        current_executions = [to_exec]
+                        open_qty = to_exec.effective_qty
 
-                    current_executions = [to_exec]
-                    open_qty = to_exec.effective_qty
+                        while open_qty != 0 and to_exec:
+                            to_exec = next(exec_iter, None)
+                            if to_exec:
+                                current_executions.append(to_exec)
+                                open_qty += to_exec.effective_qty
 
-                    while open_qty != 0 and to_exec:
-                        to_exec = next(exec_iter, None)
-                        if to_exec:
-                            current_executions.append(to_exec)
-                            open_qty += to_exec.effective_qty
+                        if open_qty:
+                            # If the open_qty is not 0 there is an active trade going on
+                            # -> needs to be published (unlike others which are historical)
+                            pass
 
-                    if open_qty:
-                        # If the open_qty is not 0 there is an active trade going on
-                        # -> needs to be published (unlike others which are historical)
-                        pass
+                        ohlc_data = await self._get_ohlc(
+                            symbol,
+                            since=current_executions[0].time,
+                            to=current_executions[len(current_executions) - 1].time
+                        )
 
-                    ohlc_data = await self._get_ohlc(
-                        symbol,
-                        since=current_executions[0].time,
-                        to=current_executions[len(current_executions) - 1].time
-                    )
-
+                        timeline = sorted(ohlc_data + current_executions, key=lambda item: item.time)
+                        current_trade = None
+                        for item in timeline:
+                            if isinstance(item, Execution):
+                                current_trade = await self._on_execution(item, realtime=False, db_session=db_session)
+                            elif isinstance(item, OHLC) and current_trade:
+                                current_trade.update_pnl(
+                                    item.open,
+                                    realtime=False,
+                                    commit=False,
+                                    now=item.time
+                                )
+                        await db_session.commit()
                     to_exec = next(exec_iter, None)
-
-                    timeline = sorted(ohlc_data + current_executions, key=lambda item: item.time)
-                    current_trade = None
-                    for item in timeline:
-                        if isinstance(item, Execution):
-                            current_trade = await self._on_execution(item, realtime=False, db_session=db_session)
-                        elif isinstance(item, OHLC) and current_trade:
-                            current_trade.update_pnl(
-                                item.open,
-                                realtime=False,
-                                commit=False,
-                                now=item.time
-                            )
-                        #await db_session.refresh(current_trade)
-                        #await db_session.commit()
-                        #await db_session.refresh(current_trade)
-                    await db_session.commit()
-
-            # Because all balances after that execution are flawed
-            # (calculated with wrong currently_realized)
-
-            update_since = executions_by_symbol[0].time
-            to_update = await db_all(
-                client.history.statement.filter(
-                    db_balance.Balance.time > update_since
-                ),
-                session=db_session
-            )
-
-            execution_iterator = iter(executions_by_symbol)
-            execution = next(execution_iterator)
-
-            offset = execution.realized_pnl or 0.0
-            for balance in to_update:
-                if execution and balance.time > execution.time:
-                    execution = next(execution_iterator)
-                    if execution:
-                        offset += execution.realized_pnl
-                balance.amount += offset
 
         await self._update_realized_balance()
 
@@ -511,8 +496,7 @@ class ExchangeWorker:
         balance = await self.get_balance(
             Priority.FORCE,
             datetime.now(pytz.utc),
-            upnl=False,
-            return_cls=RealizedBalance
+            upnl=False
         )
         if balance:
             self.client.currently_realized = balance

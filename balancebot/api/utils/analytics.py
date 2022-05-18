@@ -13,7 +13,8 @@ from typing import Optional, Dict, List, Tuple
 import pytz
 
 import balancebot.common.utils as utils
-from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance, Performance
+from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance, Performance, Calculation, \
+    TradeAnalytics
 from balancebot.common.database import redis
 from balancebot.common.database_async import db_first
 from balancebot.common.dbmodels.balance import Balance
@@ -26,7 +27,20 @@ from balancebot.common.enums import Filter
 logger = logging.getLogger(__name__)
 
 
-async def create_cilent_analytics_serialized(client: Client, config: ClientConfig, filters: Tuple[Filter, ...]):
+async def get_cached_data(config):
+    return
+
+
+async def get_chached_filters(config: ClientConfig, filters: Tuple[Filter, ...], filter_calculation: Calculation):
+    return
+    await redis.hset()
+    await redis.hget()
+
+
+async def create_cilent_analytics(client: Client,
+                                  config: ClientConfig,
+                                  filters: Tuple[Filter, ...],
+                                  filter_calculation: Calculation):
 
     cached = await get_cached_data(config)
 
@@ -62,55 +76,57 @@ async def create_cilent_analytics_serialized(client: Client, config: ClientConfi
         s['ts'] = now.timestamp()
         asyncio.create_task(set_cached_data(s, config))
 
-    label_performance = {}
-    for label in user.labels:
-        for trade in label.trades:
-            if not trade.open_qty:
-                label_performance[label.id] += trade.realized_pnl
+    # label_performance = {}
+    # for label in user.labels:
+    #     for trade in label.trades:
+    #         if not trade.open_qty:
+    #             label_performance[label.id] += trade.realized_pnl
 
-    daily = await utils.calc_daily(client)
-
-    weekday_performance = [0] * 7
-    for day in daily:
-        weekday_performance[day.day.weekday()] += day.diff_absolute
-
-    weekday_performance = []
-    intraday_performance = []
-    for trade in client.trades:
-        weekday_performance[trade.initial.time.weekday()] += trade.realized_pnl
+#     daily = await utils.calc_daily(client)
+#
+#     weekday_performance = [0] * 7
+#     for day in daily:
+#         weekday_performance[day.day.weekday()] += day.diff_absolute
 
     performance_by_filter = {}
-    performances = []
-    for trade in client.trades:
-        all_filter_values = []
-        for cur_filter in filters:
-            if cur_filter == Filter.WEEKDAY:
-                all_filter_values.append((trade.initial.time.weekday()))
-            elif cur_filter == Filter.LABEL:
-                all_filter_values.append((label.id for label in trade.labels))
-            elif cur_filter == Filter.SESSION:
-                filter_values = None  # TODO
-            else:
-                logger.warning(f'Invalid filter provided: {cur_filter}')
-                continue
-
-        for filter_value in itertools.product(*all_filter_values):
-            if filter_value not in performance_by_filter:
-                performance_by_filter[filter_value] = Performance(
-                    Decimal(0),
-                    Decimal(0),
-                    filter_values
-                )
-            performances[filter_value].absolute += trade.realized_pnl
-
-    for filter in filters:
-        if filter == Filter.LABEL:
-            pass
+    trade_analytics = []
+    #for trade in client.trades:
+    #    all_filter_values = []
+    #    for cur_filter in filters:
+    #        if cur_filter == Filter.WEEKDAY:
+    #            all_filter_values.append(
+    #                ((cur_filter, trade.initial.time.weekday()),)
+    #            )
+    #        elif cur_filter == Filter.LABEL:
+    #            # TODO: What if trade has no labels?
+    #            all_filter_values.append(
+    #                ((cur_filter, label.id) for label in trade.labels)
+    #            )
+    #        elif cur_filter == Filter.SESSION:
+    #            filter_values = None  # TODO
+    #        else:
+    #            logger.warning(f'Invalid filter provided: {cur_filter}')
+    #            continue
+#
+    #    for filter_value in itertools.product(*all_filter_values):
+    #        if filter_value not in performance_by_filter:
+    #            performance_by_filter[filter_value] = Performance(
+    #                Decimal(0),
+    #                Decimal(0),
+    #                filter_values
+    #            )
+    #        if filter_calculation == Calculation.PNL:
+    #            performance_by_filter[filter_value].absolute += trade.realized_pnl
+    #    trade_analytics.append(
+    #        TradeAnalytics.from_orm(trade)
+    #    )
 
     return ClientAnalytics(
         id=client.id,
         filtered_performance=FilteredPerformance(
             filters=filters,
-            performance=performance_by_filter
-        )
+            performances=[]
+            #performances=list(performance_by_filter.values())
+        ),
+        trades=trade_analytics
     )

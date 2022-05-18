@@ -9,7 +9,7 @@ class EventState(Enum):
 
 class Side(Enum):
     BUY = 1
-    SELL = 2
+    SELL = -1
 
 
 class Status(Enum):

@@ -68,8 +68,12 @@ class FtxClient(ExchangeWorker):
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime, upnl=True):
         response = await self._get('/api/account')
-        amount = response['totalAccountValue'] if upnl else response['collateral']
-        return balance.Balance(amount=amount, time=time)
+
+        return balance.Balance(
+            realized=response['collateral'],
+            unrealized=response['totalAccountValue'],
+            time=time
+        )
 
     async def _get_executions(self, since: datetime) -> Iterator[Execution]:
         since = since or datetime.now(pytz.utc) - timedelta(days=365)

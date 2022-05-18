@@ -264,22 +264,10 @@ class BalanceService(BaseService):
             await self._db.commit()
             if balances:
                 await self._redis.mset({
-                    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, balance.client_id): balance.amount
+                    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, balance.client_id): balance.unrealized
                     for balance in balances
                 })
             await asyncio.sleep(3 - (time.time() - ts))
-
-    async def start_fetching(self):
-        """
-        Start fetching data at specified interval
-        """
-        while True:
-            await self._async_fetch_data()
-            time = datetime.now(pytz.utc)
-            next = time.replace(hour=(time.hour - time.hour % self.interval_hours), minute=0, second=0,
-                                microsecond=0) + timedelta(hours=self.interval_hours)
-            delay = next - time
-            await asyncio.sleep(delay.total_seconds())
 
     async def _balance_collector(self):
         async with async_maker() as session:
@@ -294,120 +282,3 @@ class BalanceService(BaseService):
 
                 session.add_all(balances)
                 await session.commit()
-
-    async def get_client_balance(self,
-                                 client: Client,
-                                 currency: str = None,
-                                 priority: Priority = Priority.HIGH,
-                                 force_fetch=False) -> Balance:
-
-        if currency is None:
-            currency = '$'
-
-        data = await self._async_fetch_data(workers=[await self.get_worker(client.id)], keep_errors=True,
-                                            priority=priority,
-                                            force_fetch=force_fetch)
-
-        if data:
-            result = data[0]
-            # if result.error is None or result.error == '':
-            #     matched_balance = db_match_balance_currency(result, currency)
-            #     if matched_balance:
-            #         result = matched_balance
-            #     else:
-            #         result.error = f'User balance does not contain currency {currency}'
-        else:
-            result = await client.latest()
-
-        return result
-
-    async def clear_client_data(self,
-                                client: Client,
-                                start: datetime = None,
-                                end: datetime = None,
-                                update_initial_balance=False):
-        if start is None:
-            start = datetime.fromtimestamp(0)
-        if end is None:
-            end = datetime.now(pytz.utc)
-
-        await db(
-            delete(Balance).filter(
-                Balance.client_id == client.id,
-                Balance.time >= start,
-                Balance.time <= end
-            ),
-            session=self._db
-        )
-
-        history_record = await db_first(client.history.statement, session=self._db)
-        if not history_record and update_initial_balance:
-            client.rekt_on = None
-            asyncio.create_task(self.get_client_balance(client, force_fetch=True))
-
-        await self._db.commit()
-
-    async def _async_fetch_data(self, workers: List[ExchangeWorker] = None,
-                                keep_errors: bool = False,
-                                priority: Priority = Priority.MEDIUM,
-                                force_fetch=False) -> List[Balance]:
-        """
-        :return:
-        Tuple with timestamp and Dictionary mapping user ids to guild entries with Balance objects (non-errors only)
-        """
-        time = datetime.now(tz=pytz.UTC)
-
-        if workers is None:
-            workers = list(self._base_workers_by_id.values())
-
-        data = []
-        tasks = []
-
-        logging.info(f'Fetching data for {len(workers)} workers {keep_errors=}')
-        results = await asyncio.gather(*[
-            worker.get_balance(date=time, priority=priority, force=force_fetch)
-            for worker in workers if (worker and worker.in_position) or force_fetch
-        ])
-
-        return results
-
-        tasks = []
-        for result in results:
-            if isinstance(result, Balance):
-                client = await db_select(Client, id=result.client_id, session=self._db)
-                if client:
-                    tasks.append(
-                        lambda: self._messenger.pub_channel(NameSpace.BALANCE, Category.NEW, channel_id=client.id,
-                                                            obj=result.id)
-                    )
-                    history = await db_all(client.history.order_by(desc(Balance.time)).limit(3), session=self._db)
-                    history_len = len(history)
-                    latest_balance = None if history_len == 0 else history[history_len - 1]
-                    if history_len > 2:
-                        # If balance hasn't changed at all, why bother keeping it?
-                        if math.isclose(latest_balance.amount, result.amount, rel_tol=1e-06) \
-                                and math.isclose(history[history_len - 2].amount, result.amount, rel_tol=1e-06):
-                            latest_balance.time = time
-                            data.append(latest_balance)
-                            continue
-                    if result.error:
-                        logging.error(f'Error while fetching {client.id=} balance: {result.error}')
-                        if keep_errors:
-                            data.append(result)
-                    else:
-                        self._db.add(result)
-                        data.append(result)
-                        if result.amount <= self.rekt_threshold and not client.rekt_on:
-                            client.rekt_on = time
-                            self._messenger.pub_channel(NameSpace.CLIENT, Category.REKT, channel_id=client.id,
-                                                        obj={'id': client.id})
-                else:
-                    logging.error(f'Worker with {result.client_id=} got no client object!')
-
-        await self._db.commit()
-
-        for task in tasks:
-            task()
-
-        logging.info(f'Done Fetching')
-        return data

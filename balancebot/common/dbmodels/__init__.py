@@ -14,7 +14,6 @@ import balancebot.common.dbmodels.execution
 import balancebot.common.dbmodels.guildassociation
 import balancebot.common.dbmodels.label
 import balancebot.common.dbmodels.pnldata
-import balancebot.common.dbmodels.realizedbalance
 import balancebot.common.dbmodels.serializer
 import balancebot.common.dbmodels.trade
 import balancebot.common.dbmodels.transfer

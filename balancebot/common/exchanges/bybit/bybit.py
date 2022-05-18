@@ -4,6 +4,7 @@ import time
 import logging
 import hmac
 from datetime import datetime
+from decimal import Decimal
 
 from aiohttp import ClientResponseError, ClientResponse
 
@@ -34,34 +35,37 @@ class BybitClient(ExchangeWorker):
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):
 
-        balance, tickers = await asyncio.gather(
+        balances, tickers = await asyncio.gather(
             self._get('/v2/private/wallet/balance'),
             self._get('/v2/public/tickers', sign=False, cache=True)
         )
 
-        total_balance = 0.0
-        extra_currencies: Dict[str, float] = {}
+        total_realized = total_unrealized = Decimal(0)
+        extra_currencies: Dict[str, Decimal] = {}
 
         ticker_prices = {
             ticker['symbol']: ticker['last_price'] for ticker in tickers
         }
         err_msg = None
-        for currency in balance:
-            amount = float(balance[currency]['equity'])
-            price = 0.0
+        for currency, balance in balances.items():
+            realized = Decimal(balance['wallet_balance'])
+            unrealized = Decimal(balances['equity'])
+            price = Decimal(0)
             if currency == 'USDT':
-                price = 1.0
-            elif amount > 0:
+                price = Decimal(1)
+            elif unrealized > 0:
                 price = ticker_prices.get(f'{currency}USD')
-                extra_currencies[currency] = amount
+                extra_currencies[currency] = realized
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {currency}:\n{ticker_prices}')
                     err_msg = 'This is a bug in the ByBit implementation.'
                     break
-            total_balance += amount * float(price)
+            total_realized += realized * Decimal(price)
+            total_unrealized += unrealized * Decimal(price)
 
         return Balance(
-            amount=total_balance,
+            realized=total_realized,
+            unrealized=total_unrealized,
             extra_currencies=extra_currencies,
             error=err_msg
         )

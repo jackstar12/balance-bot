@@ -24,4 +24,4 @@ class Execution(Base, Serializer):
 
     @hybrid_property
     def effective_qty(self):
-        return self.qty * (1 if self.side == Side.BUY else -1)
+        return self.qty * self.side.value

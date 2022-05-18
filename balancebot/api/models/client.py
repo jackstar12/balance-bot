@@ -2,7 +2,20 @@ from datetime import datetime
 from typing import Dict, List, Set, Optional, Any
 
 import pydantic
+from fastapi import Query
 from pydantic import BaseModel, UUID4
+
+
+class ClientQueryParams:
+    def __init__(self,
+                 id: int = Query(default=None),
+                 currency: str = Query(default='$'),
+                 since: datetime = Query(default=None),
+                 to: datetime = Query(default=None)):
+        self.id = id
+        self.currency = currency
+        self.since = since
+        self.to = to
 
 
 class RegisterBody(BaseModel):

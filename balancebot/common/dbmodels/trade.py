@@ -2,13 +2,13 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytz
-from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric
+from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot.common.database import Base
-from balancebot.common.database_async import async_session
+from balancebot.common.database_async import async_session, db
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.serializer import Serializer
@@ -42,10 +42,18 @@ class Trade(Base, Serializer):
     realized_pnl = Column(Numeric, nullable=True, default=Decimal('0.0'))
 
     max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
-    max_pnl = relationship('PnlData', lazy='noload', foreign_keys=max_pnl_id, uselist=False)
+    max_pnl = relationship(
+        'PnlData',
+        lazy='noload',
+        foreign_keys=max_pnl_id
+    )
 
     min_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
-    min_pnl = relationship('PnlData', lazy='noload', foreign_keys=min_pnl_id, uselist=False)
+    min_pnl = relationship(
+        'PnlData',
+        lazy='noload',
+        foreign_keys=min_pnl_id
+    )
 
     tp = Column(Numeric, nullable=True)
     sl = Column(Numeric, nullable=True)
@@ -65,17 +73,28 @@ class Trade(Base, Serializer):
                             foreign_keys="PnlData.trade_id")
 
     initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
-
     initial: Execution = relationship(
         'Execution',
         lazy='joined',
         foreign_keys=initial_execution_id,
         post_update=True,
-        primaryjoin='Execution.id == Trade.initial_execution_id',
-        uselist=False
+        primaryjoin='Execution.id == Trade.initial_execution_id'
     )
 
     memo = Column(String, nullable=True)
+
+    @orm.reconstructor
+    def init_on_load(self):
+        self.current_pnl: PnlData = None
+
+    def __init__(self, upnl: Decimal = None, *args, **kwargs):
+        self.current_pnl: PnlData = PnlData(
+            unrealized=upnl,
+            realized=self.realized_pnl,
+            time=datetime.now(pytz.utc)
+        )
+        super().__init__(*args, **kwargs)
+
 
     def _compare_pnl(self, old: PnlData, new: PnlData, cmp_func):
         if not old or cmp_func(new.total, old.total):
@@ -102,17 +121,37 @@ class Trade(Base, Serializer):
             self._messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
                                         obj={'id': self.id, 'upnl': upnl})
 
-    @orm.reconstructor
-    def init_on_load(self):
-        self.current_pnl: PnlData = None
+    async def reverse_to(self,
+                         date: datetime,
+                         db_session: AsyncSession,
+                         commit=True):
 
-    def __init__(self, upnl: Decimal = None, *args, **kwargs):
-        self.current_pnl: PnlData = PnlData(
-            unrealized=upnl,
-            realized=self.realized_pnl,
-            time=datetime.now(pytz.utc)
-        )
-        super().__init__(*args, **kwargs)
+        if date < self.initial.time:
+            # if we reverse to beyond existense of the trade, straight up
+            # delete it
+            await db_session.delete(self)
+        else:
+            for execution in reversed(self.executions):
+                if execution.time > date:
+                    # If the side of the execution equals the side of the trade,
+                    # remove_qty will be positive, so the size of the trade decreases
+                    remove_qty = execution.effective_qty * self.initial.side.value
+                    if execution.type == ExecType.TRANSFER:
+                        self.transferred_qty -= remove_qty
+                    else:
+                        self.open_qty -= remove_qty
+                    self.qty -= remove_qty
+                    await db_session.delete(execution)
+
+            await db_session.execute(
+                delete(PnlData).filter(
+                    PnlData.trade_id == self.id,
+                    PnlData.time > date
+                )
+            )
+
+        if commit:
+            await db_session.commit()
 
     @classmethod
     def is_data(cls):
@@ -120,7 +159,7 @@ class Trade(Base, Serializer):
 
     @hybrid_property
     def is_open(self):
-        return self.open_qty > Decimal('0.0')
+        return self.open_qty > Decimal(0)
 
     @hybrid_property
     def risk_to_reward(self):
@@ -134,24 +173,24 @@ class Trade(Base, Serializer):
 
     @hybrid_property
     def fomo_ratio(self):
-        return self.max_pnl.amount / self.min_pnl.amount
+        return self.max_pnl.total / self.min_pnl.total
 
     @hybrid_property
     def greed_ratio(self):
-        return self.max_pnl.amount / self.realized_pnl
+        return self.max_pnl.total / self.realized_pnl
 
     async def serialize(self, data=True, full=True, *args, **kwargs):
         s = await super().serialize(*args, data=data, full=full, **kwargs)
         if s:
-            s['status'] = 'open' if self.open_qty > Decimal('0.0') else 'win' if self.realized_pnl > 0.0 else 'loss'
+            s['status'] = 'open' if self.open_qty > Decimal(0) else 'win' if self.realized_pnl > Decimal(0) else 'loss'
         return s
 
     def calc_rpnl(self):
         realized_qty = self.qty - self.open_qty - self.transferred_qty
-        return (self.exit * realized_qty - self.entry * realized_qty) * (Decimal('1') if self.initial.side == Side.BUY else Decimal('-1'))
+        return (self.exit * realized_qty - self.entry * realized_qty) * (Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
 
     def calc_upnl(self, price: Decimal):
-        return (price * self.open_qty - self.entry * self.open_qty) * (Decimal('1') if self.initial.side == Side.BUY else Decimal('-1'))
+        return (price * self.open_qty - self.entry * self.open_qty) * (Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
 
 
 def trade_from_execution(execution: Execution):

@@ -17,7 +17,7 @@ from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance
 from balancebot.common.database_async import db, db_first, async_session, db_all, db_select
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.guild import Guild
-from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody
+from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams
 from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
 from balancebot.api.utils.responses import BadRequest, OK
 from balancebot.common import utils
@@ -66,7 +66,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
                     worker = exchange_cls(client, http_session)
                     init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
                 if init_balance.error is None:
-                    if round(init_balance.amount, ndigits=2) == 0.0:
+                    if init_balance.realized.is_zero():
                         return BadRequest(
                             f'You do not have any balance in your account. Please fund your account before registering.'
                         )
@@ -78,7 +78,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
                         return JSONResponse(jsonable_encoder({
                             'msg': 'Success',
                             'token': jwt.encode(payload, settings.authjwt_secret_key, algorithm='HS256'),
-                            'balance': init_balance.amount
+                            'balance': init_balance.serialize()
                         }))
                 else:
                     return BadRequest(f'An error occured while getting your balance: {init_balance.error}.')
@@ -102,15 +102,12 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
 
 @router.get('/client')
 async def get_client(request: Request, response: Response,
-                     id: Optional[int] = None, currency: Optional[str] = None, since: Optional[datetime] = None,
-                     to: Optional[datetime] = None,
+                     client_params: ClientQueryParams = Depends(),
                      user: User = Depends(current_user)):
-    if not currency:
-        currency = '$'
 
-    if id:
+    if client_params.id:
         client: Optional[Client] = await db_first(
-            add_client_filters(select(Client), user, id)
+            add_client_filters(select(Client), user, client_params.id)
         )
     else:
         client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], user_uuid=user.id)
@@ -118,9 +115,8 @@ async def get_client(request: Request, response: Response,
             client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], discord_user_id=user.discord_user_id)
 
     if client:
-
         s = await create_client_data_serialized(client,
-                                                ClientConfig(id=client.id, since=since, to=to, currency=currency))
+                                                ClientConfig.construct(**client_params.__dict__))
         response = JSONResponse(jsonable_encoder(s))
         # response.set_cookie('client-since', value=since, expires='session')
         # response.set_cookie('client-to', value=to, expires='session')

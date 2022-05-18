@@ -246,7 +246,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
         xs, ys = calc_xs_ys(history.data, percentage, relative_to=history.initial)
 
-        total_gain = calc_percentage(history.initial.amount, ys[len(ys) - 1])
+        total_gain = calc_percentage(history.initial.unrealized, ys[len(ys) - 1])
 
         if first:
             title = f'History for {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
@@ -366,9 +366,9 @@ async def calc_daily(client: Client,
                 prev_daily = prev_daily or daily
                 values = Daily(
                     current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
-                    daily.amount,
-                    round(daily.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-                    calc_percentage(prev_daily.amount, daily.amount, string=False)
+                    daily.unrealized,
+                    round(daily.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+                    calc_percentage(prev_daily.unrealized, daily.unrealized, string=False)
                 )
                 if string:
                     results.add_row([*values])
@@ -383,9 +383,9 @@ async def calc_daily(client: Client,
     if prev_balance.time < current_search:
         values = Daily(
             current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
-            prev_balance.amount,
-            round(prev_balance.amount - prev_daily.amount, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-            calc_percentage(prev_daily.amount, prev_balance.amount, string=False)
+            prev_balance.unrealized,
+            round(prev_balance.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+            calc_percentage(prev_daily.unrealized, prev_balance.unrealized, string=False)
         )
         if string:
             results.add_row([*values])
@@ -453,8 +453,8 @@ async def create_leaderboard(dc_client: discord.Client,
                 continue
             balance = await client.latest()
             if balance and not (event and balance.time < event.start):
-                if balance.amount > REKT_THRESHOLD:
-                    client_scores.append((client, balance.amount))
+                if balance.unrealized > REKT_THRESHOLD:
+                    client_scores.append((client, balance.unrealized))
                     value_strings[client] = balance.to_string(display_extras=False)
                 else:
                     clients_rekt.append(client)
@@ -595,14 +595,14 @@ async def calc_gains(clients: List[Client],
         if balance_then and balance_now:
             # balance_then = history.data[0]
             # balance_now = db_match_balance_currency(history.data[len(history.data) - 1], currency)
-            diff = round(balance_now.amount - balance_then.amount,
+            diff = round(balance_now.unrealized - balance_then.unrealized,
                          ndigits=CURRENCY_PRECISION.get(currency, 3))
 
-            if balance_then.amount > 0:
+            if balance_then.unrealized > 0:
                 results.append(
                     Gain(
                         client,
-                        relative=round(100 * (diff / balance_then.amount), ndigits=CURRENCY_PRECISION.get('%', 2)),
+                        relative=round(100 * (diff / balance_then.unrealized), ndigits=CURRENCY_PRECISION.get('%', 2)),
                         absolute=diff
                     )
                 )
@@ -709,12 +709,12 @@ def calc_xs_ys(data: List[Balance],
         for balance in data:
             xs.append(balance.tz_time.replace(microsecond=0))
             if percentage:
-                if relative_to.amount > 0:
-                    amount = 100 * (balance.amount - relative_to.amount) / relative_to.amount
+                if relative_to.unrealized > 0:
+                    amount = 100 * (balance.unrealized - relative_to.unrealized) / relative_to.unrealized
                 else:
                     amount = 0.0
             else:
-                amount = balance.amount
+                amount = balance.unrealized
             ys.append(round(amount, ndigits=CURRENCY_PRECISION.get(balance.currency, 3)))
         return xs, ys
 

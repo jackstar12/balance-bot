@@ -213,9 +213,8 @@ class BinanceFutures(_BinanceBaseClient):
         response = await self._get('/fapi/v2/account')
 
         return balance.Balance(
-            amount=Decimal(
-                response.get('totalMarginBalance' if upnl else 'totalWalletBalance', 0)
-            ),
+            realized=Decimal(response['totalMarginBalance']),
+            unrealized=Decimal(response['totalWalletBalance']),
             time=time if time else datetime.now(pytz.utc)
         )
 

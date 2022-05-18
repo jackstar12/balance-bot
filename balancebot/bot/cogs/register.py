@@ -192,9 +192,9 @@ class RegisterCog(CogBase):
 
                     button_row = None
                     if init_balance.error is None:
-                        if init_balance.amount < config.REGISTRATION_MINIMUM:
+                        if init_balance.unrealized < config.REGISTRATION_MINIMUM:
                             error = f'You do not have enough balance in your account ' \
-                                    f'(Minimum: {config.REGISTRATION_MINIMUM}$, Your Balance: {init_balance.amount}$).\n' \
+                                    f'(Minimum: {config.REGISTRATION_MINIMUM}$, Your Balance: {init_balance.unrealized}$).\n' \
                                     f'Please fund your account before registering.'
                         else:
                             ctx, consent = await utils.ask_for_consent(

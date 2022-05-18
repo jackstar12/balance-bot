@@ -19,13 +19,13 @@ class KuCoinClient(ExchangeWorker):
     _response_error = None
     _response_result = 'data'
 
-    # https://docs.kucoin.com/#get-account-balance-of-a-sub-account
+    # https://docs.kucoin.com/futures/#get-account-overview
     async def _get_balance(self, time: datetime, upnl=True):
         data = await self._get(
             '/api/v1/account-overview',
             params={'currency': 'USDT'}
         )
-        return Balance(amount=data['accountEquity'], time=time)
+        return Balance(unrealized=data['accountEquity'], realized=data['marginBalance'], time=time)
 
     # https://docs.kucoin.com/#authentication
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):

@@ -1,24 +1,27 @@
 from decimal import Decimal
-from typing import List, Dict, TypeVar, NamedTuple, Optional, Any, Tuple
+from enum import Enum
+from typing import List, Dict, NamedTuple, Optional, Any, Tuple
 
 from pydantic import BaseModel
 
 from balancebot.api.models.execution import Execution
 from balancebot.api.models.trade import Trade
-from balancebot.common.enums import Filter, Side
-import balancebot.api.models as models
-
-T = TypeVar('T')
+from balancebot.common.enums import Filter
 
 
-class PnlData(NamedTuple):
+class Calculation(Enum):
+    PNL = "pnl"
+    WINRATE = "winrate"
+
+
+class PnlData(BaseModel):
     realized: Decimal
     unrealized: Decimal
 
 
 class TradeAnalytics(Trade):
-    tp = Optional[Decimal]
-    sl = Optional[Decimal]
+    tp: Optional[Decimal]
+    sl: Optional[Decimal]
 
     max_pnl: PnlData
     min_pnl: PnlData
@@ -33,6 +36,10 @@ class TradeAnalytics(Trade):
     realized_r: Optional[Decimal]
     memo: Optional[str]
 
+    class Config:
+        orm_mode = True
+        arbitrary_types_allowed = False
+
 
 class Performance(NamedTuple):
     relative: Decimal
@@ -42,7 +49,7 @@ class Performance(NamedTuple):
 
 class FilteredPerformance(BaseModel):
     filters: Tuple[Filter, ...]
-    performance: List[Performance]
+    performances: List[Performance]
 
 
 class ClientAnalytics(BaseModel):

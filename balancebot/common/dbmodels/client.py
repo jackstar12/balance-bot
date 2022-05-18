@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional, Union, TYPE_CHECKING
 import discord
 import pytz
@@ -22,7 +23,6 @@ from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.pnldata import PnlData
-from balancebot.common.dbmodels.realizedbalance import RealizedBalance
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.user import User
 from balancebot.common.database import Base
@@ -66,9 +66,9 @@ class Client(Base, Serializer):
                                          back_populates='client')
 
     open_trades = relationship('Trade', lazy='noload',
-                                              cascade="all, delete",
-                                              back_populates='client',
-                                              primaryjoin="and_(Trade.client_id == Client.id, Trade.open_qty > 0.0)")
+                               cascade="all, delete",
+                               back_populates='client',
+                               primaryjoin="and_(Trade.client_id == Client.id, Trade.open_qty > 0)")
 
     history: AppenderQuery = relationship('Balance',
                                           back_populates='client',
@@ -82,17 +82,11 @@ class Client(Base, Serializer):
     archived = Column(Boolean, default=False)
     invalid = Column(Boolean, default=False)
 
-    currently_realized_id = Column(Integer, ForeignKey('realizedbalance.id', ondelete='SET NULL'), nullable=True)
-    currently_realized = relationship('RealizedBalance',
+    currently_realized_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    currently_realized = relationship('Balance',
                                       lazy='noload',
                                       foreign_keys=currently_realized_id,
                                       cascade="all, delete")
-
-    realized_history = relationship('RealizedBalance',
-                                    back_populates='client',
-                                    cascade="all, delete", lazy='dynamic',
-                                    order_by='RealizedBalance.time',
-                                    foreign_keys='RealizedBalance.client_id')
 
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
@@ -107,18 +101,20 @@ class Client(Base, Serializer):
     async def evaluate_balance(self, redis: Redis):
         if not self.currently_realized:
             return
-        amount = self.currently_realized.amount
+        realized = self.currently_realized.realized
+        unrealized = Decimal(0)
         for trade in self.open_trades:
             if trade.current_pnl:
-                amount += trade.current_pnl.amount
+                unrealized += trade.current_pnl.amount
             else:
                 price = await redis.get(
                     utils.join_args(NameSpace.TICKER, trade.client.exchange, trade.symbol)
                 )
                 if price:
-                    amount += trade.calc_upnl(float(price))
+                    unrealized += trade.calc_upnl(float(price))
         new = db_balance.Balance(
-            amount=amount,
+            realized=realized,
+            unrealized=realized + unrealized,
             time=datetime.now(pytz.utc),
             client_id=self.id
         )
@@ -176,12 +172,8 @@ class Client(Base, Serializer):
         #    asc(post.time)
         # ).limit(1)
 
-        if self.premium:
-            base_stmt = self.realized_history.statement
-            amount_cls = RealizedBalance
-        else:
-            base_stmt = self.history.statement
-            amount_cls = db_balance.Balance
+        base_stmt = self.history.statement
+        amount_cls = db_balance.Balance
 
         balance = await db_first(
             base_stmt.filter(
@@ -190,6 +182,7 @@ class Client(Base, Serializer):
         )
 
         if self.premium:
+            # Probably the most beautiful query I've ever written
             subq = select(
                 func.row_number().over(
                     order_by=asc(PnlData.time), partition_by=Trade.symbol
@@ -212,9 +205,9 @@ class Client(Base, Serializer):
             )
 
             return db_balance.Balance(
-                amount=balance.amount + sum(pnl.amount for pnl in pnl_data),
-                time=balance.time,
-
+                realized=balance.realized,
+                unrealized=balance.realized + sum(pnl.amount for pnl in pnl_data),
+                time=balance.time
             )
 
         else:

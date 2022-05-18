@@ -26,6 +26,7 @@ from balancebot.common.database import Base, engine
 import balancebot.api.routers.authentication as auth
 import balancebot.api.routers.client as client
 import balancebot.api.routers.label as label
+import balancebot.api.routers.analytics as analytics
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.guild import Guild
 import balancebot.api.routers.discordauth as discord
@@ -64,6 +65,7 @@ app.include_router(discord.router, prefix='/api/v1')
 app.include_router(auth.router, prefix='/api/v1')
 app.include_router(client.router, prefix='/api/v1')
 app.include_router(label.router, prefix='/api/v1')
+app.include_router(analytics.router, prefix='/api/v1')
 
 Base.metadata.create_all(bind=engine)
 
@@ -225,33 +227,6 @@ async def on_start():
     async with aio_db.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    p = Event.registrations
-
-    event = await aio_db.db_unique(select(Event), Event.registrations)
-
-    c = Client.events
-    stmt2 = select(User).options(
-        selectinload(User.clients).selectinload(Client.trades)
-    ).options(
-        selectinload(User.alerts)
-    ).options(
-        selectinload(User.discord_user).selectinload(DiscordUser.clients).selectinload(Client.trades).selectinload(
-            Trade.executions)
-    )
-
-    print(len(str(stmt2)))
-
-    test2 = await aio_db.db_unique(
-        stmt2
-    )
-    stmt = aio_db.db_eager(select(User),
-                           (User.clients, [Client.trades, Client.events]),
-                           User.alerts,
-                           (User.discord_user, (DiscordUser.clients, (Client.trades, Trade.executions)))
-                           )
-
-    res = await aio_db.db_unique(stmt)
-
     async def run_all():
         async with aiohttp.ClientSession() as http_session:
             await asyncio.gather(
@@ -266,36 +241,6 @@ async def on_start():
 async def db_test():
     async with aio_db.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    from balancebot.common.dbmodels.client import Client
-    from balancebot.common.dbmodels.balance import Balance
-
-    sess = aio_db.async_session
-
-    users = await aio_db.db_all(select(User))
-    guilds = await aio_db.db_all(select(Guild))
-    guild = await aio_db.db_first(select(Guild))
-
-    result = await sess.execute(
-        delete(Guild).filter_by(id=234)
-    )
-    now = datetime.now(tz=pytz.UTC)
-    client = await sess.get(Client, 53)
-    history = await aio_db.db_all(client.history.statement.filter(
-        Balance.time < now
-    ))
-
-    sess.add(Guild(
-        id=23456,
-        name='hs',
-        tier=Tier.PREMIUM
-    ))
-
-    try:
-        await sess.commit()
-    except IntegrityError:
-        pass
-
 
 def run():
     uvicorn.run(app, host='localhost', port=5000)
