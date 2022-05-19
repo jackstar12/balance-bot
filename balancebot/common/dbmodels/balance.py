@@ -14,9 +14,9 @@ from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.serializer import Serializer
 
 
-class Balance(Base, AmountMixin, Serializer):
+class Balance(Base, Serializer):
     __tablename__ = 'balance'
-    __serializer_forbidden__ = ['id', 'error', 'client_id']
+    __serializer_forbidden__ = ['id', 'error', 'client_id', 'client', 'transfer', 'transfer_id']
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
@@ -25,9 +25,9 @@ class Balance(Base, AmountMixin, Serializer):
     time: datetime = Column(DateTime(timezone=True), nullable=False, index=True)
     #amount = Column(Float, nullable=False)
 
-    realized: Decimal = Column(Numeric, nullable=False)
-    unrealized: Decimal = Column(Numeric, nullable=False)
-    total_transfered: Decimal = Column(Numeric, nullable=False)
+    realized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
+    unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
+    total_transfered: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
     extra_currencies = Column(JSONB, nullable=True)
 
     transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='SET NULL'), nullable=True)
@@ -82,7 +82,7 @@ class Balance(Base, AmountMixin, Serializer):
     def is_data(cls):
         return True
 
-    def serialize(self, data=True, full=True, *args, **kwargs):
+    async def serialize(self, data=True, full=True, *args, **kwargs):
         currency = kwargs.get('currency', '$')
         if data:
             if currency == '$':
@@ -96,6 +96,8 @@ class Balance(Base, AmountMixin, Serializer):
                     round(amount, ndigits=config.CURRENCY_PRECISION.get(currency, 3)),
                     round(self.time.timestamp() * 1000)
                 )
+        else:
+            return await super().serialize(full=False, data=True)
 
     @hybrid_property
     def tz_time(self, tz=pytz.UTC):

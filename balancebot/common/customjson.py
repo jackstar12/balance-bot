@@ -15,6 +15,3 @@ def dumps(obj: Any):
 
 def loads(obj: Any):
     return json.loads(obj, parse_float=Decimal)
-
-
-

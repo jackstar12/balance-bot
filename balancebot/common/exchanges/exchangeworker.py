@@ -204,7 +204,6 @@ class ExchangeWorker:
                 balance = await self._get_balance(date, upnl=upnl)
             except ResponseError as e:
                 return db_balance.Balance(
-                    amount=0,
                     time=date,
                     error=e.human
                 )
@@ -318,17 +317,19 @@ class ExchangeWorker:
         raw_transfers = await self._get_transfers(since)
         if raw_transfers:
             raw_transfers.sort(key=lambda transfer: transfer.time)
-        return [
-            Transfer(
-                amount=await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time),
-                time=raw_transfer.time,
-                extra_currencies={raw_transfer.coin: raw_transfer.amount}
-                if not self._usd_like(raw_transfer.coin) else None,
-                coin=raw_transfer.coin,
-                client_id=self.client_id
-            )
-            for raw_transfer in raw_transfers
-        ]
+            return [
+                Transfer(
+                    amount=await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time),
+                    time=raw_transfer.time,
+                    extra_currencies={raw_transfer.coin: raw_transfer.amount}
+                    if not self._usd_like(raw_transfer.coin) else None,
+                    coin=raw_transfer.coin,
+                    client_id=self.client_id
+                )
+                for raw_transfer in raw_transfers
+            ]
+        else:
+            return []
 
     async def update_transfers(self, since: datetime = None, db_session: AsyncSession = None) -> List[Transfer]:
         db_session = db_session or async_session
@@ -417,7 +418,7 @@ class ExchangeWorker:
                 # form a trade can be extracted.
 
                 while to_exec:
-                    if to_exec.time > valid_until:
+                    if not valid_until or to_exec.time > valid_until:
                         current_executions = [to_exec]
                         open_qty = to_exec.effective_qty
 

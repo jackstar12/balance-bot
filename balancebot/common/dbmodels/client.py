@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional, Union, TYPE_CHECKING
@@ -17,6 +18,7 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
+from balancebot.common import customjson
 from balancebot.common.database_async import db_first, db_all, db_select_all
 import balancebot.common.dbmodels.balance as db_balance
 from balancebot.common.dbmodels.execution import Execution
@@ -92,16 +94,18 @@ class Client(Base, Serializer):
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
     async def get_balance(self, redis: Redis, currency=None) -> float:
-        amount = await redis.get(utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id))
+        raw = await redis.hget(utils.join_args(NameSpace.CLIENT, self.id), key=NameSpace.BALANCE.value)
+        as_json = customjson.loads(raw)
         return db_balance.Balance(
-            amount=float(amount),
-            time=None
+            realized=Decimal(as_json['realized']),
+            unrealized=Decimal(as_json['unrealized']),
+            total_transfered=Decimal(as_json['total_transfered'])
         )
 
     async def evaluate_balance(self, redis: Redis):
         if not self.currently_realized:
             return
-        realized = self.currently_realized.realized
+        realized = getattr(self.currently_realized, 'realized', Decimal(0))
         unrealized = Decimal(0)
         for trade in self.open_trades:
             if trade.current_pnl:
@@ -115,6 +119,7 @@ class Client(Base, Serializer):
         new = db_balance.Balance(
             realized=realized,
             unrealized=realized + unrealized,
+            total_transfered=getattr(self.currently_realized, 'total_transfered', Decimal(0)),
             time=datetime.now(pytz.utc),
             client_id=self.id
         )

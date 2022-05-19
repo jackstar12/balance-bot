@@ -4,9 +4,9 @@ from typing import NamedTuple
 
 
 class OHLC(NamedTuple):
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: Decimal
     time: datetime

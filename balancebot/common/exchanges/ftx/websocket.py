@@ -2,6 +2,8 @@ import asyncio
 import hmac
 import json
 import time
+from decimal import Decimal
+
 import aiohttp
 from collections import defaultdict, deque
 from typing import DefaultDict, Deque, List, Dict
@@ -110,7 +112,7 @@ class FtxWebsocketClient(WebsocketManager):
         self._orders.update({data['id']: data})
 
     async def _on_message(self, ws, raw_message: str) -> None:
-        message = json.loads(raw_message)
+        message = json.loads(raw_message, parse_float=Decimal)
         message_type = message['type']
         if message_type in {'subscribed', 'unsubscribed', 'pong'}:
             return

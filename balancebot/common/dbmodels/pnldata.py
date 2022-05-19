@@ -30,4 +30,8 @@ class PnlData(Base):
     def total(self):
         return self.realized + self.unrealized
 
+    @hybrid_property
+    def amount(self):
+        return self.realized + self.unrealized
+
     # type = Column(Enum(PNLType), nullable=False)

@@ -2,6 +2,7 @@ import logging
 from asyncio import Queue
 from inspect import currentframe
 
+from aioredis.client import Pipeline
 from apscheduler.job import Job
 from sqlalchemy import select, delete, and_
 from sqlalchemy.inspection import inspect
@@ -25,7 +26,7 @@ from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.trade import Trade
 from balancebot.collector.services.baseservice import BaseService
 from balancebot.collector.services.dataservice import DataService, Channel
-from balancebot.common import utils
+from balancebot.common import utils, customjson
 from balancebot.common.enums import Priority
 from balancebot.common.messenger import NameSpace, Category
 from balancebot.common.messenger import ClientEdit
@@ -263,10 +264,20 @@ class BalanceService(BaseService):
                     self._db.add(balance)
             await self._db.commit()
             if balances:
-                await self._redis.mset({
-                    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, balance.client_id): balance.unrealized
-                    for balance in balances
-                })
+                async with self._redis.pipeline(transaction=True) as pipe:
+                    pipe: Pipeline = pipe
+                    s = await balance.serialize(data=False, full=False)
+                    for balance in balances:
+                        await pipe.hset(
+                            name=utils.join_args(NameSpace.CLIENT, balance.client_id),
+                            key=NameSpace.BALANCE.value,
+                            value=customjson.dumps(await balance.serialize(data=False, full=False))
+                        )
+                    await pipe.execute()
+                #await self._redis.mset({
+                #    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, balance.client_id): str(balance.unrealized)
+                #    for balance in balances
+                #})
             await asyncio.sleep(3 - (time.time() - ts))
 
     async def _balance_collector(self):

@@ -22,12 +22,13 @@ from aiohttp import ClientResponse
 
 from balancebot.common.dbmodels.transfer import RawTransfer
 from balancebot.common import utils
+from balancebot.common.enums import Side
 from balancebot.common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from balancebot.api.settings import settings
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_limit
 import balancebot.common.dbmodels.balance as balance
 from balancebot.common.dbmodels.execution import Execution
-
+from balancebot.common.models.ohlc import OHLC
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,21 @@ class _TickerCache(NamedTuple):
     time: datetime
 
 
+def tf_helper(tf: str, factor_seconds: int, ns: List[int]):
+    return {
+        factor_seconds * n: f'{n}{tf}' for n in ns
+    }
+
+
+_interval_map = {
+    **tf_helper('m', 60, [1, 3, 5, 15, 30]),
+    **tf_helper('h', 60 * 60, [1, 2, 4, 6, 8, 12]),
+    **tf_helper('d', 60 * 60 * 24, [1, 3]),
+    **tf_helper('w', 60 * 60 * 24 * 7, [1]),
+    None: '1m'
+}
+
+
 class BinanceFutures(_BinanceBaseClient):
     _ENDPOINT = 'https://testnet.binancefuture.com' if settings.testing else 'https://fapi.binance.com'
     exchange = 'binance-futures'
@@ -139,10 +155,47 @@ class BinanceFutures(_BinanceBaseClient):
         })
         self._ccxt.set_sandbox_mode(True)
 
+
     async def _get_transfers(self,
                              since: datetime,
                              to: datetime = None) -> List[RawTransfer]:
         return await self._get_internal_transfers(Type.USDM, since, to)
+
+    async def _get_ohlc(self,
+                        market: str,
+                        since: datetime,
+                        to: datetime,
+                        resolution_s: int = None,
+                        limit: int = None) -> List[OHLC]:
+        # https://binance-docs.github.io/apidocs/futures/en/#mark-price-kline-candlestick-data
+        params = {
+            'symbol': market,
+            'interval': _interval_map.get(resolution_s),
+            'startTime': self._parse_datetime(since),
+            'endTime': self._parse_datetime(to),
+        }
+        if limit:
+            params['limit'] = limit
+        data = await self._get(
+            '/fapi/v1/markPriceKlines',
+            params={
+                'symbol': market,
+                'interval': _interval_map.get(resolution_s),
+                'startTime': self._parse_datetime(since),
+                'endTime': self._parse_datetime(to)
+            }
+        )
+        return [
+            OHLC(
+                time=self._parse_ts(data[0]),
+                open=Decimal(data[1]),
+                high=Decimal(data[2]),
+                low=Decimal(data[3]),
+                close=Decimal(data[4]),
+                volume=Decimal(0)
+            )
+            for data in data
+        ]
 
     async def _get_executions(self, since: datetime) -> Iterator[Execution]:
 
@@ -163,7 +216,8 @@ class BinanceFutures(_BinanceBaseClient):
             if symbol not in symbols_done:
                 if income["incomeType"] == "COMMISSION":
                     current_commision_trade_id = income.get('tradeId')
-                if (income["incomeType"] == "REALIZED_PNL" and income.get('tradeId') != current_commision_trade_id) or since:
+                if (income["incomeType"] == "REALIZED_PNL" and income.get(
+                        'tradeId') != current_commision_trade_id) or since:
                     # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
                     symbols_done.add(symbol)
                     trades = await self._get('/fapi/v1/userTrades', params={
@@ -199,7 +253,7 @@ class BinanceFutures(_BinanceBaseClient):
                                 symbol=symbol,
                                 qty=Decimal(trade['qty']),
                                 price=Decimal(trade['price']),
-                                side=trade['side'],
+                                side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
                                 time=self._parse_ts(trade['time']),
                                 commission=Decimal(trade['commission'])
                             )
@@ -258,7 +312,6 @@ class BinanceFutures(_BinanceBaseClient):
 
 
 class BinanceSpot(_BinanceBaseClient):
-
     _ENDPOINT = 'https://testnet.binance.vision' if settings.testing else 'https://api.binance.com'
     exchange = 'binance-spot'
 

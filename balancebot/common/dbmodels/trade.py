@@ -14,7 +14,7 @@ from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.enums import Side, ExecType
-from balancebot.common.messenger import NameSpace, Category
+from balancebot.common.messenger import NameSpace, Category, Messenger
 
 trade_association = Table('trade_association', Base.metadata,
                           Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
@@ -105,7 +105,7 @@ class Trade(Base, Serializer):
             return new
         return old
 
-    def update_pnl(self, price: float, realtime=True, commit=False, now: datetime = None):
+    def update_pnl(self, price: Decimal, messenger: Messenger = None, realtime=True, commit=False, now: datetime = None):
         if not now:
             now = datetime.now(pytz.utc)
         upnl = self.calc_upnl(price)
@@ -117,8 +117,8 @@ class Trade(Base, Serializer):
         )
         self.max_pnl = self._compare_pnl(self.max_pnl, self.current_pnl, Decimal.__ge__)
         self.min_pnl = self._compare_pnl(self.min_pnl, self.current_pnl, Decimal.__le__)
-        if realtime:
-            self._messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
+        if realtime and messenger:
+            messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
                                         obj={'id': self.id, 'upnl': upnl})
 
     async def reverse_to(self,
