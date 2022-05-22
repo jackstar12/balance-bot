@@ -31,7 +31,7 @@ async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=curren
 #                       password='usTzjlI4SKy92HE6PGXgvTsaIQMdYWgo')
 redis = aioredis.Redis()
 
-async def db(stmt, session=None):
+async def db(stmt: object, session: object = None) -> object:
     return await (session or async_session).execute(stmt)
 
 
@@ -105,8 +105,7 @@ def db_eager(stmt: Select, *eager: Union[Column, Tuple[Column, Union[Tuple, Inst
             elif isinstance(col[1], InstrumentedAttribute) or isinstance(col[1], Tuple):
                 stmt = db_eager(stmt, col[1], root=path)
             elif col[1] == '*':
-                stmt = apply_option(stmt, '*', root=root, joined=joined)
-                stmt = stmt.options(root.joinedload('*'))
+                stmt = apply_option(stmt, '*', root=path, joined=joined)
         else:
             stmt = apply_option(stmt, col, root=root, joined=joined)
     return stmt

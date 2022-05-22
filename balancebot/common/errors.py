@@ -23,6 +23,10 @@ class ResponseError(Exception):
         self.human = human
 
 
+class InvalidClientError(ResponseError):
+    pass
+
+
 class CriticalError(ResponseError):
     def __init__(self, retry_ts: int = None, *args, **kwargs):
         super().__init__(*args, **kwargs)

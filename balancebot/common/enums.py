@@ -47,7 +47,6 @@ class Filter(Enum):
     LABEL = "label"
 
 
-
 class ExecType(Enum):
     TRADE = 1
     STOP = 3

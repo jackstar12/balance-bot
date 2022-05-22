@@ -15,6 +15,7 @@ from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.enums import Side, ExecType
 from balancebot.common.messenger import NameSpace, Category, Messenger
+from balancebot.common.models.pnldata import PnlData as CompactPnlData
 
 trade_association = Table('trade_association', Base.metadata,
                           Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
@@ -28,8 +29,8 @@ class Trade(Base, Serializer):
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
-    client = relationship('Client')
-    labels = relationship('Label', secondary=trade_association, backref='trades')
+    client = relationship('Client', lazy='noload')
+    labels = relationship('Label', lazy='noload', secondary=trade_association, backref='trades')
 
     symbol = Column(String, nullable=False)
     entry = Column(Numeric, nullable=False)
@@ -39,17 +40,18 @@ class Trade(Base, Serializer):
     transferred_qty = Column(Numeric, nullable=True)
 
     exit = Column(Numeric, nullable=True)
-    realized_pnl = Column(Numeric, nullable=True, default=Decimal('0.0'))
+    realized_pnl = Column(Numeric, nullable=True, default=Decimal(0))
+    total_commisions = Column(Numeric, nullable=True, default=Decimal(0))
 
     max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
-    max_pnl = relationship(
+    max_pnl: PnlData = relationship(
         'PnlData',
         lazy='noload',
         foreign_keys=max_pnl_id
     )
 
     min_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
-    min_pnl = relationship(
+    min_pnl: PnlData = relationship(
         'PnlData',
         lazy='noload',
         foreign_keys=min_pnl_id
@@ -95,63 +97,19 @@ class Trade(Base, Serializer):
         )
         super().__init__(*args, **kwargs)
 
+    @hybrid_property
+    def net_pnl(self):
+        return self.realized_pnl - self.total_commisions
 
-    def _compare_pnl(self, old: PnlData, new: PnlData, cmp_func):
-        if not old or cmp_func(new.total, old.total):
-            Session.object_session(self).add(new)
-            # TODO: Should the PNL objects be persisted in db before publishing them?
-            #self._messenger.pub_channel(NameSpace.TRADE, Category.SIGNIFICANT_PNL, channel_id=trade.client_id,
-            #                            obj={'id': self.id, 'pnl': new.amount})
-            return new
-        return old
-
-    def update_pnl(self, price: Decimal, messenger: Messenger = None, realtime=True, commit=False, now: datetime = None):
-        if not now:
-            now = datetime.now(pytz.utc)
-        upnl = self.calc_upnl(price)
-        self.current_pnl = PnlData(
-            trade_id=self.id,
-            unrealized=upnl,
-            realized=self.realized_pnl,
-            time=now,
-        )
-        self.max_pnl = self._compare_pnl(self.max_pnl, self.current_pnl, Decimal.__ge__)
-        self.min_pnl = self._compare_pnl(self.min_pnl, self.current_pnl, Decimal.__le__)
-        if realtime and messenger:
-            messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
-                                        obj={'id': self.id, 'upnl': upnl})
-
-    async def reverse_to(self,
-                         date: datetime,
-                         db_session: AsyncSession,
-                         commit=True):
-
-        if date < self.initial.time:
-            # if we reverse to beyond existense of the trade, straight up
-            # delete it
-            await db_session.delete(self)
-        else:
-            for execution in reversed(self.executions):
-                if execution.time > date:
-                    # If the side of the execution equals the side of the trade,
-                    # remove_qty will be positive, so the size of the trade decreases
-                    remove_qty = execution.effective_qty * self.initial.side.value
-                    if execution.type == ExecType.TRANSFER:
-                        self.transferred_qty -= remove_qty
-                    else:
-                        self.open_qty -= remove_qty
-                    self.qty -= remove_qty
-                    await db_session.delete(execution)
-
-            await db_session.execute(
-                delete(PnlData).filter(
-                    PnlData.trade_id == self.id,
-                    PnlData.time > date
-                )
-            )
-
-        if commit:
-            await db_session.commit()
+    @hybrid_property
+    def compact_pnl_data(self):
+        return [
+            CompactPnlData(
+                ts=int(pnl_data.time.timestamp()),
+                realized=pnl_data.realized,
+                unrealized=pnl_data.unrealized
+            ) for pnl_data in self.pnl_data
+        ]
 
     @classmethod
     def is_data(cls):
@@ -192,6 +150,66 @@ class Trade(Base, Serializer):
     def calc_upnl(self, price: Decimal):
         return (price * self.open_qty - self.entry * self.open_qty) * (Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
 
+    def update_pnl(self, price: Decimal, messenger: Messenger = None, realtime=True, commit=False, now: datetime = None):
+        if not now:
+            now = datetime.now(pytz.utc)
+        upnl = self.calc_upnl(price)
+        self.current_pnl = PnlData(
+            trade_id=self.id,
+            unrealized=upnl,
+            realized=self.realized_pnl,
+            time=now,
+        )
+        self.max_pnl = self._compare_pnl(self.max_pnl, self.current_pnl, Decimal.__ge__)
+        self.min_pnl = self._compare_pnl(self.min_pnl, self.current_pnl, Decimal.__le__)
+        if realtime and messenger:
+            messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
+                                        obj={'id': self.id, 'upnl': upnl})
+
+    async def reverse_to(self,
+                         date: datetime,
+                         db_session: AsyncSession,
+                         commit=True):
+
+        if date < self.initial.time:
+            # if we reverse to beyond existense of the trade, straight up
+            # delete it
+            await db_session.delete(self)
+        else:
+            removals = False
+            for execution in reversed(self.executions):
+                if execution.time > date:
+                    # If the side of the execution equals the side of the trade,
+                    # remove_qty will be positive, so the size of the trade decreases
+                    remove_qty = execution.effective_qty * self.initial.side.value
+                    if execution.type == ExecType.TRANSFER:
+                        self.transferred_qty -= remove_qty
+                    else:
+                        self.open_qty -= remove_qty
+                    self.qty -= remove_qty
+                    await db_session.delete(execution)
+                    removals = True
+            if removals:
+                await db_session.execute(
+                    delete(PnlData).filter(
+                        PnlData.trade_id == self.id,
+                        PnlData.time > date
+                    )
+                )
+
+        if commit:
+            await db_session.commit()
+
+    def _compare_pnl(self, old: PnlData, new: PnlData, cmp_func):
+        if not old or cmp_func(new.total, old.total):
+            Session.object_session(self).add(new)
+            # TODO: Should the PNL objects be persisted in db before publishing them?
+            #self._messenger.pub_channel(NameSpace.TRADE, Category.SIGNIFICANT_PNL, channel_id=trade.client_id,
+            #                            obj={'id': self.id, 'pnl': new.amount})
+            return new
+        return old
+
+
 
 def trade_from_execution(execution: Execution):
     return Trade(
@@ -200,6 +218,7 @@ def trade_from_execution(execution: Execution):
         open_qty=execution.qty if execution.type != ExecType.TRADE else Decimal(0),
         transferred_qty=execution.qty if execution.type == ExecType.TRANSFER else Decimal(0),
         initial=execution,
+        total_commissions=execution.commission,
         symbol=execution.symbol,
         executions=[execution]
     )

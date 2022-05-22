@@ -19,7 +19,7 @@ from balancebot.common.dbmodels.trade import Trade
 
 from balancebot.common.dbmodels.user import User
 from balancebot.api.dependencies import current_user, CurrentUser
-from balancebot.api.models.user import UserInfo
+from balancebot.api.models.user import UserInfo, UserRead, UserCreate
 from balancebot.api.settings import settings
 from balancebot.common.database import Base, engine
 
@@ -57,9 +57,9 @@ app = FastAPI(
 app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
 app.add_middleware(DbSessionMiddleware)
 
-app.include_router(fastapi_users.get_verify_router(), prefix='/api/v1')
+app.include_router(fastapi_users.get_verify_router(UserRead), prefix='/api/v1')
 app.include_router(fastapi_users.get_reset_password_router(), prefix='/api/v1')
-app.include_router(fastapi_users.get_register_router(), prefix='/api/v1')
+app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix='/api/v1')
 
 app.include_router(discord.router, prefix='/api/v1')
 app.include_router(auth.router, prefix='/api/v1')

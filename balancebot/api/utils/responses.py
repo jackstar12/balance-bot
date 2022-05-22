@@ -1,8 +1,11 @@
 from http import HTTPStatus
-from typing import Dict
+from typing import Dict, Any
 
+import orjson
 from fastapi.responses import UJSONResponse
 from starlette.responses import JSONResponse
+
+from balancebot.common import customjson
 
 
 def BadRequest(detail: str, code: int = None, **kwargs):
@@ -18,7 +21,14 @@ def OK(detail: str, code: int = None, **kwargs):
 
 
 def Response(detail: str, code: int, status: int, **kwargs):
-    return UJSONResponse(
+    return CustomJSONResponse(
         {'detail': detail, 'code': code, **kwargs},
         status_code=status
     )
+
+
+class CustomJSONResponse(JSONResponse):
+    media_type = "application/json"
+
+    def render(self, content: Any) -> bytes:
+        return customjson.dumps(content)

@@ -30,7 +30,7 @@ from balancebot.common.database_async import async_session, db_all
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.models.daily import Daily
-from balancebot.common.models.gain import Gain
+from balancebot.common.models.clientgain import ClientGain
 from balancebot.common import dbutils
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.balance import Balance
@@ -312,16 +312,15 @@ async def calc_daily(client: Client,
     if to is None:
         to = now
 
-    since = since.replace(tzinfo=pytz.UTC).replace(hour=0, minute=0, second=0)
-    to = to.replace(tzinfo=pytz.UTC)
+    since_date = since.replace(tzinfo=pytz.UTC).replace(hour=0, minute=0, second=0)
 
     daily_end = min(now, to)
 
-    history = client.history.filter(
-        Balance.time > since, Balance.time < now
+    history = await db_all(client.history.statement.filter(
+        Balance.time > since_date, Balance.time < now
     ).order_by(
         asc(Balance.time)
-    ).all()
+    ))
 
     if len(history) == 0:
         if throw_exceptions:
@@ -338,7 +337,7 @@ async def calc_daily(client: Client,
         daily_start = history[0].time
 
     daily_start = daily_start.replace(tzinfo=pytz.UTC)
-    daily_start = max(since, daily_start).replace(hour=0, minute=0, second=0)
+    daily_start = max(since_date, daily_start).replace(hour=0, minute=0, second=0)
 
     if guild_id:
         event = await dbutils.get_event(guild_id)
@@ -378,14 +377,15 @@ async def calc_daily(client: Client,
                 current_day = current_search
                 current_search = current_search + timedelta(days=1)
             prev_balance = balance
-        await call_unknown_function(forEach, balance)
+        if balance.time > since_date:
+            await call_unknown_function(forEach, balance)
 
     if prev_balance.time < current_search:
         values = Daily(
-            current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
-            prev_balance.unrealized,
-            round(prev_balance.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-            calc_percentage(prev_daily.unrealized, prev_balance.unrealized, string=False)
+            day=current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
+            amount=prev_balance.unrealized,
+            diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+            diff_relative=calc_percentage(prev_daily.unrealized, prev_balance.unrealized, string=False)
         )
         if string:
             results.add_row([*values])
@@ -395,7 +395,7 @@ async def calc_daily(client: Client,
     return results
 
 
-def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], string=True) -> Union[str, float]:
+def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], string=True) -> float | str | Decimal:
     diff = now - then
     num_cls = type(then)
     if diff == 0.0:
@@ -537,7 +537,7 @@ async def create_leaderboard(dc_client: discord.Client,
 async def calc_gains(clients: List[Client],
                      event: db_event.Event,
                      search: datetime,
-                     currency: str = None) -> List[Gain]:
+                     currency: str = None) -> List[ClientGain]:
     """
     :param event:
     :param clients: users to calculate gain for
@@ -567,7 +567,7 @@ async def calc_gains(clients: List[Client],
         #    currency
         # )
 
-        search, _ = await dbutils.get_guild_start_end_times(event.guild_id, search, None)
+        search, _ = await dbutils.get_guild_start_end_times(event, search, None)
         balance_then = await client.get_balance_at_time(search, post=True, currency=currency)
         #balance_then = db_match_balance_currency(
         #    await db_first(
@@ -600,18 +600,18 @@ async def calc_gains(clients: List[Client],
 
             if balance_then.unrealized > 0:
                 results.append(
-                    Gain(
-                        client,
+                    ClientGain(
+                        client=client,
                         relative=round(100 * (diff / balance_then.unrealized), ndigits=CURRENCY_PRECISION.get('%', 2)),
                         absolute=diff
                     )
                 )
             else:
                 results.append(
-                    Gain(client, 0.0, diff)
+                    ClientGain(client, Decimal(0), diff)
                 )
         else:
-            results.append(Gain(client, None, None))
+            results.append(ClientGain(client, None, None))
 
     return results
 
@@ -923,6 +923,9 @@ def readable_time(time: datetime) -> str:
 
 
 def db_match_balance_currency(balance: Balance, currency: str):
+
+    return balance
+
     result = None
 
     if balance is None:

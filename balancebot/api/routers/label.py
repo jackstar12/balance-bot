@@ -2,15 +2,15 @@ from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, Body
 from fastapi.exceptions import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 
-from balancebot.common.database_async import async_session, db_first, db_eager, db_all
+from balancebot.common.database_async import async_session, db_first, db_eager, db_all, db_select, db
 from balancebot.api.dependencies import current_user
 from balancebot.common.database import session
 
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.label import Label
-from balancebot.common.dbmodels.trade import Trade
+from balancebot.common.dbmodels.trade import Trade, trade_association
 from balancebot.common.dbmodels.user import User
 from balancebot.api.models.label import SetLabels, RemoveLabel, AddLabel, PatchLabel, CreateLabel
 from balancebot.api.utils.responses import BadRequest, OK, Response
@@ -26,8 +26,8 @@ router = APIRouter(
 )
 
 
-def get_label(id: int, user: User):
-    label: Label = session.query(Label).filter_by(id=id).first()
+async def get_label(id: int, user: User):
+    label: Label = await db_select(Label, id=id)
     if label:
         if label.user_id == user.id:
             return label
@@ -39,17 +39,17 @@ def get_label(id: int, user: User):
 
 @router.post('/')
 async def create_label(body: CreateLabel, user: User = Depends(current_user)):
-    label = Label(name=body.name, color=body.color, user_id=body.user.id)
-    session.add(label)
+    label = Label(name=body.name, color=body.color, user_id=user.id)
+    async_session.add(label)
     await async_session.commit()
     return label.serialize()
 
 
 @router.delete('/')
 async def delete_label(id: int = Body(...), user: User = Depends(current_user)):
-    result = get_label(id, user)
+    result = await get_label(id, user)
     if isinstance(result, Label):
-        session.query(Label).filter_by(id=id).delete()
+        await async_session.delete(result)
         await async_session.commit()
         return {'msg': 'Success'}, HTTPStatus.OK
     else:
@@ -58,7 +58,7 @@ async def delete_label(id: int = Body(...), user: User = Depends(current_user)):
 
 @router.patch('/')
 async def update_label(body: PatchLabel, user: User = Depends(current_user)):
-    result = get_label(body.id, user)
+    result = await get_label(body.id, user)
     if isinstance(result, Label):
         if body.name:
             result.name = body.name
@@ -136,7 +136,14 @@ async def set_labels(body: SetLabels, user: User = Depends(current_user)):
         await add_trade_filters(select(Trade), user, body.client_id, body.trade_id)
     )
     if trade:
+
         if len(body.label_ids) > 0:
+            #await db(
+            #    update(trade_association).where(
+            #        trade_association.trade_id == trade.id,
+            #
+            #    )
+            #)
             trade.labels = await db_all(
                 select(Label).filter(
                     or_(

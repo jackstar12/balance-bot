@@ -18,8 +18,9 @@ class Trade(BaseModel):
     transferred_qty: Decimal
     qty: Decimal
     open_qty: Decimal
-    side: Side
     realized_pnl: Decimal
 
     labels: List[int]
-    initial: Execution
+    #initial: Execution
+    initial_execution_id: int
+

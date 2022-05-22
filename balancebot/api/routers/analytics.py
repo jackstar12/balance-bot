@@ -1,6 +1,9 @@
+import time
 from typing import List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import ORJSONResponse, UJSONResponse
 from starlette.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
@@ -11,12 +14,15 @@ from balancebot.api.models.websocket import ClientConfig
 from balancebot.api.utils.analytics import create_cilent_analytics
 from balancebot.api.utils.client import get_user_client
 from balancebot.common.database_async import db_select
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels.execution import Execution
+from balancebot.common.dbmodels.trade import Trade
 from balancebot.common.dbmodels.user import User
 import bcrypt
 
-from balancebot.api.dependencies import get_authenticator, CurrentUser
+from balancebot.api.dependencies import get_authenticator, CurrentUser, current_user
 from balancebot.api.users import fastapi_users
-from balancebot.api.utils.responses import OK
+from balancebot.api.utils.responses import OK, CustomJSONResponse
 from balancebot.common.enums import Filter
 
 router = APIRouter(
@@ -31,10 +37,22 @@ router = APIRouter(
 
 @router.get('/analytics', response_model=ClientAnalytics)
 async def get_analytics(client_params: ClientQueryParams = Depends(),
-                  filters: Tuple[Filter, ...] = Query(default=(Filter.LABEL,)),
-                  calculate: Calculation = Query(default=Calculation.PNL),
-                  user: User = Depends(CurrentUser)):
+                        filters: Tuple[Filter, ...] = Query(default=(Filter.LABEL,)),
+                        calculate: Calculation = Query(default=Calculation.PNL),
+                        user: User = Depends(current_user)):
     config = ClientConfig.construct(**client_params.__dict__)
-    client = await get_user_client(user, config.id)
-
-    return create_cilent_analytics(client, config, filters=filters, filter_calculation=calculate)
+    client = await get_user_client(user,
+                                   config.id,
+                                   eager=[
+                                       (Client.trades, [
+                                           Trade.executions,
+                                           Trade.pnl_data,
+                                           Trade.initial,
+                                           Trade.max_pnl,
+                                           Trade.min_pnl
+                                       ])
+                                   ])
+    res = await create_cilent_analytics(client, config, filters=filters, filter_calculation=calculate)
+    return CustomJSONResponse(
+        content=jsonable_encoder(res.dict())
+    )

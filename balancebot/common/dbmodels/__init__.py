@@ -1,5 +1,4 @@
 from operator import and_
-
 from sqlalchemy import desc, select, func
 from sqlalchemy.orm import relationship, aliased
 
@@ -19,6 +18,8 @@ import balancebot.common.dbmodels.trade
 import balancebot.common.dbmodels.transfer
 import balancebot.common.dbmodels.user
 import balancebot.common.dbmodels.balance
+import balancebot.common.dbmodels.journal
+import balancebot.common.dbmodels.chapter
 
 
 cl = client.Client

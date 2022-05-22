@@ -75,7 +75,7 @@ class FtxClient(ExchangeWorker):
             time=time
         )
 
-    async def _get_executions(self, since: datetime) -> Iterator[Execution]:
+    async def _get_executions(self, since: datetime, init=False) -> Iterator[Execution]:
         since = since or datetime.now(pytz.utc) - timedelta(days=365)
         # Offset by 1 millisecond because otherwise the same executions are refetched (ftx probably compares with >=)
         trades = await self._get('/api/fills', params={

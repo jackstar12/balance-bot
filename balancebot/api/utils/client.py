@@ -1,15 +1,18 @@
 import asyncio
+from decimal import Decimal
+
 from sqlalchemy import select
 
 import msgpack
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Mapping, Any
 
 import pytz
 
 import balancebot.common.utils as utils
+from balancebot.common import customjson
 from balancebot.common.database import redis
-from balancebot.common.database_async import db_first
+from balancebot.common.database_async import db_first, db_select
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User
@@ -25,15 +28,19 @@ def update_dicts(*dicts: Dict, **kwargs):
         arg.update(kwargs)
 
 
+def get_dec(mapping: Mapping, key: Any, default: Any):
+    return Decimal(mapping.get(key, default))
+
+
 def update_client_data_trades(cache: Dict, trades: List[Dict], config: ClientConfig, save_cache=True):
 
     result = {}
     new_trades = {}
-    existing_trades = cache['trades']
+    existing_trades = cache.get('trades', None)
     now = datetime.now(tz=pytz.utc)
 
-    winners, losers = cache.get('winners', 0), cache.get('losers', 0)
-    total_win, total_loss = cache.get('avg_win', 0.0) * winners, cache.get('avg_loss', 0.0) * losers
+    winners, losers = get_dec(cache, 'winners', 0), get_dec(cache, 'losers', 0)
+    total_win, total_loss = get_dec(cache, 'avg_win', 0) * winners, get_dec(cache, 'avg_loss', 0) * losers
 
     for trade in trades:
         # Get existing entry
@@ -47,7 +54,8 @@ def update_client_data_trades(cache: Dict, trades: List[Dict], config: ClientCon
         update_dicts(
             result, cache
         )
-        new_trades[trade['id']] = existing_trades[trade['id']] = trade
+        tr_id = str(trade['id'])
+        new_trades[tr_id] = existing_trades[tr_id] = trade
 
     update_dicts(result, trades=new_trades)
 
@@ -69,7 +77,7 @@ def update_client_data_trades(cache: Dict, trades: List[Dict], config: ClientCon
 
 async def update_client_data_balance(cache: Dict, client: Client, config: ClientConfig, save_cache=True) -> Dict:
 
-    cached_date = datetime.fromtimestamp(cache.get('ts', 0), tz=pytz.UTC)
+    cached_date = datetime.fromtimestamp(int(cache.get('ts', 0)), tz=pytz.UTC)
     now = datetime.now(tz=pytz.UTC)
 
     if config.since:
@@ -131,12 +139,12 @@ async def get_cached_data(config: ClientConfig):
     redis_key = f'client:data:{config.id}:{config.since.timestamp() if config.since else None}:{config.to.timestamp() if config.to else None}:{config.currency}'
     cached = await redis.get(redis_key)
     if cached:
-        return msgpack.unpackb(cached, raw=False)
+        return customjson.loads(cached)
 
 
 async def set_cached_data(data: Dict, config: ClientConfig):
     redis_key = f'client:data:{config.id}:{config.since.timestamp() if config.since else None}:{config.to.timestamp() if config.to else None}:{config.currency}'
-    await redis.set(redis_key, msgpack.packb(data))
+    await redis.set(redis_key, customjson.dumps(data))
 
 
 async def create_client_data_serialized(client: Client, config: ClientConfig):
@@ -151,7 +159,7 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
         s['trades'] = {}
         s['source'] = 'database'
 
-    cached_date = datetime.fromtimestamp(s.get('ts', 0), tz=pytz.UTC)
+    cached_date = datetime.fromtimestamp(int(s.get('ts', 0)), tz=pytz.UTC)
 
     now = datetime.now(tz=pytz.UTC)
 
@@ -178,13 +186,11 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
     return s
 
 
-async def get_user_client(user: User, id: int = None):
+async def get_user_client(user: User, id: int = None, eager=None):
+    eager = eager or []
     client: Optional[Client] = None
-    if id:
-        client = await db_first(add_client_filters(select(Client), user, id))
-    elif user.discord_user:
-        # TODO: Load client seperately?
-        pass
-    elif len(user.clients) > 0:
-        client = user.clients[0]
+    client = await db_first(add_client_filters(select(Client), user, id), *eager)
+
+    #else:
+    #    client = await db_select(Client, eager=eager, user_id=user.id)
     return client

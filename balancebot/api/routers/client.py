@@ -19,7 +19,7 @@ from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams
 from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
-from balancebot.api.utils.responses import BadRequest, OK
+from balancebot.api.utils.responses import BadRequest, OK, CustomJSONResponse
 from balancebot.common import utils
 from balancebot.api.dependencies import current_user, CurrentUser, get_authenticator
 from balancebot.common.database import session
@@ -110,14 +110,15 @@ async def get_client(request: Request, response: Response,
             add_client_filters(select(Client), user, client_params.id)
         )
     else:
-        client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], user_uuid=user.id)
+        client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], user_id=user.id)
         if not client:
             client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], discord_user_id=user.discord_user_id)
 
     if client:
         s = await create_client_data_serialized(client,
                                                 ClientConfig.construct(**client_params.__dict__))
-        response = JSONResponse(jsonable_encoder(s))
+        encoded = jsonable_encoder(s)
+        response = CustomJSONResponse(encoded)
         # response.set_cookie('client-since', value=since, expires='session')
         # response.set_cookie('client-to', value=to, expires='session')
         return response

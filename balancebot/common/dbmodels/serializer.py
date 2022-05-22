@@ -9,6 +9,8 @@ from sqlalchemy.orm import InstrumentedAttribute, selectinload, RelationshipProp
 from sqlalchemy.orm.dynamic import AppenderQuery
 from sqlalchemy.sql import Select
 
+from balancebot.common.database_async import db_all
+
 
 class Serializer:
     __serializer_anti_recursion__ = False
@@ -37,8 +39,8 @@ class Serializer:
                                 v = await Serializer.serialize_list(v, data=data, full=full, *args, **kwargs)
                             elif isinstance(v, AppenderQuery):
                                 if data:
-                                    #v = await db_all(v.statement)
-                                    v = v.all()
+                                    v = await db_all(v.statement)
+                                    #v = v.all()
                                 else:
                                     v = []
                             elif isinstance(v, datetime):

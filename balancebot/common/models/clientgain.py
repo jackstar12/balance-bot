@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from decimal import Decimal
 from typing import NamedTuple, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -6,6 +8,11 @@ if TYPE_CHECKING:
 
 
 class Gain(NamedTuple):
+    relative: Optional[Decimal]
+    absolute: Optional[Decimal]
+
+
+class ClientGain(NamedTuple):
     client: Client
-    relative: Optional[float]
-    absolute: Optional[float]
+    relative: Optional[Decimal]
+    absolute: Optional[Decimal]

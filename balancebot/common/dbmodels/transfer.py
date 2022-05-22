@@ -1,5 +1,6 @@
 import enum
 from datetime import datetime
+from decimal import Decimal
 from typing import NamedTuple
 
 from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger
@@ -16,7 +17,7 @@ class TransferType(enum.Enum):
 
 
 class RawTransfer(NamedTuple):
-    amount: float
+    amount: Decimal
     time: datetime
     coin: str
 

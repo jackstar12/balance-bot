@@ -7,7 +7,6 @@ from aioredis import Redis
 from pydantic import UUID4
 
 from balancebot.common.dbmodels.user import User
-from balancebot.api.models.user import UserDB
 from balancebot.api.settings import settings
 
 
@@ -40,7 +39,7 @@ class Authenticator:
 
         return UUID4(user_id.decode('utf-8'))
 
-    async def write_token(self, user: Union[User, UserDB]) -> str:
+    async def write_token(self, user: User) -> str:
         token = secrets.token_urlsafe()
         await self.redis.sadd(f'sessions:{user.id}', token)
         await self.redis.set(token, str(user.id), ex=self.session_expiration)
@@ -49,7 +48,7 @@ class Authenticator:
     async def destroy_token(self, token: str) -> None:
         await self.redis.delete(token)
 
-    async def set_session_cookie(self, response: Response, user: Union[User, UserDB]):
+    async def set_session_cookie(self, response: Response, user: User):
         response.set_cookie(
             self.session_cookie_name,
             value=await self.write_token(user)
@@ -58,7 +57,7 @@ class Authenticator:
     def unset_session_cooke(self, response: Response):
         response.delete_cookie(self.session_cookie_name)
 
-    async def invalidate_user_sessions(self, user: Union[User, UserDB]):
+    async def invalidate_user_sessions(self, user: User):
         await self.redis.delete(f'sessions:{user.id}')
 
     async def invalidate_session(self, request: Request):

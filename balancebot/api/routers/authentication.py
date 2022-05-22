@@ -26,7 +26,6 @@ class AuthenticationBody(BaseModel):
     password: str
 
 
-fastapi_users.get_register_router()
 #@router.post('/register')
 #async def register(body: AuthenticationBody, authenticator: Authenticator = Depends(get_authenticator)):
 #    user = await db_select(User, email=body.email)

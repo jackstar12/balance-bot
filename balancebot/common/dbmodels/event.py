@@ -5,7 +5,7 @@ import pytz
 from balancebot.common.database_async import async_session
 from balancebot.common import utils
 import numpy
-from balancebot.common.models.gain import Gain
+from balancebot.common.models.clientgain import ClientGain
 from balancebot.common.dbmodels.archive import Archive
 from balancebot.common.dbmodels.serializer import Serializer
 from datetime import datetime
@@ -82,7 +82,7 @@ class Event(Base, Serializer):
         now = datetime.now(pytz.utc)
         gains = await utils.calc_gains(self.registrations, self.guild_id, self.start)
 
-        def key(x: Gain):
+        def key(x: ClientGain):
             if x.client.rekt_on:
                 # Trick to make the sort rank the first rekt last
                 return -(now - x.client.rekt_on).total_seconds() * 100

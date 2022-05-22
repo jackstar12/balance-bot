@@ -31,8 +31,7 @@ from balancebot.common.database import Base
 import balancebot.common.utils as utils
 from balancebot.common.messenger import NameSpace
 
-if TYPE_CHECKING:
-    from balancebot.common.dbmodels.trade import Trade
+from balancebot.common.dbmodels.trade import Trade
 
 dotenv.load_dotenv()
 
@@ -48,8 +47,9 @@ class Client(Base, Serializer):
     # Identification
     id = Column(Integer, primary_key=True)
     user_id = Column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
+    user = relationship('User', lazy='noload')
     discord_user_id = Column(BigInteger, ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
-    discord_user = relationship('DiscordUser')
+    discord_user = relationship('DiscordUser', lazy='noload')
 
     # User Information
     api_key = Column(String(), nullable=False)
@@ -74,9 +74,15 @@ class Client(Base, Serializer):
 
     history: AppenderQuery = relationship('Balance',
                                           back_populates='client',
-                                          cascade="all, delete", lazy='dynamic',
+                                          cascade="all, delete",
+                                          lazy='dynamic',
                                           order_by='Balance.time',
                                           foreign_keys='Balance.client_id')
+
+    journals = relationship('Journal',
+                            back_populates='client',
+                            cascade="all, delete",
+                            lazy='noload')
 
     transfers = relationship('Transfer', back_populates='client',
                              cascade='all, delete', lazy='noload')
@@ -93,14 +99,15 @@ class Client(Base, Serializer):
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
-    async def get_balance(self, redis: Redis, currency=None) -> float:
+    async def get_latest_balance(self, redis: Redis, currency=None):
         raw = await redis.hget(utils.join_args(NameSpace.CLIENT, self.id), key=NameSpace.BALANCE.value)
-        as_json = customjson.loads(raw)
-        return db_balance.Balance(
-            realized=Decimal(as_json['realized']),
-            unrealized=Decimal(as_json['unrealized']),
-            total_transfered=Decimal(as_json['total_transfered'])
-        )
+        if raw:
+            as_json = customjson.loads(raw)
+            return db_balance.Balance(
+                realized=Decimal(as_json['realized']),
+                unrealized=Decimal(as_json['unrealized']),
+                total_transfered=Decimal(as_json['total_transfered'])
+            )
 
     async def evaluate_balance(self, redis: Redis):
         if not self.currently_realized:
@@ -112,10 +119,10 @@ class Client(Base, Serializer):
                 unrealized += trade.current_pnl.amount
             else:
                 price = await redis.get(
-                    utils.join_args(NameSpace.TICKER, trade.client.exchange, trade.symbol)
+                    utils.join_args(NameSpace.TICKER, self.exchange, trade.symbol)
                 )
                 if price:
-                    unrealized += trade.calc_upnl(float(price))
+                    unrealized += trade.calc_upnl(Decimal(str(price)))
         new = db_balance.Balance(
             realized=realized,
             unrealized=realized + unrealized,
@@ -152,62 +159,42 @@ class Client(Base, Serializer):
         elif self.user_id:
             return True
 
-    async def get_balance_at_time(self, time: datetime, post: bool, currency: str = None):
-        pre = aliased(db_balance.Balance)
-        post = aliased(db_balance.Balance)
-
-        # pre_stmt = select(
-        #    pre,
-        #    func.row_number().over(order_by=desc(pre.time)).label('count')
-        # ).filter(
-        #    pre.time < time,
-        #    pre.client_id == self.id
-        # ).limit(1).subquery()
-        #
-        # stmt = select(
-        #    post,
-        #    pre_stmt
-        # ).filter(
-        #    post.client_id == self.id,
-        #    or_(
-        #        post.time > pre_stmt.c.time,
-        #        pre_stmt.c.count == 0
-        #    )
-        # ).order_by(
-        #    asc(post.time)
-        # ).limit(1)
-
-        base_stmt = self.history.statement
+    async def get_balance_at_time(self, time: datetime, currency: str = None):
         amount_cls = db_balance.Balance
+        stmt = self.history.statement.filter(
+                amount_cls.time > time
+            ).order_by(asc(amount_cls.time))
 
-        balance = await db_first(
-            base_stmt.filter(
-                amount_cls.time > time if post else amount_cls.time < time
-            ).order_by(asc(amount_cls.time) if post else desc(amount_cls.time))
-        )
+        balance = await db_first(stmt)
 
-        if self.premium:
+        if self.is_premium:
             # Probably the most beautiful query I've ever written
             subq = select(
+                PnlData.id.label('pnl_id'),
                 func.row_number().over(
                     order_by=asc(PnlData.time), partition_by=Trade.symbol
                 ).label('row_number')
             ).join(
                 PnlData.trade
             ).join(
-                Trade.initial, Execution.time <= balance.time
+                Execution, and_(
+                    Execution.id == Trade.initial_execution_id,
+                    Execution.time <= balance.time
+                )
             ).filter(
-                PnlData.time > balance.time
+                PnlData.time > balance.time,
+                Trade.client_id == self.id
             ).subquery()
 
-            pnl_data = await db_all(
-                select(
-                    PnlData,
-                    subq
-                ).filter(
-                    subq.c.row_number <= 1
-                )
+            full_stmt = select(
+                subq,
+                PnlData
+            ).filter(
+                PnlData.id == subq.c.pnl_id,
+                subq.c.row_number <= 1
             )
+
+            pnl_data = await db_all(full_stmt)
 
             return db_balance.Balance(
                 realized=balance.realized,
@@ -302,6 +289,6 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
     if user.discord_user_id:
         user_checks.append(Client.discord_user_id == user.discord_user_id)
     return stmt.filter(
-        Client.id == client_id,
+        Client.id == client_id if client_id else True,
         or_(*user_checks)
     )

@@ -7,6 +7,7 @@ from typing import Callable, Dict, Optional
 
 import msgpack
 
+from balancebot.common import customjson
 from balancebot.common.database import redis
 from balancebot.api.settings import settings
 from balancebot.common.models.singleton import Singleton
@@ -59,7 +60,7 @@ class Messenger(Singleton):
             if rcv_event:
                 data = event
             else:
-                data = msgpack.unpackb(event['data'], raw=False)
+                data = customjson.loads(event['data'])
             asyncio.create_task(utils.call_unknown_function(coro, data, *args, **kwargs))
         return wrapper
 
@@ -98,7 +99,7 @@ class Messenger(Singleton):
         ch = utils.join_args(category.value, sub.value, channel_id)
         if settings.testing:
             logging.info(f'Pub: {ch=} {obj=}')
-        asyncio.create_task(self._redis.publish(ch, msgpack.packb(obj)))
+        asyncio.create_task(self._redis.publish(ch, customjson.dumps(obj)))
 
 
 if __name__ == '__main__':

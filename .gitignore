@@ -7,3 +7,4 @@ LOGS
 balancebot/api/db.sqlite3
 migrations
 .env
+venv

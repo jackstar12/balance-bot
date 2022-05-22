@@ -2,14 +2,9 @@ import asyncio
 import json
 import logging
 import time
-from threading import Thread, Lock
 import aiohttp
-import threading
 
-import websockets
 from aiohttp import WSMessage
-from websocket import WebSocketApp
-
 
 class WebsocketManager:
     _CONNECT_TIMEOUT_S = 5

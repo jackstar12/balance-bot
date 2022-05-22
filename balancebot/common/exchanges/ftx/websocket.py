@@ -7,7 +7,6 @@ from decimal import Decimal
 import aiohttp
 from collections import defaultdict, deque
 from typing import DefaultDict, Deque, List, Dict
-from gevent.event import Event
 
 from balancebot.common import utils
 from balancebot.common.models.async_websocket_manager import WebsocketManager
@@ -28,7 +27,6 @@ class FtxWebsocketClient(WebsocketManager):
         self._fills: Deque = deque([], maxlen=10000)
         self._api_key = api_key
         self._api_secret = api_secret
-        self._orderbook_update_events: DefaultDict[str, Event] = defaultdict(Event)
         self._reset_data()
         self._on_message_callback = on_message_callback
         self._subaccount = subaccount

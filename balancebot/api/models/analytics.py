@@ -1,12 +1,15 @@
+from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import List, Dict, NamedTuple, Optional, Any, Tuple
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, Extra
 
 from balancebot.api.models.execution import Execution
 from balancebot.api.models.trade import Trade
 from balancebot.common.enums import Filter
+from balancebot.common.models.pnldata import PnlData as CompactPnlData
 
 
 class Calculation(Enum):
@@ -15,23 +18,28 @@ class Calculation(Enum):
 
 
 class PnlData(BaseModel):
+    time: datetime
     realized: Decimal
     unrealized: Decimal
+
+    class Config:
+        orm_mode = True
 
 
 class TradeAnalytics(Trade):
     tp: Optional[Decimal]
     sl: Optional[Decimal]
 
-    max_pnl: PnlData
-    min_pnl: PnlData
+    max_pnl: Optional[PnlData]
+    min_pnl: Optional[PnlData]
     # order_count: int
 
     executions: List[Execution]
-    pnl_data: List[PnlData]
+    pnl_history: List[CompactPnlData] = Field(alias="compact_pnl_data")
+    #pnl_data: List[PnlData]
 
-    fomo_ratio: Decimal
-    greed_ratio: Decimal
+    fomo_ratio: Optional[Decimal]
+    greed_ratio: Optional[Decimal]
     risk_to_reward: Optional[Decimal]
     realized_r: Optional[Decimal]
     memo: Optional[str]
@@ -39,12 +47,14 @@ class TradeAnalytics(Trade):
     class Config:
         orm_mode = True
         arbitrary_types_allowed = False
+        extra = Extra.ignore
 
 
 class Performance(NamedTuple):
     relative: Decimal
     absolute: Decimal
-    filter_values: Dict[Filter, Any]
+    #filter_values: Dict[Filter, Any]
+    filter_values: List[Any]
 
 
 class FilteredPerformance(BaseModel):

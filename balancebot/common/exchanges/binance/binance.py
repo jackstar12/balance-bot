@@ -197,69 +197,75 @@ class BinanceFutures(_BinanceBaseClient):
             for data in data
         ]
 
-    async def _get_executions(self, since: datetime) -> Iterator[Execution]:
+    async def _get_executions(self, since: datetime, init=False) -> Iterator[Execution]:
 
         since_ts = self._parse_datetime(since or datetime.now(pytz.utc) - timedelta(days=180))
         # https://binance-docs.github.io/apidocs/futures/en/#get-income-history-user_data
         incomes = await self._get(
             '/fapi/v1/income',
             params={
-                'startTime': since_ts
+                'startTime': since_ts,
+                'limit': 1000
             }
         )
         symbols_done = set()
         results = []
-        current_commision_trade_id = None
+        current_commision_trade_id = {}
 
         for income in incomes:
             symbol = income.get('symbol')
             if symbol not in symbols_done:
-                if income["incomeType"] == "COMMISSION":
-                    current_commision_trade_id = income.get('tradeId')
-                if (income["incomeType"] == "REALIZED_PNL" and income.get(
-                        'tradeId') != current_commision_trade_id) or since:
-                    # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
-                    symbols_done.add(symbol)
-                    trades = await self._get('/fapi/v1/userTrades', params={
-                        'symbol': symbol,
-                        'fromId': income["tradeId"] if since is not None else current_commision_trade_id
-                    })
-                    """
-                    [
-                      {
-                        "buyer": false,
-                        "commission": "-0.07819010",
-                        "commissionAsset": "USDT",
-                        "id": 698759,
-                        "maker": false,
-                        "orderId": 25851813,
-                        "price": "7819.01",
-                        "qty": "0.002",
-                        "quoteQty": "15.63802",
-                        "realizedPnl": "-0.91539999",
-                        "side": "SELL",
-                        "positionSide": "SHORT",
-                        "symbol": "BTCUSDT",
-                        "time": 1569514978020
-                      }
-                    ]
-                    """
-                    # -1790.6910700000062
-                    # -1695.67399983
-                    all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
-                    results.extend(
-                        (
-                            Execution(
-                                symbol=symbol,
-                                qty=Decimal(trade['qty']),
-                                price=Decimal(trade['price']),
-                                side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
-                                time=self._parse_ts(trade['time']),
-                                commission=Decimal(trade['commission'])
+                trade_id = income["tradeId"]
+                income_type = income["incomeType"]
+
+                if income_type == "COMMISSION":
+                    if (current_commision_trade_id.get(symbol)) or since:
+                        # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
+                        symbols_done.add(symbol)
+                        trades = await self._get('/fapi/v1/userTrades', params={
+                            'symbol': symbol,
+                            'fromId': trade_id if since is not None else current_commision_trade_id[symbol]
+                        })
+                        """
+                        [
+                          {
+                            "buyer": false,
+                            "commission": "-0.07819010",
+                            "commissionAsset": "USDT",
+                            "id": 698759,
+                            "maker": false,
+                            "orderId": 25851813,
+                            "price": "7819.01",
+                            "qty": "0.002",
+                            "quoteQty": "15.63802",
+                            "realizedPnl": "-0.91539999",
+                            "side": "SELL",
+                            "positionSide": "SHORT",
+                            "symbol": "BTCUSDT",
+                            "time": 1569514978020
+                          }
+                        ]
+                        """
+                        # -1790.6910700000062
+                        # -1695.67399983
+                        all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
+                        results.extend(
+                            (
+                                Execution(
+                                    symbol=symbol,
+                                    qty=Decimal(trade['qty']),
+                                    price=Decimal(trade['price']),
+                                    side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
+                                    time=self._parse_ts(trade['time']),
+                                    commission=Decimal(trade['commission'])
+                                )
+                                for trade in trades
                             )
-                            for trade in trades
                         )
-                    )
+                    current_commision_trade_id[symbol] = trade_id
+                elif income_type == "REALIZED_PNL" and current_commision_trade_id.get(symbol) == trade_id:
+                    current_commision_trade_id[symbol] = None
+
         return results
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
@@ -267,8 +273,8 @@ class BinanceFutures(_BinanceBaseClient):
         response = await self._get('/fapi/v2/account')
 
         return balance.Balance(
-            realized=Decimal(response['totalMarginBalance']),
-            unrealized=Decimal(response['totalWalletBalance']),
+            realized=Decimal(response['totalWalletBalance']),
+            unrealized=Decimal(response['totalMarginBalance']),
             time=time if time else datetime.now(pytz.utc)
         )
 

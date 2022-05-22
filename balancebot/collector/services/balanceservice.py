@@ -5,6 +5,7 @@ from inspect import currentframe
 from aioredis.client import Pipeline
 from apscheduler.job import Job
 from sqlalchemy import select, delete, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.inspection import inspect
 import asyncio
 import time
@@ -95,7 +96,7 @@ class BalanceService(BaseService):
         self._exchange_jobs: Dict[str, ExchangeJob] = {}
         self._balance_queue = Queue()
 
-        self._db = async_maker()
+        self._db: AsyncSession = async_maker()
         self._balance_session = None
         self._scheduler.start()
 
@@ -139,24 +140,25 @@ class BalanceService(BaseService):
     async def _on_trade_new(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=True)
         if worker:
-            await self._db.refresh(worker.client.open_trades)
+            await self._db.refresh(worker.client)
             # Trade is already contained in session because of ^^, no SQL will be emitted
             new = await self._db.get(Trade, data['trade_id'])
             await self.data_service.subscribe(worker.client.exchange, Channel.TICKER, symbol=new.symbol)
 
     async def _on_trade_update(self, data: Dict):
         client_id = data['client_id']
-        trade_id = data['trade_id']
+        trade_id = data['id']
         worker = await self.get_worker(client_id, create_if_missing=True)
         if worker:
-            for trade in worker.client.open_trades:
+            client = await self._db.get(Client, worker.client_id)
+            for trade in client.open_trades:
                 if trade.id == trade_id:
                     await self._db.refresh(trade)
 
     async def _on_trade_delete(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=False)
         if worker:
-            await self._db.refresh(worker.client.open_trades)
+            await self._db.refresh(worker.client)
             if len(worker.client.open_trades) == 0:
                 symbol = data['symbol']
                 # If there are no trades on the same exchange matching the deleted symbol, there is no need to keep it subscribed
@@ -183,7 +185,8 @@ class BalanceService(BaseService):
             def worker_callback(category, sub_category):
                 async def callback(worker: ExchangeWorker, obj: Serializer):
                     self._messenger.pub_channel(category, sub=sub_category,
-                                                channel_id=worker.client_id, obj=await obj.serialize(full=False))
+                                                channel_id=worker.client_id,
+                                                obj=await obj.serialize(full=False))
 
                 return callback
 
@@ -225,7 +228,7 @@ class BalanceService(BaseService):
 
     async def get_worker(self, client_id: int, create_if_missing=True) -> ExchangeWorker:
         if client_id:
-            worker = self._base_workers_by_id.get(client_id)
+            worker = self._base_workers_by_id.get(client_id) or self._premium_workers_by_id.get(client_id)
             if not worker and create_if_missing:
                 await self._add_client_by_id(client_id)
             return worker
@@ -251,17 +254,19 @@ class BalanceService(BaseService):
 
             for worker in self._premium_workers_by_id.values():
                 new = False
-                for trade in worker.client.open_trades:
-                    ticker = self.data_service.get_ticker(trade.symbol, trade.client.exchange)
+                client = await self._db.get(Client, worker.client_id)
+                for trade in client.open_trades:
+                    ticker = self.data_service.get_ticker(trade.symbol, client.exchange)
                     if ticker:
                         trade.update_pnl(ticker.price, realtime=True)
                         if inspect(trade.max_pnl).transient or inspect(trade.min_pnl).transient:
                             new = True
-                balance = await worker.client.evaluate_balance(self._redis)
-                balances.append(balance)
-                # TODO: Introduce new mechanisms determining when to save
-                if new:
-                    self._db.add(balance)
+                balance = await client.evaluate_balance(self._redis)
+                if balance:
+                    balances.append(balance)
+                    # TODO: Introduce new mechanisms determining when to save
+                    if new:
+                        self._db.add(balance)
             await self._db.commit()
             if balances:
                 async with self._redis.pipeline(transaction=True) as pipe:
@@ -274,11 +279,8 @@ class BalanceService(BaseService):
                             value=customjson.dumps(await balance.serialize(data=False, full=False))
                         )
                     await pipe.execute()
-                #await self._redis.mset({
-                #    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, balance.client_id): str(balance.unrealized)
-                #    for balance in balances
-                #})
-            await asyncio.sleep(3 - (time.time() - ts))
+            #await asyncio.sleep(3 - (time.time() - ts))
+            await asyncio.sleep(0.2)
 
     async def _balance_collector(self):
         async with async_maker() as session:

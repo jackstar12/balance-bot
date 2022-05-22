@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from sqlalchemy import Column, Integer, ForeignKey, BigInteger, DateTime, Numeric
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -7,13 +9,15 @@ from balancebot.common.database import Base
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from enum import Enum as PyEnum
 
+from balancebot.common.dbmodels.serializer import Serializer
+
 
 class PNLType(PyEnum):
     UPNL = 0
     RPNL = 1
 
 
-class PnlData(Base):
+class PnlData(Base, Serializer):
     __tablename__ = 'pnldata'
 
     id = Column(BigInteger, primary_key=True)
@@ -27,11 +31,17 @@ class PnlData(Base):
     extra_currencies = Column(JSONB, nullable=True)
 
     @hybrid_property
-    def total(self):
-        return self.realized + self.unrealized
+    def total(self) -> Decimal:
+        return round(self.realized + self.unrealized, ndigits=3)
 
     @hybrid_property
-    def amount(self):
-        return self.realized + self.unrealized
+    def amount(self) -> Decimal:
+        return round(self.realized + self.unrealized, ndigits=3)
+
+    @classmethod
+    def is_data(cls):
+        return True
+
+
 
     # type = Column(Enum(PNLType), nullable=False)

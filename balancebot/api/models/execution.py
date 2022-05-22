@@ -1,7 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from balancebot.common.enums import ExecType, Side
 
@@ -12,6 +13,9 @@ class Execution(BaseModel):
     qty: Decimal
     side: Side
     time: datetime
-    type: ExecType
-    commission: Decimal
-    realized_pnl: Decimal
+    type: Optional[ExecType] = Field(default=ExecType.TRADE)
+    commission: Optional[Decimal]
+    realized_pnl: Optional[Decimal]
+
+    class Config:
+        orm_mode = True
