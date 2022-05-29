@@ -30,6 +30,8 @@ class Alert(Base, Serializer):
             name='Symbol', value=self.symbol
         ).add_field(
             name='Price', value=self.price
+        ).add_field(
+            name='Exchange', value=self.exchange
         )
         if self.note:
             embed.add_field(name='Note', value=self.note)

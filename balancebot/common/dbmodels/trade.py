@@ -41,7 +41,7 @@ class Trade(Base, Serializer):
 
     exit = Column(Numeric, nullable=True)
     realized_pnl = Column(Numeric, nullable=True, default=Decimal(0))
-    total_commisions = Column(Numeric, nullable=True, default=Decimal(0))
+    total_commissions = Column(Numeric, nullable=True, default=Decimal(0))
 
     max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
     max_pnl: PnlData = relationship(

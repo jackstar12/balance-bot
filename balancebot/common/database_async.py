@@ -1,6 +1,7 @@
 import asyncio
+import json
 from asyncio import current_task
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Any
 
 import dotenv
 import os
@@ -20,7 +21,7 @@ assert SQLALCHEMY_DATABASE_URI
 
 engine = create_async_engine(
     'postgresql+asyncpg://postgres:postgres@localhost:5432/single-user',
-    json_serializer=customjson.dumps,
+    json_serializer=customjson.dumps_no_bytes,
     json_deserializer=customjson.loads
 )
 async_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
@@ -31,7 +32,8 @@ async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=curren
 #                       password='usTzjlI4SKy92HE6PGXgvTsaIQMdYWgo')
 redis = aioredis.Redis()
 
-async def db(stmt: object, session: object = None) -> object:
+
+async def db(stmt: Any, session: AsyncSession = None) -> Any:
     return await (session or async_session).execute(stmt)
 
 

@@ -18,7 +18,7 @@ from balancebot.api.db_session_middleware import DbSessionMiddleware
 from balancebot.common.dbmodels.trade import Trade
 
 from balancebot.common.dbmodels.user import User
-from balancebot.api.dependencies import current_user, CurrentUser
+from balancebot.api.dependencies import CurrentUser, CurrentUserDep
 from balancebot.api.models.user import UserInfo, UserRead, UserCreate
 from balancebot.api.settings import settings
 from balancebot.common.database import Base, engine
@@ -27,6 +27,7 @@ import balancebot.api.routers.authentication as auth
 import balancebot.api.routers.client as client
 import balancebot.api.routers.label as label
 import balancebot.api.routers.analytics as analytics
+import balancebot.api.routers.journal as journal
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.guild import Guild
 import balancebot.api.routers.discordauth as discord
@@ -61,24 +62,21 @@ app.include_router(fastapi_users.get_verify_router(UserRead), prefix='/api/v1')
 app.include_router(fastapi_users.get_reset_password_router(), prefix='/api/v1')
 app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix='/api/v1')
 
-app.include_router(discord.router, prefix='/api/v1')
-app.include_router(auth.router, prefix='/api/v1')
-app.include_router(client.router, prefix='/api/v1')
-app.include_router(label.router, prefix='/api/v1')
-app.include_router(analytics.router, prefix='/api/v1')
+for module in (discord, auth, client, label, analytics, journal):
+    app.include_router(module.router, prefix='/api/v1')
 
 Base.metadata.create_all(bind=engine)
 
 
 @app.post('/delete')
-async def delete_user(user: User = Depends(current_user)):
+async def delete_user(user: User = Depends(CurrentUser)):
     await aio_db.db_del_filter(User, id=user.id)
     await aio_db.async_session.commit()
 
     return {'msg': 'Success'}
 
 
-user_info = CurrentUser(
+user_info = CurrentUserDep(
     (
         User.discord_user, [
             DiscordUser.global_associations,

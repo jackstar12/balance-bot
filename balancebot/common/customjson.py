@@ -19,5 +19,9 @@ def dumps(obj: Any):
     return orjson.dumps(obj, default=default)
 
 
+def dumps_no_bytes(obj: Any):
+    return orjson.dumps(obj, default=default).decode('utf-8')
+
+
 def loads(obj: Any):
     return json.loads(obj, parse_float=Decimal)

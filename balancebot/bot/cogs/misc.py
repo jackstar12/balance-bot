@@ -4,10 +4,10 @@ import time
 import discord
 from discord_slash import cog_ext, SlashContext
 
-from balancebot.common import utils
-import  balancebot.common.config as config
+from balancebot.bot import utils
+import balancebot.common.config as config
+from balancebot.common.exchanges import EXCHANGES
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.common.utils import de_emojify
 
 
 class MiscCog(CogBase):
@@ -17,8 +17,8 @@ class MiscCog(CogBase):
         description="Shows available exchanges"
     )
     async def exchanges(self, ctx):
-        logging.info(f'New Interaction: Listing available exchanges for user {de_emojify(ctx.author.display_name)}')
-        exchange_list = '\n'.join(config.EXCHANGES.keys())
+        logging.info(f'New Interaction: Listing available exchanges for user {utils.de_emojify(ctx.author.display_name)}')
+        exchange_list = '\n'.join(EXCHANGES.keys())
         embed = discord.Embed(title="Available exchanges", description=exchange_list)
         await ctx.send(embed=embed)
 

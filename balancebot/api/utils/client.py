@@ -188,9 +188,4 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
 
 async def get_user_client(user: User, id: int = None, eager=None):
     eager = eager or []
-    client: Optional[Client] = None
-    client = await db_first(add_client_filters(select(Client), user, id), *eager)
-
-    #else:
-    #    client = await db_select(Client, eager=eager, user_id=user.id)
-    return client
+    return await db_first(add_client_filters(select(Client), user, id), *eager)

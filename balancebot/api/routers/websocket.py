@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
 from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
-from balancebot.api.dependencies import current_user
+from balancebot.api.dependencies import CurrentUser
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.user import User
 from balancebot.api.utils.client import create_client_data_serialized, get_user_client
@@ -17,7 +17,7 @@ from balancebot.collector.usermanager import UserManager
 
 router = APIRouter(
     tags=["websocket"],
-    dependencies=[Depends(current_user)],
+    dependencies=[Depends(CurrentUser)],
     responses={
         401: {"msg": "Wrong Email or Password"},
         400: {"msg": "Email is already used"}
@@ -36,7 +36,7 @@ def create_ws_message(type: str, channel: str = None, data: Dict = None, error: 
 
 
 @router.websocket('/client/ws')
-async def client_websocket(websocket: WebSocket, user: User = Depends(current_user)):
+async def client_websocket(websocket: WebSocket, user: User = Depends(CurrentUser)):
     await websocket.accept()
 
     user_manager = UserManager()

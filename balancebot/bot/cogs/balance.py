@@ -8,10 +8,10 @@ from discord_slash.utils.manage_commands import create_option
 
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.discorduser import DiscordUser
-from balancebot.common import utils, dbutils
+from balancebot.bot import utils
+from balancebot.common import dbutils
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.common.utils import de_emojify
 
 
 class BalanceCog(CogBase):
@@ -128,7 +128,7 @@ class BalanceCog(CogBase):
                 gain_message = f"Your gain ({await user_gain.client.get_events_and_guilds_string()}): " if not guild else f"Your gain on {guild}: "
             if user_gain.relative is None:
                 logging.info(
-                    f'Not enough data for calculating {de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
+                    f'Not enough data for calculating {utils.de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
                 if ctx.guild:
                     await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
                 else:

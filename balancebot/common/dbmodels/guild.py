@@ -16,5 +16,5 @@ class Guild(Base, Serializer):
     avatar = Column(String, nullable=True)
 
     events = relationship('Event', lazy='noload', backref='guild', cascade='all, delete')
-    users = relationship('DiscordUser', secondary='guild_association', lazy='noload', backref='guilds')
-    global_clients = relationship('GuildAssociation', lazy='noload', backref='guild')
+    users = relationship('DiscordUser', secondary='guild_association', lazy='noload', backref='guilds', viewonly=True)
+    global_clients = relationship('GuildAssociation', lazy='noload', viewonly=True)

@@ -6,7 +6,9 @@ import time
 import urllib.parse
 from datetime import datetime
 
-from balancebot.api.dbmodels import balance
+from aiohttp import ClientResponse
+
+from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_limit
 
 

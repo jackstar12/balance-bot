@@ -11,10 +11,6 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID):
     __serializer_forbidden__ = ['hashed_password', 'salt']
 
     # Identity
-    # id = Column(Integer, primary_key=True)
-    # email = Column(String, unique=True, nullable=False)
-    # password = Column(String, unique=True, nullable=False)
-    # salt = Column(String, nullable=False)
     discord_user_id = Column(BigInteger, ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
     discord_user = relationship('DiscordUser',
                                 lazy='noload',
@@ -27,10 +23,15 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID):
         primaryjoin='or_('
                     'Client.user_id == User.id,'
                     'and_(Client.discord_user_id == User.discord_user_id, User.discord_user_id != None)'
-                    ')'
+                    ')',
+        viewonly=True
     )
 
     # Data
     clients = relationship('Client', back_populates='user', lazy='noload', cascade="all, delete", foreign_keys="[Client.user_id]")
     labels = relationship('Label', backref='user', lazy='noload', cascade="all, delete")
     alerts = relationship('Alert', backref='user', lazy='noload', cascade="all, delete")
+    journals = relationship('Journal',
+                            back_populates='user',
+                            cascade="all, delete",
+                            lazy='raise')

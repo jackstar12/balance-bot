@@ -219,6 +219,7 @@ class ExchangeWorker:
             balance.total_transfered = getattr(
                 self.client.currently_realized, 'total_transfered', Decimal(0)
             )
+            await self.client.update_journals(balance, date.date(), async_session)
             return balance
         elif self.client.rekt_on:
             return db_balance.Balance(amount=0.0, error=None, time=date)
@@ -446,10 +447,15 @@ class ExchangeWorker:
                             # -> needs to be published (unlike others which are historical)
                             pass
 
+                        if len(current_executions) > 1:
+                            to = current_executions[len(current_executions) - 1].time
+                        else:
+                            to = datetime.now(pytz.utc)
+
                         ohlc_data = await self._get_ohlc(
                             symbol,
                             since=current_executions[0].time,
-                            to=current_executions[len(current_executions) - 1].time
+                            to=to
                         )
 
                         timeline = sorted(ohlc_data + current_executions, key=lambda item: item.time)
@@ -475,6 +481,28 @@ class ExchangeWorker:
 
     async def _get_ohlc(self, market: str, since: datetime, to: datetime, resolution_s: int = None, limit: int = None) -> List[OHLC]:
         pass
+
+    def _calc_resolution(self, n: int, resolutions_s: List[int], since: datetime, to: datetime = None) -> Optional[Tuple[int, int]]:
+        """
+        Small helper for finding out which resolution [s] suits a given amount of data points requested best.
+
+        Used in order to avoid unreasonable amounts (or too little in general)
+        of data being fetched, look which timeframe suits the given limit best
+
+        :param n: n data points
+        :param resolutions_s: Possibilities (have to be sorted!)
+        :param since: used to calculate seconds passed
+        :param now: [optional] can be passed to replace datetime.now()
+        :return: Fitting resolution or None
+        """
+        # In order to avoid unreasonable amounts (or too little in general)
+        # of data being fetched, look which timeframe suits the given limit best
+        to = to or datetime.now(pytz.utc)
+        for res in resolutions_s:
+            current_n = (to - since).total_seconds() // res
+            if current_n <= n:
+                return int(current_n), res
+        return None
 
     def set_balance_callback(self, callback: Callable):
         if callable(callback):

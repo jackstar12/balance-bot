@@ -5,7 +5,7 @@ import pytz
 from balancebot.common.database_async import async_session
 from balancebot.common import utils
 import numpy
-from balancebot.common.models.clientgain import ClientGain
+from balancebot.common.models.gain import ClientGain
 from balancebot.common.dbmodels.archive import Archive
 from balancebot.common.dbmodels.serializer import Serializer
 from datetime import datetime

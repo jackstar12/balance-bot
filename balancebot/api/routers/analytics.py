@@ -20,7 +20,7 @@ from balancebot.common.dbmodels.trade import Trade
 from balancebot.common.dbmodels.user import User
 import bcrypt
 
-from balancebot.api.dependencies import get_authenticator, CurrentUser, current_user
+from balancebot.api.dependencies import get_authenticator, CurrentUserDep, CurrentUser
 from balancebot.api.users import fastapi_users
 from balancebot.api.utils.responses import OK, CustomJSONResponse
 from balancebot.common.enums import Filter
@@ -39,7 +39,7 @@ router = APIRouter(
 async def get_analytics(client_params: ClientQueryParams = Depends(),
                         filters: Tuple[Filter, ...] = Query(default=(Filter.LABEL,)),
                         calculate: Calculation = Query(default=Calculation.PNL),
-                        user: User = Depends(current_user)):
+                        user: User = Depends(CurrentUser)):
     config = ClientConfig.construct(**client_params.__dict__)
     client = await get_user_client(user,
                                    config.id,

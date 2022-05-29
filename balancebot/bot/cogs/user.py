@@ -2,10 +2,10 @@ from discord_slash import cog_ext, SlashContext
 
 from balancebot.common.database_async import db_del_filter, async_session
 from balancebot.common.dbmodels.client import Client
-from balancebot.common import utils, dbutils
+from balancebot.common import dbutils
+from balancebot.bot import utils
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.common.utils import create_yes_no_button_row
 
 
 class UserCog(CogBase):
@@ -25,7 +25,7 @@ class UserCog(CogBase):
             await db_del_filter(DiscordUser, id=user.id)
             await async_session.commit()
 
-        button_row = create_yes_no_button_row(
+        button_row = utils.create_yes_no_button_row(
             slash=self.slash_cmd_handler,
             author_id=ctx.author_id,
             yes_callback=confirm_delete,

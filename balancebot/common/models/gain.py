@@ -8,8 +8,8 @@ if TYPE_CHECKING:
 
 
 class Gain(NamedTuple):
-    relative: Optional[Decimal]
-    absolute: Optional[Decimal]
+    relative: Decimal
+    absolute: Decimal
 
 
 class ClientGain(NamedTuple):

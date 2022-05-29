@@ -7,7 +7,8 @@ from sqlalchemy import delete
 
 from balancebot.common.database_async import db, async_session, db_del_filter
 from balancebot.common.dbmodels.discorduser import DiscordUser
-from balancebot.common import utils, dbutils
+from balancebot.bot import utils
+from balancebot.common import dbutils
 from balancebot.common.database import session
 from balancebot.common.dbmodels.alert import Alert
 from balancebot.bot.cogs.cogbase import CogBase
@@ -72,7 +73,7 @@ class AlertCog(CogBase):
         ]
     )
     @utils.log_and_catch_errors()
-    async def new_alert(self, ctx: SlashContext, symbol: str, price: float, note: str = None):
+    async def new_alert(self, ctx: SlashContext, symbol: str, price: float, exchange: str, note: str = None):
 
         symbol = symbol.upper()
 
@@ -84,7 +85,7 @@ class AlertCog(CogBase):
             symbol=symbol,
             price=Decimal(price),
             note=note,
-            exchange='ftx',
+            exchange=exchange,
             discord_user_id=discord_user.id
         )
 

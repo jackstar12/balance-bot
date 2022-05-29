@@ -12,6 +12,11 @@ def BadRequest(detail: str, code: int = None, **kwargs):
     return Response(detail, code, HTTPStatus.BAD_REQUEST, **kwargs)
 
 
+def NotFound(detail: str, code: int = None, **kwargs):
+    return Response(detail, code, HTTPStatus.NOT_FOUND, **kwargs)
+
+
+
 def InternalError(detail: str, code: int = None, **kwargs):
     return Response(detail, code, HTTPStatus.INTERNAL_SERVER_ERROR, **kwargs)
 

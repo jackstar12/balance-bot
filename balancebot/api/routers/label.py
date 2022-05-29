@@ -5,7 +5,7 @@ from fastapi.exceptions import HTTPException
 from sqlalchemy import or_, select, update
 
 from balancebot.common.database_async import async_session, db_first, db_eager, db_all, db_select, db
-from balancebot.api.dependencies import current_user
+from balancebot.api.dependencies import CurrentUser
 from balancebot.common.database import session
 
 from balancebot.common.dbmodels.client import Client, add_client_filters
@@ -18,7 +18,7 @@ from balancebot.api.utils.responses import BadRequest, OK, Response
 router = APIRouter(
     prefix="/label",
     tags=["label"],
-    dependencies=[Depends(current_user)],
+    dependencies=[Depends(CurrentUser)],
     responses={
         401: {"detail": "Wrong Email or Password"},
         400: {"detail": "Email is already used"}
@@ -38,7 +38,7 @@ async def get_label(id: int, user: User):
 
 
 @router.post('/')
-async def create_label(body: CreateLabel, user: User = Depends(current_user)):
+async def create_label(body: CreateLabel, user: User = Depends(CurrentUser)):
     label = Label(name=body.name, color=body.color, user_id=user.id)
     async_session.add(label)
     await async_session.commit()
@@ -46,7 +46,7 @@ async def create_label(body: CreateLabel, user: User = Depends(current_user)):
 
 
 @router.delete('/')
-async def delete_label(id: int = Body(...), user: User = Depends(current_user)):
+async def delete_label(id: int = Body(...), user: User = Depends(CurrentUser)):
     result = await get_label(id, user)
     if isinstance(result, Label):
         await async_session.delete(result)
@@ -57,7 +57,7 @@ async def delete_label(id: int = Body(...), user: User = Depends(current_user)):
 
 
 @router.patch('/')
-async def update_label(body: PatchLabel, user: User = Depends(current_user)):
+async def update_label(body: PatchLabel, user: User = Depends(CurrentUser)):
     result = await get_label(body.id, user)
     if isinstance(result, Label):
         if body.name:
@@ -85,7 +85,7 @@ async def add_trade_filters(stmt, user: User, client_id: int, trade_id: int, lab
 
 
 @router.post('/trade')
-async def add_label(body: AddLabel, user: User = Depends(current_user)):
+async def add_label(body: AddLabel, user: User = Depends(CurrentUser)):
     trade = await db_first(
         db_eager(
             await add_trade_filters(select(Trade), user, body.trade_id, body.label_id),
@@ -107,7 +107,7 @@ async def add_label(body: AddLabel, user: User = Depends(current_user)):
 
 
 @router.delete('/trade')
-async def remove_label(body: RemoveLabel, user: User = Depends(current_user)):
+async def remove_label(body: RemoveLabel, user: User = Depends(CurrentUser)):
     trade = await db_first(
         db_eager(
             await add_trade_filters(select(Trade), user, body.client_id, body.trade_id, body.label_id),
@@ -131,7 +131,7 @@ async def remove_label(body: RemoveLabel, user: User = Depends(current_user)):
 
 
 @router.patch('/trade')
-async def set_labels(body: SetLabels, user: User = Depends(current_user)):
+async def set_labels(body: SetLabels, user: User = Depends(CurrentUser)):
     trade = await db_first(
         await add_trade_filters(select(Trade), user, body.client_id, body.trade_id)
     )

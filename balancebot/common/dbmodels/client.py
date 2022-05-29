@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import List, Optional, Union, TYPE_CHECKING
 import discord
@@ -8,6 +8,7 @@ from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, BigInteger, or_, desc, asc, \
     Boolean, select, func, subquery, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, aliased
 
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -21,9 +22,11 @@ import dotenv
 from balancebot.common import customjson
 from balancebot.common.database_async import db_first, db_all, db_select_all
 import balancebot.common.dbmodels.balance as db_balance
+from balancebot.common.dbmodels.chapter import Chapter
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
+from balancebot.common.dbmodels.journal import Journal
 from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.user import User
@@ -68,9 +71,9 @@ class Client(Base, Serializer):
                                          back_populates='client')
 
     open_trades = relationship('Trade', lazy='noload',
-                               cascade="all, delete",
                                back_populates='client',
-                               primaryjoin="and_(Trade.client_id == Client.id, Trade.open_qty > 0)")
+                               primaryjoin="and_(Trade.client_id == Client.id, Trade.open_qty > 0)",
+                               viewonly=True)
 
     history: AppenderQuery = relationship('Balance',
                                           back_populates='client',
@@ -79,10 +82,10 @@ class Client(Base, Serializer):
                                           order_by='Balance.time',
                                           foreign_keys='Balance.client_id')
 
-    journals = relationship('Journal',
-                            back_populates='client',
-                            cascade="all, delete",
-                            lazy='noload')
+    #journals = relationship('Journal',
+    #                        back_populates='client',
+    #                        cascade="all, delete",
+    #                        lazy='noload')
 
     transfers = relationship('Transfer', back_populates='client',
                              cascade='all, delete', lazy='noload')
@@ -135,6 +138,54 @@ class Client(Base, Serializer):
         #    new.serialize(data=True)
         # )
         return new
+
+    async def update_journals(self, current_balance: db_balance.Balance, today: date, db_session: AsyncSession):
+        today = today or date.today()
+
+        for journal in self.journals:
+            end = getattr(journal.current_chapter, 'end_date', date.fromtimestamp(0))
+            if today >= end:
+                latest = utils.list_last(self.recent_history)
+                if latest:
+                    journal.current_chapter.end_balance = latest
+                    new_chapter = Chapter(
+                        start_date=today,
+                        end_date=today + journal.chapter_interval,
+                        balances=[latest]
+                    )
+                    journal.current_chapter = new_chapter
+                    db_session.add(new_chapter)
+            elif journal.current_chapter:
+                contained = 0
+                for index, balance in enumerate(journal.current_chapter.balances):
+                    if balance.client_id == self.id:
+                        contained += 1
+                        if contained == 2:
+                            journal.current_chapter.balances[index] = current_balance
+                if contained < 2:
+                    journal.current_chapter.balances.append(current_balance)
+
+        await db_session.commit()
+
+    async def init_journal(self, new_journal: Journal, db_session: AsyncSession):
+        new_journal.client = self
+        intervals = await utils.calc_intervals(
+            self,
+            timedelta(days=1)
+        )
+        db_session.add_all([
+            Chapter(
+                start_date=interval.day,
+                end_date=interval.day + new_journal.chapter_interval,
+                client=self,
+                journal=new_journal,
+                start_balance=interval.start_balance,
+                end_balance=interval.end_balance,
+            )
+            for interval in intervals
+        ])
+        db_session.add(new_journal)
+        await db_session.commit()
 
     async def full_history(self):
         return await db_all(self.history.statement)
@@ -283,12 +334,14 @@ class Client(Base, Serializer):
 # ).alias()
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int) -> Union[
-    Select, Delete, Update]:
-    user_checks = [Client.user_id == user.id]
-    if user.discord_user_id:
-        user_checks.append(Client.discord_user_id == user.discord_user_id)
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int = None) -> Union[Select, Delete, Update]:
+    #user_checks = [Client.user_id == user.id]
+    #if user.discord_user_id:
+    #    user_checks.append(Client.discord_user_id == user.discord_user_id)
     return stmt.filter(
         Client.id == client_id if client_id else True,
-        or_(*user_checks)
+        or_(
+            Client.user_id == user.id,
+            Client.discord_user_id == user.discord_user_id if user.discord_user_id else False
+        )
     )

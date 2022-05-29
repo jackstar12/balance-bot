@@ -15,17 +15,15 @@ from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.event import Event, event_association
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
-from balancebot.common import utils, dbutils
+from balancebot.common import dbutils
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.discorduser import DiscordUser
-from balancebot.bot import config
+from balancebot.bot import config, utils
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.exchanges import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
-from balancebot.common.messenger import NameSpace, Category
 from balancebot.common.models.selectionoption import SelectionOption
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
-from balancebot.common.utils import create_yes_no_button_row, create_selection, validate_kwargs
 
 
 class RegisterCog(CogBase):
@@ -102,7 +100,7 @@ class RegisterCog(CogBase):
             exchange_name = exchange_name.lower()
             exchange_cls = EXCHANGES[exchange_name]
             if issubclass(exchange_cls, ExchangeWorker):
-                if validate_kwargs(kwargs, exchange_cls.required_extra_args):
+                if utils.validate_kwargs(kwargs, exchange_cls.required_extra_args):
 
                     event = await dbutils.get_event(ctx.guild_id,
                                                     ctx.channel_id,
@@ -409,7 +407,7 @@ class RegisterCog(CogBase):
             if not selections:
                 return
 
-            buttons = create_yes_no_button_row(
+            buttons = utils.create_yes_no_button_row(
                 slash=self.slash_cmd_handler,
                 author_id=ctx.author.id,
                 yes_callback=lambda ctx: self.unregister_user(ctx, event, client, remove_guild),

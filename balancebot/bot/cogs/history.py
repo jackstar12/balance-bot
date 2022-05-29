@@ -3,10 +3,10 @@ from datetime import datetime
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
-from balancebot.common import utils, dbutils
+from balancebot.bot import utils
+from balancebot.common import dbutils
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.common.utils import create_yes_no_button_row
 
 
 class HistoryCog(CogBase):
@@ -154,7 +154,7 @@ class HistoryCog(CogBase):
                                                       end=to,
                                                       update_initial_balance=True)
 
-        buttons = create_yes_no_button_row(
+        buttons = utils.create_yes_no_button_row(
             self.slash_cmd_handler,
             author_id=ctx.author.id,
             yes_callback=clear_user,

@@ -10,7 +10,7 @@ from balancebot.common.database import session
 from balancebot.common.database_async import async_session
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.user import User
-from balancebot.api.dependencies import current_user
+from balancebot.api.dependencies import CurrentUser
 
 from fastapi import APIRouter, Depends, Request
 
@@ -25,7 +25,7 @@ assert OAUTH2_REDIRECT_URI
 router = APIRouter(
     prefix="/discord",
     tags=["discord"],
-    dependencies=[Depends(current_user)],
+    dependencies=[Depends(CurrentUser)],
     responses={400: {"msg": "Invalid Discord Account"}}
 )
 
@@ -60,7 +60,7 @@ def make_session(*, token=None, state=None, scope=None, request: Request = None)
 
 
 @router.get('/connect')
-def register_discord(request: Request, user: User = Depends(current_user)):
+def register_discord(request: Request, user: User = Depends(CurrentUser)):
     if user.discord_user:
         return {'msg': 'Discord is already connected'}, HTTPStatus.BAD_REQUEST
     else:
@@ -73,7 +73,7 @@ def register_discord(request: Request, user: User = Depends(current_user)):
 
 
 @router.get('/disconnect')
-async def disconnect_discord(request: Request, user: User = Depends(current_user)):
+async def disconnect_discord(request: Request, user: User = Depends(CurrentUser)):
     if not user.discord_user:
         return {'msg': 'Discord is not connected'}, HTTPStatus.BAD_REQUEST
     else:
@@ -84,7 +84,7 @@ async def disconnect_discord(request: Request, user: User = Depends(current_user
 
 
 @router.get('/callback')
-async def callback(request: Request, error: Optional[str] = None, user: User = Depends(current_user)):
+async def callback(request: Request, error: Optional[str] = None, user: User = Depends(CurrentUser)):
     if error:
         return error, HTTPStatus.INTERNAL_SERVER_ERROR
     discord = make_session(state=request.session.get('oauth2_state'), request=request)

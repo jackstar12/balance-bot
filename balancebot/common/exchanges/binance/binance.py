@@ -114,11 +114,6 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
         return str(int(date.timestamp()) * 1000 + 1)
 
 
-class _TickerCache(NamedTuple):
-    ticker: dict
-    time: datetime
-
-
 def tf_helper(tf: str, factor_seconds: int, ns: List[int]):
     return {
         factor_seconds * n: f'{n}{tf}' for n in ns
@@ -126,10 +121,10 @@ def tf_helper(tf: str, factor_seconds: int, ns: List[int]):
 
 
 _interval_map = {
-    **tf_helper('m', 60, [1, 3, 5, 15, 30]),
-    **tf_helper('h', 60 * 60, [1, 2, 4, 6, 8, 12]),
-    **tf_helper('d', 60 * 60 * 24, [1, 3]),
-    **tf_helper('w', 60 * 60 * 24 * 7, [1]),
+    **tf_helper('m', utils.MINUTE, [1, 3, 5, 15, 30]),
+    **tf_helper('h', utils.HOUR, [1, 2, 4, 6, 8, 12]),
+    **tf_helper('d', utils.DAY, [1, 3]),
+    **tf_helper('w', utils.WEEK, [1]),
     None: '1m'
 }
 

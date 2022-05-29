@@ -2,13 +2,14 @@ from http import HTTPStatus
 
 from fastapi import Request, HTTPException
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from balancebot.api.authenticator import Authenticator
-from balancebot.common.database_async import redis, db_eager, db_unique
+from balancebot.common.database_async import redis, db_eager, db_unique, async_maker
 from balancebot.api.settings import settings
 from fastapi import Depends
 from balancebot.common.dbmodels.user import User
-
+from balancebot.common.messenger import Messenger
 
 authenticator = Authenticator(
     redis,
@@ -17,17 +18,33 @@ authenticator = Authenticator(
 )
 
 
-def get_authenticator():
+def get_authenticator() -> Authenticator:
     return authenticator
 
 
-class CurrentUser:
+async def get_user_id(request: Request, authenticator = Depends(get_authenticator)):
+    return await authenticator.read_uuid(request)
+
+
+async def get_db() -> AsyncSession:
+    async with async_maker() as session:
+        yield session
+
+
+def get_messenger():
+    return Messenger()
+
+
+class CurrentUserDep:
     def __init__(self, *eager_loads):
         self.base_stmt = db_eager(select(User), *eager_loads)
 
-    async def __call__(self, request: Request, authenticator = Depends(get_authenticator)):
+    async def __call__(self,
+                       request: Request,
+                       authenticator = Depends(get_authenticator),
+                       db: AsyncSession = Depends(get_db)):
         uuid = await authenticator.read_uuid(request)
-        user = await db_unique(self.base_stmt.filter_by(id=uuid)) if uuid else None
+        user = await db_unique(self.base_stmt.filter_by(id=uuid), session=db) if uuid else None
         if not user:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,
@@ -36,4 +53,9 @@ class CurrentUser:
         return user
 
 
-current_user = CurrentUser()
+CurrentUser = CurrentUserDep()
+
+
+
+
+

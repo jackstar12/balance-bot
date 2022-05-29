@@ -19,18 +19,20 @@ from discord_slash.utils.manage_components import create_button, create_actionro
 import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any
 
 from sqlalchemy import asc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import balancebot.common.dbmodels.event as db_event
 import balancebot.common.dbmodels.client as db_client
+from balancebot.bot import utils
 from balancebot.common.database_async import async_session, db_all
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.errors import UserInputError, InternalError
-from balancebot.common.models.daily import Daily
-from balancebot.common.models.clientgain import ClientGain
+from balancebot.common.models.daily import Daily, Interval
+from balancebot.common.models.gain import ClientGain
 from balancebot.common import dbutils
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.balance import Balance
@@ -42,135 +44,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from balancebot.common.dbmodels.client import Client
 
-
-def validate_kwargs(kwargs: Dict, required: List[str]):
-    return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
-
-
-
-def admin_only(coro, cog=True):
-    @wraps(coro)
-    async def wrapper(*args, **kwargs):
-        ctx = args[1] if cog else args[0]
-        if ctx.author.guild_permissions.administrator:
-            return await coro(*args, **kwargs)
-        else:
-            await ctx.send('This command can only be used by administrators', hidden=True)
-
-    return wrapper
-
-
-def server_only(coro, cog=True):
-    @wraps(coro)
-    async def wrapper(*args, **kwargs):
-        ctx = args[1] if cog else args[0]
-        if not ctx.guild:
-            await ctx.send('This command can only be used in a server.')
-            return
-        return await coro(*args, **kwargs)
-
-    return wrapper
-
-
-def set_author_default(name: str, cog=True):
-    def decorator(coro):
-        @wraps(coro)
-        async def wrapper(*args, **kwargs):
-            ctx = args[1] if cog else args[0]
-            user = kwargs.get(name)
-            if user is None:
-                kwargs[name] = ctx.author
-            return await coro(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
-    """
-    Handy decorator for using time arguments.
-    After applying this decorator you also have to apply log_and_catch_user_input_errors
-    :param names: Tuple for each time argument: (argument name, default value)
-    :param allow_future: whether dates in the future are permitted
-    :return:
-    """
-
-    def decorator(coro):
-        @wraps(coro)
-        async def wrapper(*args, **kwargs):
-            for name, default in names:
-                time_arg = kwargs.get(name)
-                if not time_arg:
-                    time_arg = default
-                if time_arg:
-                    time = calc_time_from_time_args(time_arg, allow_future)
-                    kwargs[name] = time
-            return await coro(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
-    """
-    Decorator which handles logging/errors for all commands.
-    It takes care of:
-    - UserInputErrors
-    - InternalErrors
-    - Any other type of exceptions
-
-    :param type:
-    :param log_args: whether the args passed in should be logged (e.g. disabled when sensitive data is passed).
-    :return:
-    """
-
-    def decorator(coro):
-        @wraps(coro)
-        async def wrapper(*args, **kwargs):
-            ctx = args[1] if cog else args[0]
-            logging.info(f'New Interaction: '
-                         f'Execute {type} {coro.__name__}, requested by {de_emojify(ctx.author.display_name)} ({ctx.author_id}) '
-                         f'guild={ctx.guild}{f" {args=}, {kwargs=}" if log_args else ""}')
-            try:
-                await coro(*args, **kwargs)
-                logging.info(f'Done executing {type} {coro.__name__}')
-            except UserInputError as e:
-                # If the exception is raised after components have been used, the component ctx should be used
-                # (old might be invalid)
-                ctx = e.ctx or ctx
-                if e.user_id:
-                    if ctx.guild:
-                        e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
-                    else:
-                        e.reason = e.reason.replace('{name}', ctx.author.display_name)
-                await ctx.send(e.reason, hidden=True)
-                logging.info(
-                    f'{type} {coro.__name__} failed because of UserInputError: {de_emojify(e.reason)}\n{traceback.format_exc()}')
-            except TimeoutError:
-                logging.info(f'{type} {coro.__name__} timed out')
-            except InternalError as e:
-                ctx = e.ctx or ctx
-                await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
-                logging.error(
-                    f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
-            except Exception:
-                if ctx.deferred:
-                    await ctx.send('This is a bug in the bot. Please contact jacksn#9149.', hidden=True)
-                logging.critical(
-                    f'{type} {coro.__name__} failed because of an uncaught exception:\n{traceback.format_exc()}')
-                await async_session.rollback()
-
-        return wrapper
-
-    return decorator
-
-
-def embed_add_value_safe(embed: discord.Embed, name, value, **kwargs):
-    if value:
-        embed.add_field(name=name, value=value, **kwargs)
-
+# Some consts to make TF tables prettier
+MINUTE = 60
+HOUR = MINUTE * 60
+DAY = HOUR * 24
+WEEK = DAY * 7
 
 _regrex_pattern = re.compile("["
                              u"\U0001F600-\U0001F64F"  # emoticons
@@ -197,76 +75,6 @@ _regrex_pattern = re.compile("["
 # Thanks Stackoverflow
 def de_emojify(text):
     return _regrex_pattern.sub(r'', text)
-
-
-async def create_history(to_graph: List[Tuple[Client, str]],
-                         event: db_event.Event,
-                         start: datetime,
-                         end: datetime,
-                         currency_display: str,
-                         currency: str,
-                         percentage: bool,
-                         path: str,
-                         custom_title: str = None,
-                         throw_exceptions=True):
-    """
-    Creates a history image for a given list of clients and stores it in the given path.
-
-    :param throw_exceptions:
-    :param event:
-    :param to_graph: List of Clients to graph.
-    :param guild_id: Current guild id (determines event context)
-    :param start: Start time of the history
-    :param end: End time of the history
-    :param currency_display: Currency which will be shown to the user
-    :param currency: Currency which will be used internally
-    :param percentage: Whether to display the balance absolute or in % relative to the first balance of the graph (default True if multiple clients are drawn)
-    :param path: Path to store image file at
-    :param custom_title: Custom Title to replace default title with
-    """
-
-    first = True
-    title = ''
-
-    #um = UserManager()
-    #await um.fetch_data([graph[0] for graph in to_graph])
-    for registered_client, name in to_graph:
-
-        history = await dbutils.get_client_history(registered_client,
-                                                   event=event,
-                                                   since=start,
-                                                   to=end,
-                                                   currency=currency)
-
-        if len(history.data) == 0:
-            if throw_exceptions:
-                raise UserInputError(f'Got no data for {name}!')
-            else:
-                continue
-
-        xs, ys = calc_xs_ys(history.data, percentage, relative_to=history.initial)
-
-        total_gain = calc_percentage(history.initial.unrealized, ys[len(ys) - 1])
-
-        if first:
-            title = f'History for {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
-            first = False
-        else:
-            title += f' vs. {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
-
-        plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
-
-    plt.gcf().autofmt_xdate()
-    plt.gcf().set_dpi(100)
-    plt.gcf().set_size_inches(8 + len(to_graph), 5.5 + len(to_graph) * (5.5 / 8))
-    plt.title(custom_title or title)
-    plt.ylabel(currency_display)
-    plt.xlabel('Time')
-    plt.grid()
-    plt.legend(loc="best")
-
-    plt.savefig(path)
-    plt.close()
 
 
 def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
@@ -384,7 +192,8 @@ async def calc_daily(client: Client,
         values = Daily(
             day=current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
             amount=prev_balance.unrealized,
-            diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+            diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized,
+                                ndigits=CURRENCY_PRECISION.get(currency, 2)),
             diff_relative=calc_percentage(prev_daily.unrealized, prev_balance.unrealized, string=False)
         )
         if string:
@@ -392,6 +201,118 @@ async def calc_daily(client: Client,
         else:
             results.append(values)
 
+    return results
+
+
+def _create_interval(prev: Balance, current: Balance, as_string: bool) -> Interval:
+    return Interval(
+        current.time.strftime('%Y-%m-%d') if as_string else current.time.date(),
+        amount=current.unrealized,
+        # diff_absolute=round(current.unrealized - prev.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+        diff_absolute=current.unrealized - prev.unrealized,
+        diff_relative=calc_percentage(prev.unrealized, current.unrealized, string=False),
+        start_balance=prev,
+        end_balance=current
+    )
+
+
+async def calc_intervals(client: Client,
+                         interval: timedelta,
+                         limit: int = None,
+                         guild_id: int = None,
+                         currency: str = None,
+                         since: date = None,
+                         to: date = None,
+                         as_string=False,
+                         forEach: Callable[[Balance], Any] = None,
+                         throw_exceptions=True,
+                         today: date = None,
+                         db_session: AsyncSession = None) -> Union[List[Interval], str]:
+    """
+    Calculates daily balance changes for a given client.
+    :param interval:
+    :param today:
+    :param limit:
+    :param since:
+    :param to:
+    :param throw_exceptions:
+    :param forEach: function to be performed for each balance
+    :param client: Client to calculate changes
+    :param amount: Amount of days to calculate
+    :param guild_id:
+    :param currency: Currency that will be used
+    :param as_string: Whether the created table should be stored as a string using prettytable or as a list of
+    :return:
+    """
+    db_session = db_session or async_session
+    currency = currency or '$'
+    today = today or date.today()
+    since = since or date.fromtimestamp(0)
+    to = to or today
+
+    end = min(today, to)
+
+    history = await db_all(
+        client.history.statement.filter(
+            Balance.time > since, Balance.time < today
+        ).order_by(
+            asc(Balance.time)
+        ),
+        session=db_session
+    )
+
+    if len(history) == 0:
+        if throw_exceptions:
+            raise UserInputError(reason='Got no data for this user')
+        else:
+            return "" if as_string else []
+
+    if limit:
+        try:
+            start = end - interval * limit
+        except OverflowError:
+            raise UserInputError('Invalid daily amount given')
+    else:
+        start = history[0].time.date()
+
+    start = max(since, start)
+
+    if guild_id:
+        event = await dbutils.get_event(guild_id)
+        if event and event.start > start:
+            start = event.start
+
+    current_search = start + interval
+    prev = prev_balance = history[0]
+
+    if as_string:
+        results = PrettyTable(
+            field_names=["Date", "Amount", "Diff", "Diff %"]
+        )
+    else:
+        results = []
+    for balance in history:
+        now = balance.time.date()
+        if current_search <= now <= to:
+            # current = get_best_time_fit(current_search, prev_balance, balance)
+            prev = prev or prev_balance
+            values = _create_interval(prev, prev_balance, as_string)
+            if as_string:
+                results.add_row(list(values)[4:])
+            else:
+                results.append(values)
+            prev = prev_balance
+            current_search = now + interval
+        prev_balance = balance
+        await call_unknown_function(forEach, balance)
+
+    # if prev_balance.time.date() < current_search:
+    #    values = _create_interval(prev, history[len(history) - 1], as_string)
+    #    if as_string:
+    #        results.add_row([*values])
+    #    else:
+    #        results.append(values)
+    #
     return results
 
 
@@ -434,10 +355,10 @@ async def create_leaderboard(dc_client: discord.Client,
         # All global clients
         clients = await db_all(
             select(db_client.Client).
-            filter(
+                filter(
                 db_client.Client.id.in_(
                     select(GuildAssociation.client_id).
-                    filter_by(guild_id=guild.id)
+                        filter_by(guild_id=guild.id)
                 )
             )
         )
@@ -569,14 +490,14 @@ async def calc_gains(clients: List[Client],
 
         search, _ = await dbutils.get_guild_start_end_times(event, search, None)
         balance_then = await client.get_balance_at_time(search, post=True, currency=currency)
-        #balance_then = db_match_balance_currency(
+        # balance_then = db_match_balance_currency(
         #    await db_first(
         #        client.history.statement.filter(
         #            Balance.time > search
         #        ).order_by(asc(Balance.time))
         #    ),
         #    currency
-        #)
+        # )
 
         balance_now = await client.latest()
 
@@ -743,7 +664,6 @@ async def ask_for_consent(ctx: Union[ComponentContext, SlashContext],
                           no_message: str = None,
                           hidden=False,
                           timeout_seconds: float = 60) -> Future[Tuple[ComponentContext, bool]]:
-
     future = asyncio.get_running_loop().create_future()
 
     component_row = create_yes_no_button_row(
@@ -807,7 +727,7 @@ def create_yes_no_button_row(slash: SlashCommand,
             slash.remove_component_callback(custom_id=custom_id)
 
         @slash.component_callback(components=[custom_id])
-        @log_and_catch_errors(type="Component callback", cog=False)
+        @utils.log_and_catch_errors(type="Component callback", cog=False)
         @wraps(callback)
         async def yes_no_wrapper(ctx: ComponentContext):
 
@@ -831,7 +751,6 @@ async def new_create_selection(ctx: SlashContext,
                                msg_embeds: List[discord.Embed] = None,
                                timeout_seconds: float = 60,
                                **kwargs) -> Future[Tuple[ComponentContext, List]]:
-
     future = asyncio.get_running_loop().create_future()
 
     component_row = create_selection(
@@ -891,7 +810,7 @@ def create_selection(slash: SlashCommand,
         slash.remove_component_callback(custom_id=custom_id)
 
     @slash.component_callback(components=[custom_id])
-    @log_and_catch_errors(type="Component callback", cog=False)
+    @utils.log_and_catch_errors(type="Component callback", cog=False)
     @wraps(callback)
     async def on_select(ctx: ComponentContext):
         values = ctx.data['values']
@@ -922,8 +841,11 @@ def readable_time(time: datetime) -> str:
     return time_str
 
 
-def db_match_balance_currency(balance: Balance, currency: str):
+def list_last(l: list, default: Any = None):
+    return l[len(l) - 1] if l else default
 
+
+def db_match_balance_currency(balance: Balance, currency: str):
     return balance
 
     result = None

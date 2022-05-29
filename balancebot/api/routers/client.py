@@ -21,16 +21,17 @@ from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, 
 from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
 from balancebot.api.utils.responses import BadRequest, OK, CustomJSONResponse
 from balancebot.common import utils
-from balancebot.api.dependencies import current_user, CurrentUser, get_authenticator
+from balancebot.api.dependencies import CurrentUser, CurrentUserDep, get_authenticator, get_messenger
 from balancebot.common.database import session
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User
 from balancebot.api.settings import settings
 from balancebot.api.utils.client import create_client_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
+from balancebot.common.dbutils import add_client
 from balancebot.common.messenger import Messenger, NameSpace, Category
 import balancebot.common.dbmodels.event as db_event
-from balancebot.common.utils import validate_kwargs
+from balancebot.bot.utils import validate_kwargs
 
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.exchanges import EXCHANGES
@@ -38,7 +39,7 @@ from balancebot.collector.usermanager import UserManager
 
 router = APIRouter(
     tags=["client"],
-    dependencies=[Depends(current_user)],
+    dependencies=[Depends(CurrentUser), Depends(get_messenger)],
     responses={
         401: {'detail': 'Wrong Email or Password'},
         400: {'detail': "Email is already used"}
@@ -71,7 +72,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
                             f'You do not have any balance in your account. Please fund your account before registering.'
                         )
                     else:
-                        payload = await  client.serialize(full=True, data=True)
+                        payload = await client.serialize(full=True, data=True)
                         # TODO: CHANGE THIS
                         payload['api_secret'] = client.api_secret
 
@@ -103,7 +104,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
 @router.get('/client')
 async def get_client(request: Request, response: Response,
                      client_params: ClientQueryParams = Depends(),
-                     user: User = Depends(current_user)):
+                     user: User = Depends(CurrentUser)):
 
     if client_params.id:
         client: Optional[Client] = await db_first(
@@ -128,7 +129,7 @@ async def get_client(request: Request, response: Response,
 
 async def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = None,
                                to: Optional[datetime] = None,
-                               user: User = Depends(current_user)):
+                               user: User = Depends(CurrentUser)):
     client = await get_user_client(user, id)
     if client:
 
@@ -179,7 +180,7 @@ async def get_client_analytics(id: Optional[int] = None, since: Optional[datetim
 
 
 @router.delete('/client')
-async def delete_client(body: DeleteBody, user: User = Depends(current_user)):
+async def delete_client(body: DeleteBody, user: User = Depends(CurrentUser)):
     await db(
         add_client_filters(delete(Client), user, body.id)
     )
@@ -188,7 +189,7 @@ async def delete_client(body: DeleteBody, user: User = Depends(current_user)):
 
 
 @router.patch('/client')
-async def update_client(body: UpdateBody, user: User = Depends(CurrentUser(User.discord_user))):
+async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(User.discord_user))):
     client: Client = await db_first(
         add_client_filters(select(Client), user, body.id)
     )
@@ -274,12 +275,13 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUser(User.
 
 
 @router.post('/client/confirm')
-async def confirm_client(body: ConfirmBody, user: User = Depends(current_user)):
+async def confirm_client(body: ConfirmBody, user: User = Depends(CurrentUser), messenger: Messenger = Depends(get_messenger)):
     client_json = jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
     print(client_json)
     try:
         client = Client(**client_json)
         client.user = user
+        add_client(client, messenger)
         async_session.add(client)
         await async_session.commit()
         return OK('Success')
@@ -299,6 +301,8 @@ def create_ws_message(type: str, channel: str = None, data: Dict = None, error: 
 @router.websocket('/client/ws')
 async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  authenticator: Authenticator = Depends(get_authenticator)):
     await websocket.accept()
+
+    authenticator.read_uuid()
     Authorize.jwt_required("websocket", websocket)
     user_manager = UserManager()
     subscribed_client: Optional[Client] = None

@@ -14,6 +14,7 @@ import pytz
 from aiohttp import ClientResponseError, ClientResponse
 
 from balancebot.api.settings import settings
+from balancebot.common import utils
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.transfer import RawTransfer
@@ -23,13 +24,7 @@ from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_li
 from balancebot.common.dbmodels.balance import Balance
 from typing import Dict, List, Union, Tuple, Optional, Type
 
-
-class Symbol(Enum):
-    BTCUSD = "BTCUSD"
-    ETHUSD = "ETHUSD"
-    EOSUSD = "EOSUSD"
-    XRPUSD = "XRPUSD"
-    DOTUSD = "DOTUSD"
+from balancebot.common.models.ohlc import OHLC
 
 
 class Transfer(Enum):
@@ -43,9 +38,31 @@ class Wallet(Enum):
     DERIVATIVE = 2
 
 
+class ContractType(Enum):
+    INVERSE = 1
+    LINEAR = 2
+
+
 class Direction(Enum):
     PREV = "Prev"
     NEXT = "Next"
+
+
+def tf_helper(tf: str, factor_seconds: int, ns: List[int]):
+    return {
+        factor_seconds * n: f'{int(n * factor_seconds / 60) if n < utils.DAY else tf}' for n in ns
+    }
+
+
+_interval_map = {
+    **tf_helper('m', utils.MINUTE, [1, 3, 5, 15, 30]),
+    **tf_helper('h', utils.HOUR, [1, 2, 4, 6, 8, 12]),
+    **tf_helper('D', utils.DAY, [1]),
+    **tf_helper('W', utils.WEEK, [1]),
+    **tf_helper('M', utils.WEEK * 4, [1]),
+}
+
+
 
 
 class _BybitBaseClient(ExchangeWorker, ABC):
@@ -81,9 +98,6 @@ class _BybitBaseClient(ExchangeWorker, ABC):
             )
 
     async def _get_internal_transfers(self, since: datetime, wallet: Wallet) -> List[RawTransfer]:
-
-        t = await self._get_balance(datetime.now(pytz.utc))
-
         transfers = []
 
         res = await self._get('/asset/v1/private/transfer/list',
@@ -143,10 +157,17 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         return int(date.timestamp() * 1000)
 
     def _parse_ts(self, ts: Union[int, float]):
-        return datetime.fromtimestamp(ts)
+        return datetime.fromtimestamp(ts, pytz.utc)
 
 
-class DerivativesBybitClient(_BybitBaseClient):
+def _get_contract_type(contract: str):
+    if contract.endswith('USDT'):
+        return ContractType.LINEAR
+    else:
+        return ContractType.INVERSE
+
+
+class BybitDerivativesClient(_BybitBaseClient):
     exchange = 'bybit-derivatives'
 
     _limits = [
@@ -177,16 +198,18 @@ class DerivativesBybitClient(_BybitBaseClient):
                              page_init: int = 1,
                              **kwargs):
         page = page_init
-        response = {}
+        result = []
         results = []
         params['limit'] = limit
-        while len(response.get(result_path, [])) == limit or page == page_init:
+        while result and len(result) == limit or page == page_init:
             # https://bybit-exchange.github.io/docs/inverse/#t-usertraderecords
-            if page_init:
+            if page_init and page != page_init:
                 params[page_param] = page
             response = await self._get(path, params=params, **kwargs)
             page = response.get(page_response, page + 1 if page_init == 1 else page)
-            results.extend(response[result_path])
+            result = response.get(result_path)
+            if result:
+                results.extend(result)
         return results
 
     async def _get_executions(self,
@@ -237,13 +260,13 @@ class DerivativesBybitClient(_BybitBaseClient):
                 result_path="trade_list"
             ))
             # https://bybit-exchange.github.io/docs/inverse_futures/#t-usertraderecords
-            #raw_execs.extend(await self._get_paginated(
+            # raw_execs.extend(await self._get_paginated(
             #    limit=200,
             #    path='/futures/private/execution/list',
             #    params=params.copy(),
             #    page_param='page',
             #    result_path="trade_list"
-            #))
+            # ))
             # https://bybit-exchange.github.io/docs/linear/#t-userhistorytraderecords
             params['symbol'] = f'{coin}USDT'
             raw_execs.extend(await self._get_paginated(
@@ -279,18 +302,21 @@ class DerivativesBybitClient(_BybitBaseClient):
             #     "trade_time_ms": 1650444130065
             # }
 
-            execs.extend(
-                Execution(
-                    symbol=raw_exec["symbol"],
-                    price=Decimal(raw_exec["exec_price"]),
-                    qty=Decimal(raw_exec["exec_qty"]),
-                    commission=Decimal(raw_exec["exec_fee"]) * Decimal(raw_exec["exec_price"]),
-                    time=self._parse_ts(raw_exec["trade_time_ms"] / 1000),
-                    side=Side.BUY if raw_exec["side"] == "Buy" else Side.SELL,
-                    type=ExecType.TRADE
-                )
-                for raw_exec in raw_execs
-            )
+            for raw_exec in raw_execs:
+                if raw_exec['exec_type'] == "Trade":
+                    execs.append(
+                        Execution(
+                            symbol=raw_exec["symbol"],
+                            price=Decimal(raw_exec["exec_price"]),
+                            qty=Decimal(raw_exec["exec_qty"]),
+                            commission=Decimal(raw_exec["exec_fee"]) * Decimal(raw_exec["exec_price"]),
+                            time=self._parse_ts(raw_exec["trade_time_ms"] / 1000),
+                            side=Side.BUY if raw_exec["side"] == "Buy" else Side.SELL,
+                            type=ExecType.TRADE
+                        )
+
+                    )
+
         return execs
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
@@ -330,3 +356,80 @@ class DerivativesBybitClient(_BybitBaseClient):
             extra_currencies=extra_currencies,
             error=err_msg
         )
+
+    async def _get_ohlc(self,
+                        market: str,
+                        since: datetime,
+                        to: datetime,
+                        resolution_s: int = None,
+                        limit: int = None, ) -> List[OHLC]:
+
+        limit = limit or 200
+
+        if not resolution_s:
+            limit, resolution_s = self._calc_resolution(
+                limit,
+                list(_interval_map.keys()),
+                since,
+                to
+            )
+
+        params = {
+            'symbol': market,
+            'interval': _interval_map[resolution_s],
+            'from': int(since.timestamp())
+        }
+        if limit:
+            params['limit'] = limit
+
+        contract_type = _get_contract_type(market)
+        # Different endpoints, but they both use the exact same repsonse
+        if contract_type == ContractType.INVERSE:
+            # https://bybit-exchange.github.io/docs/inverse/#t-markpricekline
+            url = '/v2/public/mark-price-kline'
+        elif contract_type == ContractType.LINEAR:
+            # https://bybit-exchange.github.io/docs/linear/#t-markpricekline
+            url = '/public/linear/mark-price-kline'
+        else:
+            raise
+
+        data = await self._get(url, params=params)
+
+        # "result": [{
+        #     "id": 3866948,
+        #     "symbol": "BTCUSDT",
+        #     "period": "1",
+        #     "start_at": 1577836800,
+        #     "open": 7700,
+        #     "high": 999999,
+        #     "low": 0.5,
+        #     "close": 6000
+        # }
+
+        if data:
+            return [
+                OHLC(
+                    open=ohlc["open"],
+                    high=ohlc["high"],
+                    low=ohlc["low"],
+                    close=ohlc["close"],
+                    volume=Decimal(0),
+                    time=self._parse_ts(ohlc["start_at"])
+                )
+                for ohlc in data
+            ]
+        else:
+            return []
+
+
+class BybitSpotClient(_BybitBaseClient):
+    exchange = "bybit-spot"
+
+    _limits = [
+        # TODO: Tweak Rate Limiter (method based + continious limits)
+        create_limit(interval_seconds=2*60, max_amount=2*50, default_weight=1)  # Some kind of type=Type.CONTINIOUS
+    ]
+
+
+
+

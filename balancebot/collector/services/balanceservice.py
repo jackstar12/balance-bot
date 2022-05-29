@@ -20,8 +20,10 @@ import pytz
 
 from balancebot.common.database_async import db_all, db_first, db, db_unique, db_eager, async_maker
 from balancebot.common.dbmodels.balance import Balance
+from balancebot.common.dbmodels.chapter import Chapter
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.journal import Journal
 from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.trade import Trade
@@ -75,15 +77,17 @@ class BalanceService(BaseService):
                 Client.archived == False,
                 Client.invalid == False
             ),
-            (Client.open_trades, [Trade.max_pnl, Trade.min_pnl]),
             Client.discord_user,
             Client.currently_realized,
+            Client.recent_history,
+            (Client.open_trades, [Trade.max_pnl, Trade.min_pnl]),
+            (Client.journals, (Journal.current_chapter, Chapter.balances))
         )
         self._active_client_stmt = self._all_client_stmt.join(
             Trade,
             and_(
                 Client.id == Trade.client_id,
-                Trade.open_qty > 0.0
+                Trade.open_qty > 0
             )
         )
 
@@ -279,7 +283,6 @@ class BalanceService(BaseService):
                             value=customjson.dumps(await balance.serialize(data=False, full=False))
                         )
                     await pipe.execute()
-            #await asyncio.sleep(3 - (time.time() - ts))
             await asyncio.sleep(0.2)
 
     async def _balance_collector(self):
