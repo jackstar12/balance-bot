@@ -1,6 +1,6 @@
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from typing import List, Literal, Optional, NamedTuple
+from typing import List, Literal, Optional, NamedTuple, Set
 
 from pydantic import BaseModel
 
@@ -31,7 +31,7 @@ class JournalInfo(JournalCreate):
 
 
 class JournalUpdate(BaseOrmModel):
-    clients: Optional[List[int]]
+    clients: Optional[Set[int]]
     title: Optional[str]
     notes: Optional[str]
     auto_generate: Optional[bool]

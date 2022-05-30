@@ -216,7 +216,7 @@ class ExchangeWorker:
             if not balance.time:
                 balance.time = date
             balance.client_id = self.client_id
-            balance.total_transfered = getattr(
+            balance.total_transferred = getattr(
                 self.client.currently_realized, 'total_transfered', Decimal(0)
             )
             await self.client.update_journals(balance, date.date(), async_session)
@@ -370,7 +370,7 @@ class ExchangeWorker:
                 if next_transfer and update.time > next_transfer.time:
                     cur_offset += next_transfer.amount
                     next_transfer = next(transfer_iter, None)
-                update.total_transfered += cur_offset
+                update.total_transferred += cur_offset
 
         db_session.add_all(transfers)
         self.client.last_transfer_sync = now

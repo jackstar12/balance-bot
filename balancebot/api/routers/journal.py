@@ -68,19 +68,26 @@ async def query_journal(journal_id: int, user: User, *eager, session: AsyncSessi
     return journal
 
 
+async def query_clients(client_ids: list[int] | set[int], user: User, db_session: AsyncSession):
+    clients = await db_all(
+        add_client_filters(
+            select(Client).filter(
+                Client.id.in_(client_ids)
+            ),
+            user
+        ),
+        session=db_session
+    )
+    if len(clients) != len(client_ids):
+        raise HTTPException(status_code=404, detail='Invalid client IDs')
+    return clients
+
+
 @router.post('/')
 async def create_journal(body: JournalCreate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
-    clients = await db_all(
-        add_client_filters(
-            select(Client).filter(
-                Client.id.in_(body.clients)
-            ),
-            user
-        ),
-        session=db
-    )
+    clients = await query_clients(body.clients, user, db)
     if len(clients) != len(body.clients):
         return BadRequest(detail='Invalid client IDs')
     journal = Journal(
@@ -113,8 +120,10 @@ async def get_journal(journal_id: int, user: User = Depends(CurrentUser)):
 
 
 @router.patch('/{journal_id}')
-async def update_journal(journal_id: int, body: JournalUpdate,
-                         user: User = Depends(CurrentUser)):
+async def update_journal(journal_id: int,
+                         body: JournalUpdate,
+                         user: User = Depends(CurrentUser),
+                         db: AsyncSession = Depends(get_db)):
     journal = await query_journal(
         journal_id,
         user,
@@ -125,6 +134,12 @@ async def update_journal(journal_id: int, body: JournalUpdate,
         journal.title = body.title
     if body.notes is not None:
         journal.notes = body.notes
+    if body.clients is not None:
+        if body.clients != set(journal.clients):
+            clients = await query_clients(body.clients, user, db)
+            journal.clients = clients
+
+            await journal.re_init(db)
 
     return JournalInfo.from_orm(journal)
 

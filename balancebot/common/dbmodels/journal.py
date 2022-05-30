@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 from itertools import zip_longest
+from typing import Iterator
 
 import sqlalchemy as sa
 from fastapi_users_db_sqlalchemy import GUID
@@ -59,7 +60,7 @@ class Journal(Base):
                                                 uselist=False
                                                 )
 
-    async def init(self, db_session: AsyncSession):
+    async def _calc_intervals(self, db_session: AsyncSession) -> Iterator:
         client_intervals = await asyncio.gather(*[
             utils.calc_intervals(
                 client,
@@ -69,14 +70,17 @@ class Journal(Base):
             )
             for client in self.clients
         ])
+        return sorted(
+            itertools.chain.from_iterable(client_intervals),
+            key=lambda inter: inter.day
+        )
+
+    async def init(self, db_session: AsyncSession):
+        client_intervals = await self._calc_intervals(db_session)
 
         current_chapter = None
-        today = date.today()
         chapters = []
-        for interval in sorted(
-                itertools.chain.from_iterable(client_intervals),
-                key=lambda inter: inter.day
-        ):
+        for interval in client_intervals:
             current_chapter = list_last(chapters, None)
             if not current_chapter or interval.day >= current_chapter.end_date:
                 chapters.append(Chapter(
@@ -96,16 +100,25 @@ class Journal(Base):
         await db_session.commit()
         return
 
-        db_session.add_all([
-            Chapter(
-                start_date=interval.day,
-                end_date=interval.day + self.chapter_interval,
-                client=self,
-                journal=self,
-                start_balance=interval.start_balance,
-                end_balance=interval.end_balance,
-            )
-            for interval in intervals
-        ])
-        db_session.add(new_journal)
+    async def re_init(self, db_session: AsyncSession):
+        interval_iter = await self._calc_intervals(db_session)
+        cur_interval = next(interval_iter, None)
+
+        for index, chapter in enumerate(self.chapters):
+            chapter.balances = []
+
+            while cur_interval and cur_interval.day <= chapter.start_day:
+                if cur_interval.day == chapter.start_day:
+                    chapter.balances.append(cur_interval.start_balance)
+                    chapter.balances.append(cur_interval.end_balance)
+                else:
+                    self.chapters.insert(index, Chapter(
+                        start_date=cur_interval.day,
+                        end_date=cur_interval.day + self.chapter_interval,
+                        journal=self,
+                        balances=[],
+                    ))
+
+                cur_interval = next(interval_iter, None)
+
         await db_session.commit()
