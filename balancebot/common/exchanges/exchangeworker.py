@@ -321,7 +321,7 @@ class ExchangeWorker:
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
         if not since:
             since = (
-                    self.client.last_transfer_sync or datetime.now(pytz.utc) - timedelta(days=365)
+                self.client.last_transfer_sync or datetime.now(pytz.utc) - timedelta(days=365)
             )
         raw_transfers = await self._get_transfers(since)
         if raw_transfers:
@@ -562,6 +562,8 @@ class ExchangeWorker:
             session=db_session
         )
 
+        self.client = await db_session.get(Client, self.client_id)
+
         self.in_position = True
 
         if realtime:
@@ -624,7 +626,8 @@ class ExchangeWorker:
                     if execution.realized_pnl is None:
                         execution.realized_pnl = rpnl - (active_trade.realized_pnl or Decimal('0'))
                     active_trade.realized_pnl = rpnl
-                    active_trade.total_commisions += execution.commission
+                    if execution.commission:
+                        active_trade.total_commissions += execution.commission
             asyncio.create_task(
                 utils.call_unknown_function(self._on_update_trade, self, active_trade)
             )
