@@ -72,7 +72,7 @@ class BinanceFutures(_BinanceBaseClient):
         response = await self._get('/fapi/v2/account')
 
         return balance.Balance(
-            amount=float(response.get('totalMarginBalance', 0)),
+            amount=float(response.get('availableBalance', 0)),
             currency='$',
             time=time if time else datetime.now(),
             error=response.get('msg', None)
