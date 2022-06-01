@@ -20,10 +20,12 @@ from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.transfer import RawTransfer
 from balancebot.common.enums import ExecType, Side
 from balancebot.common.errors import ResponseError, InvalidClientError
+from balancebot.common.exchanges.bybit.websocket import BybitWebsocketClient
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_limit
 from balancebot.common.dbmodels.balance import Balance
 from typing import Dict, List, Union, Tuple, Optional, Type
 
+from balancebot.common.models.async_websocket_manager import WebsocketManager
 from balancebot.common.models.ohlc import OHLC
 
 
@@ -63,17 +65,62 @@ _interval_map = {
 }
 
 
-
-
 class _BybitBaseClient(ExchangeWorker, ABC):
     _ENDPOINT = 'https://api-testnet.bybit.com' if settings.testing else 'https://api.bybit.com'
+    _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime' if settings.testing else 'wss://stream.bybit.com/realtime'
 
     _response_error = 'ret_msg'
     _response_result = 'result'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._ws = BybitWebsocketClient(self._session,
+                                        get_url=lambda: self._WS_ENDPOINT,
+                                        on_message=self._on_message,
+                                        on_connect=self._on_connect)
         # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
+
+    async def connect(self):
+        await self._ws.connect()
+        await self._ws.authenticate(self._api_key, self._api_secret)
+        await self._ws.subscribe("execution")
+
+    async def _on_connect(self, ws: BybitWebsocketClient):
+        pass
+
+    def _get_ws_url(self) -> str:
+        return self._WS_ENDPOINT
+
+    async def _on_message(self, ws: WebsocketManager, message: Dict):
+        # https://bybit-exchange.github.io/docs/inverse/#t-websocketexecution
+        if message["topic"] == "execution":
+            for execution in (executions for executions in message["data"]):
+                # {
+                #     "symbol": "BTCUSD",
+                #     "side": "Buy",
+                #     "order_id": "xxxxxxxx-xxxx-xxxx-9a8f-4a973eb5c418",
+                #     "exec_id": "xxxxxxxx-xxxx-xxxx-8b66-c3d2fcd352f6",
+                #     "order_link_id": "",
+                #     "price": "8300",
+                #     "order_qty": 1,
+                #     "exec_type": "Trade",
+                #     "exec_qty": 1,
+                #     "exec_fee": "0.00000009",
+                #     "leaves_qty": 0,
+                #     "is_maker": false,
+                #     "trade_time": "2020-01-14T14:07:23.629Z"
+                # }
+                await self._on_execution(
+                    Execution(
+                        symbol=execution["symbol"],
+                        side=Side.BUY if execution["side"] == "Buy" else Side.SELL,
+                        price=Decimal(execution["price"]),
+                        qty=Decimal(execution["exec_qty"]),
+                        commission=Decimal(execution["exec_fee"]),
+                        time=datetime.fromisoformat(execution["trade_time"].replace("Z", "+00:00")),  # for Z support
+                        type=ExecType.TRADE
+                    )
+                )
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):

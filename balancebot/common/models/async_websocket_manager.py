@@ -2,16 +2,35 @@ import asyncio
 import json
 import logging
 import time
+from typing import Callable
+
 import aiohttp
+import typing_extensions
 
 from aiohttp import WSMessage
+from typing_extensions import Self
+
+from balancebot.common import utils, customjson
+
 
 class WebsocketManager:
     _CONNECT_TIMEOUT_S = 5
 
-    def __init__(self, session: aiohttp.ClientSession):
+    # Note that the url is provided through a function because some exchanges
+    # have authentication embedded into the url
+    def __init__(self, session: aiohttp.ClientSession,
+                 get_url: Callable[..., str] = None,
+                 on_message: Callable[[Self, str], None] = None,
+                 on_connect: Callable[[Self], None] = None,
+                 ping_forever_seconds: int = None):
         self._ws = None
         self._session = session
+        if get_url:
+            self._get_url = get_url
+        if on_message:
+            self._on_message = on_message
+        self._on_connect = on_connect
+        self._ping_forever_seconds = ping_forever_seconds
 
     async def send(self, message):
         await self.connect()
@@ -19,7 +38,7 @@ class WebsocketManager:
 
     async def send_json(self, data):
         if self._ws and not self._ws.closed:
-            return await self._ws.send_json(data)
+            return await self._ws.send_json(data, dumps=customjson.dumps_no_bytes)
 
     async def reconnect(self) -> None:
         if self.connected:
@@ -45,7 +64,8 @@ class WebsocketManager:
 
     async def _run(self):
         async with self._session.ws_connect(self._get_url(), autoping=True) as ws:
-
+            asyncio.create_task(self._ping_forever())
+            await utils.call_unknown_function(self._on_connect, self)
             self._ws: aiohttp.ClientWebSocketResponse = ws
             async for msg in ws:
                 msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
@@ -64,6 +84,15 @@ class WebsocketManager:
                     logging.info(f'DISCONNECTED {self=}')
                     await self._callback(self._on_close, ws)
                     break
+
+    async def ping(self):
+        raise NotImplementedError()
+
+    async def _ping_forever(self):
+        if self._ping_forever_seconds:
+            while self.connected:
+                await self.ping()
+                await asyncio.sleep(self._ping_forever_seconds)
 
     async def _callback(self, f, ws, *args, **kwargs):
         if callable(f) and ws is self._ws:

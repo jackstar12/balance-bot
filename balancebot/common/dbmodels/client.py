@@ -19,6 +19,7 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
+from balancebot.bot.utils import embed_add_value_safe
 from balancebot.common import customjson
 from balancebot.common.database_async import db_first, db_all, db_select_all
 import balancebot.common.dbmodels.balance as db_balance
@@ -143,27 +144,28 @@ class Client(Base, Serializer):
         today = today or date.today()
 
         for journal in self.journals:
-            end = getattr(journal.current_chapter, 'end_date', date.fromtimestamp(0))
-            if today >= end:
-                latest = utils.list_last(self.recent_history)
-                if latest:
-                    journal.current_chapter.end_balance = latest
-                    new_chapter = Chapter(
-                        start_date=today,
-                        end_date=today + journal.chapter_interval,
-                        balances=[latest]
-                    )
-                    journal.current_chapter = new_chapter
-                    db_session.add(new_chapter)
-            elif journal.current_chapter:
-                contained = 0
-                for index, balance in enumerate(journal.current_chapter.balances):
-                    if balance.client_id == self.id:
-                        contained += 1
-                        if contained == 2:
-                            journal.current_chapter.balances[index] = current_balance
-                if contained < 2:
-                    journal.current_chapter.balances.append(current_balance)
+            if journal.current_chapter:
+                end = getattr(journal.current_chapter, 'end_date', date.fromtimestamp(0))
+                if today >= end:
+                    latest = utils.list_last(self.recent_history)
+                    if latest:
+                        journal.current_chapter.end_balance = latest
+                        new_chapter = Chapter(
+                            start_date=today,
+                            end_date=today + journal.chapter_interval,
+                            balances=[latest]
+                        )
+                        journal.current_chapter = new_chapter
+                        db_session.add(new_chapter)
+                elif journal.current_chapter:
+                    contained = 0
+                    for index, balance in enumerate(journal.current_chapter.balances):
+                        if balance.client_id == self.id:
+                            contained += 1
+                            if contained == 2:
+                                journal.current_chapter.balances[index] = current_balance
+                    if contained < 2:
+                        journal.current_chapter.balances.append(current_balance)
 
         await db_session.commit()
 
@@ -308,8 +310,8 @@ class Client(Base, Serializer):
     async def get_discord_embed(self, guilds: Optional[List[Guild]] = None):
 
         embed = discord.Embed(title="User Information")
-        utils.embed_add_value_safe(embed, 'Events', self.get_event_string())
-        utils.embed_add_value_safe(embed, 'Servers', await self.get_guilds_string(guilds), inline=False)
+        embed_add_value_safe(embed, 'Events', self.get_event_string())
+        embed_add_value_safe(embed, 'Servers', await self.get_guilds_string(guilds), inline=False)
         embed.add_field(name='Exchange', value=self.exchange)
         embed.add_field(name='Api Key', value=self.api_key)
 

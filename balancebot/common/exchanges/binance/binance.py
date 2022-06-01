@@ -150,7 +150,6 @@ class BinanceFutures(_BinanceBaseClient):
         })
         self._ccxt.set_sandbox_mode(True)
 
-
     async def _get_transfers(self,
                              since: datetime,
                              to: datetime = None) -> List[RawTransfer]:
@@ -267,9 +266,19 @@ class BinanceFutures(_BinanceBaseClient):
     async def _get_balance(self, time: datetime, upnl=True):
         response = await self._get('/fapi/v2/account')
 
+        usd_assets = [
+            asset for asset in response["assets"] if asset["asset"] in ("USDT", "BUSD")
+        ]
+
         return balance.Balance(
-            realized=Decimal(response['totalWalletBalance']),
-            unrealized=Decimal(response['totalMarginBalance']),
+            realized=sum(
+                Decimal(asset['walletBalance'])
+                for asset in usd_assets
+            ),
+            unrealized=sum(
+                Decimal(asset['marginBalance'])
+                for asset in usd_assets
+            ),
             time=time if time else datetime.now(pytz.utc)
         )
 

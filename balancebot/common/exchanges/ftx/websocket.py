@@ -18,12 +18,8 @@ class FtxWebsocketClient(WebsocketManager):
     def _get_url(self) -> str:
         return self._ENDPOINT
 
-    async def connect(self):
-        await super().connect()
-        asyncio.create_task(self._ping_forever())
-
     def __init__(self, session: aiohttp.ClientSession, api_key=None, api_secret=None, on_message_callback=None, subaccount=None) -> None:
-        super().__init__(session=session)
+        super().__init__(session=session, ping_forever_seconds=15)
         self._fills: Deque = deque([], maxlen=10000)
         self._api_key = api_key
         self._api_secret = api_secret
@@ -93,11 +89,6 @@ class FtxWebsocketClient(WebsocketManager):
         await self.send_json({
             'op': 'ping'
         })
-
-    async def _ping_forever(self):
-        while self.connected:
-            await self.ping()
-            await asyncio.sleep(15)
 
     def _handle_ticker_message(self, message: Dict) -> None:
         self._tickers[message['market']] = message['data']

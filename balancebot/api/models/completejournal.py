@@ -57,6 +57,7 @@ class ChapterInfo(BaseModel):
 
 class ChapterUpdate(BaseModel):
     notes: Optional[str]
+    trades: Optional[Set[int]]
 
 
 class ChapterCreate(BaseModel):

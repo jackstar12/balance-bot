@@ -12,12 +12,13 @@ from balancebot.api.dependencies import CurrentUser, get_messenger, CurrentUserD
 from balancebot.api.models.amount import FullBalance
 from balancebot.api.models.completejournal import JournalCreate, JournalInfo, CompleteJournal, Chapter, JournalUpdate, \
     ChapterInfo, ChapterCreate, ChapterUpdate
+from balancebot.common.dbmodels import journal
 from balancebot.common.dbmodels.chapter import Chapter as DbChapter
 from balancebot.api.utils.client import get_user_client
 from balancebot.api.utils.responses import BadRequest, OK, NotFound
 from balancebot.common.database_async import async_session, db_unique, db_all
 from balancebot.common.dbmodels.client import add_client_filters, Client
-from balancebot.common.dbmodels.journal import Journal
+from balancebot.common.dbmodels.journal import Journal, JournalType
 from balancebot.common.dbmodels.user import User
 from balancebot.common.models.gain import Gain
 
@@ -161,9 +162,6 @@ async def get_chapters(journal_id: int, user: User = Depends(CurrentUser)):
         session=async_session
     )
 
-    if not journal:
-        return NotFound('Unknown journal id')
-
     return [
         ChapterInfo.from_orm(chapter)
         for chapter in journal.chapters
@@ -175,7 +173,7 @@ async def get_chapter(journal_id: int, chapter_id: int, user: User = Depends(Cur
     chapter = await query_chapter(
         journal_id,
         user,
-#        DbChapter.trades,
+        DbChapter.trades,
         DbChapter.balances,
         session=async_session,
         id=chapter_id
@@ -188,16 +186,24 @@ async def get_chapter(journal_id: int, chapter_id: int, user: User = Depends(Cur
 async def update_chapter(journal_id: int,
                          chapter_id: int,
                          body: ChapterUpdate,
-                         user: User = Depends(CurrentUser)):
+                         user: User = Depends(CurrentUser),
+                         db: AsyncSession = Depends(get_db)):
     chapter = await query_chapter(
         journal_id,
         user,
-        session=async_session,
+        session=db,
         id=chapter_id
     )
     if body.notes is not None:
         chapter.notes = body.notes
-    await async_session.commit()
+    if body.trades is not None:
+        if chapter.journal.type == JournalType.MANUAL:
+            if body.trades != set(chapter.trades):
+                # TODO: How to handle manually added trades?
+                pass
+        else:
+            return BadRequest('Trades can only be set for manual journals')
+    await db.commit()
     return OK('OK')
 
 

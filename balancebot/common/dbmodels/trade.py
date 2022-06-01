@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytz
-from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete
+from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -38,6 +38,7 @@ class Trade(Base, Serializer):
     qty = Column(Numeric, nullable=False)
     open_qty = Column(Numeric, nullable=False)
     transferred_qty = Column(Numeric, nullable=True)
+    open_time = Column(DateTime(timezone=True), nullable=False)
 
     exit = Column(Numeric, nullable=True)
     realized_pnl = Column(Numeric, nullable=True, default=Decimal(0))
@@ -209,13 +210,12 @@ class Trade(Base, Serializer):
             return new
         return old
 
-
-
 def trade_from_execution(execution: Execution):
     return Trade(
         entry=execution.price,
         qty=execution.qty,
-        open_qty=execution.qty if execution.type != ExecType.TRADE else Decimal(0),
+        open_time=execution.time,
+        open_qty=execution.qty if execution.type == ExecType.TRADE else Decimal(0),
         transferred_qty=execution.qty if execution.type == ExecType.TRANSFER else Decimal(0),
         initial=execution,
         total_commissions=execution.commission,

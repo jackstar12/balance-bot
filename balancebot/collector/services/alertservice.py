@@ -26,7 +26,7 @@ class AlertService(BaseService, Observer):
         alerts = await db_all(select(Alert))
 
         for alert in alerts:
-            await self.data_service.subscribe('ftx', Channel.TICKER, self, symbol=alert.symbol)
+            await self.data_service.subscribe(alert.exchange, Channel.TICKER, self, symbol=alert.symbol)
             self.add_alert(alert)
 
         self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.NEW, callback=self._update)

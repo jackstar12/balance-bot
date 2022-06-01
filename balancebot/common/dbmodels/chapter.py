@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from balancebot.common import utils
+import balancebot.common.utils as utils
 from balancebot.common.database import Base
 from balancebot.common.models.gain import Gain
 
@@ -12,6 +12,13 @@ from balancebot.common.models.gain import Gain
 balance_association = sa.Table(
     'balance_association', Base.metadata,
     sa.Column('balance_id', sa.ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True),
+    sa.Column('chapter_id', sa.ForeignKey('chapter.id', ondelete="CASCADE"), primary_key=True)
+)
+
+
+chapter_trade_association = sa.Table(
+    'chapter_trade_association', Base.metadata,
+    sa.Column('trade_id', sa.ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
     sa.Column('chapter_id', sa.ForeignKey('chapter.id', ondelete="CASCADE"), primary_key=True)
 )
 
@@ -38,19 +45,6 @@ class Chapter(Base):
     #start_balance = orm.relationship('Balance', lazy='noload', foreign_keys=start_balance_id)
     #end_balance = orm.relationship('Balance', lazy='noload', foreign_keys=end_balance_id)
 
-    #trades = orm.relationship('Trade',
-    #                          lazy='noload',
-    #                          primaryjoin="and_("
-    #                                      #"Trade.client_id == Chapter.client_id, "
-    #                                      "Trade.client_id.in_(select(guild_association.client_id).filter_by(),"
-    #                                      "Execution.time.cast(Date) >= Chapter.start_date,"
-    #                                      "Execution.time.cast(Date) <= Chapter.end_date"
-    #                                      ")",
-    #                          secondary="join(Execution, Trade, Execution.id == Trade.initial_execution_id)",
-    #                          secondaryjoin="Execution.id == Trade.initial_execution_id",
-    #                          viewonly=True,
-    #                          uselist=True
-    #                          )
 
     notes = sa.Column(sa.Text, nullable=True)
 

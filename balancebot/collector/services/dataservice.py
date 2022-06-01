@@ -7,6 +7,7 @@ from balancebot.collector.errors import InvalidExchangeError
 from balancebot.collector.exchangeticker import ExchangeTicker
 from balancebot.collector.services.baseservice import BaseService
 from balancebot.common import utils
+from balancebot.common.exchanges import EXCHANGE_TICKERS
 from balancebot.common.messenger import NameSpace
 from balancebot.common.models.observer import Observer
 from balancebot.common.models.ticker import Ticker
@@ -31,7 +32,7 @@ class DataService(BaseService, Observer):
 
         ticker = self._exchanges.get(exchange)
         if not ticker:
-            ticker_cls = config.EXCHANGE_TICKERS.get(exchange)
+            ticker_cls = EXCHANGE_TICKERS.get(exchange)
             if ticker_cls and issubclass(ticker_cls, ExchangeTicker):
                 ticker = ticker_cls(self._http_session)
                 await ticker.connect()

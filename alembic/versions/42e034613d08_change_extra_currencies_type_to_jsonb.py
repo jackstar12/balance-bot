@@ -21,7 +21,6 @@ depends_on = None
 
 def upgrade():
     from sqlalchemy.dialects.postgresql import JSONB
-
     from balancebot.common.dbmodels.balance import Balance
 
     session = orm.Session(bind=op.get_bind())

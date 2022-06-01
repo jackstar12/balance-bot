@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+from enum import Enum
 from itertools import zip_longest
 from typing import Iterator
 
@@ -25,6 +26,11 @@ journal_association = sa.Table(
 )
 
 
+class JournalType(Enum):
+    MANUAL = 1
+    CLIENTS = 2
+
+
 class Journal(Base):
     __tablename__ = 'journal'
 
@@ -34,6 +40,9 @@ class Journal(Base):
 
     title = sa.Column(sa.Text, nullable=False)
     chapter_interval = sa.Column(sa.Interval, nullable=False)
+    auto_generate = sa.Column(sa.Boolean, default=True)
+    track_performance = sa.Column(sa.Boolean, default=True)
+    type = sa.Column(sa.Enum(JournalType), default=JournalType.CLIENTS)
 
     clients = orm.relationship(
         'Client',
