@@ -84,8 +84,15 @@ class BinanceFutures(_BinanceBaseClient):
     async def _get_balance(self, time: datetime = None):
         response = await self._get('/fapi/v2/account')
 
+        usd_assets = [
+            asset for asset in response["assets"] if asset["asset"] in ("USDT", "BUSD")
+        ]
+
         return balance.Balance(
-            amount=float(response.get('totalMarginBalance', 0)),
+            amount=sum(
+                float(asset['marginBalance'])
+                for asset in usd_assets
+            ),
             currency='$',
             time=time if time else datetime.now(),
             error=response.get('msg', None)
