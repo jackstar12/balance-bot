@@ -6,6 +6,7 @@ from functools import wraps
 from typing import Callable, Dict, Optional
 
 import msgpack
+from pydantic import BaseModel
 
 from balancebot.common import customjson
 from balancebot.common.database import redis
@@ -39,8 +40,7 @@ class Category(Enum):
     SESSIONS = "sessions"
 
 
-@dataclass
-class ClientEdit:
+class ClientUpdate(BaseModel):
     id: int
     archived: Optional[bool]
     invalid: Optional[bool]

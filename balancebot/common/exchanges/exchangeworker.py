@@ -145,25 +145,27 @@ class ExchangeWorker:
     _request_queue: PriorityQueue[RequestItem] = None
     _response_error = ''
     _request_task: Task = None
-    _session = None
+    _http = None
 
     # Rate Limiting
     _limits = [
         create_limit(interval_seconds=60, max_amount=60, default_weight=1)
     ]
 
-    def __init__(self, client: Client,
-                 session: aiohttp.ClientSession,
+    def __init__(self,
+                 client: Client,
+                 http_session: aiohttp.ClientSession,
+                 db_session: AsyncSession,
                  messenger: Messenger = None,
                  rekt_threshold: float = None,
-                 execution_dedupe_seconds: float = 5e-3):
+                 execution_dedupe_seconds: float = 5e-3, ):
 
-        self.client = client
         self.client_id = client.id
         self.in_position = True
         self.exchange = client.exchange
         self.messenger = messenger
         self.rekt_threshold = rekt_threshold
+        self._db = db_session
 
         # Client information has to be stored locally because SQL Objects aren't allowed to live in multiple threads
         self._api_key = client.api_key
@@ -171,7 +173,7 @@ class ExchangeWorker:
         self._subaccount = client.subaccount
         self._extra_kwargs = client.extra_kwargs
 
-        self._session = session
+        self._http = http_session
         self._last_fetch = datetime.fromtimestamp(0, tz=pytz.UTC)
 
         self._on_balance = None
@@ -183,8 +185,8 @@ class ExchangeWorker:
 
         cls = self.__class__
 
-        if cls._session is None or cls._session.closed:
-            cls._session = session
+        if cls._http is None or cls._http.closed:
+            cls._http = http_session
 
         if cls._request_task is None:
             cls._request_task = asyncio.create_task(cls._request_handler())
@@ -192,9 +194,9 @@ class ExchangeWorker:
         if cls._request_queue is None:
             cls._request_queue = PriorityQueue()
 
-    async def get_client(self, db_session: AsyncSession):
-        self.client = await db_session.get(Client, self.client_id)
-        return self.client
+    @property
+    def client(self):
+        return self._db.sync_session.get(Client, self.client_id)
 
     async def get_balance(self,
                           priority: Priority = Priority.MEDIUM,
@@ -232,13 +234,12 @@ class ExchangeWorker:
         return []
 
     async def get_executions(self,
-                             since: datetime = None,
-                             db_session: AsyncSession = None) -> Tuple[Dict[str, List[Execution]], List[Execution]]:
+                             since: datetime = None) -> Tuple[Dict[str, List[Execution]], List[Execution]]:
         grouped = {}
         since = since or self.client.last_execution_sync
         now = datetime.now(pytz.utc)
         transfers, execs = await asyncio.gather(
-            self.update_transfers(since, db_session),
+            self.update_transfers(since),
             self._get_executions(since, init=self.client.last_execution_sync is None)
         )
         for transfer in transfers:
@@ -264,11 +265,9 @@ class ExchangeWorker:
     async def intelligent_get_balance(self,
                                       keep_errors=False,
                                       commit=True,
-                                      date: datetime = None,
-                                      db_session: AsyncSession = None) -> Optional["Balance"]:
+                                      date: datetime = None) -> Optional["Balance"]:
         """
         Fetch the clients balance, only saving if it makes sense to do so.
-        :param db_session:
         database session to ues
         :param date:
         :param keep_errors:
@@ -280,8 +279,7 @@ class ExchangeWorker:
         :return:
         new balance object
         """
-        db_session = db_session or async_session
-        client: Client = await db_session.get(
+        client: Client = await self._db.get(
             Client,
             self.client_id,
             options=(selectinload(Client.recent_history),)  # Needs to be an iterable
@@ -312,8 +310,8 @@ class ExchangeWorker:
                     self.messenger.pub_channel(NameSpace.CLIENT, Category.REKT, channel_id=client.id,
                                                obj={'id': client.id})
             if commit:
-                db_session.add(result)
-                await db_session.commit()
+                self._db.add(result)
+                await self._db.commit()
                 self.messenger.pub_channel(NameSpace.BALANCE, Category.NEW, channel_id=client.id,
                                            obj={'id': result.id})
             return result
@@ -340,8 +338,7 @@ class ExchangeWorker:
         else:
             return []
 
-    async def update_transfers(self, since: datetime = None, db_session: AsyncSession = None) -> List[Transfer]:
-        db_session = db_session or async_session
+    async def update_transfers(self, since: datetime = None) -> List[Transfer]:
         now = datetime.now(pytz.utc)
         transfers = await self.get_transfers(since)
         if transfers:
@@ -349,7 +346,7 @@ class ExchangeWorker:
                 self.client.history.statement.filter(
                     db_balance.Balance.time > transfers[0].time
                 ),
-                session=db_session
+                session=self._db
             )
             """
             to_update   transfers
@@ -372,23 +369,22 @@ class ExchangeWorker:
                     next_transfer = next(transfer_iter, None)
                 update.total_transferred += cur_offset
 
-        db_session.add_all(transfers)
+        self._db.add_all(transfers)
         self.client.last_transfer_sync = now
-        await db_session.commit()
+        await self._db.commit()
         return transfers
 
     async def synchronize_positions(self,
                                     since: datetime = None,
-                                    to: datetime = None,
-                                    db_session: AsyncSession = None):
+                                    to: datetime = None):
 
-        self.client = await db_session.get(
-            Client,
-            self.client_id,
-            options=(
-                selectinload(Client.open_trades).selectinload(Trade.executions)
-            )
-        )
+        #self.client = await db_session.get(
+        #    Client,
+        #    self.client_id,
+        #    options=(
+        #        selectinload(Client.open_trades).selectinload(Trade.executions)
+        #    )
+        #)
         since = self.client.last_execution_sync
 
         check_executions = await db_all(
@@ -400,10 +396,10 @@ class ExchangeWorker:
                 Trade.client_id == self.client_id,
                 Execution.time > since if since else True
             ),
-            session=db_session
+            session=self._db
         )
 
-        executions_by_symbol, all_executions = await self.get_executions(since, db_session=db_session)
+        executions_by_symbol, all_executions = await self.get_executions(since)
 
         valid_until = since
         execution_qty = check_qty = Decimal(0)
@@ -416,9 +412,9 @@ class ExchangeWorker:
                 valid_until = execution.time if execution else check.time
 
         for trade in self.client.trades:
-            await trade.reverse_to(valid_until, db_session=db_session, commit=False)
+            await trade.reverse_to(valid_until, db_session=self._db, commit=False)
 
-        await db_session.commit()
+        await self._db.commit()
 
         if executions_by_symbol:
             for symbol, executions in executions_by_symbol.items():
@@ -462,7 +458,7 @@ class ExchangeWorker:
                         current_trade = None
                         for item in timeline:
                             if isinstance(item, Execution):
-                                current_trade = await self._on_execution(item, realtime=False, db_session=db_session)
+                                current_trade = await self._on_execution(item, realtime=False)
                             elif isinstance(item, OHLC) and current_trade:
                                 current_trade.update_pnl(
                                     item.open,
@@ -470,7 +466,7 @@ class ExchangeWorker:
                                     commit=False,
                                     now=item.time
                                 )
-                        await db_session.commit()
+                        await self._db.commit()
                     to_exec = next(exec_iter, None)
 
         await self._update_realized_balance()
@@ -544,9 +540,7 @@ class ExchangeWorker:
             self.client.currently_realized = balance
             await async_session.commit()
 
-    async def _on_execution(self, execution: Execution, realtime=True, db_session: AsyncSession = None) -> Trade:
-
-        db_session = db_session or async_session
+    async def _on_execution(self, execution: Execution, realtime=True) -> Trade:
 
         if realtime and not self._waiter.done():
             self._waiter.cancel()
@@ -559,10 +553,8 @@ class ExchangeWorker:
             ),
             Trade.executions,
             Trade.initial,
-            session=db_session
+            session=self._db
         )
-
-        self.client = await db_session.get(Client, self.client_id)
 
         self.in_position = True
 
@@ -574,7 +566,7 @@ class ExchangeWorker:
         if active_trade:
             # Update existing trade
             execution.trade_id = active_trade.id
-            db_session.add(execution)
+            self._db.add(execution)
 
             if execution.type == ExecType.TRANSFER:
                 active_trade.transferred_qty += execution.qty
@@ -605,7 +597,7 @@ class ExchangeWorker:
 
                     new_trade = trade_from_execution(new_execution)
                     new_trade.client_id = self.client_id
-                    db_session.add(new_trade)
+                    self._db.add(new_trade)
 
                     asyncio.create_task(
                         utils.call_unknown_function(self._on_new_trade, self, new_trade)
@@ -634,12 +626,12 @@ class ExchangeWorker:
         else:
             active_trade = trade_from_execution(execution)
             active_trade.client_id = self.client_id
-            db_session.add(active_trade)
+            self._db.add(active_trade)
             asyncio.create_task(
                 utils.call_unknown_function(self._on_new_trade, self, active_trade)
             )
 
-        await db_session.commit()
+        await self._db.commit()
 
         return active_trade
 
@@ -722,11 +714,11 @@ class ExchangeWorker:
                         ts = time.monotonic()
                         limit.refill(ts)
 
-                async with cls._session.request(request.method,
-                                                request.url,
-                                                params=request.params,
-                                                headers=request.headers,
-                                                json=request.json) as resp:
+                async with cls._http.request(request.method,
+                                             request.url,
+                                             params=request.params,
+                                             headers=request.headers,
+                                             json=request.json) as resp:
 
                     try:
                         cls.set_weights(item.weight, resp)
@@ -759,11 +751,8 @@ class ExchangeWorker:
                         item.future.set_exception(e)
                     finally:
                         cls._request_queue.task_done()
-
             except Exception:
                 logger.exception('why')
-
-
 
     async def _request(self,
                        method: str, path: str,
@@ -779,7 +768,7 @@ class ExchangeWorker:
             headers or {},
             params or {},
             data,
-            source=self
+            source=self.client
         )
         if cache:
             cached = ExchangeWorker._cache.get(url)
@@ -802,7 +791,12 @@ class ExchangeWorker:
             return await future
         except InvalidClientError:
             self.client.invalid = True
-            self.messenger.pub_channel(NameSpace.CLIENT, Category.UPDATE)
+            await self._db.commit()
+            await self.disconnect()
+            self.messenger.pub_channel(NameSpace.CLIENT, Category.UPDATE, {
+                'id': self.client_id, 'invalid': True
+            })
+            raise
 
     def _get(self, path: str, **kwargs):
         return self._request('GET', path, **kwargs)

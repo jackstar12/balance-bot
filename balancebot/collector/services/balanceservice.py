@@ -31,8 +31,9 @@ from balancebot.collector.services.baseservice import BaseService
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common import utils, customjson
 from balancebot.common.enums import Priority
+from balancebot.common.errors import InvalidClientError
 from balancebot.common.messenger import NameSpace, Category
-from balancebot.common.messenger import ClientEdit
+from balancebot.common.messenger import ClientUpdate
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 
 
@@ -100,9 +101,14 @@ class BalanceService(BaseService):
         self._exchange_jobs: Dict[str, ExchangeJob] = {}
         self._balance_queue = Queue()
 
-        self._db: AsyncSession = async_maker()
+        self._db: Optional[AsyncSession] = None
+        self._base_db: Optional[AsyncSession] = None
         self._balance_session = None
         self._scheduler.start()
+
+    def __exit__(self):
+        self._db.sync_session.close()
+        self._base_db.sync_session.close()
 
     async def _initialize_positions(self):
 
@@ -113,6 +119,7 @@ class BalanceService(BaseService):
 
         self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add)
         self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete)
+        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.UPDATE, callback=self._on_client_update)
 
         clients = await db_all(self._all_client_stmt, session=self._db)
 
@@ -134,8 +141,8 @@ class BalanceService(BaseService):
     async def _on_client_add(self, data: Dict):
         await self._add_client_by_id(data['id'])
 
-    async def _on_client_edit(self, data: Dict):
-        edit = ClientEdit(**data)
+    async def _on_client_update(self, data: Dict):
+        edit = ClientUpdate(**data)
         if edit.archived or edit.invalid:
             self._remove_worker(await self.get_worker(edit.id, create_if_missing=False))
         elif edit.archived is False or edit.invalid is False:
@@ -168,7 +175,8 @@ class BalanceService(BaseService):
                 # If there are no trades on the same exchange matching the deleted symbol, there is no need to keep it subscribed
                 unsubscribe_symbol = all(
                     trade.symbol != symbol
-                    for cur_worker in self._premium_workers_by_id.values() if cur_worker.client.exchange == worker.client.exchange
+                    for cur_worker in self._premium_workers_by_id.values() if
+                    cur_worker.client.exchange == worker.client.exchange
                     for trade in cur_worker.client.open_trades
                 )
                 if unsubscribe_symbol:
@@ -220,9 +228,16 @@ class BalanceService(BaseService):
     async def add_client(self, client) -> Optional[ExchangeWorker]:
         client_cls = self._exchanges.get(client.exchange)
         if issubclass(client_cls, ExchangeWorker):
-            worker = client_cls(client, self._http_session, self._messenger, self.rekt_threshold)
+            worker = client_cls(client,
+                                self._http_session,
+                                self._db if client.is_premium else self._base_db,
+                                self._messenger,
+                                self.rekt_threshold)
             if client.is_premium:
-                await worker.synchronize_positions(db_session=self._db)
+                try:
+                    await worker.synchronize_positions()
+                except InvalidClientError:
+                    return None
                 await worker.connect()
             self._add_worker(worker)
             return worker
@@ -246,14 +261,17 @@ class BalanceService(BaseService):
             worker_queue.rotate()
 
     async def run_forever(self):
-        await self._initialize_positions()
+        async with async_maker() as _db, async_maker() as _base_db:
+            self._db = _db
+            self._base_db = _base_db
+            await self._initialize_positions()
+            await asyncio.gather(
+                self._balance_updater(),
+                self._balance_collector()
+            )
 
-        asyncio.create_task(self._balance_collector())
-
+    async def _balance_updater(self):
         while True:
-            ts = time.time()
-            changes = False
-
             balances = []
 
             for worker in self._premium_workers_by_id.values():
@@ -265,7 +283,7 @@ class BalanceService(BaseService):
                         trade.update_pnl(ticker.price, realtime=True)
                         if inspect(trade.max_pnl).transient or inspect(trade.min_pnl).transient:
                             new = True
-                balance = await client.evaluate_balance(self._redis)
+                balance = client.evaluate_balance(self._redis)
                 if balance:
                     balances.append(balance)
                     # TODO: Introduce new mechanisms determining when to save
@@ -286,15 +304,12 @@ class BalanceService(BaseService):
             await asyncio.sleep(0.2)
 
     async def _balance_collector(self):
-        async with async_maker() as session:
-            self._balance_session = session
-            while True:
-                balances = [await self._balance_queue.get()]
+        while True:
+            balances = [await self._balance_queue.get()]
 
-                await asyncio.sleep(2)
+            await asyncio.sleep(2)
+            while not self._balance_queue.empty():
+                balances.append(self._balance_queue.get_nowait())
 
-                while not self._balance_queue.empty():
-                    balances.append(self._balance_queue.get_nowait())
-
-                session.add_all(balances)
-                await session.commit()
+            self._base_db.add_all(balances)
+            await self._base_db.commit()

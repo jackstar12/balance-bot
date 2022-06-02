@@ -113,7 +113,7 @@ class Client(Base, Serializer):
                 total_transfered=Decimal(as_json['total_transfered'])
             )
 
-    async def evaluate_balance(self, redis: Redis):
+    def evaluate_balance(self, redis: Redis):
         if not self.currently_realized:
             return
         realized = getattr(self.currently_realized, 'realized', Decimal(0))
@@ -121,12 +121,12 @@ class Client(Base, Serializer):
         for trade in self.open_trades:
             if trade.current_pnl:
                 unrealized += trade.current_pnl.amount
-            else:
-                price = await redis.get(
-                    utils.join_args(NameSpace.TICKER, self.exchange, trade.symbol)
-                )
-                if price:
-                    unrealized += trade.calc_upnl(Decimal(str(price)))
+            #else:
+            #    price = await redis.get(
+            #        utils.join_args(NameSpace.TICKER, self.exchange, trade.symbol)
+            #    )
+            #    if price:
+            #        unrealized += trade.calc_upnl(Decimal(str(price)))
         new = db_balance.Balance(
             realized=realized,
             unrealized=realized + unrealized,

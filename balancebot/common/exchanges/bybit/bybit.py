@@ -74,7 +74,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._ws = BybitWebsocketClient(self._session,
+        self._ws = BybitWebsocketClient(self._http,
                                         get_url=lambda: self._WS_ENDPOINT,
                                         on_message=self._on_message,
                                         on_connect=self._on_connect)
@@ -137,8 +137,9 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         code = response_json['ret_code']
         if code != 0:
             error: Type[ResponseError] = ResponseError
-            if code == 10005:  # Permission denied
+            if code in (10003, 10005, 33004):  # Invalid api key, Permission denied, Api Key Expired
                 error = InvalidClientError
+
             raise error(
                 root_error=ClientResponseError(response.request_info, (response,)),
                 human=f'{response_json["ret_msg"]}, Code: {response_json["ret_code"]}'

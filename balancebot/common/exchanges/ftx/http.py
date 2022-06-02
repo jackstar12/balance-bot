@@ -33,12 +33,12 @@ class FtxClient(ExchangeWorker):
                                      api_secret=self._api_secret,
                                      subaccount=self._subaccount,
                                      on_message_callback=self._on_message,
-                                     session=self._session)
+                                     session=self._http)
         self._ccxt = ccxt.ftx(
             config={
                 'apiKey': self._api_key,
                 'secret': self._api_secret,
-                'session': self._session
+                'session': self._http
             }
         )
         if self._subaccount:
