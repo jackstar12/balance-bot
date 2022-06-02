@@ -77,7 +77,7 @@ class BinanceFutures(_BinanceBaseClient):
 
         return balance.Balance(
             amount=sum(
-                float(asset.get('walletBalance', 0))
+                float(asset.get('marginBalance', 0))
                 for asset in usd_assets
             ),
             currency='$',
