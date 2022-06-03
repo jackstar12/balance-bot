@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytz
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, JSON
 
 import balancebot.common.dbmodels.client as db_client
 from balancebot.common.database_async import async_session, db_first, db_eager, db_del_filter, db_unique, db_all, \
@@ -38,7 +38,9 @@ async def get_client_history(client: db_client.Client,
     filter_time = event.start if event else since
 
     history = await db_all(client.history.statement.filter(
-        Balance.time > filter_time, Balance.time < to
+        Balance.time > filter_time,
+        Balance.time < to,
+        Balance.extra_currencies[currency] != JSON.NULL if currency != client.currency else True
     ))
 
     for balance in history:
@@ -47,12 +49,12 @@ async def get_client_history(client: db_client.Client,
         elif event and event.start <= balance.time and not initial:
             initial = balance
 
-    if results:
-        results.insert(0, Balance(
-            time=since,
-            amount=results[0].amount,
-            currency=results[0].currency
-        ))
+    #if results:
+    #    results.insert(0, Balance(
+    #        time=since,
+    #        unrealized=results[0].unrealized,
+    #        realized=results[0].realized,
+    #    ))
 
     if not initial:
         try:
@@ -173,7 +175,7 @@ async def get_discord_user(user_id: int, throw_exceptions=True, require_registra
     :return:
     The found user. It will never return None if throw_exceptions is True, since an ValueError exception will be thrown instead.
     """
-    eager = eager_loads or [db_client.Client]
+    eager = eager_loads or [DiscordUser.clients]
     result = await db_select(DiscordUser, eager=eager, id=user_id)
 
     #result = session.query(DiscordUser).filter_by(user_id=user_id).first()

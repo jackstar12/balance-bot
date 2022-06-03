@@ -25,7 +25,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 import balancebot.common.utils as utils
 from balancebot.common import customjson
-from balancebot.common.database_async import async_session, db_unique, db_all, db_first
+from balancebot.common.database_async import async_session, db_unique, db_all, db_first, async_maker, db_select
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.trade import Trade, trade_from_execution
@@ -45,7 +45,6 @@ from balancebot.common.models.ohlc import OHLC
 
 if TYPE_CHECKING:
     from balancebot.common.dbmodels.balance import Balance
-
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +131,6 @@ class Limit:
 
 
 class ExchangeWorker:
-
     state = State.OK
     exchange: str = ''
     required_extra_args: Set[str] = set()
@@ -165,6 +163,7 @@ class ExchangeWorker:
         self.exchange = client.exchange
         self.messenger = messenger
         self.rekt_threshold = rekt_threshold
+        self._stale_client = client
         self._db = db_session
 
         # Client information has to be stored locally because SQL Objects aren't allowed to live in multiple threads
@@ -196,7 +195,10 @@ class ExchangeWorker:
 
     @property
     def client(self):
-        return self._db.sync_session.get(Client, self.client_id)
+        if self.client_id:
+            return self._db.sync_session.get(Client, self.client_id)
+        else:
+            return self._stale_client
 
     async def get_balance(self,
                           priority: Priority = Priority.MEDIUM,
@@ -206,7 +208,8 @@ class ExchangeWorker:
                           return_cls: Type[AmountMixin] = None) -> Optional[Balance]:
         if not date:
             date = datetime.now(tz=pytz.UTC)
-        if force or (date - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]) and not self.client.rekt_on):
+        if force or (
+                date - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]) and not self.client.rekt_on):
             self._last_fetch = date
             try:
                 balance = await self._get_balance(date, upnl=upnl)
@@ -319,7 +322,7 @@ class ExchangeWorker:
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
         if not since:
             since = (
-                self.client.last_transfer_sync or datetime.now(pytz.utc) - timedelta(days=365)
+                    self.client.last_transfer_sync or datetime.now(pytz.utc) - timedelta(days=180)
             )
         raw_transfers = await self._get_transfers(since)
         if raw_transfers:
@@ -367,7 +370,7 @@ class ExchangeWorker:
                 if next_transfer and update.time > next_transfer.time:
                     cur_offset += next_transfer.amount
                     next_transfer = next(transfer_iter, None)
-                update.total_transferred += cur_offset
+                update.total_transfered += cur_offset
 
         self._db.add_all(transfers)
         self.client.last_transfer_sync = now
@@ -378,13 +381,13 @@ class ExchangeWorker:
                                     since: datetime = None,
                                     to: datetime = None):
 
-        #self.client = await db_session.get(
+        # self.client = await db_session.get(
         #    Client,
         #    self.client_id,
         #    options=(
         #        selectinload(Client.open_trades).selectinload(Trade.executions)
         #    )
-        #)
+        # )
         since = self.client.last_execution_sync
 
         check_executions = await db_all(
@@ -448,11 +451,14 @@ class ExchangeWorker:
                         else:
                             to = datetime.now(pytz.utc)
 
-                        ohlc_data = await self._get_ohlc(
-                            symbol,
-                            since=current_executions[0].time,
-                            to=to
-                        )
+                        try:
+                            ohlc_data = await self._get_ohlc(
+                                symbol,
+                                since=current_executions[0].time,
+                                to=to
+                            )
+                        except ResponseError:
+                            ohlc_data = []
 
                         timeline = sorted(ohlc_data + current_executions, key=lambda item: item.time)
                         current_trade = None
@@ -471,14 +477,41 @@ class ExchangeWorker:
 
         await self._update_realized_balance()
 
+        # await self._db.refresh(self.client.trades)
+        # await self._db.refresh(self.client)
+
+        current_balance = self.client.currently_realized
+        prev_exec = utils.list_last(all_executions)
+        for execution in reversed(all_executions):
+            new_balance = db_balance.Balance(
+                realized=current_balance.realized,
+                unrealized=current_balance.unrealized,
+                total_transfered=current_balance.total_transfered,
+                time=execution.time,
+                client=self.client
+            )
+            if prev_exec.type == ExecType.TRADE:
+                if prev_exec.realized_pnl:
+                    new_balance.realized -= prev_exec.realized_pnl
+                if prev_exec.commission:
+                    new_balance.realized -= prev_exec.commission
+            elif prev_exec.type == ExecType.TRANSFER:
+                new_balance.total_transfered -= prev_exec.gross_effective_qty * prev_exec.price - prev_exec.commission
+            prev_exec = execution
+            self._db.add(new_balance)
+            await self._db.commit()
+            current_balance = new_balance
+
     async def _convert_to_usd(self, amount: float, coin: str, date: datetime):
         if self._usd_like(coin):
             return amount
 
-    async def _get_ohlc(self, market: str, since: datetime, to: datetime, resolution_s: int = None, limit: int = None) -> List[OHLC]:
+    async def _get_ohlc(self, market: str, since: datetime, to: datetime, resolution_s: int = None,
+                        limit: int = None) -> List[OHLC]:
         pass
 
-    def _calc_resolution(self, n: int, resolutions_s: List[int], since: datetime, to: datetime = None) -> Optional[Tuple[int, int]]:
+    def _calc_resolution(self, n: int, resolutions_s: List[int], since: datetime, to: datetime = None) -> Optional[
+        Tuple[int, int]]:
         """
         Small helper for finding out which resolution [s] suits a given amount of data points requested best.
 
@@ -538,7 +571,9 @@ class ExchangeWorker:
         )
         if balance:
             self.client.currently_realized = balance
-            await async_session.commit()
+            self._db.add(balance)
+            await self._db.commit()
+            return balance
 
     async def _on_execution(self, execution: Execution, realtime=True) -> Trade:
 

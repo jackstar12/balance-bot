@@ -22,7 +22,7 @@ from aiohttp import ClientResponse
 
 from balancebot.common.dbmodels.transfer import RawTransfer
 from balancebot.common import utils
-from balancebot.common.enums import Side
+from balancebot.common.enums import Side, ExecType
 from balancebot.common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from balancebot.api.settings import settings
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_limit
@@ -92,22 +92,23 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
             return
 
         results = []
-        for row in response['rows']:
-            if row["status"] == "CONFIRMED":
-                if row["type"] in deposit:
-                    amount = row['amount']
-                elif row["type"] in withdraw:
-                    amount = -row['amount']
-                else:
-                    continue
-                date = datetime.fromtimestamp(row['timestamp'], tz=pytz.utc)
-                results.append(
-                    RawTransfer(amount, date, row["asset"])
-                )
+        if 'rows' in response:
+            for row in response['rows']:
+                if row["status"] == "CONFIRMED":
+                    if row["type"] in deposit:
+                        amount = Decimal(row['amount'])
+                    elif row["type"] in withdraw:
+                        amount = -Decimal(row['amount'])
+                    else:
+                        continue
+                    date = self._parse_ts(row['timestamp'])
+                    results.append(
+                        RawTransfer(amount, date, row["asset"])
+                    )
         return results
 
     def _parse_ts(self, ts: Union[int, float, str]):
-        return datetime.fromtimestamp(float(ts) / 1000, pytz.utc)
+        return datetime.fromtimestamp(int(ts) / 1000, pytz.utc)
 
     def _parse_datetime(self, date: datetime):
         # Offset by 1 in order to not include old entries on some endpoints
@@ -251,7 +252,8 @@ class BinanceFutures(_BinanceBaseClient):
                                     price=Decimal(trade['price']),
                                     side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
                                     time=self._parse_ts(trade['time']),
-                                    commission=Decimal(trade['commission'])
+                                    commission=Decimal(trade['commission']),
+                                    type=ExecType.TRADE
                                 )
                                 for trade in trades
                             )
@@ -281,16 +283,6 @@ class BinanceFutures(_BinanceBaseClient):
             ),
             time=time if time else datetime.now(pytz.utc)
         )
-
-    async def start_user_stream(self):
-        response = await self._post('/fapi/v1/listenKey')
-        if response.get('msg') is None:
-            return response['listenKey']
-        else:
-            return None
-
-    async def keep_alive(self):
-        await self._put('/fapi/v1/listenKey')
 
     async def connect(self):
         await self._ws.start()

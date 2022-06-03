@@ -44,6 +44,7 @@ class ClientUpdate(BaseModel):
     id: int
     archived: Optional[bool]
     invalid: Optional[bool]
+    premium: Optional[bool]
 
 
 class Messenger(Singleton):

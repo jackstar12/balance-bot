@@ -188,7 +188,7 @@ async def run(http_session: aiohttp.ClientSession = None):
         if not os.path.exists(LOG_OUTPUT_DIR):
             os.mkdir(LOG_OUTPUT_DIR)
         from balancebot.api.settings import settings
-        if settings.testing:
+        if settings.testing or True:
             log_stream = sys.stdout
         else:
             log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")

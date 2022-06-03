@@ -25,3 +25,4 @@ class Execution(Base, Serializer):
     @hybrid_property
     def effective_qty(self):
         return self.qty * self.side.value
+

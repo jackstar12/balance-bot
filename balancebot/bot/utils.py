@@ -670,6 +670,7 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
             break
         except ValueError:
             continue
+    date = date.replace(tzinfo=pytz.utc)
 
     if not date:
         minute = 0
@@ -716,13 +717,13 @@ def calc_xs_ys(data: List[Balance],
         for balance in data:
             xs.append(balance.tz_time.replace(microsecond=0))
             if percentage:
-                if relative_to.unrealized > 0:
-                    amount = 100 * (balance.unrealized - relative_to.unrealized) / relative_to.unrealized
+                if relative_to.realized > 0:
+                    amount = 100 * (balance.realized - relative_to.realized) / relative_to.realized
                 else:
                     amount = 0.0
             else:
-                amount = balance.unrealized
-            ys.append(round(amount, ndigits=CURRENCY_PRECISION.get(balance.currency, 3)))
+                amount = balance.realized
+            ys.append(round(amount, ndigits=3))
         return xs, ys
 
 

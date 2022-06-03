@@ -67,9 +67,10 @@ class Client(Base, Serializer):
     name = Column(String, nullable=True)
     rekt_on = Column(DateTime(timezone=True), nullable=True)
 
-    trades: AppenderQuery = relationship('Trade', lazy='noload',
-                                         cascade="all, delete",
-                                         back_populates='client')
+    trades = relationship('Trade', lazy='raise',
+                          cascade="all, delete",
+                          back_populates='client',
+                          order_by="Trade.open_time")
 
     open_trades = relationship('Trade', lazy='noload',
                                back_populates='client',

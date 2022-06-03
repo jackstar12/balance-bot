@@ -1,40 +1,31 @@
+import asyncio
 import logging
 from asyncio import Queue
-from inspect import currentframe
+from collections import deque
+from typing import Dict, Optional, Deque, NamedTuple
 
 from aioredis.client import Pipeline
+from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.job import Job
-from sqlalchemy import select, delete, and_
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.inspection import inspect
-import asyncio
-import time
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Deque, NamedTuple, Generic, Type
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.executors.asyncio import AsyncIOExecutor
-from apscheduler.triggers.interval import IntervalTrigger
-from collections import deque
-import pytz
-
-from balancebot.common.database_async import db_all, db_first, db, db_unique, db_eager, async_maker
-from balancebot.common.dbmodels.balance import Balance
-from balancebot.common.dbmodels.chapter import Chapter
-from balancebot.common.dbmodels.client import Client
-from balancebot.common.dbmodels.discorduser import DiscordUser
-from balancebot.common.dbmodels.journal import Journal
-from balancebot.common.dbmodels.pnldata import PnlData
-from balancebot.common.dbmodels.serializer import Serializer
-from balancebot.common.dbmodels.trade import Trade
 from balancebot.collector.services.baseservice import BaseService
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common import utils, customjson
-from balancebot.common.enums import Priority
+from balancebot.common.database_async import db_all, db_unique, db_eager, async_maker
+from balancebot.common.dbmodels.chapter import Chapter
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels.journal import Journal
+from balancebot.common.dbmodels.serializer import Serializer
+from balancebot.common.dbmodels.trade import Trade
 from balancebot.common.errors import InvalidClientError
-from balancebot.common.messenger import NameSpace, Category
-from balancebot.common.messenger import ClientUpdate
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
+from balancebot.common.messenger import ClientUpdate
+from balancebot.common.messenger import NameSpace, Category
 
 
 class ExchangeJob(NamedTuple):
@@ -81,6 +72,7 @@ class BalanceService(BaseService):
             Client.discord_user,
             Client.currently_realized,
             Client.recent_history,
+            Client.trades,
             (Client.open_trades, [Trade.max_pnl, Trade.min_pnl]),
             (Client.journals, (Journal.current_chapter, Chapter.balances))
         )
@@ -135,17 +127,33 @@ class BalanceService(BaseService):
         for client in clients:
             await self.add_client(client)
 
+    def _remove_worker_by_id(self, client_id: int):
+        self._remove_worker(self._get_existing_worker(client_id))
+
+    def _get_existing_worker(self, client_id: int):
+        return (
+                self._base_workers_by_id.get(client_id)
+                or
+                self._premium_workers_by_id.get(client_id)
+        )
+
     def _on_client_delete(self, data: Dict):
-        self._remove_worker(self._base_workers_by_id.get(data['id']))
+        self._remove_worker_by_id(data['id'])
 
     async def _on_client_add(self, data: Dict):
         await self._add_client_by_id(data['id'])
 
     async def _on_client_update(self, data: Dict):
         edit = ClientUpdate(**data)
+        worker = self._get_existing_worker(edit.id)
+        if worker:
+            await self._db.refresh(worker.client)
         if edit.archived or edit.invalid:
-            self._remove_worker(await self.get_worker(edit.id, create_if_missing=False))
+            self._remove_worker(worker)
         elif edit.archived is False or edit.invalid is False:
+            await self._add_client_by_id(edit.id)
+        if edit.premium is not None:
+            self._remove_worker(worker)
             await self._add_client_by_id(edit.id)
 
     async def _on_trade_new(self, data: Dict):
@@ -217,10 +225,11 @@ class BalanceService(BaseService):
                 exchange_job.deque.append(worker)
                 reschedule(exchange_job)
 
-    def _remove_worker(self, worker: ExchangeWorker, premium=False):
+    def _remove_worker(self, worker: ExchangeWorker):
         asyncio.create_task(worker.disconnect())
-        (self._premium_workers_by_id if premium else self._base_workers_by_id).pop(worker.client.id, None)
-        if not premium:
+        (self._premium_workers_by_id if worker.client.is_premium else self._base_workers_by_id).pop(worker.client.id,
+                                                                                                    None)
+        if not worker.client.is_premium:
             exchange_job = self._exchange_jobs[worker.exchange]
             exchange_job.deque.remove(worker)
             reschedule(exchange_job)
@@ -273,10 +282,11 @@ class BalanceService(BaseService):
     async def _balance_updater(self):
         while True:
             balances = []
+            new_balances = []
 
             for worker in self._premium_workers_by_id.values():
                 new = False
-                client = await self._db.get(Client, worker.client_id)
+                client = worker.client
                 for trade in client.open_trades:
                     ticker = self.data_service.get_ticker(trade.symbol, client.exchange)
                     if ticker:
@@ -288,8 +298,10 @@ class BalanceService(BaseService):
                     balances.append(balance)
                     # TODO: Introduce new mechanisms determining when to save
                     if new:
-                        self._db.add(balance)
-            await self._db.commit()
+                        new_balances.append(balance)
+            if new_balances:
+                self._db.add_all(new_balances)
+                await self._db.commit()
             if balances:
                 async with self._redis.pipeline(transaction=True) as pipe:
                     pipe: Pipeline = pipe

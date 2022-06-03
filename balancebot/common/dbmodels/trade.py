@@ -67,7 +67,8 @@ class Trade(Base, Serializer):
                               foreign_keys='[Execution.trade_id]',
                               backref='trade',
                               lazy='noload',
-                              cascade='all, delete')
+                              cascade='all, delete',
+                              order_by="Execution.time")
 
     pnl_data = relationship('PnlData',
                             lazy='noload',

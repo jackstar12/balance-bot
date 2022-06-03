@@ -10,7 +10,7 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import inspect, select, or_, update, insert
 
-from balancebot.common.database_async import async_session, db_unique, db_all, db, db_select
+from balancebot.common.database_async import async_session, db_unique, db_all, db, db_select, async_maker
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.event import Event, event_association
 from balancebot.common.dbmodels.guild import Guild
@@ -184,8 +184,8 @@ class RegisterCog(CogBase):
                         if not consent:
                             return
 
-                    async with aiohttp.ClientSession() as session:
-                        worker: ExchangeWorker = exchange_cls(new_client, session)
+                    async with aiohttp.ClientSession() as session, async_maker() as db_session:
+                        worker: ExchangeWorker = exchange_cls(new_client, session, db_session)
                         init_balance = await worker.get_balance(date=datetime.now(tz=pytz.UTC), return_cls=Balance)
 
                     button_row = None
