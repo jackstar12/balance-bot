@@ -15,6 +15,7 @@ from aiohttp import ClientResponseError, ClientResponse
 
 from balancebot.api.settings import settings
 from balancebot.common import utils
+from balancebot.common.config import TESTING
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.transfer import RawTransfer
@@ -66,8 +67,8 @@ _interval_map = {
 
 
 class _BybitBaseClient(ExchangeWorker, ABC):
-    _ENDPOINT = 'https://api-testnet.bybit.com' if settings.testing else 'https://api.bybit.com'
-    _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime' if settings.testing else 'wss://stream.bybit.com/realtime'
+    _ENDPOINT = 'https://api-testnet.bybit.com' if TESTING else 'https://api.bybit.com'
+    _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime' if TESTING else 'wss://stream.bybit.com/realtime'
 
     _response_error = 'ret_msg'
     _response_result = 'result'

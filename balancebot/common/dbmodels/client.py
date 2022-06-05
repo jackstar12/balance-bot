@@ -19,7 +19,6 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
-from balancebot.bot.utils import embed_add_value_safe
 from balancebot.common import customjson
 from balancebot.common.database_async import db_first, db_all, db_select_all
 import balancebot.common.dbmodels.balance as db_balance
@@ -216,8 +215,8 @@ class Client(Base, Serializer):
     async def get_balance_at_time(self, time: datetime, currency: str = None):
         amount_cls = db_balance.Balance
         stmt = self.history.statement.filter(
-                amount_cls.time > time
-            ).order_by(asc(amount_cls.time))
+            amount_cls.time < time
+        ).order_by(asc(amount_cls.time))
 
         balance = await db_first(stmt)
 
@@ -226,17 +225,14 @@ class Client(Base, Serializer):
             subq = select(
                 PnlData.id.label('pnl_id'),
                 func.row_number().over(
-                    order_by=asc(PnlData.time), partition_by=Trade.symbol
+                    order_by=desc(PnlData.time), partition_by=Trade.symbol
                 ).label('row_number')
             ).join(
                 PnlData.trade
-            ).join(
-                Execution, and_(
-                    Execution.id == Trade.initial_execution_id,
-                    Execution.time <= balance.time
-                )
             ).filter(
                 PnlData.time > balance.time,
+                PnlData.time < time,
+                Trade.open_time <= time,
                 Trade.client_id == self.id
             ).subquery()
 
@@ -245,6 +241,7 @@ class Client(Base, Serializer):
                 PnlData
             ).filter(
                 PnlData.id == subq.c.pnl_id,
+                Trade.open_time <= time,
                 subq.c.row_number <= 1
             )
 
@@ -311,8 +308,8 @@ class Client(Base, Serializer):
     async def get_discord_embed(self, guilds: Optional[List[Guild]] = None):
 
         embed = discord.Embed(title="User Information")
-        embed_add_value_safe(embed, 'Events', self.get_event_string())
-        embed_add_value_safe(embed, 'Servers', await self.get_guilds_string(guilds), inline=False)
+        utils.embed_add_value_safe(embed, 'Events', self.get_event_string())
+        utils.embed_add_value_safe(embed, 'Servers', await self.get_guilds_string(guilds), inline=False)
         embed.add_field(name='Exchange', value=self.exchange)
         embed.add_field(name='Api Key', value=self.api_key)
 

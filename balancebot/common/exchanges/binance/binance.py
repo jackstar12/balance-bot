@@ -20,6 +20,7 @@ from typing import Dict
 import pytz
 from aiohttp import ClientResponse
 
+from balancebot.common.config import TESTING
 from balancebot.common.dbmodels.transfer import RawTransfer
 from balancebot.common import utils
 from balancebot.common.enums import Side, ExecType
@@ -40,7 +41,7 @@ class Type(Enum):
 
 
 class _BinanceBaseClient(ExchangeWorker, ABC):
-    _ENDPOINT = 'https://testnet.binance.vision' if settings.testing else 'https://api.binance.com'
+    _ENDPOINT = 'https://testnet.binance.vision' if TESTING else 'https://api.binance.com'
 
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
@@ -55,7 +56,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
                                       type: Type,
                                       since: datetime,
                                       to: datetime = None) -> Optional[List[RawTransfer]]:
-        if settings.testing:
+        if TESTING:
             return
         response = await self._get(
             '/sapi/v1/futures/transfer',
@@ -131,7 +132,7 @@ _interval_map = {
 
 
 class BinanceFutures(_BinanceBaseClient):
-    _ENDPOINT = 'https://testnet.binancefuture.com' if settings.testing else 'https://fapi.binance.com'
+    _ENDPOINT = 'https://testnet.binancefuture.com' if TESTING else 'https://fapi.binance.com'
     exchange = 'binance-futures'
 
     _limits = [
@@ -314,7 +315,7 @@ class BinanceFutures(_BinanceBaseClient):
 
 
 class BinanceSpot(_BinanceBaseClient):
-    _ENDPOINT = 'https://testnet.binance.vision' if settings.testing else 'https://api.binance.com'
+    _ENDPOINT = 'https://testnet.binance.vision' if TESTING else 'https://api.binance.com'
     exchange = 'binance-spot'
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data

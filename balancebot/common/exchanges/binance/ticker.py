@@ -4,6 +4,7 @@ from typing import List
 
 from balancebot.api.settings import settings
 from balancebot.collector.exchangeticker import ExchangeTicker, Channel
+from balancebot.common.config import TESTING
 from balancebot.common.models.async_websocket_manager import WebsocketManager
 from balancebot.common.models.ticker import Ticker
 
@@ -13,7 +14,7 @@ def _symbol_stream(symbol: str):
 
 
 class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
-    _ENDPOINT = 'wss://stream.binancefuture.com' if settings.testing else 'wss://fstream.binance.com'
+    _ENDPOINT = 'wss://stream.binancefuture.com' if TESTING else 'wss://fstream.binance.com'
     #_ENDPOINT = 'wss://fstream.binance.com'
 
     def __init__(self, *args, **kwargs):

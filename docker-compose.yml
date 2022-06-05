@@ -1,0 +1,22 @@
+version: '3'
+services:
+  api:
+    build: balancebot/api
+    ports:
+      - "5000:5000"
+  collector:
+    build: balancebot/collector
+    ports:
+      - "5000:5000"
+  bot:
+    build: balancebot/bot
+  pg:
+    image: "postgres"
+    volumes:
+      - db-data:/postgres
+  redis:
+    image: "redis"
+
+volumes:
+  db-data:
+

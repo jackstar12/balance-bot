@@ -9,6 +9,7 @@ import msgpack
 from pydantic import BaseModel
 
 from balancebot.common import customjson
+from balancebot.common.config import TESTING
 from balancebot.common.database import redis
 from balancebot.api.settings import settings
 from balancebot.common.models.singleton import Singleton
@@ -83,7 +84,7 @@ class Messenger(Singleton):
         if pattern:
             channel += '*'
         kwargs = {channel: self._wrap(callback)}
-        if settings.testing:
+        if TESTING:
             logging.info(f'Sub: {kwargs}')
         asyncio.create_task(self.sub(pattern=pattern, rcv_event=False, **kwargs))
 
@@ -98,7 +99,7 @@ class Messenger(Singleton):
 
     def pub_channel(self, category: NameSpace, sub: Category, obj: object, channel_id: int = None):
         ch = utils.join_args(category.value, sub.value, channel_id)
-        if settings.testing:
+        if TESTING:
             logging.info(f'Pub: {ch=} {obj=}')
         asyncio.create_task(self._redis.publish(ch, customjson.dumps(obj)))
 

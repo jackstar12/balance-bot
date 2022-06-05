@@ -31,8 +31,7 @@ class AlertCog(CogBase):
                 message
             )
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def on_ready(self):
         self.messenger.sub_channel(NameSpace.ALERT, sub=Category.FINISHED, callback=self.on_alert_trigger)
 
     @cog_ext.cog_subcommand(

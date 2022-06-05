@@ -717,12 +717,12 @@ def calc_xs_ys(data: List[Balance],
         for balance in data:
             xs.append(balance.tz_time.replace(microsecond=0))
             if percentage:
-                if relative_to.realized > 0:
-                    amount = 100 * (balance.realized - relative_to.realized) / relative_to.realized
+                if relative_to.unrealized > 0:
+                    amount = 100 * (balance.unrealized - relative_to.unrealized) / relative_to.unrealized
                 else:
                     amount = 0.0
             else:
-                amount = balance.realized
+                amount = balance.unrealized
             ys.append(round(amount, ndigits=3))
         return xs, ys
 

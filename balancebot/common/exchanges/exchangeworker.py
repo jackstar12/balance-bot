@@ -28,6 +28,7 @@ from balancebot.common import customjson
 from balancebot.common.database_async import async_session, db_unique, db_all, db_first, async_maker, db_select
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.execution import Execution
+from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.trade import Trade, trade_from_execution
 
 import balancebot.common.dbmodels.balance as db_balance
@@ -481,8 +482,42 @@ class ExchangeWorker:
         # await self._db.refresh(self.client)
 
         current_balance = self.client.currently_realized
-        prev_exec = utils.list_last(all_executions)
-        for execution in reversed(all_executions):
+
+        pnl_data = await db_all(
+            select(PnlData).filter(
+                PnlData.trade_id.in_(set(execution.trade_id for execution in all_executions))
+            ).order_by(
+                desc(PnlData.time)
+            ),
+            session=self._db
+        )
+        pnl_iter = iter(pnl_data)
+        cur_pnl = next(pnl_iter, None)
+
+        # Start Balance:
+        # 11.4. 100
+        # Executions
+        # 10.4. +10
+        # 8.4.  -20
+        # 7.4.  NONE <- required because otherwise the last ones won't be accurate
+        # PnlData
+        # 9.4. 5U
+        # New Balances
+        # 10.4. 100
+        # 8.4. 90
+        # 7.4. 110
+
+        def prev_now_next(iterable):
+            i = iter(iterable)
+            prev = None
+            now = next(i, None)
+            while now:
+                _next = next(i, None)
+                yield prev, now, _next
+                prev = now
+                now = _next
+
+        for prev_exec, execution, next_exec in prev_now_next(reversed(all_executions)):
             new_balance = db_balance.Balance(
                 realized=current_balance.realized,
                 unrealized=current_balance.unrealized,
@@ -490,14 +525,29 @@ class ExchangeWorker:
                 time=execution.time,
                 client=self.client
             )
-            if prev_exec.type == ExecType.TRADE:
-                if prev_exec.realized_pnl:
-                    new_balance.realized -= prev_exec.realized_pnl
-                if prev_exec.commission:
-                    new_balance.realized -= prev_exec.commission
-            elif prev_exec.type == ExecType.TRANSFER:
-                new_balance.total_transfered -= prev_exec.gross_effective_qty * prev_exec.price - prev_exec.commission
-            prev_exec = execution
+
+            pnl_by_trade = {}
+            if next_exec:
+                while cur_pnl and cur_pnl.time > next_exec.time:
+                    if cur_pnl.time < execution.time and cur_pnl.trade_id not in pnl_by_trade:
+                        pnl_by_trade[cur_pnl.trade_id] = cur_pnl
+                    cur_pnl = next(pnl_iter, None)
+            if prev_exec:
+                if prev_exec.type == ExecType.TRADE:
+                    if prev_exec.realized_pnl:
+                        new_balance.realized -= prev_exec.realized_pnl
+                    if prev_exec.commission:
+                        new_balance.realized -= prev_exec.commission
+                    new_balance.unrealized = new_balance.realized + sum(
+                        pnl_data.unrealized
+                        if
+                        tr_id != execution.trade_id or not execution.realized_pnl
+                        else
+                        pnl_data.unrealized - execution.realized_pnl
+                        for tr_id, pnl_data in pnl_by_trade.items()
+                    )
+                elif prev_exec.type == ExecType.TRANSFER:
+                    new_balance.total_transfered -= prev_exec.gross_effective_qty * prev_exec.price - prev_exec.commission
             self._db.add(new_balance)
             await self._db.commit()
             current_balance = new_balance

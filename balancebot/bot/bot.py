@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import sys
+import dotenv
 from datetime import datetime
 from sqlalchemy import select
 from typing import Dict
@@ -14,6 +15,8 @@ import discord
 import discord.errors
 from discord.ext import commands
 from discord_slash import SlashCommand
+
+from balancebot.common.config import TESTING
 from balancebot.common.database import session
 from balancebot.common.database_async import async_session, db_all, redis
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
@@ -25,7 +28,9 @@ from balancebot.bot.cogs import *
 from balancebot.bot.eventmanager import EventManager
 from balancebot.common.enums import Tier
 from balancebot.common.messenger import Messenger, NameSpace, Category
+from balancebot.common.utils import setup_logger
 
+dotenv.load_dotenv('balancebot/bot/.env')
 intents = discord.Intents().default()
 intents.members = True
 intents.guilds = True
@@ -36,6 +41,7 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
+    messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, channel_id=53)
     event_manager.initialize_events()
 
     db_guilds_by_id = {
@@ -172,51 +178,23 @@ parser.add_argument("-r", "--reset", action="store_true", help="Archives the cur
 args = parser.parse_known_args()
 
 event_manager = EventManager(discord_client=bot)
-
 messenger = Messenger()
 
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
 
-async def run(http_session: aiohttp.ClientSession = None):
-    def setup_logger(debug: bool = False):
-        logger = logging.getLogger()
-        logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        print(os.path.abspath(LOG_OUTPUT_DIR))
-        if not os.path.exists(LOG_OUTPUT_DIR):
-            os.mkdir(LOG_OUTPUT_DIR)
-        from balancebot.api.settings import settings
-        if settings.testing or True:
-            log_stream = sys.stdout
-        else:
-            log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
-        handler = logging.StreamHandler(log_stream)
-        handler.setFormatter(formatter)
-
-        logger.addHandler(handler)
-        return logger
-
-    setup_logger()
-    messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, channel_id=53)
-
-    for cog in [
-        balance.BalanceCog,
-        history.HistoryCog,
-        events.EventsCog,
-        misc.MiscCog,
-        register.RegisterCog,
-        user.UserCog,
-        alert.AlertCog
-    ]:
-        cog.setup(bot, redis, event_manager, messenger, slash)
-
-    if http_session:
-        pass
-        # user_manager.session = http_session
-    await bot.start(KEY)
+for cog in [
+    balance.BalanceCog,
+    history.HistoryCog,
+    events.EventsCog,
+    misc.MiscCog,
+    register.RegisterCog,
+    user.UserCog,
+    alert.AlertCog
+]:
+    cog.setup(bot, redis, event_manager, messenger, slash)
 
 
 if __name__ == '__main__':
-    asyncio.run(run())
+    bot.run(KEY)

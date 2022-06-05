@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import logging
+import sys
 import traceback
 from asyncio import Future
 from decimal import Decimal
@@ -82,6 +84,29 @@ def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
         return prev
     else:
         return after
+
+
+def embed_add_value_safe(embed: discord.Embed, name, value, **kwargs):
+    if value:
+        embed.add_field(name=name, value=value, **kwargs)
+
+
+def setup_logger(debug: bool = False):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    print(os.path.abspath(LOG_OUTPUT_DIR))
+    if not os.path.exists(LOG_OUTPUT_DIR):
+        os.mkdir(LOG_OUTPUT_DIR)
+    if config.TESTING or True:
+        log_stream = sys.stdout
+    else:
+        log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
+    handler = logging.StreamHandler(log_stream)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger
+
 
 
 async def calc_daily(client: Client,

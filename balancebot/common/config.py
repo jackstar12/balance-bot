@@ -1,4 +1,11 @@
+import dotenv
+import os
 from balancebot.common.enums import Priority
+
+dotenv.load_dotenv('balancebot/common/.env')
+
+TESTING = os.environ.get('TESTING').lower() == 'true'
+
 REKT_THRESHOLD = 1
 
 PRIORITY_INTERVALS = {

@@ -5,13 +5,14 @@ import aiohttp
 
 from balancebot.api.settings import settings
 from balancebot.collector.exchangeticker import ExchangeTicker, Channel
+from balancebot.common.config import TESTING
 from balancebot.common.exchanges.bybit.websocket import BybitWebsocketClient
 from balancebot.common.models.async_websocket_manager import WebsocketManager
 from balancebot.common.models.ticker import Ticker
 
 
 class BybitTicker(ExchangeTicker):
-    _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime' if settings.testing else 'wss://stream.bybit.com/realtime'
+    _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime' if TESTING else 'wss://stream.bybit.com/realtime'
 
     def __init__(self, session: aiohttp.ClientSession):
         super().__init__(session)

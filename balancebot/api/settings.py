@@ -3,7 +3,8 @@ import os
 from pydantic import BaseSettings
 import dotenv
 
-dotenv.load_dotenv('../../.env')
+
+dotenv.load_dotenv('balancebot/api/.env')
 
 
 class Settings(BaseSettings):
@@ -19,11 +20,10 @@ class Settings(BaseSettings):
     session_cookie_name: str = 'session'
     session_csfr_token_name: str = 'csrf'
 
-    testing: bool = os.environ.get('TESTING') == 'True'
     # authjwt_cookie_samesite: str = 'lax'
 
     class Config:
-        env_file = "../../.env"
+        env_file = ".env"
 
 
 settings = Settings()

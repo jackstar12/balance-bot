@@ -35,5 +35,4 @@ CURRENCY_ALIASES = {
     'XBT': 'BTC',
     'USD': '$'
 }
-LOG_OUTPUT_DIR = "C:/Users/jkran/PycharmProjects/BalanceBot/LOGS/"
 

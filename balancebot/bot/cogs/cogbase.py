@@ -26,6 +26,9 @@ class CogBase(Cog):
         self.messenger = messenger
         self.slash_cmd_handler = slash_cmd_handler
 
+    def on_ready(self):
+        pass
+
     async def send_dm(self, user_id: int, message: str, embed: discord.Embed = None):
         user: discord.User = self.bot.get_user(user_id)
         if user:

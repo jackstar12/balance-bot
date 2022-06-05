@@ -5,6 +5,7 @@ from typing import Callable, TYPE_CHECKING
 
 from balancebot.common import utils
 from balancebot.api.settings import settings
+from balancebot.common.config import TESTING
 from balancebot.common.models.async_websocket_manager import WebsocketManager
 import aiohttp
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 
 # https://binance-docs.github.io/apidocs/futures/en/#user-data-streams
 class FuturesWebsocketClient(WebsocketManager):
-    _ENDPOINT = 'wss://stream.binancefuture.com' if settings.testing else 'wss://fstream.binance.com'
+    _ENDPOINT = 'wss://stream.binancefuture.com' if TESTING else 'wss://fstream.binance.com'
 
     def __init__(self, client: BinanceFutures, session: aiohttp.ClientSession, on_message: Callable = None):
         super().__init__(session=session)

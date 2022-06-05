@@ -32,7 +32,6 @@ from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.guild import Guild
 import balancebot.api.routers.discordauth as discord
 
-import balancebot.collector.collector as collector
 from balancebot.api.users import fastapi_users
 from balancebot.common.enums import Tier
 
@@ -218,22 +217,9 @@ async def info(user: User = Depends(user_info)):
 
 @app.on_event("startup")
 async def on_start():
-    from balancebot.bot import bot
-    from balancebot.common.dbmodels.client import Client
-    from balancebot.common.dbmodels.event import Event
-
     async with aio_db.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    async def run_all():
-        async with aiohttp.ClientSession() as http_session:
-            await asyncio.gather(
-                bot.run(http_session),
-                collector.run(http_session)
-            )
-            print('done')
-
-    asyncio.create_task(run_all())
 
 
 async def db_test():
