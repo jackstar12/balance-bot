@@ -1,12 +1,21 @@
+import asyncio
+from typing import Sequence
+
 import discord
 from datetime import datetime
+
+import pytz
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
+from sqlalchemy import delete
 
 from balancebot.bot import utils
 from balancebot.common import dbutils
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.database_async import db, async_session, db_first
+from balancebot.common.dbmodels.balance import Balance
 
 
 class HistoryCog(CogBase):
@@ -119,6 +128,22 @@ class HistoryCog(CogBase):
 
         await ctx.send(content='', file=file)
 
+    @classmethod
+    async def clear_history(cls, clients: Sequence[Client], start: datetime, end: datetime):
+        for client in clients:
+            await db(
+                delete(Balance).filter(
+                    Balance.client_id == client.id,
+                    Balance.time >= start if start else True,
+                    Balance.time <= end if end else True
+                )
+            )
+            history_record = await db_first(client.history.statement)
+            if not history_record:
+                client.rekt_on = None
+                # asyncio.create_task(self.get_client_balance(client, force_fetch=True))
+        await async_session.commit()
+
     @cog_ext.cog_slash(
         name="clear",
         description="Clears your balance history",
@@ -140,7 +165,9 @@ class HistoryCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.time_args(names=[('since', None), ('to', None)])
     async def clear(self, ctx: SlashContext, since: datetime = None, to: datetime = None):
-        client = await dbutils.get_client(ctx.author_id, ctx.guild_id)
+        user = await dbutils.get_discord_user(ctx.author_id)
+
+        ctx, clients = await utils.select_client(ctx, self.slash_cmd_handler, user)
 
         from_to = ''
         if since:
@@ -148,21 +175,15 @@ class HistoryCog(CogBase):
         if to:
             from_to += f' till **{to}**'
 
-        async def clear_user(ctx):
-            await self.user_manager.clear_client_data(client,
-                                                      start=since,
-                                                      end=to,
-                                                      update_initial_balance=True)
+        ctx, consent = await utils.ask_for_consent(ctx, self.slash_cmd_handler,
+                                                   msg_content=f'Do you really want to **delete** your history{from_to}?',
+                                                   yes_message=f"Deleted your history{from_to}",
+                                                   no_message="Clear cancelled",
+                                                   hidden=True)
 
-        buttons = utils.create_yes_no_button_row(
-            self.slash_cmd_handler,
-            author_id=ctx.author.id,
-            yes_callback=clear_user,
-            yes_message=f'Deleted your history{from_to}',
-            no_message="Clear cancelled",
-            hidden=True
-        )
-
-        await ctx.send(content=f'Do you really want to **delete** your history{from_to}?',
-                       components=[buttons],
-                       hidden=True)
+        if consent:
+            await self.clear_history(
+                clients,
+                start=since,
+                end=to
+            )

@@ -23,7 +23,7 @@ def get_authenticator() -> Authenticator:
 
 
 async def get_user_id(request: Request, authenticator = Depends(get_authenticator)):
-    return await authenticator.read_uuid(request)
+    return await authenticator.verify_id(request)
 
 
 async def get_db() -> AsyncSession:
@@ -43,7 +43,7 @@ class CurrentUserDep:
                        request: Request,
                        authenticator = Depends(get_authenticator),
                        db: AsyncSession = Depends(get_db)):
-        uuid = await authenticator.read_uuid(request)
+        uuid = await authenticator.verify_id(request)
         user = await db_unique(self.base_stmt.filter_by(id=uuid), session=db) if uuid else None
         if not user:
             raise HTTPException(

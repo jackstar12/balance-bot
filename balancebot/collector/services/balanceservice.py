@@ -22,7 +22,7 @@ from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.journal import Journal
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.trade import Trade
-from balancebot.common.errors import InvalidClientError
+from balancebot.common.errors import InvalidClientError, ResponseError
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.messenger import ClientUpdate
 from balancebot.common.messenger import NameSpace, Category
@@ -247,6 +247,8 @@ class BalanceService(BaseService):
                     await worker.synchronize_positions()
                 except InvalidClientError:
                     return None
+                except ResponseError:
+                    logging.exception(f'Error while adding {client.id=}')
                 await worker.connect()
             self._add_worker(worker)
             return worker

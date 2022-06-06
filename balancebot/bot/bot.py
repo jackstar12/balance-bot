@@ -197,4 +197,5 @@ for cog in [
 
 
 if __name__ == '__main__':
+    setup_logger()
     bot.run(KEY)

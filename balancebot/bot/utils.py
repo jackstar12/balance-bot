@@ -50,11 +50,6 @@ DAY = HOUR * 24
 WEEK = DAY * 7
 
 
-def validate_kwargs(kwargs: Dict, required: List[str]):
-    return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
-
-
-
 def admin_only(coro, cog=True):
     @wraps(coro)
     async def wrapper(*args, **kwargs):
@@ -834,6 +829,7 @@ def create_yes_no_button_row(slash: SlashCommand,
 
 
 async def new_create_selection(ctx: SlashContext,
+                               slash: SlashCommand,
                                options: List[SelectionOption],
                                msg_content: str = None,
                                msg_embeds: List[discord.Embed] = None,
@@ -843,7 +839,7 @@ async def new_create_selection(ctx: SlashContext,
     future = asyncio.get_running_loop().create_future()
 
     component_row = create_selection(
-        ctx.slash,
+        slash or ctx.slash,
         ctx.author_id,
         options,
         callback=lambda component_ctx, selections: future.set_result((component_ctx, selections)),
@@ -956,6 +952,24 @@ def db_match_balance_currency(balance: Balance, currency: str):
         result = balance
 
     return result
+
+
+async def select_client(ctx, slash: SlashCommand, user: DiscordUser):
+    return await new_create_selection(
+        ctx,
+        slash,
+        options=[
+            SelectionOption(
+                name=client.name if client.name else client.exchange,
+                value=str(client.id),
+                description=f'From {await client.get_events_and_guilds_string()}',
+                object=client
+            )
+            for client in user.clients
+        ],
+        msg_content="Select a client",
+        max_values=len(user.clients)
+    )
 
 
 def join_args(*args, denominator=':'):

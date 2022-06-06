@@ -334,12 +334,12 @@ class Client(Base, Serializer):
 # ).alias()
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_id: int = None) -> Union[Select, Delete, Update]:
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: List[int] = None) -> Union[Select, Delete, Update]:
     #user_checks = [Client.user_id == user.id]
     #if user.discord_user_id:
     #    user_checks.append(Client.discord_user_id == user.discord_user_id)
     return stmt.filter(
-        Client.id == client_id if client_id else True,
+        Client.id.in_(client_ids) if client_ids else True,
         or_(
             Client.user_id == user.id,
             Client.discord_user_id == user.discord_user_id if user.discord_user_id else False

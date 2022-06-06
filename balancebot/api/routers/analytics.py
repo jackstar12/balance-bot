@@ -12,7 +12,7 @@ from balancebot.api.models.analytics import ClientAnalytics, Calculation
 from balancebot.api.models.client import ClientQueryParams
 from balancebot.api.models.websocket import ClientConfig
 from balancebot.api.utils.analytics import create_cilent_analytics
-from balancebot.api.utils.client import get_user_client
+from balancebot.api.utils.client import get_user_client, get_user_clients
 from balancebot.common.database_async import db_select
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.execution import Execution
@@ -35,24 +35,27 @@ router = APIRouter(
 )
 
 
-@router.get('/analytics', response_model=ClientAnalytics)
+@router.get('/trades-detailed', response_model=ClientAnalytics)
 async def get_analytics(client_params: ClientQueryParams = Depends(),
                         filters: Tuple[Filter, ...] = Query(default=(Filter.LABEL,)),
                         calculate: Calculation = Query(default=Calculation.PNL),
                         user: User = Depends(CurrentUser)):
     config = ClientConfig.construct(**client_params.__dict__)
-    client = await get_user_client(user,
-                                   config.id,
-                                   eager=[
-                                       (Client.trades, [
-                                           Trade.executions,
-                                           Trade.pnl_data,
-                                           Trade.initial,
-                                           Trade.max_pnl,
-                                           Trade.min_pnl
-                                       ])
-                                   ])
-    res = await create_cilent_analytics(client, config, filters=filters, filter_calculation=calculate)
+    clients = await get_user_clients(user,
+                                     config.ids,
+                                     (Client.trades, [
+                                         Trade.executions,
+                                         Trade.pnl_data,
+                                         Trade.initial,
+                                         Trade.max_pnl,
+                                         Trade.min_pnl
+                                     ]))
+
+    response = [
+        (await create_cilent_analytics(client, config, filters=filters, filter_calculation=calculate)).dict()
+        for client in clients
+    ]
+
     return CustomJSONResponse(
-        content=jsonable_encoder(res.dict())
+        content=jsonable_encoder(response)
     )

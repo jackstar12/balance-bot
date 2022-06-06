@@ -12,8 +12,6 @@ from balancebot.api.utils.client import create_client_data_serialized, get_user_
 import balancebot.api.utils.client as client_utils
 from balancebot.common.messenger import Messenger, NameSpace, Category
 
-from balancebot.collector.usermanager import UserManager
-
 
 router = APIRouter(
     tags=["websocket"],
@@ -39,7 +37,6 @@ def create_ws_message(type: str, channel: str = None, data: Dict = None, error: 
 async def client_websocket(websocket: WebSocket, user: User = Depends(CurrentUser)):
     await websocket.accept()
 
-    user_manager = UserManager()
     subscribed_client: Optional[Client] = None
     config: Optional[ClientConfig] = None
     messenger = Messenger()

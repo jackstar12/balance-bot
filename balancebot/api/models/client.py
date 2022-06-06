@@ -8,7 +8,7 @@ from pydantic import BaseModel, UUID4
 
 class ClientQueryParams:
     def __init__(self,
-                 id: int = Query(default=None),
+                 id: List[int] = Query(default=[]),
                  currency: str = Query(default='$'),
                  since: datetime = Query(default=None),
                  to: datetime = Query(default=None)):
@@ -50,6 +50,7 @@ class DeleteBody(BaseModel):
 
 class UpdateBody(BaseModel):
     id: int
+    name: Optional[str]
     archived: Optional[bool]
     discord: Optional[bool]
     servers: Optional[Set[int]]

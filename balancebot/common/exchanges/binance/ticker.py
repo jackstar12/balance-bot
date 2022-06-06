@@ -2,8 +2,7 @@ import json
 from decimal import Decimal
 from typing import List
 
-from balancebot.api.settings import settings
-from balancebot.collector.exchangeticker import ExchangeTicker, Channel
+from balancebot.common.exchanges.exchangeticker import ExchangeTicker, Channel
 from balancebot.common.config import TESTING
 from balancebot.common.models.async_websocket_manager import WebsocketManager
 from balancebot.common.models.ticker import Ticker

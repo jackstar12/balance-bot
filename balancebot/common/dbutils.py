@@ -78,7 +78,12 @@ async def get_client(user_id: int,
     user = await get_discord_user(
         user_id,
         throw_exceptions=throw_exceptions,
-        eager_loads=[(DiscordUser.clients, client_eager), DiscordUser.guilds, *discord_user_eager])
+        eager_loads=[
+            (DiscordUser.clients, client_eager),
+            DiscordUser.guilds,
+            *discord_user_eager
+        ]
+    )
     if user:
         if guild_id:
             if registration:
@@ -102,8 +107,6 @@ async def get_client(user_id: int,
         client = await user.get_global_client(guild_id)
         if client:
             return client
-        elif throw_exceptions:
-            raise UserInputError("User")
         elif throw_exceptions:
             raise UserInputError("User {name} does not have a global registration", user_id)
     elif throw_exceptions:

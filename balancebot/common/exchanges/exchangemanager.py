@@ -22,7 +22,6 @@ import balancebot.common.utils as utils
 from balancebot.common.database_async import async_session, db_unique, db_all, db_first
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.trade import Trade, trade_from_execution
-import balancebot.collector.usermanager as um
 
 import balancebot.common.dbmodels.balance as db_balance
 from balancebot.common.dbmodels.transfer import Transfer, RawTransfer
@@ -33,6 +32,8 @@ from balancebot.common.messenger import NameSpace, Category, Messenger
 
 from balancebot.common.dbmodels.client import Client
 from typing import TYPE_CHECKING
+
+from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 
 if TYPE_CHECKING:
     from balancebot.common.dbmodels.balance import Balance
@@ -365,7 +366,6 @@ class ExchangeManager:
             )
         )
         client: Client = await async_session.get(Client, self.client_id)
-        user_manager = um.UserManager()
 
         self.in_position = True
 
@@ -417,7 +417,6 @@ class ExchangeManager:
 
                     if math.isclose(active_trade.open_qty, execution.qty, rel_tol=10e-6):
                         active_trade.open_qty = 0.0
-                        asyncio.create_task(user_manager.fetch_data([self.client]))
                         if self and not new_execution:
                             self.in_position = False
                     else:
@@ -436,9 +435,6 @@ class ExchangeManager:
             trade.client_id = self.client_id
             async_session.add(trade)
             if realtime:
-                asyncio.create_task(
-                    user_manager.fetch_data([self.client])
-                )
                 asyncio.create_task(
                     utils.call_unknown_function(self._on_new_trade, self, trade)
                 )

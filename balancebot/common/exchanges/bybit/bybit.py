@@ -13,7 +13,6 @@ import aiohttp
 import pytz
 from aiohttp import ClientResponseError, ClientResponse
 
-from balancebot.api.settings import settings
 from balancebot.common import utils
 from balancebot.common.config import TESTING
 from balancebot.common.dbmodels.client import Client

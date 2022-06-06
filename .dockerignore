@@ -1,0 +1,8 @@
+venv/
+LOGS/
+docs/
+examples/
+archive/
+alembic/
+data/
+.idea/

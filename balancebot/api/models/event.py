@@ -4,9 +4,9 @@ from pydantic import BaseModel
 
 
 class Event(BaseModel):
-    id: int
-    guild_id: int
-    channel_id: int
+    id: str
+    guild_id: str
+    channel_id: str
 
     registration_start: datetime
     registration_end: datetime

@@ -6,7 +6,7 @@ from balancebot.api.models.guild import Guild, GuildAssociation
 
 
 class DiscordUserInfo(BaseModel):
-    id: int
+    id: str
     name: str
     avatar: Optional[str]
     guilds: List[Guild]

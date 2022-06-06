@@ -322,7 +322,8 @@ class RegisterCog(CogBase):
             else:
                 await ctx.send(
                     content='Please select the client you want to register for this event.',
-                    components=[await user.get_client_select(
+                    components=[await utils.select_client(
+                        user,
                         self.slash_cmd_handler,
                         lambda select_ctx, clients: self.register_client(select_ctx, event, clients[0])
                     )],
@@ -426,13 +427,8 @@ class RegisterCog(CogBase):
                                                                               DiscordUser.global_associations])
             await ctx.defer()
             if len(user.clients) > 1:
-                await ctx.send(
-                    content=f'Please select the client you want to delete',
-                    components=[
-                        await user.get_client_select(self.slash_cmd_handler, start_unregistration)
-                    ],
-                    hidden=True
-                )
+                ctx, clients = await utils.select_client(ctx, self.slash_cmd_handler, user)
+
             else:
                 await start_unregistration(ctx, user.clients)
         else:

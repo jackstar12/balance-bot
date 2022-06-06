@@ -25,7 +25,6 @@ from balancebot.common.dbmodels.transfer import RawTransfer
 from balancebot.common import utils
 from balancebot.common.enums import Side, ExecType
 from balancebot.common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
-from balancebot.api.settings import settings
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker, create_limit
 import balancebot.common.dbmodels.balance as balance
 from balancebot.common.dbmodels.execution import Execution

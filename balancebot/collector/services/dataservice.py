@@ -2,9 +2,8 @@ import asyncio
 from enum import Enum
 from typing import Dict
 
-from balancebot.collector import config
 from balancebot.collector.errors import InvalidExchangeError
-from balancebot.collector.exchangeticker import ExchangeTicker
+from balancebot.common.exchanges.exchangeticker import ExchangeTicker
 from balancebot.collector.services.baseservice import BaseService
 from balancebot.common import utils
 from balancebot.common.exchanges import EXCHANGE_TICKERS

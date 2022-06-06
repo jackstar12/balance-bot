@@ -22,14 +22,13 @@ import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
 from datetime import datetime, timedelta, date
-from typing import List, Tuple, Callable, Optional, Union, Dict, Any
+from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Sequence, Iterable
 
 from sqlalchemy import asc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import balancebot.common.dbmodels.event as db_event
 import balancebot.common.dbmodels.client as db_client
-from balancebot.bot import utils
 from balancebot.common.database_async import async_session, db_all
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.errors import UserInputError, InternalError
@@ -38,7 +37,6 @@ from balancebot.common.models.gain import ClientGain
 from balancebot.common import dbutils
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.balance import Balance
-from balancebot.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
 from balancebot.common.models.selectionoption import SelectionOption
 import balancebot.common.config as config
 from typing import TYPE_CHECKING
@@ -95,13 +93,13 @@ def setup_logger(debug: bool = False):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    print(os.path.abspath(LOG_OUTPUT_DIR))
-    if not os.path.exists(LOG_OUTPUT_DIR):
-        os.mkdir(LOG_OUTPUT_DIR)
+    print(os.path.abspath(config.LOG_OUTPUT_DIR))
+    if not os.path.exists(config.LOG_OUTPUT_DIR):
+        os.mkdir(config.LOG_OUTPUT_DIR)
     if config.TESTING or True:
         log_stream = sys.stdout
     else:
-        log_stream = open(LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
+        log_stream = open(config.LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
     handler = logging.StreamHandler(log_stream)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
@@ -199,7 +197,7 @@ async def calc_daily(client: Client,
                 values = Daily(
                     current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
                     daily.unrealized,
-                    round(daily.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+                    round(daily.unrealized - prev_daily.unrealized, ndigits=config.CURRENCY_PRECISION.get(currency, 2)),
                     calc_percentage(prev_daily.unrealized, daily.unrealized, string=False)
                 )
                 if string:
@@ -218,7 +216,7 @@ async def calc_daily(client: Client,
             day=current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
             amount=prev_balance.unrealized,
             diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized,
-                                ndigits=CURRENCY_PRECISION.get(currency, 2)),
+                                ndigits=config.CURRENCY_PRECISION.get(currency, 2)),
             diff_relative=calc_percentage(prev_daily.unrealized, prev_balance.unrealized, string=False)
         )
         if string:
@@ -399,7 +397,7 @@ async def create_leaderboard(dc_client: discord.Client,
                 continue
             balance = await client.latest()
             if balance and not (event and balance.time < event.start):
-                if balance.unrealized > REKT_THRESHOLD:
+                if balance.unrealized > config.REKT_THRESHOLD:
                     client_scores.append((client, balance.unrealized))
                     value_strings[client] = balance.to_string(display_extras=False)
                 else:
@@ -542,13 +540,13 @@ async def calc_gains(clients: List[Client],
             # balance_then = history.data[0]
             # balance_now = db_match_balance_currency(history.data[len(history.data) - 1], currency)
             diff = round(balance_now.unrealized - balance_then.unrealized,
-                         ndigits=CURRENCY_PRECISION.get(currency, 3))
+                         ndigits=config.CURRENCY_PRECISION.get(currency, 3))
 
             if balance_then.unrealized > 0:
                 results.append(
                     ClientGain(
                         client=client,
-                        relative=round(100 * (diff / balance_then.unrealized), ndigits=CURRENCY_PRECISION.get('%', 2)),
+                        relative=round(100 * (diff / balance_then.unrealized), ndigits=config.CURRENCY_PRECISION.get('%', 2)),
                         absolute=diff
                     )
                 )
@@ -661,7 +659,7 @@ def calc_xs_ys(data: List[Balance],
                     amount = 0.0
             else:
                 amount = balance.unrealized
-            ys.append(round(amount, ndigits=CURRENCY_PRECISION.get(balance.currency, 3)))
+            ys.append(round(amount, ndigits=config.CURRENCY_PRECISION.get(balance.currency, 3)))
         return xs, ys
 
 
@@ -681,168 +679,9 @@ async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
             )
 
 
-async def ask_for_consent(ctx: Union[ComponentContext, SlashContext],
-                          slash: SlashCommand,
-                          msg_content: str = None,
-                          msg_embeds: List[discord.Embed] = None,
-                          yes_message: str = None,
-                          no_message: str = None,
-                          hidden=False,
-                          timeout_seconds: float = 60) -> Future[Tuple[ComponentContext, bool]]:
-    future = asyncio.get_running_loop().create_future()
+def validate_kwargs(kwargs: Dict, required: list[str] | set[str]):
+    return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
 
-    component_row = create_yes_no_button_row(
-        slash,
-        ctx.author_id,
-        yes_message=yes_message,
-        no_message=no_message,
-        yes_callback=lambda component_ctx: future.set_result((component_ctx, True)),
-        no_callback=lambda component_ctx: future.set_result((component_ctx, False)),
-        hidden=hidden
-    )
-
-    await ctx.send(content=msg_content,
-                   embeds=msg_embeds,
-                   components=[component_row])
-
-    return await asyncio.wait_for(future, timeout_seconds)
-
-
-def create_yes_no_button_row(slash: SlashCommand,
-                             author_id: int,
-                             yes_callback: Callable = None,
-                             no_callback: Callable = None,
-                             yes_message: str = None,
-                             no_message: str = None,
-                             hidden=False) -> Dict:
-    """
-
-    Utility method for creating a yes/no interaction
-    Takes in needed parameters and returns the created buttons as an ActionRow which are wired up to the callbacks.
-    These must be added to the message.
-
-    :param slash: Slash Command Handler to use
-    :param author_id: Who are the buttons correspond to?
-    :param yes_callback: Optional callback for yes button
-    :param no_callback: Optional callback no button
-    :param yes_message: Optional message to print on yes button
-    :param no_message: Optional message to print on no button
-    :param hidden: whether the response message should be hidden or not
-    :return: ActionRow containing the buttons.
-    """
-    yes_id = f'yes_button_{author_id}'
-    no_id = f'no_button_{author_id}'
-
-    buttons = [
-        create_button(
-            style=ButtonStyle.green,
-            label='Yes',
-            custom_id=yes_id
-        ),
-        create_button(
-            style=ButtonStyle.red,
-            label='No',
-            custom_id=no_id
-        )
-    ]
-
-    def wrap_callback(custom_id: str, callback=None, message=None):
-
-        if slash.get_component_callback(custom_id=custom_id) is not None:
-            slash.remove_component_callback(custom_id=custom_id)
-
-        @slash.component_callback(components=[custom_id])
-        @utils.log_and_catch_errors(type="Component callback", cog=False)
-        @wraps(callback)
-        async def yes_no_wrapper(ctx: ComponentContext):
-
-            for button in buttons:
-                slash.remove_component_callback(custom_id=button['custom_id'])
-
-            await ctx.edit_origin(components=[])
-            await call_unknown_function(callback, ctx)
-            if message:
-                await ctx.send(content=message, hidden=hidden)
-
-    wrap_callback(yes_id, yes_callback, yes_message)
-    wrap_callback(no_id, no_callback, no_message)
-
-    return create_actionrow(*buttons)
-
-
-async def new_create_selection(ctx: SlashContext,
-                               options: List[SelectionOption],
-                               msg_content: str = None,
-                               msg_embeds: List[discord.Embed] = None,
-                               timeout_seconds: float = 60,
-                               **kwargs) -> Future[Tuple[ComponentContext, List]]:
-    future = asyncio.get_running_loop().create_future()
-
-    component_row = create_selection(
-        ctx.slash,
-        ctx.author_id,
-        options,
-        callback=lambda component_ctx, selections: future.set_result((component_ctx, selections)),
-        **kwargs
-    )
-
-    await ctx.send(content=msg_content,
-                   embeds=msg_embeds,
-                   components=[component_row])
-    return await asyncio.wait_for(future, timeout_seconds)
-
-
-def create_selection(slash: SlashCommand,
-                     author_id: int,
-                     options: List[SelectionOption],
-                     callback: Callable = None,
-                     **kwargs) -> Dict:
-    """
-    Utility method for creating a discord selection component.
-    It provides functionality to return user-defined objects associated with the selected option on callback
-
-
-    :param max_values:
-    :param min_values:
-    :param slash: SlashCommand handler to use
-    :param author_id: ID of the author invoking the call (used for settings custom_id)
-    :param options: List of dicts describing the options.
-    :param callback: Function to call when an item is selected
-    :return:
-    """
-    custom_id = f'selection_{author_id}'
-
-    objects_by_value = {}
-
-    for option in options:
-        objects_by_value[option.value] = option.object
-
-    selection = discord_components.create_select(
-        options=[
-            create_select_option(
-                label=option.name,
-                value=option.value,
-                description=option.description
-            )
-            for option in options
-        ],
-        custom_id=custom_id,
-        min_values=1,
-        **kwargs
-    )
-
-    if slash.get_component_callback(custom_id=custom_id) is not None:
-        slash.remove_component_callback(custom_id=custom_id)
-
-    @slash.component_callback(components=[custom_id])
-    @utils.log_and_catch_errors(type="Component callback", cog=False)
-    @wraps(callback)
-    async def on_select(ctx: ComponentContext):
-        values = ctx.data['values']
-        objects = [objects_by_value.get(value) for value in values]
-        await call_unknown_function(callback, ctx, objects)
-
-    return create_actionrow(selection)
 
 
 def readable_time(time: datetime) -> str:

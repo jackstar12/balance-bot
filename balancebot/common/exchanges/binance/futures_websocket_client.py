@@ -4,7 +4,6 @@ import asyncio
 from typing import Callable, TYPE_CHECKING
 
 from balancebot.common import utils
-from balancebot.api.settings import settings
 from balancebot.common.config import TESTING
 from balancebot.common.models.async_websocket_manager import WebsocketManager
 import aiohttp

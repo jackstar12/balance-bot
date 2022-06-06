@@ -38,7 +38,7 @@ class Serializer:
                             if issubclass(type(v), list):
                                 v = await Serializer.serialize_list(v, data=data, full=full, *args, **kwargs)
                             elif isinstance(v, AppenderQuery):
-                                if data:
+                                if data and None:
                                     v = await db_all(v.statement)
                                     #v = v.all()
                                 else:

@@ -11,7 +11,6 @@ from pydantic import BaseModel
 from balancebot.common import customjson
 from balancebot.common.config import TESTING
 from balancebot.common.database import redis
-from balancebot.api.settings import settings
 from balancebot.common.models.singleton import Singleton
 import balancebot.common.utils as utils
 

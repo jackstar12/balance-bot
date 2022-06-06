@@ -33,7 +33,7 @@ from balancebot.common.dbmodels.guild import Guild
 import balancebot.api.routers.discordauth as discord
 
 from balancebot.api.users import fastapi_users
-from balancebot.common.enums import Tier
+from balancebot.common.utils import setup_logger
 
 app = FastAPI(
     docs_url='/api/v1/docs',
@@ -87,7 +87,8 @@ user_info = CurrentUserDep(
     User.alerts
 )
 
-
+# 916370614598651934
+# 715507174167806042
 @app.get('/api/v1/info', response_model=UserInfo)
 async def info(user: User = Depends(user_info)):
     return UserInfo.from_orm(user)
@@ -219,7 +220,7 @@ async def info(user: User = Depends(user_info)):
 async def on_start():
     async with aio_db.engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
+    setup_logger()
 
 
 async def db_test():

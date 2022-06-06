@@ -1,22 +1,30 @@
 version: '3'
 services:
   api:
-    build: balancebot/api
+    build:
+      dockerfile: balancebot/api/Dockerfile
+      context: .
     ports:
       - "5000:5000"
   collector:
-    build: balancebot/collector
-    ports:
-      - "5000:5000"
+    build:
+      dockerfile: balancebot/collector/Dockerfile
+      context: .
   bot:
-    build: balancebot/bot
+    build:
+      dockerfile: balancebot/bot/Dockerfile
+      context: .
+  redis:
+    image: "redis:latest"
   pg:
     image: "postgres"
+    container_name: pg-server
+    ports:
+      - "5432:5432"
     volumes:
-      - db-data:/postgres
-  redis:
-    image: "redis"
-
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      - "POSTGRES_PASSWORD=postgres"
 volumes:
-  db-data:
+  pg-data:
 

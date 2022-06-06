@@ -66,21 +66,6 @@ async def db_del_filter(cls, session=None, **kwargs):
     return await db(delete(cls).filter_by(**kwargs), session)
 
 
-def db_joins(stmt: Select, option, *eager: List[Union[InstrumentedAttribute, Tuple[Column, List]]]):
-    for col in eager:
-        if isinstance(col, Tuple):
-            option = option.joinedload(col[0])
-            if isinstance(col[1], list):
-                stmt = db_joins(stmt, option, *col[1])
-            elif isinstance(col[1], tuple):
-                stmt = db_joins(stmt, option, col[1])
-            elif col[1] == '*':
-                option.joinedload('*')
-        else:
-            stmt = stmt.options(option.joinedload(col))
-    return stmt
-
-
 def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False):
     if root:
         if joined:

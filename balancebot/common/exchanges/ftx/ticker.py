@@ -1,7 +1,6 @@
 from datetime import datetime
-import time
 
-from balancebot.collector.exchangeticker import ExchangeTicker, Channel
+from balancebot.common.exchanges.exchangeticker import ExchangeTicker, Channel
 from balancebot.common.exchanges.ftx.websocket import FtxWebsocketClient
 from balancebot.common.models.ticker import Ticker
 from balancebot.common.models.trade import Trade

@@ -12,7 +12,7 @@ import pytz
 import balancebot.common.utils as utils
 from balancebot.common import customjson
 from balancebot.common.database import redis
-from balancebot.common.database_async import db_first, db_select
+from balancebot.common.database_async import db_first, db_select, db_all
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User
@@ -186,6 +186,9 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
     return s
 
 
-async def get_user_client(user: User, id: int = None, eager=None):
-    eager = eager or []
-    return await db_first(add_client_filters(select(Client), user, id), *eager)
+async def get_user_client(user: User, id: int = None, *eager):
+    return utils.list_last(await get_user_clients(user, [id], *eager), None)
+
+
+async def get_user_clients(user: User, ids: List[int] = None, *eager):
+    return await db_all(add_client_filters(select(Client), user, ids), *eager)

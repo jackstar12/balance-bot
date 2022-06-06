@@ -6,8 +6,8 @@ from balancebot.common.enums import Side
 
 
 class Alert(BaseModel):
-    id: int
-    discord_user_id: int
+    id: str
+    discord_user_id: str
 
     symbol: str
     price: float

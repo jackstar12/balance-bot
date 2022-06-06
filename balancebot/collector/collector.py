@@ -10,12 +10,14 @@ from balancebot.collector.services.alertservice import AlertService
 from balancebot.collector.services.dataservice import DataService
 from balancebot.collector.services.balanceservice import BalanceService
 from balancebot.common.messenger import Messenger
+from balancebot.common.utils import setup_logger
 
 
 async def run(session: aiohttp.ClientSession):
 
-    scheduler = AsyncIOScheduler()
+    setup_logger()
 
+    scheduler = AsyncIOScheduler()
     data_service = DataService(session, Messenger(), redis,  scheduler,)
     alert_service = AlertService(session, Messenger(), redis, scheduler, data_service=data_service)
     coin_tracker = CoinTracker(session, Messenger(), redis, scheduler, data_service=data_service)

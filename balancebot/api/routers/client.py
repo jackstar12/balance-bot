@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from sqlalchemy import or_, delete, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
@@ -21,7 +22,7 @@ from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, 
 from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
 from balancebot.api.utils.responses import BadRequest, OK, CustomJSONResponse
 from balancebot.common import utils
-from balancebot.api.dependencies import CurrentUser, CurrentUserDep, get_authenticator, get_messenger
+from balancebot.api.dependencies import CurrentUser, CurrentUserDep, get_authenticator, get_messenger, get_db
 from balancebot.common.database import session
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User
@@ -31,11 +32,10 @@ import balancebot.api.utils.client as client_utils
 from balancebot.common.dbutils import add_client
 from balancebot.common.messenger import Messenger, NameSpace, Category
 import balancebot.common.dbmodels.event as db_event
-from balancebot.bot.utils import validate_kwargs
 
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.exchanges import EXCHANGES
-from balancebot.collector.usermanager import UserManager
+from balancebot.common.utils import validate_kwargs
 
 router = APIRouter(
     tags=["client"],
@@ -48,8 +48,10 @@ router = APIRouter(
 
 
 @router.post('/client')
-async def register_client(request: Request, body: RegisterBody, authenticator: Authenticator = Depends(get_authenticator)):
-    await authenticator.read_uuid(request)
+async def register_client(request: Request, body: RegisterBody,
+                          authenticator: Authenticator = Depends(get_authenticator),
+                          db: AsyncSession = Depends(get_db)):
+    await authenticator.verify_id(request)
     try:
         exchange_cls = EXCHANGES[body.exchange]
         if issubclass(exchange_cls, ExchangeWorker):
@@ -64,7 +66,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
                     exchange=body.exchange
                 )
                 async with aiohttp.ClientSession() as http_session:
-                    worker = exchange_cls(client, http_session)
+                    worker = exchange_cls(client, http_session, db_session=db)
                     init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
                 if init_balance.error is None:
                     if init_balance.realized.is_zero():
@@ -79,7 +81,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
                         return JSONResponse(jsonable_encoder({
                             'msg': 'Success',
                             'token': jwt.encode(payload, settings.authjwt_secret_key, algorithm='HS256'),
-                            'balance': init_balance.serialize()
+                            'balance': await init_balance.serialize()
                         }))
                 else:
                     return BadRequest(f'An error occured while getting your balance: {init_balance.error}.')
@@ -91,7 +93,7 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
                 args_readable = '\n'.join(exchange_cls.required_extra_args)
                 return BadRequest(
                     detail=f'Need more keyword arguments for exchange {exchange_cls.exchange}.'
-                        f'\nRequirements:\n {args_readable}',
+                           f'\nRequirements:\n {args_readable}',
                     code=40100
                 )
 
@@ -105,7 +107,6 @@ async def register_client(request: Request, body: RegisterBody, authenticator: A
 async def get_client(request: Request, response: Response,
                      client_params: ClientQueryParams = Depends(),
                      user: User = Depends(CurrentUser)):
-
     if client_params.id:
         client: Optional[Client] = await db_first(
             add_client_filters(select(Client), user, client_params.id)
@@ -113,7 +114,8 @@ async def get_client(request: Request, response: Response,
     else:
         client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], user_id=user.id)
         if not client:
-            client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], discord_user_id=user.discord_user_id)
+            client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")],
+                                                       discord_user_id=user.discord_user_id)
 
     if client:
         s = await create_client_data_serialized(client,
@@ -221,20 +223,21 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
                         ).values(client_id=client.id)
                     )
 
-                #await db(
-                #    update(GuildAssociation).where(
-                #        GuildAssociation.discord_user_id == user.discord_user_id,
-                #        GuildAssociation.guild_id.not_in(body.servers)
-                #    ).values(client_id=None)
-                #)
+                await db(
+                   update(GuildAssociation).where(
+                       GuildAssociation.discord_user_id == user.discord_user_id,
+                       GuildAssociation.client_id == client.id,
+                       GuildAssociation.guild_id.not_in(body.servers)
+                   ).values(client_id=None)
+                )
 
-                #guilds: List[Guild] = await db_all(
+                # guilds: List[Guild] = await db_all(
                 #    select(Guild).filter(
                 #        or_(*[Guild.id == guild_id for guild_id in body.servers]),
                 #    ),
                 #    Guild.users
-                #)
-                #for guild in guilds:
+                # )
+                # for guild in guilds:
                 #    if user.discord_user in guild.users:
                 #        guild.global_clients.append(
                 #            GuildAssociation(
@@ -247,9 +250,14 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
                 await async_session.commit()
             if body.events is not None:
                 now = datetime.now(tz=pytz.UTC)
-                events = session.query(db_event.Event).filter(
-                    or_(*[db_event.Event.id == event_id for event_id in body.events])
-                ).all()
+                if body.events:
+                    events = await db_all(
+                        select(db_event.Event).filter(
+                            db_event.Event.id.in_(body.events)
+                        )
+                    )
+                else:
+                    events = []
                 valid_events = []
                 for event in events:
                     if event.is_free_for_registration(now):
@@ -259,31 +267,29 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
                             return BadRequest(f'You are not eligible to join {event.name} (Not in server)')
                     else:
                         return BadRequest(f'Event {event.name} is not free for registration')
-                if valid_events:
-                    for valid in valid_events:
-                        client.events.append(valid)
-                else:
-                    return BadRequest('No valid events were provided')
+                client.events = valid_events
 
             if body.servers is None and body.events is None:
                 return BadRequest('Either servers or events have to be provided')
         else:
             return BadRequest('No discord account found')
 
-        await async_session.commit()
-        return OK('Changes applied')
+    await async_session.commit()
+    return OK('Changes applied')
 
 
 @router.post('/client/confirm')
-async def confirm_client(body: ConfirmBody, user: User = Depends(CurrentUser), messenger: Messenger = Depends(get_messenger)):
+async def confirm_client(body: ConfirmBody, user: User = Depends(CurrentUser),
+                         messenger: Messenger = Depends(get_messenger),
+                         db_session: AsyncSession = Depends(get_db)):
     client_json = jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
     print(client_json)
     try:
         client = Client(**client_json)
         client.user = user
         add_client(client, messenger)
-        async_session.add(client)
-        await async_session.commit()
+        db_session.add(client)
+        await db_session.commit()
         return OK('Success')
     except TypeError:
         return BadRequest(detail='Invalid token')
@@ -299,12 +305,11 @@ def create_ws_message(type: str, channel: str = None, data: Dict = None, error: 
 
 
 @router.websocket('/client/ws')
-async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  authenticator: Authenticator = Depends(get_authenticator)):
+async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),
+                           authenticator: Authenticator = Depends(get_authenticator)):
     await websocket.accept()
 
-    authenticator.read_uuid()
-    Authorize.jwt_required("websocket", websocket)
-    user_manager = UserManager()
+    authenticator.verify_id()
     subscribed_client: Optional[Client] = None
     config: Optional[ClientConfig] = None
     messenger = Messenger()
@@ -435,3 +440,6 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),  
         except WebSocketDisconnect:
             unsub_client(subscribed_client)
             break
+
+
+import requests_oauthlib

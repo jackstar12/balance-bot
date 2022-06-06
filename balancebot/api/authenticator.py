@@ -26,7 +26,7 @@ class Authenticator:
             )
         return session_id
 
-    async def read_uuid(
+    async def verify_id(
         self, request: Request,
     ) -> Optional[UUID4]:
         session_id = self._get_session_id(request)

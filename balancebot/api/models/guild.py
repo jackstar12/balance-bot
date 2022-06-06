@@ -7,15 +7,15 @@ from balancebot.common.enums import Tier
 
 
 class GuildAssociation(BaseModel):
-    client_id: Optional[int]
-    guild_id: int
+    client_id: Optional[str]
+    guild_id: str
 
     class Config:
         orm_mode = True
 
 
 class Guild(BaseModel):
-    id: int
+    id: str
     name: str
     tier: Tier
     avatar: Optional[str]

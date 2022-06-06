@@ -1,16 +1,15 @@
-FROM python:3.8
+FROM python:3.10.3
 
 WORKDIR /code
 
-COPY ./requirements.txt /code/requirements.txt
+COPY ./balancebot/api/requirements.txt /code/balancebot/api/requirements.txt
+COPY ./balancebot/common/requirements.txt /code/balancebot/common/requirements.txt
 
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
-RUN pip install --no-cache-dir --upgrade uvicorn[standard]
-RUN pip install --no-cache-dir --upgrade fastapi_jwt_auth
+RUN pip install --no-cache-dir --upgrade -r ./balancebot/api/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r ./balancebot/common/requirements.txt
 
-COPY ./balancebot /code/balancebot
+COPY ./balancebot/api /code/balancebot/api
+COPY ./balancebot/common /code/balancebot/common
 
-ENV PORT = 5000
-EXPOSE 5000
 
-CMD [ "uvicorn" , "balancebot.api.app:app", "--port", "5000"]
+CMD ["uvicorn", "balancebot.api.app:app", "--port", "5000"]

@@ -3,8 +3,7 @@ from typing import Dict
 
 import aiohttp
 
-from balancebot.api.settings import settings
-from balancebot.collector.exchangeticker import ExchangeTicker, Channel
+from balancebot.common.exchanges.exchangeticker import ExchangeTicker, Channel
 from balancebot.common.config import TESTING
 from balancebot.common.exchanges.bybit.websocket import BybitWebsocketClient
 from balancebot.common.models.async_websocket_manager import WebsocketManager
