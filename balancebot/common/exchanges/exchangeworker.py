@@ -552,7 +552,7 @@ class ExchangeWorker:
             await self._db.commit()
             current_balance = new_balance
 
-    async def _convert_to_usd(self, amount: float, coin: str, date: datetime):
+    async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
         if self._usd_like(coin):
             return amount
 
@@ -560,8 +560,11 @@ class ExchangeWorker:
                         limit: int = None) -> List[OHLC]:
         pass
 
-    def _calc_resolution(self, n: int, resolutions_s: List[int], since: datetime, to: datetime = None) -> Optional[
-        Tuple[int, int]]:
+    def _calc_resolution(self,
+                         n: int,
+                         resolutions_s: List[int],
+                         since: datetime,
+                         to: datetime = None) -> Optional[Tuple[int, int]]:
         """
         Small helper for finding out which resolution [s] suits a given amount of data points requested best.
 
@@ -905,7 +908,9 @@ class ExchangeWorker:
     def _parse_ts(self, ts: Union[int, float]):
         pass
 
-    def _ts_for_ccxt(self, datetime: datetime):
+    def _parse_ms(self, ts_ms: Union[]):
+
+    def _date_as_ms(self, datetime: datetime):
         return int(datetime.timestamp() * 1000)
 
     def _date_from_ccxt(self, ts):

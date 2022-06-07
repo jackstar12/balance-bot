@@ -738,3 +738,11 @@ def db_match_balance_currency(balance: Balance, currency: str):
 
 def join_args(*args, denominator=':'):
     return denominator.join([str(arg) for arg in args if arg])
+
+
+def truthy_dict(**kwargs):
+    return dict((k, v) for k, v in kwargs.items() if v)
+
+
+def mask_dict(d, *keys):
+    return dict((k, v) for k, v in d.items() if k in keys)

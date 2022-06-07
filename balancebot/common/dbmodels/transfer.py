@@ -1,9 +1,9 @@
 import enum
 from datetime import datetime
 from decimal import Decimal
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
-from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger
+from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Numeric
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 
@@ -20,6 +20,7 @@ class RawTransfer(NamedTuple):
     amount: Decimal
     time: datetime
     coin: str
+    fee: Optional[Decimal]
 
 
 class Transfer(Base, AmountMixin):
@@ -34,6 +35,7 @@ class Transfer(Base, AmountMixin):
     client = relationship('Client')
     note = Column(String, nullable=True)
     coin = Column(String, nullable=True)
+    fee = Column(Numeric)
 
     execution_id = Column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=True)
     execution = relationship(
