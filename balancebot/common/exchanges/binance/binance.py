@@ -42,6 +42,8 @@ class Type(Enum):
 class _BinanceBaseClient(ExchangeWorker, ABC):
     _ENDPOINT = 'https://testnet.binance.vision' if TESTING else 'https://api.binance.com'
 
+    _response_error = 'msg'
+
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
         headers['X-MBX-APIKEY'] = self._api_key
@@ -101,14 +103,11 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
                         amount = -Decimal(row['amount'])
                     else:
                         continue
-                    date = self._parse_ts(row['timestamp'])
+                    date = self._parse_ms(row['timestamp'])
                     results.append(
                         RawTransfer(amount, date, row["asset"])
                     )
         return results
-
-    def _parse_ts(self, ts: Union[int, float, str]):
-        return datetime.fromtimestamp(int(ts) / 1000, pytz.utc)
 
     def _parse_datetime(self, date: datetime):
         # Offset by 1 in order to not include old entries on some endpoints
@@ -182,7 +181,7 @@ class BinanceFutures(_BinanceBaseClient):
         )
         return [
             OHLC(
-                time=self._parse_ts(data[0]),
+                time=self._parse_ms(data[0]),
                 open=Decimal(data[1]),
                 high=Decimal(data[2]),
                 low=Decimal(data[3]),
@@ -251,7 +250,7 @@ class BinanceFutures(_BinanceBaseClient):
                                     qty=Decimal(trade['qty']),
                                     price=Decimal(trade['price']),
                                     side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
-                                    time=self._parse_ts(trade['time']),
+                                    time=self._parse_ms(trade['time']),
                                     commission=Decimal(trade['commission']),
                                     type=ExecType.TRADE
                                 )
@@ -299,7 +298,7 @@ class BinanceFutures(_BinanceBaseClient):
                     price=Decimal(data['ap']) or Decimal(data['p']),
                     qty=Decimal(data['q']),
                     side=data['S'],
-                    time=self._parse_ts(message['E']),
+                    time=self._parse_ms(message['E']),
                 )
                 await utils.call_unknown_function(self._on_execution, trade)
 

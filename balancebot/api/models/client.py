@@ -23,7 +23,7 @@ class RegisterBody(BaseModel):
     exchange: str
     api_key: str
     api_secret: str
-    subaccount: str
+    subaccount: Optional[str]
     extra: Optional[Dict]
 
     @pydantic.root_validator(pre=True)

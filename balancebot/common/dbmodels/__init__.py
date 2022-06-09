@@ -78,5 +78,8 @@ __all__ = [
     "balance",
     "client",
     "trade",
-    "user"
+    "user",
+    "Client",
+    "Execution",
+    "Trade"
 ]

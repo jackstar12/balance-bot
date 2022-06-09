@@ -3,6 +3,7 @@ import urllib.parse
 import hmac
 import logging
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Union, List, Optional, Dict, Iterator
 
 import pytz
@@ -99,11 +100,11 @@ class FtxClient(ExchangeWorker):
     def _parse_date(self, date: datetime):
         return str(int(date.timestamp()))
 
-    async def _convert_to_usd(self, amount: float, coin: str, date: datetime):
+    async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
         if self._usd_like(coin):
             return amount
         ticker = await self._get_ohlc(f'{coin}/USD', since=date, limit=1)
-        return amount * ticker[0].open
+        return amount * (ticker[0].open + ticker[0].close) / 2
 
     async def _get_ohlc(self, market: str, since: datetime = None, to: datetime = None, resolution_s: int = None, limit: int = None) -> List[OHLC]:
 
@@ -133,12 +134,14 @@ class FtxClient(ExchangeWorker):
             for candle in res
         ]
 
-    def _generate_transfers(self, transfers: List[Dict], withdrawal: bool):
+    @classmethod
+    def _generate_transfers(cls, transfers: List[Dict], withdrawal: bool):
         return [
             RawTransfer(
                 -transfer['size'] if withdrawal else transfer['size'],
                 datetime.fromisoformat(transfer['time']),
-                transfer['coin']
+                transfer['coin'],
+                fee=None
             )
             for transfer in transfers
         ]
@@ -166,6 +169,3 @@ class FtxClient(ExchangeWorker):
         headers['FTX-TS'] = str(ts)
         if self._subaccount:
             headers['FTX-SUBACCOUNT'] = urllib.parse.quote(self._subaccount)
-
-    def _parse_ts(self, ts: Union[int, float]):
-        return datetime.fromtimestamp(ts / 1000, pytz.utc)

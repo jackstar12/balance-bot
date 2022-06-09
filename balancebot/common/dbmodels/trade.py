@@ -137,7 +137,9 @@ class Trade(Base, Serializer):
 
     @hybrid_property
     def greed_ratio(self):
-        return self.max_pnl.total / self.realized_pnl
+        return self.realized_pnl / self.max_pnl.total
+        if self.realized_pnl:
+            return self.max_pnl.total / self.realized_pnl
 
     async def serialize(self, data=True, full=True, *args, **kwargs):
         s = await super().serialize(*args, data=data, full=full, **kwargs)

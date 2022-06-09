@@ -189,23 +189,20 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                     transfer["to_account_type"] == "CONTRACT"
                     and
                     wallet == Wallet.SPOT
-            )
-            ):
+            )):
                 # Withdrawals are signaled by negative amounts
                 amount *= -1
             results.append(RawTransfer(
                 amount=amount,
                 time=self._parse_ts(transfer["timestamp"]),
-                coin=transfer["coin"]
+                coin=transfer["coin"],
+                fee=None
             ))
 
         return results
 
     def _parse_date(self, date: datetime):
         return int(date.timestamp() * 1000)
-
-    def _parse_ts(self, ts: Union[int, float]):
-        return datetime.fromtimestamp(ts, pytz.utc)
 
 
 def _get_contract_type(contract: str):

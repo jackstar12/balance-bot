@@ -1,4 +1,6 @@
 import base64
+from abc import ABC
+
 import pytz
 import hmac
 from datetime import datetime
@@ -13,26 +15,17 @@ from balancebot.common.dbmodels.transfer import RawTransfer
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.models.ohlc import OHLC
+from common.config import TESTING
+from common.models.ticker import Ticker
 
 
-class KuCoinClient(ExchangeWorker):
-    exchange = 'kucoin'
-    _ENDPOINT = 'https://api-futures.kucoin.com'
-
+class _KuCoinClient(ExchangeWorker, ABC):
     required_extra_args = [
         'passphrase'
     ]
 
     _response_error = None
     _response_result = 'data'
-
-    # https://docs.kucoin.com/futures/#get-account-overview
-    async def _get_balance(self, time: datetime, upnl=True):
-        data = await self._get(
-            '/api/v1/account-overview',
-            params={'currency': 'USDT'}
-        )
-        return Balance(unrealized=data['accountEquity'], realized=data['marginBalance'], time=time)
 
     # https://docs.kucoin.com/#authentication
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
@@ -52,6 +45,31 @@ class KuCoinClient(ExchangeWorker):
         headers['KC-API-SIGN'] = signature
         headers['KC-API-PASSPHRASE'] = passphrase
         headers['KC-API-KEY-VERSION'] = '2'
+
+
+class KuCoinFuturesClient(_KuCoinClient):
+    exchange = 'kucoin'
+    _ENDPOINT = 'https://api-sandbox-futures.kucoin.com' if TESTING else 'https://api-futures.kucoin.com'
+
+    required_extra_args = [
+        'passphrase'
+    ]
+
+    _response_error = None
+    _response_result = 'data'
+
+    # https://docs.kucoin.com/futures/#get-real-time-ticker
+    async def _get_ticker(self,
+                          symbol: str):
+        resp = await self._get('/api/v1/ticker',
+                        params={
+                            'symbol': symbol
+                        })
+        return Ticker(
+            symbol,
+            self.exchange,
+
+        )
 
     async def _fetch_transaction_history(self,
                                          since: datetime,
@@ -123,27 +141,29 @@ class KuCoinClient(ExchangeWorker):
                                        since=since,
                                        to=to)
 
-        params = dict(
-            granularity=res
-        )
+        params = {
+            'granularity': res
+        }
         if since:
             params['from'] = self._date_as_ms(since)
         if to:
             params['to'] = self._date_as_ms(to)
 
         ohlc_data = await self._get('/api/v1/kline/query',
-                               params=params)
+                                    params=params)
 
         return [
             OHLC(
-               time=self._parse_ts()
+               self._parse_ts(ohlc[0]),
+               *ohlc[1:]
             )
             for ohlc in ohlc_data
         ]
-
 
     async def _get_executions(self,
                               since: datetime,
                               init=False) -> List[Execution]:
         transactions = await self._fetch_transaction_history(since, None)
+        pass
         # TODO: find more than 1 week?
+

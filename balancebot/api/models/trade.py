@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -13,7 +13,7 @@ class Trade(BaseModel):
 
     symbol: str
     entry: Decimal
-    exit: Decimal
+    exit: Optional[Decimal]
 
     transferred_qty: Decimal
     qty: Decimal

@@ -6,7 +6,7 @@ import pytz
 from asgiref import typing
 from datetime import datetime
 
-from discord_slash import cog_ext, SlashContext
+from discord_slash import cog_ext, SlashContext, ComponentContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import inspect, select, or_, update, insert
 
@@ -16,15 +16,15 @@ from balancebot.common.dbmodels.event import Event, event_association
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common import dbutils
-from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels import Client
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.bot import config, utils
+import balancebot.common as common
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.exchanges import EXCHANGES
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.models.selectionoption import SelectionOption
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
-
 
 class RegisterCog(CogBase):
 
@@ -100,7 +100,7 @@ class RegisterCog(CogBase):
             exchange_name = exchange_name.lower()
             exchange_cls = EXCHANGES[exchange_name]
             if issubclass(exchange_cls, ExchangeWorker):
-                if utils.validate_kwargs(kwargs, exchange_cls.required_extra_args):
+                if common.utils.validate_kwargs(kwargs, exchange_cls.required_extra_args):
 
                     event = await dbutils.get_event(ctx.guild_id,
                                                     ctx.channel_id,
@@ -132,6 +132,7 @@ class RegisterCog(CogBase):
                             if len(available_guilds) > 1:
                                 ctx, guilds = await utils.new_create_selection(
                                     ctx,
+                                    self.slash_cmd_handler,
                                     options=[
                                         SelectionOption(
                                             name=guild.name,

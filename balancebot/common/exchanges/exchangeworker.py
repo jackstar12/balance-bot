@@ -776,7 +776,7 @@ class ExchangeWorker:
 
         # OK
         if response.status == 200:
-            if cls._response_result:
+            if cls._response_result and cls._response_result in response_json:
                 return response_json[cls._response_result]
             return response_json
 
@@ -824,6 +824,8 @@ class ExchangeWorker:
                         logger.error(f'Error while executing request: {e.human} {e.root_error}')
                         item.future.set_exception(e)
                     except ResponseError as e:
+                        if e.root_error.status == 401:
+                            e = InvalidClientError(root_error=e.root_error, human=e.human)
                         logger.error(f'Error while executing request: {e.human} {e.root_error}')
                         item.future.set_exception(e)
                     except RateLimitExceeded as e:
@@ -878,13 +880,15 @@ class ExchangeWorker:
         try:
             return await future
         except InvalidClientError:
-            self.client.invalid = True
-            await self._db.commit()
-            await self.disconnect()
-            self.messenger.pub_channel(NameSpace.CLIENT, Category.UPDATE, {
-                'id': self.client_id, 'invalid': True
-            })
+            if self.client_id:
+                self.client.invalid = True
+                await self._db.commit()
+                await self.disconnect()
+                self.messenger.pub_channel(NameSpace.CLIENT, Category.UPDATE, {
+                    'id': self.client_id, 'invalid': True
+                })
             raise
+
 
     def _get(self, path: str, **kwargs):
         return self._request('GET', path, **kwargs)
@@ -895,26 +899,33 @@ class ExchangeWorker:
     def _put(self, path: str, **kwargs):
         return self._request('PUT', path, **kwargs)
 
-    def _usd_like(self, coin: str):
-        return coin in ('USD', 'USDT', 'USDC', 'BUSD')
-
     def _symbol(self, coin: str):
         return f'{coin}/{self.client.currency or "USD"}'
 
-    def _query_string(self, params: Dict):
+    @classmethod
+    def _usd_like(cls, coin: str):
+        return coin in ('USD', 'USDT', 'USDC', 'BUSD')
+
+    @classmethod
+    def _query_string(cls, params: Dict):
         query_string = urllib.parse.urlencode(params)
         return f"?{query_string}" if query_string else ""
 
-    def _parse_ts(self, ts: Union[int, float]):
-        pass
+    @classmethod
+    def _parse_ts(cls, ts: Union[int, float]):
+        return datetime.fromtimestamp(ts, pytz.utc)
 
-    def _parse_ms(self, ts_ms: Union[]):
-
-    def _date_as_ms(self, datetime: datetime):
+    @classmethod
+    def _date_as_ms(cls, datetime: datetime):
         return int(datetime.timestamp() * 1000)
 
-    def _date_from_ccxt(self, ts):
-        return datetime.fromtimestamp(ts / 1000, pytz.utc)
+    @classmethod
+    def _date_as_s(cls, datetime: datetime):
+        return int(datetime.timestamp())
+
+    @classmethod
+    def _parse_ms(cls, ts_ms: int | float):
+        return datetime.fromtimestamp(ts_ms / 1000, pytz.utc)
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'

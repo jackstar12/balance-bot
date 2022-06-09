@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from http import HTTPStatus
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 import aiohttp
 import jwt
 import pytz
@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
+from api.utils.analytics import create_cilent_analytics
 from balancebot.api.authenticator import Authenticator
-from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance
+from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance, TradeAnalytics
 from balancebot.common.database_async import db, db_first, async_session, db_all, db_select
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.guild import Guild
@@ -36,6 +37,7 @@ import balancebot.common.dbmodels.event as db_event
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.exchanges import EXCHANGES
 from balancebot.common.utils import validate_kwargs
+from balancebot.common.dbmodels import Trade
 
 router = APIRouter(
     tags=["client"],
@@ -224,11 +226,11 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
                     )
 
                 await db(
-                   update(GuildAssociation).where(
-                       GuildAssociation.discord_user_id == user.discord_user_id,
-                       GuildAssociation.client_id == client.id,
-                       GuildAssociation.guild_id.not_in(body.servers)
-                   ).values(client_id=None)
+                    update(GuildAssociation).where(
+                        GuildAssociation.discord_user_id == user.discord_user_id,
+                        GuildAssociation.client_id == client.id,
+                        GuildAssociation.guild_id.not_in(body.servers)
+                    ).values(client_id=None)
                 )
 
                 # guilds: List[Guild] = await db_all(
@@ -279,7 +281,8 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
 
 
 @router.post('/client/confirm')
-async def confirm_client(body: ConfirmBody, user: User = Depends(CurrentUser),
+async def confirm_client(body: ConfirmBody,
+                         user: User = Depends(CurrentUser),
                          messenger: Messenger = Depends(get_messenger),
                          db_session: AsyncSession = Depends(get_db)):
     client_json = jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
@@ -440,6 +443,39 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),
         except WebSocketDisconnect:
             unsub_client(subscribed_client)
             break
+
+
+@router.get('/client/trades', response_model=ClientAnalytics)
+async def get_analytics(client_params: ClientQueryParams = Depends(),
+                        trade_id: list[int] = Query(None, alias='trade-id'),
+                        user: User = Depends(CurrentUser)):
+    config = ClientConfig.construct(**client_params.__dict__)
+
+    trades = await db_all(
+        add_client_filters(
+            select(Trade).filter(
+                Trade.client_id.in_(trade_id) if trade_id else True
+            ).join(
+                Trade.client
+            ),
+            user=user,
+            client_ids=config.ids
+        ),
+        Trade.executions,
+        Trade.pnl_data,
+        Trade.initial,
+        Trade.max_pnl,
+        Trade.min_pnl
+    )
+
+    response = [
+        jsonable_encoder(TradeAnalytics.from_orm(trade))
+        for trade in trades
+    ]
+
+    return CustomJSONResponse(
+        content=jsonable_encoder(response)
+    )
 
 
 import requests_oauthlib

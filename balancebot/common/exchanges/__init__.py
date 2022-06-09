@@ -5,7 +5,7 @@ from balancebot.common.exchanges.bybit.bybit import BybitDerivativesClient
 from balancebot.common.exchanges.bybit.ticker import BybitTicker
 from balancebot.common.exchanges.ftx.http import FtxClient
 from balancebot.common.exchanges.ftx.ticker import FtxTicker
-from balancebot.common.exchanges.kucoin.kucoin import KuCoinClient
+from balancebot.common.exchanges.kucoin.kucoin import KuCoinFuturesClient
 from balancebot.common.exchanges.okx.okx import OkxClient
 
 
@@ -14,7 +14,7 @@ EXCHANGES = {
     'binance-spot': BinanceSpot,
     'bitmex': BitmexClient,
     'ftx': FtxClient,
-    'kucoin': KuCoinClient,
+    'kucoin': KuCoinFuturesClient,
     'bybit-derivatives': BybitDerivativesClient,
     'okx': OkxClient,
 }
