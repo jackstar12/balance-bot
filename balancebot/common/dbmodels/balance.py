@@ -39,7 +39,7 @@ class Balance(Base, Serializer):
 
     @hybrid_property
     def total_transfers_corrected(self):
-        return self.total + self.total_transfered
+        return self.total - self.total_transfered
 
     # Backwards compatability
     @hybrid_property

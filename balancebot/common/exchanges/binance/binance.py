@@ -105,7 +105,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
                         continue
                     date = self._parse_ms(row['timestamp'])
                     results.append(
-                        RawTransfer(amount, date, row["asset"])
+                        RawTransfer(amount, date, row["asset"], fee=None)
                     )
         return results
 
@@ -124,8 +124,7 @@ _interval_map = {
     **tf_helper('m', utils.MINUTE, [1, 3, 5, 15, 30]),
     **tf_helper('h', utils.HOUR, [1, 2, 4, 6, 8, 12]),
     **tf_helper('d', utils.DAY, [1, 3]),
-    **tf_helper('w', utils.WEEK, [1]),
-    None: '1m'
+    **tf_helper('w', utils.WEEK, [1])
 }
 
 
@@ -162,14 +161,23 @@ class BinanceFutures(_BinanceBaseClient):
                         resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
         # https://binance-docs.github.io/apidocs/futures/en/#mark-price-kline-candlestick-data
+
+        limit = limit or 499
+        resolution_s = resolution_s or 60
+
+        limit, resolution_s = self._calc_resolution(limit,
+                                                    resolutions_s=list(_interval_map.keys()),
+                                                    since=since,
+                                                    to=to)
+
         params = {
             'symbol': market,
             'interval': _interval_map.get(resolution_s),
             'startTime': self._parse_datetime(since),
             'endTime': self._parse_datetime(to),
+            'limit': limit
         }
-        if limit:
-            params['limit'] = limit
+
         data = await self._get(
             '/fapi/v1/markPriceKlines',
             params={
@@ -190,6 +198,47 @@ class BinanceFutures(_BinanceBaseClient):
             )
             for data in data
         ]
+
+    async def _fetch_trades(self, symbol: str, fromId: int):
+        trades = await self._get('/fapi/v1/userTrades', params={
+            'symbol': symbol,
+            'fromId': fromId
+        })
+        """
+        [
+          {
+            "buyer": false,
+            "commission": "-0.07819010",
+            "commissionAsset": "USDT",
+            "id": 698759,
+            "maker": false,
+            "orderId": 25851813,
+            "price": "7819.01",
+            "qty": "0.002",
+            "quoteQty": "15.63802",
+            "realizedPnl": "-0.91539999",
+            "side": "SELL",
+            "positionSide": "SHORT",
+            "symbol": "BTCUSDT",
+            "time": 1569514978020
+          }
+        ]
+        """
+        # -1790.6910700000062
+        # -1695.67399983
+        all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
+        return (
+            Execution(
+                symbol=symbol,
+                qty=Decimal(trade['qty']),
+                price=Decimal(trade['price']),
+                side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
+                time=self._parse_ms(trade['time']),
+                commission=Decimal(trade['commission']),
+                type=ExecType.TRADE
+            )
+            for trade in trades
+        )
 
     async def _get_executions(self, since: datetime, init=False) -> Iterator[Execution]:
 
@@ -216,50 +265,24 @@ class BinanceFutures(_BinanceBaseClient):
                     if (current_commision_trade_id.get(symbol)) or since:
                         # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
                         symbols_done.add(symbol)
-                        trades = await self._get('/fapi/v1/userTrades', params={
-                            'symbol': symbol,
-                            'fromId': trade_id if since is not None else current_commision_trade_id[symbol]
-                        })
-                        """
-                        [
-                          {
-                            "buyer": false,
-                            "commission": "-0.07819010",
-                            "commissionAsset": "USDT",
-                            "id": 698759,
-                            "maker": false,
-                            "orderId": 25851813,
-                            "price": "7819.01",
-                            "qty": "0.002",
-                            "quoteQty": "15.63802",
-                            "realizedPnl": "-0.91539999",
-                            "side": "SELL",
-                            "positionSide": "SHORT",
-                            "symbol": "BTCUSDT",
-                            "time": 1569514978020
-                          }
-                        ]
-                        """
-                        # -1790.6910700000062
-                        # -1695.67399983
-                        all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
                         results.extend(
-                            (
-                                Execution(
-                                    symbol=symbol,
-                                    qty=Decimal(trade['qty']),
-                                    price=Decimal(trade['price']),
-                                    side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
-                                    time=self._parse_ms(trade['time']),
-                                    commission=Decimal(trade['commission']),
-                                    type=ExecType.TRADE
-                                )
-                                for trade in trades
+                            await self._fetch_trades(
+                                symbol,
+                                trade_id if since is not None else current_commision_trade_id[symbol]
                             )
                         )
                     current_commision_trade_id[symbol] = trade_id
                 elif income_type == "REALIZED_PNL" and current_commision_trade_id.get(symbol) == trade_id:
                     current_commision_trade_id[symbol] = None
+
+        for symbol, trade_id in current_commision_trade_id.items():
+            if symbol not in symbols_done:
+                results.extend(
+                    await self._fetch_trades(
+                        symbol,
+                        trade_id
+                    )
+                )
 
         return results
 
@@ -306,6 +329,7 @@ class BinanceFutures(_BinanceBaseClient):
     def set_weights(cls, weight: int, response: ClientResponse):
         limit = cls._limits[0]
         used = response.headers.get('X-MBX-USED-WEIGHT-1M')
+        logger.info(f'Weight used: {used}')
         if used:
             limit.amount = limit.max_amount - int(used)
         else:

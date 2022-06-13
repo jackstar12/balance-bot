@@ -42,6 +42,8 @@ class TradeAnalytics(Trade):
     greed_ratio: Optional[Decimal]
     risk_to_reward: Optional[Decimal]
     realized_r: Optional[Decimal]
+    account_size_init: Optional[Decimal]
+    account_gain: Optional[Decimal]
     memo: Optional[str]
 
     class Config:

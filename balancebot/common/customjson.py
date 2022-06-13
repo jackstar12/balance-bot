@@ -16,11 +16,11 @@ def default(obj: Any):
 
 
 def dumps(obj: Any):
-    return orjson.dumps(obj, default=default)
+    return orjson.dumps(obj, default=default, option=orjson.OPT_OMIT_MICROSECONDS)
 
 
 def dumps_no_bytes(obj: Any):
-    return orjson.dumps(obj, default=default).decode('utf-8')
+    return orjson.dumps(obj, default=default, option=orjson.OPT_OMIT_MICROSECONDS).decode('utf-8')
 
 
 def loads(obj: Any):

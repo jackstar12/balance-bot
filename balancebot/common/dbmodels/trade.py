@@ -16,6 +16,7 @@ from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.enums import Side, ExecType
 from balancebot.common.messenger import NameSpace, Category, Messenger
 from balancebot.common.models.pnldata import PnlData as CompactPnlData
+from balancebot.common import utils
 
 trade_association = Table('trade_association', Base.metadata,
                           Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
@@ -44,6 +45,14 @@ class Trade(Base, Serializer):
     realized_pnl = Column(Numeric, nullable=True, default=Decimal(0))
     total_commissions = Column(Numeric, nullable=True, default=Decimal(0))
 
+    init_balance_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    init_balance = relationship(
+        'Balance',
+        lazy='noload',
+        foreign_keys=init_balance_id,
+        uselist=False
+    )
+
     max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
     max_pnl: PnlData = relationship(
         'PnlData',
@@ -65,7 +74,7 @@ class Trade(Base, Serializer):
 
     executions = relationship('Execution',
                               foreign_keys='[Execution.trade_id]',
-                              backref='trade',
+                              back_populates='trade',
                               lazy='noload',
                               cascade='all, delete',
                               order_by="Execution.time")
@@ -83,21 +92,44 @@ class Trade(Base, Serializer):
         foreign_keys=initial_execution_id,
         post_update=True,
         primaryjoin='Execution.id == Trade.initial_execution_id'
+
     )
 
     memo = Column(String, nullable=True)
 
     @orm.reconstructor
     def init_on_load(self):
-        self.current_pnl: PnlData = None
+        self.live_pnl: PnlData = None
+        self.latest_pnl: PnlData = utils.list_last(self.pnl_data, None)
 
     def __init__(self, upnl: Decimal = None, *args, **kwargs):
-        self.current_pnl: PnlData = PnlData(
+        self.live_pnl: PnlData = PnlData(
             unrealized=upnl,
             realized=self.realized_pnl,
             time=datetime.now(pytz.utc)
         )
+        self.latest_pnl: PnlData = utils.list_last(self.pnl_data, None)
         super().__init__(*args, **kwargs)
+
+    @hybrid_property
+    def label_ids(self):
+        return [str(label.id) for label in self.labels]
+
+    @hybrid_property
+    def side(self):
+        return (self.initial or self.executions[0]).side
+
+    @hybrid_property
+    def size(self):
+        return self.entry * self.qty
+
+    @hybrid_property
+    def account_gain(self):
+        return self.realized_pnl / self.init_balance.unrealized
+
+    @hybrid_property
+    def account_size_init(self):
+        return self.size / self.init_balance.unrealized
 
     @hybrid_property
     def net_pnl(self):
@@ -118,6 +150,10 @@ class Trade(Base, Serializer):
         return True
 
     @hybrid_property
+    def close_time(self):
+        return utils.list_last(self.executions).time
+
+    @hybrid_property
     def is_open(self):
         return self.open_qty > Decimal(0)
 
@@ -133,11 +169,14 @@ class Trade(Base, Serializer):
 
     @hybrid_property
     def fomo_ratio(self):
-        return self.max_pnl.total / self.min_pnl.total
+        if self.max_pnl.total != self.min_pnl.total:
+            return 1 - (self.max_pnl.total / (self.max_pnl.total - self.min_pnl.total))
 
     @hybrid_property
     def greed_ratio(self):
-        return self.realized_pnl / self.max_pnl.total
+        if self.max_pnl.total:
+            return 1 - self.realized_pnl / self.max_pnl.total
+        return 0
         if self.realized_pnl:
             return self.max_pnl.total / self.realized_pnl
 
@@ -158,14 +197,17 @@ class Trade(Base, Serializer):
         if not now:
             now = datetime.now(pytz.utc)
         upnl = self.calc_upnl(price)
-        self.current_pnl = PnlData(
+        self.live_pnl = PnlData(
             trade_id=self.id,
             unrealized=upnl,
             realized=self.realized_pnl,
             time=now,
         )
-        self.max_pnl = self._compare_pnl(self.max_pnl, self.current_pnl, Decimal.__ge__)
-        self.min_pnl = self._compare_pnl(self.min_pnl, self.current_pnl, Decimal.__le__)
+        self.max_pnl = self._compare_pnl(self.max_pnl, self.live_pnl, Decimal.__ge__)
+        self.min_pnl = self._compare_pnl(self.min_pnl, self.live_pnl, Decimal.__le__)
+        self.latest_pnl = self._compare_pnl(self.latest_pnl,
+                                            self.live_pnl,
+                                            lambda latest, live: not latest or abs((latest - live) / latest) > Decimal(.25))
         if realtime and messenger:
             messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
                                         obj={'id': self.id, 'upnl': upnl})
@@ -213,8 +255,9 @@ class Trade(Base, Serializer):
             return new
         return old
 
+
 def trade_from_execution(execution: Execution):
-    return Trade(
+    trade = Trade(
         entry=execution.price,
         qty=execution.qty,
         open_time=execution.time,
@@ -225,3 +268,5 @@ def trade_from_execution(execution: Execution):
         symbol=execution.symbol,
         executions=[execution]
     )
+    execution.trade = trade
+    return trade

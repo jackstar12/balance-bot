@@ -109,9 +109,9 @@ class BalanceService(BaseService):
         self._messenger.sub_channel(NameSpace.TRADE, sub=Category.FINISHED, callback=self._on_trade_delete,
                                     pattern=True)
 
-        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add)
-        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete)
-        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.UPDATE, callback=self._on_client_update)
+        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add, pattern=True)
+        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete, pattern=True)
+        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.UPDATE, callback=self._on_client_update, pattern=True)
 
         clients = await db_all(self._all_client_stmt, session=self._db)
 
@@ -126,6 +126,11 @@ class BalanceService(BaseService):
 
         for client in clients:
             await self.add_client(client)
+
+            # await asyncio.gather(
+            #     *[await self.add_client(client) for client in clients],
+            #     return_exceptions=False
+            # )
 
     def _remove_worker_by_id(self, client_id: int):
         self._remove_worker(self._get_existing_worker(client_id))

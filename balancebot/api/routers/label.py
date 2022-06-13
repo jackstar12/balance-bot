@@ -3,9 +3,11 @@ from http import HTTPStatus
 from fastapi import APIRouter, Depends, Body
 from fastapi.exceptions import HTTPException
 from sqlalchemy import or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.utils.client import get_user_client
 from balancebot.common.database_async import async_session, db_first, db_eager, db_all, db_select, db
-from balancebot.api.dependencies import CurrentUser
+from balancebot.api.dependencies import CurrentUser, get_db
 from balancebot.common.database import session
 
 from balancebot.common.dbmodels.client import Client, add_client_filters
@@ -70,8 +72,8 @@ async def update_label(body: PatchLabel, user: User = Depends(CurrentUser)):
         return result
 
 
-async def add_trade_filters(stmt, user: User, client_id: int, trade_id: int, label_id: int = None):
-    client = await db_first(add_client_filters(select(Client), user, client_id))
+async def add_trade_filters(stmt, user: User, client_id: int, trade_id: int, label_id: int = None, db_session=None):
+    client = await get_user_client(user, client_id, db=db_session)
     if client:
         return stmt.filter(
             Trade.id == trade_id,
@@ -85,12 +87,13 @@ async def add_trade_filters(stmt, user: User, client_id: int, trade_id: int, lab
 
 
 @router.post('/trade')
-async def add_label(body: AddLabel, user: User = Depends(CurrentUser)):
+async def add_label(body: AddLabel, user: User = Depends(CurrentUser), db_session: AsyncSession = Depends(get_db)):
     trade = await db_first(
         db_eager(
             await add_trade_filters(select(Trade), user, body.trade_id, body.label_id),
             Trade.labels
-        )
+        ),
+        session=db_session
     )
     if trade:
         label = await db_first(select(Label).filter(

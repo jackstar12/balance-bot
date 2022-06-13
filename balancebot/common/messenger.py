@@ -83,9 +83,8 @@ class Messenger(Singleton):
         if pattern:
             channel += '*'
         kwargs = {channel: self._wrap(callback)}
-        if TESTING:
-            logging.info(f'Sub: {kwargs}')
-        asyncio.create_task(self.sub(pattern=pattern, rcv_event=False, **kwargs))
+        logging.info(f'Sub: {kwargs}')
+        asyncio.create_task(self.sub(pattern=pattern, **kwargs))
 
     def unsub_channel(self, category: NameSpace, sub: Category, channel_id: int = None, pattern=False):
         channel = utils.join_args(category.value, sub.value, channel_id)
@@ -98,8 +97,7 @@ class Messenger(Singleton):
 
     def pub_channel(self, category: NameSpace, sub: Category, obj: object, channel_id: int = None):
         ch = utils.join_args(category.value, sub.value, channel_id)
-        if TESTING:
-            logging.info(f'Pub: {ch=} {obj=}')
+        logging.info(f'Pub: {ch=} {obj=}')
         asyncio.create_task(self._redis.publish(ch, customjson.dumps(obj)))
 
 

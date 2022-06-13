@@ -119,8 +119,8 @@ class Client(Base, Serializer):
         realized = getattr(self.currently_realized, 'realized', Decimal(0))
         unrealized = Decimal(0)
         for trade in self.open_trades:
-            if trade.current_pnl:
-                unrealized += trade.current_pnl.amount
+            if trade.live_pnl:
+                unrealized += trade.live_pnl.amount
             #else:
             #    price = await redis.get(
             #        utils.join_args(NameSpace.TICKER, self.exchange, trade.symbol)

@@ -108,17 +108,16 @@ async def register_client(request: Request, body: RegisterBody,
 @router.get('/client')
 async def get_client(request: Request, response: Response,
                      client_params: ClientQueryParams = Depends(),
-                     user: User = Depends(CurrentUser)):
+                     user: User = Depends(CurrentUser),
+                     db_session: AsyncSession = Depends(get_db)):
     if client_params.id:
-        client: Optional[Client] = await db_first(
-            add_client_filters(select(Client), user, client_params.id)
+        client = await get_user_client(
+            user, client_params.id[0], (Client.trades, "*"), db=db_session
         )
     else:
-        client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")], user_id=user.id)
-        if not client:
-            client: Optional[Client] = await db_select(Client, eager=[(Client.trades, "*")],
-                                                       discord_user_id=user.discord_user_id)
-
+        client = await get_user_client(
+            user, None, (Client.trades, "*"), db=db_session
+        )
     if client:
         s = await create_client_data_serialized(client,
                                                 ClientConfig.construct(**client_params.__dict__))
@@ -131,62 +130,10 @@ async def get_client(request: Request, response: Response,
         return BadRequest('Invalid client id', 40000)
 
 
-async def get_client_analytics(id: Optional[int] = None, since: Optional[datetime] = None,
-                               to: Optional[datetime] = None,
-                               user: User = Depends(CurrentUser)):
-    client = await get_user_client(user, id)
-    if client:
-
-        resp = {}
-
-        trades = []
-        winners, losers = 0, 0
-        avg_win, avg_loss = 0.0, 0.0
-        for trade in client.trades:
-            if since <= trade.initial.time <= to:
-                trade = await trade.serialize(data=True)
-                if trade['status'] == 'win':
-                    winners += 1
-                    avg_win += trade['realized_pnl']
-                elif trade['status'] == 'loss':
-                    losers += 1
-                    avg_loss += trade['realized_pnl']
-                trades.append(trade)
-
-        label_performance = {}
-        for label in user.labels:
-            for trade in label.trades:
-                if not trade.open_qty:
-                    label_performance[label.id] += trade.realized_pnl
-
-        daily = await utils.calc_daily(client)
-
-        weekday_performance = [0] * 7
-        for day in daily:
-            weekday_performance[day.day.weekday()] += day.diff_absolute
-
-        weekday_performance = []
-        intraday_performance = []
-        for trade in client.trades:
-            weekday_performance[trade.initial.time.weekday()] += trade.realized_pnl
-
-        return ClientAnalytics(
-            id=client.id,
-            filtered_performance=FilteredPerformance(
-
-            )
-        )
-
-        return {
-            'label_performance': label_performance,
-            'weekday_performance': weekday_performance
-        }
-
-
 @router.delete('/client')
 async def delete_client(body: DeleteBody, user: User = Depends(CurrentUser)):
     await db(
-        add_client_filters(delete(Client), user, body.id)
+        add_client_filters(delete(Client), user, [body.id])
     )
     await async_session.commit()
     return OK(detail='Success')
@@ -195,7 +142,7 @@ async def delete_client(body: DeleteBody, user: User = Depends(CurrentUser)):
 @router.patch('/client')
 async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(User.discord_user))):
     client: Client = await db_first(
-        add_client_filters(select(Client), user, body.id)
+        add_client_filters(select(Client), user, [body.id])
     )
 
     if body.archived is not None:
@@ -290,9 +237,9 @@ async def confirm_client(body: ConfirmBody,
     try:
         client = Client(**client_json)
         client.user = user
-        add_client(client, messenger)
         db_session.add(client)
         await db_session.commit()
+        add_client(client, messenger)
         return OK('Success')
     except TypeError:
         return BadRequest(detail='Invalid token')
@@ -448,13 +395,17 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),
 @router.get('/client/trades', response_model=ClientAnalytics)
 async def get_analytics(client_params: ClientQueryParams = Depends(),
                         trade_id: list[int] = Query(None, alias='trade-id'),
-                        user: User = Depends(CurrentUser)):
+                        user: User = Depends(CurrentUser),
+                        db_session: AsyncSession = Depends(get_db)):
     config = ClientConfig.construct(**client_params.__dict__)
 
     trades = await db_all(
         add_client_filters(
             select(Trade).filter(
-                Trade.client_id.in_(trade_id) if trade_id else True
+                Trade.client_id.in_(client_params.id) if client_params.id else True,
+                Trade.id.in_(trade_id) if trade_id else True,
+                Trade.open_time >= config.since if config.since else True,
+                Trade.open_time <= config.to if config.to else True
             ).join(
                 Trade.client
             ),
@@ -465,7 +416,10 @@ async def get_analytics(client_params: ClientQueryParams = Depends(),
         Trade.pnl_data,
         Trade.initial,
         Trade.max_pnl,
-        Trade.min_pnl
+        Trade.min_pnl,
+        Trade.labels,
+        Trade.init_balance,
+        session=db_session
     )
 
     response = [

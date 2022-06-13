@@ -238,7 +238,7 @@ class ExchangeWorker:
         return []
 
     async def get_executions(self,
-                             since: datetime = None) -> Tuple[Dict[str, List[Execution]], List[Execution]]:
+                             since: datetime = None) -> List[Transfer] | Dict[str, List[Execution]] | List[Execution]:
         grouped = {}
         since = since or self.client.last_execution_sync
         now = datetime.now(pytz.utc)
@@ -264,7 +264,7 @@ class ExchangeWorker:
                 grouped[execution.symbol] = []
             grouped[execution.symbol].append(execution)
         self.client.last_execution_sync = now
-        return grouped, execs
+        return transfers, grouped, execs
 
     async def intelligent_get_balance(self,
                                       keep_errors=False,
@@ -403,7 +403,7 @@ class ExchangeWorker:
             session=self._db
         )
 
-        executions_by_symbol, all_executions = await self.get_executions(since)
+        transfers, executions_by_symbol, all_executions = await self.get_executions(since)
 
         valid_until = since
         execution_qty = check_qty = Decimal(0)
@@ -517,6 +517,19 @@ class ExchangeWorker:
                 prev = now
                 now = _next
 
+        all_balances = []
+        trans = list(zip(
+            reversed(transfers),
+            reversed(
+                list(itertools.accumulate((t.amount for t in transfers)))
+            )
+        ))
+
+        transfer_iter = iter(trans)
+
+        current_transfer, current_transferred = next(transfer_iter, (None, None))
+        current_balance.total_transfered += current_transfer.amount
+
         for prev_exec, execution, next_exec in prev_now_next(reversed(all_executions)):
             new_balance = db_balance.Balance(
                 realized=current_balance.realized,
@@ -525,7 +538,6 @@ class ExchangeWorker:
                 time=execution.time,
                 client=self.client
             )
-
             pnl_by_trade = {}
             if next_exec:
                 while cur_pnl and cur_pnl.time > next_exec.time:
@@ -541,13 +553,25 @@ class ExchangeWorker:
                     new_balance.unrealized = new_balance.realized + sum(
                         pnl_data.unrealized
                         if
-                        tr_id != execution.trade_id or not execution.realized_pnl
+                        tr_id != execution.trade_id
                         else
-                        pnl_data.unrealized - execution.realized_pnl
+                        pnl_data.unrealized - (execution.realized_pnl or 0)
                         for tr_id, pnl_data in pnl_by_trade.items()
                     )
-                elif prev_exec.type == ExecType.TRANSFER:
-                    new_balance.total_transfered -= prev_exec.gross_effective_qty * prev_exec.price - prev_exec.commission
+
+            if current_transfer and execution.time <= current_transfer.time:
+                new_balance.realized -= current_transfer.amount
+                current_transfer, current_transferred = next(transfer_iter, (None, None))
+
+            new_balance.total_transfered = current_transferred
+
+            if execution.trade:
+                if execution.id == execution.trade.initial_execution_id:
+                    execution.trade.init_balance = new_balance
+            else:
+                pass
+
+            all_balances.append(new_balance)
             self._db.add(new_balance)
             await self._db.commit()
             current_balance = new_balance
@@ -629,6 +653,8 @@ class ExchangeWorker:
             return balance
 
     async def _on_execution(self, execution: Execution, realtime=True) -> Trade:
+
+        execution.time = execution.time.replace(microsecond=0)
 
         if realtime and not self._waiter.done():
             self._waiter.cancel()
@@ -713,6 +739,8 @@ class ExchangeWorker:
             )
         else:
             active_trade = trade_from_execution(execution)
+            if realtime:
+                active_trade.init_balance = self.client.currently_realized
             active_trade.client_id = self.client_id
             self._db.add(active_trade)
             asyncio.create_task(
@@ -904,7 +932,7 @@ class ExchangeWorker:
 
     @classmethod
     def _usd_like(cls, coin: str):
-        return coin in ('USD', 'USDT', 'USDC', 'BUSD')
+        return coin in ('USD', 'USDT', 'USDC', 'BUSD', 'USTC', 'UST')
 
     @classmethod
     def _query_string(cls, params: Dict):

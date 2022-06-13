@@ -9,8 +9,8 @@ from balancebot.common.enums import Side
 
 
 class Trade(BaseModel):
-    id: int
-
+    id: str
+    client_id: str
     symbol: str
     entry: Decimal
     exit: Optional[Decimal]
@@ -20,7 +20,9 @@ class Trade(BaseModel):
     open_qty: Decimal
     realized_pnl: Decimal
 
-    labels: List[int]
+    label_ids: List[str]
+    open_time: datetime
+    close_time: datetime
     #initial: Execution
     initial_execution_id: int
 
