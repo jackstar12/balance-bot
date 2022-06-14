@@ -744,5 +744,6 @@ def truthy_dict(**kwargs):
     return dict((k, v) for k, v in kwargs.items() if v)
 
 
-def mask_dict(d, *keys):
-    return dict((k, v) for k, v in d.items() if k in keys)
+def mask_dict(d, *keys, value_func=None):
+    value_func = value_func or lambda x: x
+    return dict((k, value_func(v)) for k, v in d.items() if k in keys)

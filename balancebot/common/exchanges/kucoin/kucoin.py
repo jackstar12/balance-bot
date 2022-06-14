@@ -7,7 +7,7 @@ from datetime import datetime
 
 import time
 from decimal import Decimal
-from typing import List
+from typing import List, Literal
 
 from balancebot.common import utils
 from balancebot.common.dbmodels.execution import Execution
@@ -15,8 +15,8 @@ from balancebot.common.dbmodels.transfer import RawTransfer
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.models.ohlc import OHLC
-from common.config import TESTING
-from common.models.ticker import Ticker
+from balancebot.common.config import TESTING
+from balancebot.common.models.ticker import Ticker
 
 
 class _KuCoinClient(ExchangeWorker, ABC):
@@ -58,6 +58,11 @@ class KuCoinFuturesClient(_KuCoinClient):
     _response_error = None
     _response_result = 'data'
 
+    async def _get_url(self):
+        resp = await self._post('/api/v1/bullet-private')
+
+
+
     # https://docs.kucoin.com/futures/#get-real-time-ticker
     async def _get_ticker(self,
                           symbol: str):
@@ -72,21 +77,30 @@ class KuCoinFuturesClient(_KuCoinClient):
         )
 
     async def _fetch_transaction_history(self,
-                                         since: datetime,
-                                         to: datetime):
+                                         since: datetime = None,
+                                         to: datetime = None,
+                                         transaction_type: Literal[
+                                             'RealizedPNL',
+                                             'Deposit',
+                                             'Withdraw',
+                                             'Transferin',
+                                             'Transferout'
+                                         ] = None):
         params = {}
         if since:
             params['startAt'] = self._date_as_ms(since)
         if to:
             params['endAt'] = self._date_as_ms(to)
+        if transaction_type:
+            params['type'] = transaction_type
 
+        # https://docs.kucoin.com/futures/#get-transaction-history
         return await self._get('/api/v1/transaction-history',
                                params=params)
 
     async def _get_transfers(self,
                              since: datetime,
                              to: datetime = None) -> List[RawTransfer]:
-        # https://docs.kucoin.com/futures/#get-transaction-history
         transactions = await self._fetch_transaction_history(since, to)
         results = []
         for transfer in transactions["dataList"]:
@@ -163,7 +177,47 @@ class KuCoinFuturesClient(_KuCoinClient):
     async def _get_executions(self,
                               since: datetime,
                               init=False) -> List[Execution]:
-        transactions = await self._fetch_transaction_history(since, None)
+        transactions = await self._fetch_transaction_history(since, transaction_type='RealizedPNL')
+
+        # https://docs.kucoin.com/futures/#get-fills
+        fills = await self._get('/api/v1/fills')
+
+        [
+            Execution(
+                **utils.mask_dict(fills, "symbol", "price", Decimal)
+            )
+            for fill in fills
+        ]
+
+        for pnl in transactions["dataList"]:
+            # {
+            #     "time": 1557997200000,
+            #     "type": "RealisedPNL",
+            #     "amount": -0.000017105,
+            #     "fee": 0,
+            #     "accountEquity": 8060.7899305281,
+            #     "status": "Completed", // Status.Status.Funding period that has been settled.
+            #     "remark": "XBTUSDM",
+            #     "offset": 1,
+            #     "currency": "XBT"
+            # }
+            date = datetime.fromtimestamp(pnl["time"], pytz.utc)
+            amount = await self._convert_to_usd(Decimal(pnl["amount"]),
+                                                pnl["currency"],
+                                                date)
+
+            if pnl["type"] in ("Withdraw", "TransferOut"):
+                amount *= -1
+
+            results.append(
+                RawTransfer(
+                    amount=amount,
+                    time=datetime.fromtimestamp(pnl["time"], pytz.utc),
+                    coin=pnl["currency"],
+                    fee=pnl["fee"]
+                )
+            )
+
         pass
         # TODO: find more than 1 week?
 
