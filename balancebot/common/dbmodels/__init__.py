@@ -23,19 +23,19 @@ import balancebot.common.dbmodels.user
 import balancebot.common.dbmodels.chapter
 
 Client = client.Client
-Balance = balance.Balance
+BalanceDB = balance.Balance
 Chapter = chapter.Chapter
 Execution = execution.Execution
-Trade = trade.Trade
+TradeDB = trade.Trade
 
 partioned_balance = select(
-    Balance,
+    BalanceDB,
     func.row_number().over(
-        order_by=desc(Balance.time), partition_by=Balance.client_id
+        order_by=desc(BalanceDB.time), partition_by=BalanceDB.client_id
     ).label('index')
 ).alias()
 
-partioned_history = aliased(Balance, partioned_balance)
+partioned_history = aliased(BalanceDB, partioned_balance)
 
 client.Client.recent_history = relationship(
     partioned_history,
@@ -60,12 +60,12 @@ chapter.Chapter.trades = relationship('Trade',
                                       lazy='noload',
                                       primaryjoin=and_(
                                           and_(
-                                              Trade.open_time.cast(Date) >= Chapter.start_date,
-                                              Trade.open_time.cast(Date) <= Chapter.end_date
+                                              TradeDB.open_time.cast(Date) >= Chapter.start_date,
+                                              TradeDB.open_time.cast(Date) <= Chapter.end_date
                                           ),
                                           or_(
-                                              Trade.client_id.in_(sub),
-                                              Trade.id == chapter_trade_assoc.c.trade_id
+                                              TradeDB.client_id.in_(sub),
+                                              TradeDB.id == chapter_trade_assoc.c.trade_id
                                           )
                                       ),
                                       secondary=join(Chapter, chapter_trade_assoc, chapter_trade_assoc.c.chapter_id == Chapter.id),
@@ -81,5 +81,5 @@ __all__ = [
     "user",
     "Client",
     "Execution",
-    "Trade"
+    "TradeDB"
 ]

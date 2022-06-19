@@ -13,7 +13,7 @@ from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.execution import Execution
-from balancebot.common.enums import Side, ExecType
+from balancebot.common.enums import Side, ExecType, Status
 from balancebot.common.messenger import NameSpace, Category, Messenger
 from balancebot.common.models.pnldata import PnlData as CompactPnlData
 from balancebot.common import utils
@@ -39,7 +39,7 @@ class Trade(Base, Serializer):
     qty = Column(Numeric, nullable=False)
     open_qty = Column(Numeric, nullable=False)
     transferred_qty = Column(Numeric, nullable=True)
-    open_time = Column(DateTime(timezone=True), nullable=False)
+    open_time: datetime = Column(DateTime(timezone=True), nullable=False)
 
     exit = Column(Numeric, nullable=True)
     realized_pnl = Column(Numeric, nullable=True, default=Decimal(0))
@@ -179,6 +179,14 @@ class Trade(Base, Serializer):
         return 0
         if self.realized_pnl:
             return self.max_pnl.total / self.realized_pnl
+
+    @hybrid_property
+    def status(self):
+        return (
+            Status.OPEN if self.open_qty != 0
+            else
+            Status.WIN if self.realized_pnl > 0 else Status.LOSS
+        )
 
     async def serialize(self, data=True, full=True, *args, **kwargs):
         s = await super().serialize(*args, data=data, full=full, **kwargs)

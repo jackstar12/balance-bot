@@ -151,7 +151,7 @@ async def set_cached_data(data: Dict, config: ClientConfig):
 async def create_client_data_serialized(client: Client, config: ClientConfig):
 
     cached = await get_cached_data(config)
-
+    cached = None
     if cached:
         s = cached
         s['source'] = 'cache'
@@ -178,7 +178,7 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
 
         await update_client_data_balance(s, client, config, save_cache=False)
 
-        trades = [await trade.serialize(data=True) for trade in client.trades if since_date <= trade.initial.time <= to_date]
+        trades = [await trade.serialize(data=True) for trade in client.trades if since_date <= trade.open_time <= to_date]
         update_client_data_trades(s, trades, config, save_cache=False)
 
         s['ts'] = now.timestamp()
@@ -191,5 +191,5 @@ async def get_user_client(user: User, id: int = None, *eager, db: AsyncSession =
     return utils.list_last(await get_user_clients(user, [id] if id else None, *eager, db=db), None)
 
 
-async def get_user_clients(user: User, ids: List[int] = None, *eager, db: AsyncSession = None):
+async def get_user_clients(user: User, ids: List[int] = None, *eager, db: AsyncSession = None) -> list[Client]:
     return await db_all(add_client_filters(select(Client), user, ids), *eager, session=db)

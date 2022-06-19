@@ -13,9 +13,9 @@ class Side(Enum):
 
 
 class Status(Enum):
-    OPEN = 1
-    WIN = 2
-    LOSS = 3
+    OPEN = 0
+    WIN = 1
+    LOSS = -1
 
 
 class TimeFrame(Enum):

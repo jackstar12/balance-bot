@@ -37,7 +37,7 @@ class KrakenRestClient(ExchangeWorker):
 
     async def _get_balance(self, time: datetime, upnl=True):
         response = await self._get('/0/private/TradeBalance')
-        return balance.Balance(
+        return balance.BalanceDB(
             amount=response["e"] if upnl else response["tb"],
             time=time
         )

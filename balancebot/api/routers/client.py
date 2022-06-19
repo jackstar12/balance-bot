@@ -1,5 +1,8 @@
+import asyncio
+import functools
+import itertools
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from http import HTTPStatus
 from typing import Optional, Dict, List, Tuple
 import aiohttp
@@ -8,7 +11,7 @@ import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
-from sqlalchemy import or_, delete, select, update
+from sqlalchemy import or_, delete, select, update, asc, func, desc, Date, false
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
@@ -16,10 +19,11 @@ from starlette.websockets import WebSocketDisconnect
 from api.utils.analytics import create_cilent_analytics
 from balancebot.api.authenticator import Authenticator
 from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance, TradeAnalytics
-from balancebot.common.database_async import db, db_first, async_session, db_all, db_select
+from balancebot.common.database_async import db, db_first, async_session, db_all, db_select, redis
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.guild import Guild
-from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams
+from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams, \
+    ClientOverview, Balance
 from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
 from balancebot.api.utils.responses import BadRequest, OK, CustomJSONResponse
 from balancebot.common import utils
@@ -36,8 +40,10 @@ import balancebot.common.dbmodels.event as db_event
 
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.exchanges import EXCHANGES
-from balancebot.common.utils import validate_kwargs
-from balancebot.common.dbmodels import Trade
+from balancebot.common.utils import validate_kwargs, create_interval
+from balancebot.common.dbmodels import TradeDB, BalanceDB
+from balancebot.api.models.trade import Trade
+from common.models.daily import Daily
 
 router = APIRouter(
     tags=["client"],
@@ -111,21 +117,78 @@ async def get_client(request: Request, response: Response,
                      user: User = Depends(CurrentUser),
                      db_session: AsyncSession = Depends(get_db)):
     if client_params.id:
-        client = await get_user_client(
-            user, client_params.id[0], (Client.trades, "*"), db=db_session
+        clients = await client_utils.get_user_clients(
+            user, client_params.id, (Client.trades, "*"), db=db_session
         )
     else:
-        client = await get_user_client(
-            user, None, (Client.trades, "*"), db=db_session
+        clients = await client_utils.get_user_clients(
+            user,
+            None,
+            (Client.trades, [
+                TradeDB.executions,
+                TradeDB.max_pnl,
+                TradeDB.min_pnl,
+                TradeDB.labels
+            ]),
+            Client.transfers,
+            db=db_session
         )
-    if client:
-        s = await create_client_data_serialized(client,
-                                                ClientConfig.construct(**client_params.__dict__))
-        encoded = jsonable_encoder(s)
-        response = CustomJSONResponse(encoded)
-        # response.set_cookie('client-since', value=since, expires='session')
-        # response.set_cookie('client-to', value=to, expires='session')
-        return response
+    if clients:
+        config = ClientConfig.construct(**client_params.__dict__)
+        # s = await create_client_data_serialized(client,
+        #                                         ClientConfig.construct(**client_params.__dict__))
+        # encoded = jsonable_encoder(s)
+        # response = CustomJSONResponse(encoded)
+        # return response
+
+        subq = select(
+            func.row_number().over(
+                order_by=desc(BalanceDB.time),
+                partition_by=BalanceDB.time.cast(Date)
+            ).label('row_number'),
+            BalanceDB.id.label('id')
+        ).filter(
+            BalanceDB.client_id == clients[0].id,
+        ).subquery()
+
+        stmt = select(
+            BalanceDB,
+            subq
+        ).filter(
+            subq.c.row_number == 1,
+            BalanceDB.id == subq.c.id
+        )
+        daily = await db_all(stmt)
+
+        overview = ClientOverview.construct(
+            initial_balances=[
+                await client.get_balance_at_time(client_params.since)
+                if client_params.since
+                else await db_first(
+                    client.history.statement.order_by(asc(BalanceDB.time)),
+                    session=db_session
+                )
+                for client in clients
+            ],
+            current_balances=[
+                await client.get_balance_at_time(client_params.to)
+                if client_params.to else
+                # await client.get_latest_balance(redis=redis)
+                await client.latest()
+                for client in clients
+            ],
+            trades_by_id={
+                str(trade.id): Trade.from_orm(trade)
+                for trade in itertools.chain.from_iterable((client.trades for client in clients))
+            },
+            daily={
+                balance.time.date() - timedelta(days=1): Balance.from_orm(balance)
+                for balance in daily
+            }
+        )
+        encoded = jsonable_encoder(overview)
+        asyncio.create_task(client_utils.set_cached_data(encoded, config))
+        return encoded
     else:
         return BadRequest('Invalid client id', 40000)
 
@@ -401,24 +464,24 @@ async def get_analytics(client_params: ClientQueryParams = Depends(),
 
     trades = await db_all(
         add_client_filters(
-            select(Trade).filter(
-                Trade.client_id.in_(client_params.id) if client_params.id else True,
-                Trade.id.in_(trade_id) if trade_id else True,
-                Trade.open_time >= config.since if config.since else True,
-                Trade.open_time <= config.to if config.to else True
+            select(TradeDB).filter(
+                TradeDB.client_id.in_(client_params.id) if client_params.id else True,
+                TradeDB.id.in_(trade_id) if trade_id else True,
+                TradeDB.open_time >= config.since if config.since else True,
+                TradeDB.open_time <= config.to if config.to else True
             ).join(
-                Trade.client
+                TradeDB.client
             ),
             user=user,
             client_ids=config.ids
         ),
-        Trade.executions,
-        Trade.pnl_data,
-        Trade.initial,
-        Trade.max_pnl,
-        Trade.min_pnl,
-        Trade.labels,
-        Trade.init_balance,
+        TradeDB.executions,
+        TradeDB.pnl_data,
+        TradeDB.initial,
+        TradeDB.max_pnl,
+        TradeDB.min_pnl,
+        TradeDB.labels,
+        TradeDB.init_balance,
         session=db_session
     )
 

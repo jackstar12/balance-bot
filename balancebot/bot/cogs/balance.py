@@ -93,7 +93,7 @@ class BalanceCog(CogBase):
         ]
     )
     @utils.log_and_catch_errors()
-    @utils.time_args(names=[('time', None)])
+    @utils.time_args(('time', None))
     @utils.set_author_default(name='user')
     async def gain(self, ctx: SlashContext, user: discord.Member, time: datetime = None, currency: str = None):
         if currency is None:

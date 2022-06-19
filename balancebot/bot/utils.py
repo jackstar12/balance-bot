@@ -1,6 +1,6 @@
 from __future__ import annotations
-
 import asyncio
+import functools
 import re
 import logging
 import traceback
@@ -11,8 +11,11 @@ from functools import wraps
 import discord
 import inspect
 import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+import matplotlib.dates as mdates
+import numpy as np
 import pytz
-
+from scipy import interpolate
 from prettytable import PrettyTable
 
 from discord_slash.utils.manage_components import create_button, create_actionrow, create_select_option
@@ -20,7 +23,7 @@ import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
 from datetime import datetime, timedelta
-from typing import List, Tuple, Callable, Optional, Union, Dict, Any
+from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal
 
 from sqlalchemy import asc, select
 
@@ -38,10 +41,10 @@ from balancebot.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
 from balancebot.common.models.selectionoption import SelectionOption
 import balancebot.common.config as config
 from typing import TYPE_CHECKING
+import matplotlib.colors as mcolors
 
 if TYPE_CHECKING:
     from balancebot.common.dbmodels.client import Client
-
 
 # Some consts to make TF tables prettier
 MINUTE = 60
@@ -89,7 +92,7 @@ def set_author_default(name: str, cog=True):
     return decorator
 
 
-def time_args(names: List[Tuple[str, Optional[str]]], allow_future=False):
+def time_args(*names: Tuple[str, Optional[str]], allow_future=False):
     """
     Handy decorator for using time arguments.
     After applying this decorator you also have to apply log_and_catch_user_input_errors
@@ -201,6 +204,82 @@ def de_emojify(text):
     return _regrex_pattern.sub(r'', text)
 
 
+
+
+def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
+    """
+    Plot a line with a linear alpha gradient filled beneath it.
+
+    Parameters
+    ----------
+    x, y : array-like
+        The data values of the line.
+    fill_color : a matplotlib color specifier (string, tuple) or None
+        The color for the fill. If None, the color of the line will be used.
+    ax : a matplotlib Axes instance
+        The axes to plot on. If None, the current pyplot axes will be used.
+    Additional arguments are passed on to matplotlib's ``plot`` function.
+
+    Returns
+    -------
+    line : a Line2D instance
+        The line plotted.
+    im : an AxesImage instance
+        The transparent gradient clipped to just the area beneath the curve.
+    """
+
+    x = np.array([mdates.date2num(d) for d in x])
+    x.sort()
+    
+    new_x = np.linspace(min(x), max(x), num=500)
+    y = interpolate.pchip_interpolate(x, y, new_x)
+    x = new_x
+
+    if ax is None:
+        ax = plt.gca()
+    line, = ax.plot([mdates.num2date(d, 'UTC') for d in new_x], y, **kwargs)
+    if fill_color is None:
+        fill_color = line.get_color()
+
+
+
+    zorder = line.get_zorder()
+    alpha = line.get_alpha()
+    alpha = 1.0 if alpha is None else alpha
+
+    def add_gradient(xmin, xmax, ymin, ymax, color, inverse):
+        z = np.empty((100, 1, 4), dtype=float)
+        rgb = mcolors.colorConverter.to_rgb(color)
+        z[:, :, :3] = rgb
+        z[:, :, -1] = np.linspace(alpha if inverse else 0, 0 if inverse else alpha, 100)[:, None]
+
+        alpha_root = np.power(alpha, 1/1.5)
+        alpha_values = np.arange(0, alpha_root, alpha_root / 100)
+        z[:, :, -1] = np.array([
+            np.power(x, 1.5) for x in
+            (reversed(alpha_values) if inverse else alpha_values)
+        ])[:, None]
+        im = ax.imshow(z, aspect='auto', extent=[xmin, xmax, ymin, ymax],
+                       origin='lower', zorder=zorder)
+
+        xy = np.column_stack([x, y])
+        xy = np.vstack([[xmin, ymax if inverse else ymin], xy, [xmax, ymax if inverse else ymin], [xmin, ymax if inverse else ymin]])
+        clip_path = Polygon(xy, facecolor='none', edgecolor='none', closed=True)
+        if inverse:
+            ax.add_patch(clip_path)
+            im.set_clip_path(clip_path)
+        else:
+            ax.add_patch(clip_path)
+            im.set_clip_path(clip_path)
+        ax.autoscale(True, tight=False)
+        return im
+
+    im = add_gradient(x.min(), x.max(), 0, y.max(), 'green', inverse=False)
+    im = add_gradient(x.min(), x.max(), y.min(), 0, 'red', inverse=True)
+
+    return line, im
+
+
 async def create_history(to_graph: List[Tuple[Client, str]],
                          event: db_event.Event,
                          start: datetime,
@@ -210,10 +289,13 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                          percentage: bool,
                          path: str,
                          custom_title: str = None,
-                         throw_exceptions=True):
+                         throw_exceptions=True,
+                         mode: Literal['pnl', 'balance'] = 'balance'
+                         ):
     """
     Creates a history image for a given list of clients and stores it in the given path.
 
+    :param mode:
     :param throw_exceptions:
     :param event:
     :param to_graph: List of Clients to graph.
@@ -230,8 +312,8 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     first = True
     title = ''
 
-    #um = UserManager()
-    #await um.fetch_data([graph[0] for graph in to_graph])
+    # um = UserManager()
+    # await um.fetch_data([graph[0] for graph in to_graph])
     for registered_client, name in to_graph:
 
         history = await dbutils.get_client_history(registered_client,
@@ -246,17 +328,18 @@ async def create_history(to_graph: List[Tuple[Client, str]],
             else:
                 continue
 
-        xs, ys = calc_xs_ys(history.data, percentage, relative_to=history.initial)
+        xs, ys = calc_xs_ys(history.data, percentage, relative_to=history.initial, mode=mode)
 
         total_gain = calc_percentage(history.initial.unrealized, ys[len(ys) - 1])
 
         if first:
-            title = f'History for {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
+            title = f'History for {name} (Total: {ys[-1] if percentage else total_gain}%)'
             first = False
         else:
-            title += f' vs. {name} (Total: {ys[len(ys) - 1] if percentage else total_gain}%)'
+            title += f' vs. {name} (Total: {ys[-1] if percentage else total_gain}%)'
 
-        plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
+        #plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
+        gradient_fill(xs, np.array([float(y) for y in ys]), fill_color='green', alpha=0.55)
 
     plt.gcf().autofmt_xdate()
     plt.gcf().set_dpi(100)
@@ -264,11 +347,11 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     plt.title(custom_title or title)
     plt.ylabel(currency_display)
     plt.xlabel('Time')
-    plt.grid()
+    plt.grid(axis='y')
     plt.legend(loc="best")
-
     plt.savefig(path)
     plt.close()
+
 
 
 def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
@@ -386,7 +469,8 @@ async def calc_daily(client: Client,
         values = Daily(
             day=current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
             amount=prev_balance.unrealized,
-            diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
+            diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized,
+                                ndigits=CURRENCY_PRECISION.get(currency, 2)),
             diff_relative=calc_percentage(prev_daily.unrealized, prev_balance.unrealized, string=False)
         )
         if string:
@@ -436,10 +520,10 @@ async def create_leaderboard(dc_client: discord.Client,
         # All global clients
         clients = await db_all(
             select(db_client.Client).
-            filter(
+                filter(
                 db_client.Client.id.in_(
                     select(GuildAssociation.client_id).
-                    filter_by(guild_id=guild.id)
+                        filter_by(guild_id=guild.id)
                 )
             )
         )
@@ -571,14 +655,14 @@ async def calc_gains(clients: List[Client],
 
         search, _ = await dbutils.get_guild_start_end_times(event, search, None)
         balance_then = await client.get_balance_at_time(search, post=True, currency=currency)
-        #balance_then = db_match_balance_currency(
+        # balance_then = db_match_balance_currency(
         #    await db_first(
         #        client.history.statement.filter(
         #            Balance.time > search
         #        ).order_by(asc(Balance.time))
         #    ),
         #    currency
-        #)
+        # )
 
         balance_now = await client.latest()
 
@@ -665,7 +749,6 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
             break
         except ValueError:
             continue
-    date = date.replace(tzinfo=pytz.utc)
 
     if not date:
         minute = 0
@@ -693,6 +776,9 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
                     raise UserInputError(f'Invalid time argument: {arg}')
         date = now - timedelta(hours=hour, minutes=minute, days=day, weeks=week, seconds=second)
 
+    if date:
+        date = date.replace(tzinfo=pytz.utc)
+
     if not date:
         raise UserInputError(f'Invalid time argument: {time_str}')
     elif date > now and not allow_future:
@@ -703,21 +789,30 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
 
 def calc_xs_ys(data: List[Balance],
                percentage=False,
-               relative_to: Balance = None) -> Tuple[List[datetime], List[float]]:
+               relative_to: Balance = None,
+               mode: Literal['balance', 'pnl'] = 'balance') -> Tuple[List[datetime], List[float]]:
     xs = []
     ys = []
 
     if data:
-        relative_to: Balance = relative_to or data[0]
+        if mode == 'balance':
+            relative_to = (relative_to or data[0]).unrealized
+        else:
+            relative_to = (relative_to or data[0]).total_transfers_corrected
         for balance in data:
+            if mode == 'balance':
+                current = balance.unrealized
+            else:
+                current = balance.total_transfers_corrected - relative_to
+
             xs.append(balance.tz_time.replace(microsecond=0))
             if percentage:
-                if relative_to.unrealized > 0:
-                    amount = 100 * (balance.unrealized - relative_to.unrealized) / relative_to.unrealized
+                if relative_to > 0:
+                    amount = 100 * (current - relative_to) / relative_to
                 else:
                     amount = 0.0
             else:
-                amount = balance.unrealized
+                amount = current
             ys.append(round(amount, ndigits=3))
         return xs, ys
 
@@ -746,7 +841,6 @@ async def ask_for_consent(ctx: Union[ComponentContext, SlashContext],
                           no_message: str = None,
                           hidden=False,
                           timeout_seconds: float = 60) -> Future[Tuple[ComponentContext, bool]]:
-
     future = asyncio.get_running_loop().create_future()
 
     component_row = create_yes_no_button_row(
@@ -835,7 +929,6 @@ async def new_create_selection(ctx: SlashContext,
                                msg_embeds: List[discord.Embed] = None,
                                timeout_seconds: float = 60,
                                **kwargs) -> Future[Tuple[ComponentContext, List]]:
-
     future = asyncio.get_running_loop().create_future()
 
     component_row = create_selection(
@@ -927,7 +1020,6 @@ def readable_time(time: datetime) -> str:
 
 
 def db_match_balance_currency(balance: Balance, currency: str):
-
     return balance
 
     result = None

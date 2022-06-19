@@ -68,7 +68,7 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     @utils.admin_only
-    @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
+    @utils.time_args(('start', None), ('end', None), ('registration_start', None), ('registration_end', None),
                      allow_future=True)
     async def register_event(self, ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                              registration_start: datetime, registration_end: datetime):
@@ -235,7 +235,7 @@ class EventsCog(CogBase):
         ]
     )
     @utils.log_and_catch_errors()
-    @utils.time_args(names=[('time', None)])
+    @utils.time_args(('time', None))
     @utils.server_only
     async def leaderboard_gain(self, ctx: SlashContext, time: datetime = None):
         await ctx.defer()

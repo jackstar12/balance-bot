@@ -198,7 +198,7 @@ async def update_chapter(journal_id: int,
         chapter.notes = body.notes
     if body.trades is not None:
         if chapter.journal.type == JournalType.MANUAL:
-            if body.trades != set(chapter.trades):
+            if body.trades != set(chapter.trades_by_id):
                 # TODO: How to handle manually added trades?
                 pass
         else:

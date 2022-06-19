@@ -3,14 +3,19 @@ from typing import NamedTuple, Union
 from datetime import datetime, date
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 from balancebot.common.dbmodels.balance import Balance
 
 
-class Daily(NamedTuple):
+class Daily(BaseModel):
     day: Union[int, str]
     amount: Decimal
     diff_absolute: Decimal
     diff_relative: Decimal
+
+    class Config:
+        orm_mode = True
 
 
 class Interval(NamedTuple):

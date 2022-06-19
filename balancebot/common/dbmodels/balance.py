@@ -22,7 +22,7 @@ class Balance(Base, Serializer):
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
     client = relationship('Client', foreign_keys=client_id)
     #currency = Column(String(10), nullable=False)
-    time: datetime = Column(DateTime(timezone=True), nullable=False, index=True)
+    time = Column(DateTime(timezone=True), nullable=False, index=True)
     #amount = Column(Float, nullable=False)
 
     realized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
@@ -35,11 +35,11 @@ class Balance(Base, Serializer):
 
     @hybrid_property
     def total(self):
-        return self.realized + self.unrealized
+        return self.unrealized
 
     @hybrid_property
     def total_transfers_corrected(self):
-        return self.total - self.total_transfered
+        return self.realized - self.total_transfered
 
     # Backwards compatability
     @hybrid_property

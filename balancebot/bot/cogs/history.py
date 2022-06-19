@@ -1,5 +1,5 @@
 import asyncio
-from typing import Sequence
+from typing import Sequence, Literal
 
 import discord
 from datetime import datetime
@@ -20,8 +20,9 @@ from balancebot.common.dbmodels.balance import Balance
 
 class HistoryCog(CogBase):
 
-    @cog_ext.cog_slash(
-        name="history",
+    @cog_ext.cog_subcommand(
+        base="history",
+        name="balance",
         description="Draws balance history of a user",
         options=[
             create_option(
@@ -58,14 +59,62 @@ class HistoryCog(CogBase):
     )
     @utils.log_and_catch_errors()
     @utils.set_author_default(name='user')
-    @utils.time_args(names=[('since', None), ('to', None)])
-    async def history(self,
+    @utils.time_args(('since', None), ('to', None))
+    async def balance_history(self, ctx, **kwargs):
+        await self.history(ctx, **kwargs, mode='balance')
+
+    @cog_ext.cog_subcommand(
+        base="history",
+        name="pnl",
+        description="Your PNL History",
+        options=[
+            create_option(
+                name="user",
+                description="User to graph",
+                required=False,
+                option_type=SlashCommandOptionType.USER
+            ),
+            create_option(
+                name="compare",
+                description="Users to compare with",
+                required=False,
+                option_type=SlashCommandOptionType.STRING
+            ),
+            create_option(
+                name="since",
+                description="Start time for graph",
+                required=False,
+                option_type=SlashCommandOptionType.STRING
+            ),
+            create_option(
+                name="to",
+                description="End time for graph",
+                required=False,
+                option_type=SlashCommandOptionType.STRING
+            ),
+            create_option(
+                name="currency",
+                description="Currency to display history for (only available for some exchanges)",
+                required=False,
+                option_type=SlashCommandOptionType.STRING
+            )
+        ]
+    )
+    @utils.log_and_catch_errors()
+    @utils.set_author_default(name='user')
+    @utils.time_args(('since', None), ('to', None))
+    async def pnl_history(self, ctx, **kwargs):
+        await self.history(ctx, **kwargs, mode='pnl')
+
+    @classmethod
+    async def history(cls,
                       ctx: SlashContext,
                       user: discord.Member = None,
                       compare: str = None,
                       since: datetime = None,
                       to: datetime = None,
-                      currency: str = None):
+                      currency: str = None,
+                      mode: Literal['balance', 'pnl'] = 'balance'):
         if ctx.guild:
             registered_client = await dbutils.get_client(user.id, ctx.guild.id)
             registrations = [(registered_client, user.display_name)]
@@ -121,7 +170,8 @@ class HistoryCog(CogBase):
             currency_display=currency_raw,
             currency=currency,
             percentage=percentage,
-            path=config.DATA_PATH + "tmp.png"
+            path=config.DATA_PATH + "tmp.png",
+            mode=mode
         )
 
         file = discord.File(config.DATA_PATH + "tmp.png", "history.png")
@@ -144,6 +194,7 @@ class HistoryCog(CogBase):
                 # asyncio.create_task(self.get_client_balance(client, force_fetch=True))
         await async_session.commit()
 
+
     @cog_ext.cog_slash(
         name="clear",
         description="Clears your balance history",
@@ -163,7 +214,7 @@ class HistoryCog(CogBase):
         ]
     )
     @utils.log_and_catch_errors()
-    @utils.time_args(names=[('since', None), ('to', None)])
+    @utils.time_args(('since', None), ('to', None))
     async def clear(self, ctx: SlashContext, since: datetime = None, to: datetime = None):
         user = await dbutils.get_discord_user(ctx.author_id)
 

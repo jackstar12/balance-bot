@@ -1,9 +1,15 @@
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
 from typing import Dict, List, Set, Optional, Any
 
 import pydantic
 from fastapi import Query
 from pydantic import BaseModel, UUID4
+
+from api.models.execution import Execution
+from api.models.trade import Trade
+from balancebot.common.dbmodels.base import OrmBaseModel
+from balancebot.common.dbmodels.transfer import TransferType
 
 
 class ClientQueryParams:
@@ -75,3 +81,32 @@ class ClientInfo(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class Balance(OrmBaseModel):
+    time: datetime
+    realized: Decimal
+    unrealized: Decimal
+    total_transfered: Decimal
+
+
+class Transfer(OrmBaseModel):
+    id: str
+    note: str
+    coin: str
+    fee: Decimal
+    execution: Optional[Execution]
+    type: TransferType
+
+
+class ClientOverview(BaseModel):
+    initial_balances: List[Balance]
+    current_balances: List[Balance]
+
+    trades_by_id: dict[
+        date, dict[
+            str, Trade
+        ]
+    ]
+    transfers: list[Transfer]
+    daily: dict[date, Balance]

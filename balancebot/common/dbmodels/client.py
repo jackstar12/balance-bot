@@ -98,7 +98,8 @@ class Client(Base, Serializer):
     currently_realized = relationship('Balance',
                                       lazy='noload',
                                       foreign_keys=currently_realized_id,
-                                      cascade="all, delete")
+                                      cascade="all, delete",
+                                      post_update=True)
 
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)

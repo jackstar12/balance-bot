@@ -429,9 +429,9 @@ class RegisterCog(CogBase):
             await ctx.defer()
             if len(user.clients) > 1:
                 ctx, clients = await utils.select_client(ctx, self.slash_cmd_handler, user)
-
             else:
-                await start_unregistration(ctx, user.clients)
+                clients = user.clients
+            await start_unregistration(ctx, clients)
         else:
             client = await dbutils.get_client(
                 ctx.author.id, ctx.guild_id,

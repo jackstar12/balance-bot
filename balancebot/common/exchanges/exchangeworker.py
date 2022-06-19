@@ -373,8 +373,8 @@ class ExchangeWorker:
                     next_transfer = next(transfer_iter, None)
                 update.total_transfered += cur_offset
 
-        self._db.add_all(transfers)
         self.client.last_transfer_sync = now
+        self._db.add_all(transfers)
         await self._db.commit()
         return transfers
 
@@ -507,12 +507,14 @@ class ExchangeWorker:
         # 8.4. 90
         # 7.4. 110
 
-        def prev_now_next(iterable):
+        def prev_now_next(iterable, skip: Callable = None):
             i = iter(iterable)
             prev = None
             now = next(i, None)
             while now:
                 _next = next(i, None)
+                if skip and _next and skip(_next):
+                    continue
                 yield prev, now, _next
                 prev = now
                 now = _next
@@ -528,9 +530,9 @@ class ExchangeWorker:
         transfer_iter = iter(trans)
 
         current_transfer, current_transferred = next(transfer_iter, (None, None))
-        current_balance.total_transfered += current_transfer.amount
+        current_balance.total_transfered = current_transferred
 
-        for prev_exec, execution, next_exec in prev_now_next(reversed(all_executions)):
+        for prev_exec, execution, next_exec in prev_now_next(reversed(all_executions), skip=lambda e: e.type == ExecType.TRANSFER):
             new_balance = db_balance.Balance(
                 realized=current_balance.realized,
                 unrealized=current_balance.unrealized,
@@ -549,7 +551,7 @@ class ExchangeWorker:
                     if prev_exec.realized_pnl:
                         new_balance.realized -= prev_exec.realized_pnl
                     if prev_exec.commission:
-                        new_balance.realized -= prev_exec.commission
+                        new_balance.realized += prev_exec.commission
                     new_balance.unrealized = new_balance.realized + sum(
                         pnl_data.unrealized
                         if
@@ -559,7 +561,7 @@ class ExchangeWorker:
                         for tr_id, pnl_data in pnl_by_trade.items()
                     )
 
-            if current_transfer and execution.time <= current_transfer.time:
+            while current_transfer and execution.time <= current_transfer.time:
                 new_balance.realized -= current_transfer.amount
                 current_transfer, current_transferred = next(transfer_iter, (None, None))
 
@@ -584,7 +586,8 @@ class ExchangeWorker:
                         limit: int = None) -> List[OHLC]:
         pass
 
-    def _calc_resolution(self,
+    @classmethod
+    def _calc_resolution(cls,
                          n: int,
                          resolutions_s: List[int],
                          since: datetime,

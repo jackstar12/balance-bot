@@ -24,7 +24,7 @@ from discord_slash import SlashCommand, ComponentContext, SlashContext
 from datetime import datetime, timedelta, date
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Sequence, Iterable
 
-from sqlalchemy import asc, select
+from sqlalchemy import asc, select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import balancebot.common.dbmodels.event as db_event
@@ -227,13 +227,14 @@ async def calc_daily(client: Client,
     return results
 
 
-def _create_interval(prev: Balance, current: Balance, as_string: bool) -> Interval:
+def create_interval(prev: Balance, current: Balance, as_string: bool) -> Interval:
     return Interval(
         current.time.strftime('%Y-%m-%d') if as_string else current.time.date(),
-        amount=current.unrealized,
+        amount=current.total,
         # diff_absolute=round(current.unrealized - prev.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-        diff_absolute=current.unrealized - prev.unrealized,
-        diff_relative=calc_percentage(prev.unrealized, current.unrealized, string=False),
+        diff_absolute=current.total_transfers_corrected - prev.total_transfers_corrected,
+        diff_relative=calc_percentage(
+            prev.total, current.total - (current.total_transfered - prev.total_transfered), string=False),
         start_balance=prev,
         end_balance=current
     )
@@ -319,7 +320,7 @@ async def calc_intervals(client: Client,
         if current_search <= now <= to:
             # current = get_best_time_fit(current_search, prev_balance, balance)
             prev = prev or prev_balance
-            values = _create_interval(prev, prev_balance, as_string)
+            values = create_interval(prev, prev_balance, as_string)
             if as_string:
                 results.add_row(list(values)[4:])
             else:
@@ -347,7 +348,7 @@ def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], str
     elif then > 0:
         result = f'{round(100 * (diff / then), ndigits=3)}'
     else:
-        result = 'NaN'
+        result = '0'
     return result if string else num_cls(result)
 
 
@@ -745,5 +746,5 @@ def truthy_dict(**kwargs):
 
 
 def mask_dict(d, *keys, value_func=None):
-    value_func = value_func or lambda x: x
+    value_func = value_func or (lambda x: x)
     return dict((k, value_func(v)) for k, v in d.items() if k in keys)

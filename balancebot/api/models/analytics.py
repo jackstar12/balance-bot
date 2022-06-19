@@ -12,6 +12,7 @@ from balancebot.common.enums import Filter
 from balancebot.common.models.pnldata import PnlData as CompactPnlData
 
 
+
 class Calculation(Enum):
     PNL = "pnl"
     WINRATE = "winrate"
@@ -34,7 +35,6 @@ class TradeAnalytics(Trade):
     min_pnl: Optional[PnlData]
     # order_count: int
 
-    executions: List[Execution]
     pnl_history: List[CompactPnlData] = Field(alias="compact_pnl_data")
     #pnl_data: List[PnlData]
 
