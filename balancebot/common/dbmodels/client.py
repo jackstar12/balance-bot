@@ -104,11 +104,11 @@ class Client(Base, Serializer):
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
-    async def set_redis(self, id: int, redis_instance=None, **keys):
+    async def set_cache(self, id: int, redis_instance=None, **keys):
         return await (redis_instance or redis).hset(utils.join_args(NameSpace.CLIENT, id), **keys, user_id=self.user_id)
 
     @classmethod
-    async def read_redis(cls, id: int, *keys, redis_instance=None):
+    async def read_cache(cls, id: int, *keys, redis_instance=None):
         """
         Class Method so that there's no need for an actual DB instance
         (useful when reading cache)
@@ -128,7 +128,7 @@ class Client(Base, Serializer):
         when reading cached data
         (authorization through DB would kinda make caching redundant)
         """
-        redis_user_id = await cls.read_redis(id, key=user_id)
+        redis_user_id = await cls.read_cache(id, key=user_id)
         if redis_user_id:
             return redis_user_id == user_id
         else:

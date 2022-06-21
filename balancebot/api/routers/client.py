@@ -136,7 +136,7 @@ async def get_client(request: Request, response: Response,
         for client_id, (overview_ts, last_exec, user_id) in data.items():
             if user_id and user_id == user.id:
                 if overview_ts and overview_ts > last_exec:
-                    raw_overview = await Client.read_redis(
+                    raw_overview = await Client.read_cache(
                         client_id, "overview",
                         redis_instance=redis
                     )
@@ -178,7 +178,6 @@ async def get_client(request: Request, response: Response,
                 BalanceDB.id == subq.c.id
             )
             daily = await db_all(stmt, session=db_session)
-
 
             overview = ClientOverview.construct(
                 initial_balance=(
