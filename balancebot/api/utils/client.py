@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import balancebot.common.utils as utils
 from balancebot.common import customjson
-from balancebot.common.database import redis
-from balancebot.common.database_async import db_first, db_select, db_all
+from balancebot.common.dbsync import redis
+from balancebot.common.dbasync import db_first, db_select, db_all
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User

@@ -19,7 +19,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.orm import joinedload
 
 import balancebot.common.utils as utils
-from balancebot.common.database_async import async_session, db_unique, db_all, db_first
+from balancebot.common.dbasync import async_session, db_unique, db_all, db_first
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.trade import Trade, trade_from_execution
 

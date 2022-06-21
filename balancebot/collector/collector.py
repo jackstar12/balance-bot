@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 import balancebot.common.dbmodels
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from balancebot.common.database_async import redis
+from balancebot.common.dbasync import redis
 from balancebot.common.config import DATA_PATH, REKT_THRESHOLD
 from balancebot.common.exchanges import EXCHANGES
 from balancebot.collector.services.cointracker import CoinTracker

@@ -10,7 +10,7 @@ from discord_slash import cog_ext, SlashContext, ComponentContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import inspect, select, or_, update, insert
 
-from balancebot.common.database_async import async_session, db_unique, db_all, db, db_select, async_maker
+from balancebot.common.dbasync import async_session, db_unique, db_all, db, db_select, async_maker
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.event import Event, event_association
 from balancebot.common.dbmodels.guild import Guild

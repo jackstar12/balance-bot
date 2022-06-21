@@ -3,7 +3,7 @@ import time
 
 import pytz
 from sqlalchemy import select
-from balancebot.common.database_async import db_all, async_session
+from balancebot.common.dbasync import db_all, async_session
 from balancebot.collector.services.baseservice import BaseService
 from balancebot.collector.services.dataservice import Channel
 from balancebot.common.models.observer import Observable, Observer

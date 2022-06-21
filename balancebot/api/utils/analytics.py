@@ -18,8 +18,8 @@ import balancebot.common.utils as utils
 from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance, Performance, Calculation, \
     TradeAnalytics
 from balancebot.api.models.execution import Execution
-from balancebot.common.database import redis
-from balancebot.common.database_async import db_first
+from balancebot.common.dbsync import redis
+from balancebot.common.dbasync import db_first
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User

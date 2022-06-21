@@ -6,9 +6,9 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.utils.client import get_user_client
-from balancebot.common.database_async import async_session, db_first, db_eager, db_all, db_select, db
+from balancebot.common.dbasync import async_session, db_first, db_eager, db_all, db_select, db
 from balancebot.api.dependencies import CurrentUser, get_db
-from balancebot.common.database import session
+from balancebot.common.dbsync import session
 
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.label import Label

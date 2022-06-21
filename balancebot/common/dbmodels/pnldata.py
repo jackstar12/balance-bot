@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from enum import Enum as PyEnum
 

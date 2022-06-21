@@ -4,7 +4,7 @@ import pytz
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Numeric, Enum
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.enums import ExecType, Side

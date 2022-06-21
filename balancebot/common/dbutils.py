@@ -5,7 +5,7 @@ import pytz
 from sqlalchemy import select, desc, JSON
 
 import balancebot.common.dbmodels.client as db_client
-from balancebot.common.database_async import async_session, db_first, db_eager, db_del_filter, db_unique, db_all, \
+from balancebot.common.dbasync import async_session, db_first, db_eager, db_del_filter, db_unique, db_all, \
     db_select
 from balancebot.common.dbmodels.balance import Balance
 from balancebot.common.dbmodels.discorduser import DiscordUser

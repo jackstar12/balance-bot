@@ -100,13 +100,13 @@ class Transfer(OrmBaseModel):
 
 
 class ClientOverview(BaseModel):
-    initial_balances: List[Balance]
-    current_balances: List[Balance]
+    initial_balance: Balance
+    current_balance: Balance
 
     trades_by_id: dict[
         date, dict[
             str, Trade
         ]
     ]
-    transfers: list[Transfer]
+    transfers: dict[str, Transfer]
     daily: dict[date, Balance]

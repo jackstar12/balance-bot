@@ -17,8 +17,8 @@ from discord.ext import commands
 from discord_slash import SlashCommand
 
 from balancebot.common.config import TESTING
-from balancebot.common.database import session
-from balancebot.common.database_async import async_session, db_all, redis
+from balancebot.common.dbsync import session
+from balancebot.common.dbasync import async_session, db_all, redis
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.discorduser import DiscordUser

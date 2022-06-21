@@ -10,7 +10,7 @@ from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 
 from balancebot.api.authenticator import Authenticator
 from balancebot.common.dbmodels.user import User as UserTable, User
-from balancebot.common.database_async import async_session
+from balancebot.common.dbasync import async_session
 from balancebot.api.models.user import UserCreate
 
 SECRET = "SECRET"

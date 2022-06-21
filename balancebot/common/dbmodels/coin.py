@@ -3,7 +3,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm.dynamic import AppenderQuery
 
-from balancebot.common.database import *
+from balancebot.common.dbsync import *
 from balancebot.common.enums import TimeFrame
 
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import InstrumentedAttribute, selectinload, RelationshipProp
 from sqlalchemy.orm.dynamic import AppenderQuery
 from sqlalchemy.sql import Select
 
-from balancebot.common.database_async import db_all
+from balancebot.common.dbasync import db_all
 
 
 class Serializer:

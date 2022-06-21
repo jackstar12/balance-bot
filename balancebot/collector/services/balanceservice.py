@@ -16,7 +16,7 @@ from sqlalchemy.inspection import inspect
 from balancebot.collector.services.baseservice import BaseService
 from balancebot.collector.services.dataservice import DataService, Channel
 from balancebot.common import utils, customjson
-from balancebot.common.database_async import db_all, db_unique, db_eager, async_maker
+from balancebot.common.dbasync import db_all, db_unique, db_eager, async_maker
 from balancebot.common.dbmodels.chapter import Chapter
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.journal import Journal

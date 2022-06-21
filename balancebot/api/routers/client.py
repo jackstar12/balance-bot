@@ -19,16 +19,17 @@ from starlette.websockets import WebSocketDisconnect
 from api.utils.analytics import create_cilent_analytics
 from balancebot.api.authenticator import Authenticator
 from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance, TradeAnalytics
-from balancebot.common.database_async import db, db_first, async_session, db_all, db_select, redis
+from balancebot.common.dbasync import db, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
+    redis_bulk_hashes
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams, \
-    ClientOverview, Balance
+    ClientOverview, Balance, Transfer
 from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
 from balancebot.api.utils.responses import BadRequest, OK, CustomJSONResponse
-from balancebot.common import utils
+from balancebot.common import utils, customjson
 from balancebot.api.dependencies import CurrentUser, CurrentUserDep, get_authenticator, get_messenger, get_db
-from balancebot.common.database import session
+from balancebot.common.dbsync import session
 from balancebot.common.dbmodels.client import Client, add_client_filters
 from balancebot.common.dbmodels.user import User
 from balancebot.api.settings import settings
@@ -117,74 +118,120 @@ async def get_client(request: Request, response: Response,
                      user: User = Depends(CurrentUser),
                      db_session: AsyncSession = Depends(get_db)):
     if client_params.id:
-        clients = await client_utils.get_user_clients(
-            user, client_params.id, (Client.trades, "*"), db=db_session
+
+        # We want to first read data from cache
+        data = await redis_bulk_hashes(
+            **{
+                Client.redis_key(client_id): (
+                    "overview:ts",
+                    "last_exec",
+                    "user_id"
+                )
+                for client_id in client_params.id
+            }
         )
-    else:
+
+        non_cached = []
+        overviews = []
+        for client_id, (overview_ts, last_exec, user_id) in data.items():
+            if user_id and user_id == user.id:
+                if overview_ts and overview_ts > last_exec:
+                    raw_overview = await Client.read_redis(
+                        client_id, "overview",
+                        redis_instance=redis
+                    )
+                    overview = ClientOverview(customjson.loads(raw_overview))
+                    overviews.append(overview)
+                else:
+                    non_cached.append(client_id)
+            else:
+                pass  # Illegal access
+
+        # All clients that weren't found in cache have to be read from DB
         clients = await client_utils.get_user_clients(
             user,
-            None,
+            non_cached,
             (Client.trades, [
                 TradeDB.executions,
-                TradeDB.max_pnl,
-                TradeDB.min_pnl,
                 TradeDB.labels
             ]),
             Client.transfers,
             db=db_session
         )
+
+        for client in clients:
+            subq = select(
+                func.row_number().over(
+                    order_by=desc(BalanceDB.time),
+                    partition_by=BalanceDB.time.cast(Date)
+                ).label('row_number'),
+                BalanceDB.id.label('id')
+            ).filter(
+                BalanceDB.client_id == clients[0].id,
+            ).subquery()
+
+            stmt = select(
+                BalanceDB,
+                subq
+            ).filter(
+                subq.c.row_number == 1,
+                BalanceDB.id == subq.c.id
+            )
+            daily = await db_all(stmt, session=db_session)
+
+
+            overview = ClientOverview.construct(
+                initial_balance=(
+                    await client.get_balance_at_time(client_params.since)
+                    if client_params.since else
+                    await db_first(
+                        client.history.statement.order_by(asc(BalanceDB.time)),
+                        session=db_session
+                    )
+                ),
+                current_balances=(
+                    await client.get_balance_at_time(client_params.to)
+                    if client_params.to else
+                    await client.get_latest_balance(redis=redis)
+                ),
+                trades_by_id={
+                    str(trade.id): Trade.from_orm(trade)
+                    for trade in client.trades
+                },
+                daily={
+                    balance.time.date() - timedelta(days=1): Balance.from_orm(balance)
+                    for balance in daily
+                },
+                transfers={
+                    str(transfer.id): Transfer.from_orm(transfer)
+                    for transfer in client.transfers
+                }
+            )
+            overviews.append(overview)
+
     if clients:
         config = ClientConfig.construct(**client_params.__dict__)
-        # s = await create_client_data_serialized(client,
-        #                                         ClientConfig.construct(**client_params.__dict__))
-        # encoded = jsonable_encoder(s)
-        # response = CustomJSONResponse(encoded)
-        # return response
 
-        subq = select(
-            func.row_number().over(
-                order_by=desc(BalanceDB.time),
-                partition_by=BalanceDB.time.cast(Date)
-            ).label('row_number'),
-            BalanceDB.id.label('id')
-        ).filter(
-            BalanceDB.client_id == clients[0].id,
-        ).subquery()
-
-        stmt = select(
-            BalanceDB,
-            subq
-        ).filter(
-            subq.c.row_number == 1,
-            BalanceDB.id == subq.c.id
-        )
-        daily = await db_all(stmt)
+        daily = {}
+        for daily_balance in itertools.chain.from_iterable((overview.daily.values() for overview in overviews)):
+            day = daily_balance.time.date() - timedelta(days=1)
+            if day in daily:
+                daily[day] += daily_balance
+            else:
+                daily[day] = daily_balance
 
         overview = ClientOverview.construct(
-            initial_balances=[
-                await client.get_balance_at_time(client_params.since)
-                if client_params.since
-                else await db_first(
-                    client.history.statement.order_by(asc(BalanceDB.time)),
-                    session=db_session
-                )
-                for client in clients
-            ],
-            current_balances=[
-                await client.get_balance_at_time(client_params.to)
-                if client_params.to else
-                # await client.get_latest_balance(redis=redis)
-                await client.latest()
-                for client in clients
-            ],
-            trades_by_id={
-                str(trade.id): Trade.from_orm(trade)
-                for trade in itertools.chain.from_iterable((client.trades for client in clients))
-            },
-            daily={
-                balance.time.date() - timedelta(days=1): Balance.from_orm(balance)
-                for balance in daily
-            }
+            initial_balance=sum(overview.initial_balance for overview in overviews),
+            current_balances=sum(overview.current_balance for overview in overviews),
+            trades_by_id=functools.reduce(
+                lambda a, b: a | b,
+                (overview.trades_by_id for overview in overviews)
+            ),
+            daily=daily,
+            transfers=functools.reduce(
+                lambda a, b: a | b,
+                (overview.transfers for overview in overviews)
+            )
         )
         encoded = jsonable_encoder(overview)
         asyncio.create_task(client_utils.set_cached_data(encoded, config))
@@ -493,6 +540,3 @@ async def get_analytics(client_params: ClientQueryParams = Depends(),
     return CustomJSONResponse(
         content=jsonable_encoder(response)
     )
-
-
-import requests_oauthlib

@@ -16,7 +16,7 @@ from balancebot.common.dbmodels import journal
 from balancebot.common.dbmodels.chapter import Chapter as DbChapter
 from balancebot.api.utils.client import get_user_client
 from balancebot.api.utils.responses import BadRequest, OK, NotFound
-from balancebot.common.database_async import async_session, db_unique, db_all
+from balancebot.common.dbasync import async_session, db_unique, db_all
 from balancebot.common.dbmodels.client import add_client_filters, Client
 from balancebot.common.dbmodels.journal import Journal, JournalType
 from balancebot.common.dbmodels.user import User

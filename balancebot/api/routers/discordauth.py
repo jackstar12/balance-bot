@@ -6,8 +6,8 @@ from typing import Optional
 from requests_oauthlib import OAuth2Session
 from starlette.responses import RedirectResponse, JSONResponse
 
-from balancebot.common.database import session
-from balancebot.common.database_async import async_session
+from balancebot.common.dbsync import session
+from balancebot.common.dbasync import async_session
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.user import User
 from balancebot.api.dependencies import CurrentUser

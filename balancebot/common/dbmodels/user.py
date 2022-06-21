@@ -2,7 +2,7 @@ from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID
 from sqlalchemy import Column, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship, backref
 
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from balancebot.common.dbmodels.serializer import Serializer
 
 

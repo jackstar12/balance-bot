@@ -7,7 +7,7 @@ from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Numeric
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 
 

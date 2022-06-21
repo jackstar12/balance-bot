@@ -11,8 +11,8 @@ from typing import List, Dict, TYPE_CHECKING
 import pytz
 from sqlalchemy import desc, delete
 
-import balancebot.common.database as db
-from balancebot.common.database_async import async_session, db as aio_db, db_first, db_all, db_select
+import balancebot.common.dbsync as db
+from balancebot.common.dbasync import async_session, db as aio_db, db_first, db_all, db_select
 
 from balancebot.common.dbmodels.balance import Balance
 import balancebot.common.dbmodels.client as db_client

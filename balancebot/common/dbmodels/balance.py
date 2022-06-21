@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime
 
 import balancebot.common.config as config

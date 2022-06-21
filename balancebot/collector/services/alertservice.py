@@ -3,8 +3,8 @@ from typing import List, Dict
 
 from sqlalchemy import select
 
-from balancebot.common.database import session
-from balancebot.common.database_async import async_session, db_del_filter, db_all
+from balancebot.common.dbsync import session
+from balancebot.common.dbasync import async_session, db_del_filter, db_all
 from balancebot.common.dbmodels.alert import Alert
 from balancebot.collector.services.baseservice import BaseService
 from balancebot.collector.services.dataservice import Channel, DataService

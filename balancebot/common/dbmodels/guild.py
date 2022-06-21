@@ -1,6 +1,6 @@
 from balancebot.common.dbmodels.serializer import Serializer
 
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from sqlalchemy.orm import relationship
 from sqlalchemy import Column, String, BigInteger, Enum
 

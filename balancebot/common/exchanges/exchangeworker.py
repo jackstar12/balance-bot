@@ -25,7 +25,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 import balancebot.common.utils as utils
 from balancebot.common import customjson
-from balancebot.common.database_async import async_session, db_unique, db_all, db_first, async_maker, db_select
+from balancebot.common.dbasync import async_session, db_unique, db_all, db_first, async_maker, db_select
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.pnldata import PnlData

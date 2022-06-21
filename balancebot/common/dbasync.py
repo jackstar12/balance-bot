@@ -98,5 +98,37 @@ def db_eager(stmt: Select, *eager: Union[Column, Tuple[Column, Union[Tuple, Inst
     return stmt
 
 
+async def redis_bulk_keys(hash: str, redis_instance=None, *keys):
+    if len(keys):
+        return await (redis_instance or redis).hget(hash, keys[0])
+    async with (redis_instance or redis).pipe(transaction=True) as pipe:
+        for key in keys:
+            pipe.hget(hash, key)
+        return await pipe.execute()
+
+
+async def redis_bulk_hashes(key: str, *hashes, redis_instance=None):
+    if len(hashes):
+        return await (redis_instance or redis).hget(hashes[0], key)
+    async with (redis_instance or redis).pipe(transaction=True) as pipe:
+        for hash in hashes:
+            pipe.hget(hash, key)
+        return await pipe.execute()
+
+
+async def redis_bulk(redis_instance=None, **hash_key):
+    async with (redis_instance or redis).pipe(transaction=True) as pipe:
+        for hash, keys in hash_key.items():
+            for key in keys:
+                pipe.hget(hash, key)
+        results = await pipe.execute()
+        result = {}
+        for hash, keys in hash_key.items():
+            result[hash] = []
+            for _ in keys:
+                result[hash].append(results.pop())
+        return result
+
+
 if __name__ == '__main__':
     print(asyncio.run(redis.get('test')))

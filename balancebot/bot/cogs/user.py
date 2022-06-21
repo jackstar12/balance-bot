@@ -1,6 +1,6 @@
 from discord_slash import cog_ext, SlashContext
 
-from balancebot.common.database_async import db_del_filter, async_session
+from balancebot.common.dbasync import db_del_filter, async_session
 from balancebot.common.dbmodels.client import Client
 from balancebot.common import dbutils
 from balancebot.bot import utils

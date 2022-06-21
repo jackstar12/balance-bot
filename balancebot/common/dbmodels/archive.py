@@ -1,4 +1,4 @@
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, Text, String
 from balancebot.common.dbmodels.serializer import Serializer
 

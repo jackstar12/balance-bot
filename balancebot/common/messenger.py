@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from balancebot.common import customjson
 from balancebot.common.config import TESTING
-from balancebot.common.database import redis
+from balancebot.common.dbsync import redis
 from balancebot.common.models.singleton import Singleton
 import balancebot.common.utils as utils
 

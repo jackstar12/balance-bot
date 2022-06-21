@@ -20,7 +20,7 @@ import os
 import dotenv
 
 from balancebot.common import customjson
-from balancebot.common.database_async import db_first, db_all, db_select_all
+from balancebot.common.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys
 import balancebot.common.dbmodels.balance as db_balance
 from balancebot.common.dbmodels.chapter import Chapter
 from balancebot.common.dbmodels.execution import Execution
@@ -30,7 +30,7 @@ from balancebot.common.dbmodels.journal import Journal
 from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.dbmodels.user import User
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 import balancebot.common.utils as utils
 from balancebot.common.messenger import NameSpace
 
@@ -103,6 +103,36 @@ class Client(Base, Serializer):
 
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
+
+    async def set_redis(self, id: int, redis_instance=None, **keys):
+        return await (redis_instance or redis).hset(utils.join_args(NameSpace.CLIENT, id), **keys, user_id=self.user_id)
+
+    @classmethod
+    async def read_redis(cls, id: int, *keys, redis_instance=None):
+        """
+        Class Method so that there's no need for an actual DB instance
+        (useful when reading cache)
+        """
+        return await redis_bulk_keys(
+            redis_instance=redis_instance, hash=cls.redis_key(id), *keys
+        )
+
+    @classmethod
+    def redis_key(cls, id: int):
+        return utils.join_args(NameSpace.CLIENT, id)
+
+    @classmethod
+    async def redis_validate(cls, id: int, user_id: UUID) -> Boolean | None:
+        """
+        Required to make sure no invalid access to clients is made
+        when reading cached data
+        (authorization through DB would kinda make caching redundant)
+        """
+        redis_user_id = await cls.read_redis(id, key=user_id)
+        if redis_user_id:
+            return redis_user_id == user_id
+        else:
+            return None
 
     async def get_latest_balance(self, redis: Redis, currency=None):
         raw = await redis.hget(utils.join_args(NameSpace.CLIENT, self.id), key=NameSpace.BALANCE.value)

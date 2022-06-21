@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property
 
 import balancebot.common.utils as utils
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from balancebot.common.models.gain import Gain
 
 

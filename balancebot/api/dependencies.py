@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from balancebot.api.authenticator import Authenticator
-from balancebot.common.database_async import redis, db_eager, db_unique, async_maker
+from balancebot.common.dbasync import redis, db_eager, db_unique, async_maker
 from balancebot.api.settings import settings
 from fastapi import Depends
 from balancebot.common.dbmodels.user import User

@@ -13,7 +13,7 @@ from fastapi import Depends
 from fastapi import FastAPI
 from starlette_csrf import CSRFMiddleware
 
-import balancebot.common.database_async as aio_db
+import balancebot.common.dbasync as aio_db
 from balancebot.api.db_session_middleware import DbSessionMiddleware
 from balancebot.common.dbmodels.trade import Trade
 
@@ -21,7 +21,7 @@ from balancebot.common.dbmodels.user import User
 from balancebot.api.dependencies import CurrentUser, CurrentUserDep
 from balancebot.api.models.user import UserInfo, UserRead, UserCreate
 from balancebot.api.settings import settings
-from balancebot.common.database import Base, engine
+from balancebot.common.dbsync import Base, engine
 
 import balancebot.api.routers.authentication as auth
 import balancebot.api.routers.client as client

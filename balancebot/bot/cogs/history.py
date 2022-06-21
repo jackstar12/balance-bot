@@ -14,7 +14,7 @@ from balancebot.common import dbutils
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.dbmodels.client import Client
-from balancebot.common.database_async import db, async_session, db_first
+from balancebot.common.dbasync import db, async_session, db_first
 from balancebot.common.dbmodels.balance import Balance
 
 

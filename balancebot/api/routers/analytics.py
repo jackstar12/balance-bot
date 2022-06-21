@@ -13,7 +13,7 @@ from balancebot.api.models.client import ClientQueryParams
 from balancebot.api.models.websocket import ClientConfig
 from balancebot.api.utils.analytics import create_cilent_analytics
 from balancebot.api.utils.client import get_user_client, get_user_clients
-from balancebot.common.database_async import db_select
+from balancebot.common.dbasync import db_select
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.execution import Execution
 from balancebot.common.dbmodels.trade import Trade

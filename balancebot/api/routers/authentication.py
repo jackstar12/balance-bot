@@ -3,7 +3,7 @@ from starlette.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
 from balancebot.api.authenticator import Authenticator
-from balancebot.common.database_async import db_select
+from balancebot.common.dbasync import db_select
 from balancebot.common.dbmodels.user import User
 import bcrypt
 

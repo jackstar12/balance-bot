@@ -5,11 +5,11 @@ from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import delete
 
-from balancebot.common.database_async import db, async_session, db_del_filter
+from balancebot.common.dbasync import db, async_session, db_del_filter
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.bot import utils
 from balancebot.common import dbutils
-from balancebot.common.database import session
+from balancebot.common.dbsync import session
 from balancebot.common.dbmodels.alert import Alert
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.exchanges import EXCHANGES

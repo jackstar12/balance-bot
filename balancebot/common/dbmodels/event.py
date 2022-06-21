@@ -2,7 +2,7 @@ import asyncio
 
 import pytz
 
-from balancebot.common.database_async import async_session
+from balancebot.common.dbasync import async_session
 from balancebot.common import utils
 import numpy
 from balancebot.common.models.gain import ClientGain
@@ -13,7 +13,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 import balancebot.common.config as config
 import discord
 
-from balancebot.common.database import Base, session as session
+from balancebot.common.dbsync import Base, session as session
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table
 

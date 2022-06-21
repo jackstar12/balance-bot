@@ -1,6 +1,6 @@
 from fastapi_users_db_sqlalchemy import GUID
 
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, String
 from balancebot.common.dbmodels.serializer import Serializer
 

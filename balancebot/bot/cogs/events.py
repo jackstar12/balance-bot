@@ -7,10 +7,10 @@ import pytz
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
-from balancebot.common.database_async import async_session
+from balancebot.common.dbasync import async_session
 from balancebot.common import dbutils
 from balancebot.bot import utils
-from balancebot.common.database import session
+from balancebot.common.dbsync import session
 from balancebot.common.dbmodels.event import Event
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase

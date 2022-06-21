@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from balancebot.common import utils
-from balancebot.common.database import Base
+from balancebot.common.dbsync import Base
 from balancebot.common.dbmodels.chapter import Chapter
 from balancebot.common.models.daily import Interval
 from balancebot.common.models.gain import Gain

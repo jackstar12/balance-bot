@@ -9,7 +9,7 @@ from typing import List, Callable
 import discord
 import pytz
 
-from balancebot.common.database import session
+from balancebot.common.dbsync import session
 from balancebot.common.dbmodels.event import Event
 
 

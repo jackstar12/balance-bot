@@ -4,11 +4,11 @@ import discord
 from discord_slash import SlashCommand
 from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy.ext.hybrid import hybrid_property
-from balancebot.common.database_async import async_session, db_unique
+from balancebot.common.dbasync import async_session, db_unique
 import balancebot.common.dbmodels.client as db_client
 from balancebot.common.dbmodels.serializer import Serializer
 
-from balancebot.common.database import Base, session as session
+from balancebot.common.dbsync import Base, session as session
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import select, Column, String, BigInteger, ForeignKey
 

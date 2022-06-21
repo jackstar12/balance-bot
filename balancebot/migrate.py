@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pytz
 from sqlalchemy.orm import make_transient
 
-import balancebot.common.database as db
+import balancebot.common.dbsync as db
 from balancebot.common.dbmodels.balance import balance_from_json
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.discorduser import add_user_from_json, DiscordUser

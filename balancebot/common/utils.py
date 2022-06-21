@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import balancebot.common.dbmodels.event as db_event
 import balancebot.common.dbmodels.client as db_client
-from balancebot.common.database_async import async_session, db_all
+from balancebot.common.dbasync import async_session, db_all
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.errors import UserInputError, InternalError
 from balancebot.common.models.daily import Daily, Interval

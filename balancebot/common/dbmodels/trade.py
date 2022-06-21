@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from balancebot.common.database import Base
-from balancebot.common.database_async import async_session, db
+from balancebot.common.dbsync import Base
+from balancebot.common.dbasync import async_session, db
 from balancebot.common.dbmodels.amountmixin import AmountMixin
 from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.serializer import Serializer
