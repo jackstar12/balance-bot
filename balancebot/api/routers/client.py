@@ -2,6 +2,7 @@ import asyncio
 import functools
 import itertools
 import logging
+import operator
 from datetime import datetime, date, timedelta
 from http import HTTPStatus
 from typing import Optional, Dict, List, Tuple
@@ -20,7 +21,7 @@ from api.utils.analytics import create_cilent_analytics
 from balancebot.api.authenticator import Authenticator
 from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance, TradeAnalytics
 from balancebot.common.dbasync import db, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
-    redis_bulk_hashes
+    redis_bulk_hashes, redis_bulk
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.guild import Guild
 from balancebot.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams, \
@@ -36,7 +37,7 @@ from balancebot.api.settings import settings
 from balancebot.api.utils.client import create_client_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
 from balancebot.common.dbutils import add_client
-from balancebot.common.messenger import Messenger, NameSpace, Category
+from balancebot.common.messenger import Messenger, NameSpace, Category, Word
 import balancebot.common.dbmodels.event as db_event
 
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
@@ -45,6 +46,7 @@ from balancebot.common.utils import validate_kwargs, create_interval
 from balancebot.common.dbmodels import TradeDB, BalanceDB
 from balancebot.api.models.trade import Trade
 from common.models.daily import Daily
+from common.redis.client import ClientSpace, ClientCache
 
 router = APIRouter(
     tags=["client"],
@@ -117,40 +119,56 @@ async def get_client(request: Request, response: Response,
                      client_params: ClientQueryParams = Depends(),
                      user: User = Depends(CurrentUser),
                      db_session: AsyncSession = Depends(get_db)):
-    if client_params.id:
+    non_cached = []
+    overviews = []
 
-        # We want to first read data from cache
-        data = await redis_bulk_hashes(
-            **{
-                Client.redis_key(client_id): (
-                    "overview:ts",
-                    "last_exec",
-                    "user_id"
-                )
-                for client_id in client_params.id
-            }
+    any_client = False
+    if not client_params.id:
+        client_params.id = [None]
+        any_client = True
+
+    # We want to first read data from cache
+    pairs = {}
+    for client_id in client_params.id:
+        pairs[Client.redis_key(user.id, client_id)] = (
+            ClientSpace.LAST_EXEC,
+            ClientSpace.USER_ID
         )
+        pairs[Client.cache_key(user.id, client_id)] = (
+            utils.join_args(ClientCache.OVERVIEW_EXEC_TS),
+        )
+    data = await redis_bulk(pairs, redis_instance=redis)
 
-        non_cached = []
-        overviews = []
-        for client_id, (overview_ts, last_exec, user_id) in data.items():
-            if user_id and user_id == user.id:
-                if overview_ts and overview_ts > last_exec:
+    for client_id in client_params.id:
+
+        last_exec, user_id = data[Client.redis_key(user.id, client_id)]
+        cached_last_exec, = data[Client.cache_key(user.id, client_id)]
+        if user_id or True:
+            if user_id == user.id or True:
+                if cached_last_exec and cached_last_exec > last_exec or True:
                     raw_overview = await Client.read_cache(
-                        client_id, "overview",
-                        redis_instance=redis
+                        user.id,
+                        ClientCache.OVERVIEW.value,
+                        id=client_id
                     )
-                    overview = ClientOverview(customjson.loads(raw_overview))
-                    overviews.append(overview)
+                    if raw_overview:
+                        overviews.append(
+                            ClientOverview(**customjson.loads(raw_overview))
+                        )
+                    else:
+                        non_cached.append(client_id)
                 else:
                     non_cached.append(client_id)
             else:
                 pass  # Illegal access
+        else:
+            non_cached.append(client_id)
 
+    if non_cached:
         # All clients that weren't found in cache have to be read from DB
         clients = await client_utils.get_user_clients(
             user,
-            non_cached,
+            None if any_client else non_cached,
             (Client.trades, [
                 TradeDB.executions,
                 TradeDB.labels
@@ -158,8 +176,10 @@ async def get_client(request: Request, response: Response,
             Client.transfers,
             db=db_session
         )
-
         for client in clients:
+            # We always want to fetch the last balance of the date (first balance of next date),
+            # so we need to partition by the current date and order by
+            # time in descending order so that we can pick out the first (last) one
             subq = select(
                 func.row_number().over(
                     order_by=desc(BalanceDB.time),
@@ -167,9 +187,8 @@ async def get_client(request: Request, response: Response,
                 ).label('row_number'),
                 BalanceDB.id.label('id')
             ).filter(
-                BalanceDB.client_id == clients[0].id,
+                BalanceDB.client_id == client.id,
             ).subquery()
-
             stmt = select(
                 BalanceDB,
                 subq
@@ -181,24 +200,29 @@ async def get_client(request: Request, response: Response,
 
             overview = ClientOverview.construct(
                 initial_balance=(
-                    await client.get_balance_at_time(client_params.since)
-                    if client_params.since else
-                    await db_first(
-                        client.history.statement.order_by(asc(BalanceDB.time)),
-                        session=db_session
+                    Balance.from_orm(
+                        await client.get_balance_at_time(client_params.since)
+                        if client_params.since else
+                        await db_first(
+                            client.history.statement.order_by(asc(BalanceDB.time)),
+                            session=db_session
+                        )
                     )
                 ),
-                current_balances=(
-                    await client.get_balance_at_time(client_params.to)
-                    if client_params.to else
-                    await client.get_latest_balance(redis=redis)
+                current_balance=(
+                    Balance.from_orm(
+                        await client.get_balance_at_time(client_params.to)
+                        if client_params.to else
+                        await client.get_latest_balance(redis=redis)
+                        #await client.latest()
+                    )
                 ),
                 trades_by_id={
                     str(trade.id): Trade.from_orm(trade)
                     for trade in client.trades
                 },
                 daily={
-                    balance.time.date() - timedelta(days=1): Balance.from_orm(balance)
+                    balance.time.date(): Balance.from_orm(balance)
                     for balance in daily
                 },
                 transfers={
@@ -206,22 +230,32 @@ async def get_client(request: Request, response: Response,
                     for transfer in client.transfers
                 }
             )
+            asyncio.create_task(client.set_cache(client.id,
+                                                 user.id,
+                                                 keys={
+                                                     ClientCache.OVERVIEW.value:
+                                                         customjson.dumps(jsonable_encoder(overview)),
+                                                     ClientCache.OVERVIEW_EXEC_TS.value:
+                                                         str(data.get(Client.cache_key(user.id, client.id), 0))
+                                                 }))
             overviews.append(overview)
 
-    if clients:
-        config = ClientConfig.construct(**client_params.__dict__)
-
+    if overviews:
         daily = {}
         for daily_balance in itertools.chain.from_iterable((overview.daily.values() for overview in overviews)):
-            day = daily_balance.time.date() - timedelta(days=1)
+            day = daily_balance.time.date()
             if day in daily:
                 daily[day] += daily_balance
             else:
                 daily[day] = daily_balance
 
         overview = ClientOverview.construct(
-            initial_balance=sum(overview.initial_balance for overview in overviews),
-            current_balances=sum(overview.current_balance for overview in overviews),
+            initial_balance=functools.reduce(
+                operator.add, (overview.initial_balance for overview in overviews)
+            ),
+            current_balance=functools.reduce(
+                operator.add, (overview.current_balance for overview in overviews)
+            ),
             trades_by_id=functools.reduce(
                 lambda a, b: a | b,
                 (overview.trades_by_id for overview in overviews)
@@ -233,8 +267,7 @@ async def get_client(request: Request, response: Response,
             )
         )
         encoded = jsonable_encoder(overview)
-        asyncio.create_task(client_utils.set_cached_data(encoded, config))
-        return encoded
+        return CustomJSONResponse(content=encoded)
     else:
         return BadRequest('Invalid client id', 40000)
 
@@ -253,6 +286,9 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
     client: Client = await db_first(
         add_client_filters(select(Client), user, [body.id])
     )
+
+    if body.name is not None:
+        client.name = body.name
 
     if body.archived is not None:
         client.archived = body.archived
@@ -436,22 +472,22 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),
                 )
             )
 
-        messenger.sub_channel(
+        await messenger.sub_channel(
             NameSpace.BALANCE, sub=Category.NEW, channel_id=new.id,
             callback=send_balance_update
         )
 
-        messenger.sub_channel(
+        await messenger.sub_channel(
             NameSpace.TRADE, sub=Category.NEW, channel_id=new.id,
             callback=send_trade_update
         )
 
-        messenger.sub_channel(
+        await messenger.sub_channel(
             NameSpace.TRADE, sub=Category.UPDATE, channel_id=new.id,
             callback=send_trade_update
         )
 
-        messenger.sub_channel(
+        await messenger.sub_channel(
             NameSpace.TRADE, sub=Category.UPNL, channel_id=new.id,
             callback=send_upnl_update
         )

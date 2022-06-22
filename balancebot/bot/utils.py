@@ -1,9 +1,12 @@
 from __future__ import annotations
 import asyncio
 import functools
+import itertools
+import math
 import re
 import logging
 import traceback
+import typing
 from asyncio import Future
 from decimal import Decimal
 from functools import wraps
@@ -11,6 +14,7 @@ from functools import wraps
 import discord
 import inspect
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from matplotlib.patches import Polygon
 import matplotlib.dates as mdates
 import numpy as np
@@ -23,7 +27,7 @@ import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
 from datetime import datetime, timedelta
-from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal
+from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal, NamedTuple, Generic
 
 from sqlalchemy import asc, select
 
@@ -42,6 +46,11 @@ from balancebot.common.models.selectionoption import SelectionOption
 import balancebot.common.config as config
 from typing import TYPE_CHECKING
 import matplotlib.colors as mcolors
+
+from balancebot.common.dbmodels.pnldata import PnlData
+from balancebot.common.dbmodels.trade import Trade
+from balancebot.common.utils import calc_gains
+from balancebot.common import utils
 
 if TYPE_CHECKING:
     from balancebot.common.dbmodels.client import Client
@@ -228,24 +237,36 @@ def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
         The transparent gradient clipped to just the area beneath the curve.
     """
 
-    x = np.array([mdates.date2num(d) for d in x])
-    x.sort()
-    
-    new_x = np.linspace(min(x), max(x), num=500)
-    y = interpolate.pchip_interpolate(x, y, new_x)
-    x = new_x
-
     if ax is None:
         ax = plt.gca()
-    line, = ax.plot([mdates.num2date(d, 'UTC') for d in new_x], y, **kwargs)
-    if fill_color is None:
-        fill_color = line.get_color()
 
+    green = '#3eb86d'
+    #green = 'green'
+    red = '#FF6384FF'
 
+    current_cut = 0
+    lines = []
+    colors = []
+    for index, ((prev_x, prev_y), (now_x, now_y)) in enumerate(itertools.pairwise(zip(x, y))):
+        if math.copysign(1, prev_y) != math.copysign(1, now_y):
+            new_line = np.column_stack((x[current_cut:index + 1], y[current_cut:index + 1]))
+            lines.append(new_line)
+            colors.append(red if now_y > 0 else green)
+            current_cut = index
 
-    zorder = line.get_zorder()
-    alpha = line.get_alpha()
+    lines.append(np.column_stack((x[current_cut:], y[current_cut:])))
+    colors.append(green if y[-1] > 0 else red)
+
+    lines = LineCollection(segments=lines, colors=colors)
+
+    ax.add_collection(lines)
+
+    zorder = lines.get_zorder()
+    alpha = lines.get_alpha()
     alpha = 1.0 if alpha is None else alpha
+
+    if fill_color is None:
+        fill_color = lines.get_color()
 
     def add_gradient(xmin, xmax, ymin, ymax, color, inverse):
         z = np.empty((100, 1, 4), dtype=float)
@@ -253,31 +274,37 @@ def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
         z[:, :, :3] = rgb
         z[:, :, -1] = np.linspace(alpha if inverse else 0, 0 if inverse else alpha, 100)[:, None]
 
-        alpha_root = np.power(alpha, 1/1.5)
+        alpha_root = np.power(alpha, 1/1.2)
         alpha_values = np.arange(0, alpha_root, alpha_root / 100)
         z[:, :, -1] = np.array([
-            np.power(x, 1.5) for x in
+            np.power(x, 1.2) for x in
             (reversed(alpha_values) if inverse else alpha_values)
         ])[:, None]
         im = ax.imshow(z, aspect='auto', extent=[xmin, xmax, ymin, ymax],
                        origin='lower', zorder=zorder)
 
         xy = np.column_stack([x, y])
-        xy = np.vstack([[xmin, ymax if inverse else ymin], xy, [xmax, ymax if inverse else ymin], [xmin, ymax if inverse else ymin]])
+        y_border = ymax if inverse else ymin
+        xy = np.vstack([[xmin, y_border], xy, [xmax, y_border], [xmin, y_border]])
         clip_path = Polygon(xy, facecolor='none', edgecolor='none', closed=True)
-        if inverse:
-            ax.add_patch(clip_path)
-            im.set_clip_path(clip_path)
-        else:
-            ax.add_patch(clip_path)
-            im.set_clip_path(clip_path)
-        ax.autoscale(True, tight=False)
+        ax.add_patch(clip_path)
+        im.set_clip_path(clip_path)
         return im
 
-    im = add_gradient(x.min(), x.max(), 0, y.max(), 'green', inverse=False)
-    im = add_gradient(x.min(), x.max(), y.min(), 0, 'red', inverse=True)
+    if max(y) > 0:
+        im = add_gradient(min(x), max(x), 0, max(y), green, inverse=False)
+    if min(y) < 0:
+        im = add_gradient(min(x), max(x), min(y), 0, red, inverse=True)
 
-    return line, im
+    ax.xaxis_date()
+
+    x_range = max(x) - min(x)
+    y_range = max(y) - min(y)
+
+    ax.set_xlim(min(x) - x_range * 0.05, max(x) + x_range * 0.05)
+    ax.set_ylim(min(y) - y_range * 0.05, max(y) + y_range * 0.05)
+
+    return lines, im
 
 
 async def create_history(to_graph: List[Tuple[Client, str]],
@@ -311,47 +338,58 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
     first = True
     title = ''
+    if True:
+        for registered_client, name in to_graph:
 
-    # um = UserManager()
-    # await um.fetch_data([graph[0] for graph in to_graph])
-    for registered_client, name in to_graph:
+            history = await dbutils.get_client_history(registered_client,
+                                                       event=event,
+                                                       since=start,
+                                                       to=end,
+                                                       currency=currency)
 
-        history = await dbutils.get_client_history(registered_client,
-                                                   event=event,
-                                                   since=start,
-                                                   to=end,
-                                                   currency=currency)
+            pnl_data = await db_all(
+                select(PnlData).filter(
+                    PnlData.time > start if start else True,
+                    PnlData.time < end if end else True,
+                    Trade.client_id == registered_client.id
+                ).join(PnlData.trade).order_by(asc(PnlData.time))
+            )
 
-        if len(history.data) == 0:
-            if throw_exceptions:
-                raise UserInputError(f'Got no data for {name}!')
+            if len(history.data) == 0:
+                if throw_exceptions:
+                    raise UserInputError(f'Got no data for {name}!')
+                else:
+                    continue
+
+            xs, ys = calc_xs_ys(history.data, pnl_data, percentage, relative_to=history.initial, mode=mode)
+
+            total_gain = calc_percentage(history.initial.unrealized, ys[len(ys) - 1])
+
+            if first:
+                title = f'History for {name} (Total: {ys[-1] if percentage else total_gain}%)'
+                first = False
             else:
-                continue
+                title += f' vs. {name} (Total: {ys[-1] if percentage else total_gain}%)'
 
-        xs, ys = calc_xs_ys(history.data, percentage, relative_to=history.initial, mode=mode)
+            xs = np.array([mdates.date2num(d) for d in xs])
+            new_x = np.linspace(min(xs), max(xs), num=500)
+            ys = interpolate.pchip_interpolate(xs, ys, new_x)
+            xs = new_x
 
-        total_gain = calc_percentage(history.initial.unrealized, ys[len(ys) - 1])
-
-        if first:
-            title = f'History for {name} (Total: {ys[-1] if percentage else total_gain}%)'
-            first = False
-        else:
-            title += f' vs. {name} (Total: {ys[-1] if percentage else total_gain}%)'
-
-        #plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
-        gradient_fill(xs, np.array([float(y) for y in ys]), fill_color='green', alpha=0.55)
-
-    plt.gcf().autofmt_xdate()
-    plt.gcf().set_dpi(100)
-    plt.gcf().set_size_inches(8 + len(to_graph), 5.5 + len(to_graph) * (5.5 / 8))
-    plt.title(custom_title or title)
-    plt.ylabel(currency_display)
-    plt.xlabel('Time')
-    plt.grid(axis='y')
-    plt.legend(loc="best")
-    plt.savefig(path)
-    plt.close()
-
+            if mode == "balance":
+                plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
+            else:
+                gradient_fill(xs, np.array([float(y) for y in ys]), fill_color='green', alpha=0.55)
+        plt.gcf().autofmt_xdate()
+        plt.gcf().set_dpi(100)
+        plt.gcf().set_size_inches(12 + len(to_graph), 8 + len(to_graph) * (8 / 12))
+        plt.title(custom_title or title)
+        plt.ylabel(currency_display)
+        plt.xlabel('Time')
+        plt.grid(axis='y', color='#e9ebf0')
+        plt.legend(loc="best")
+        plt.savefig(path)
+        plt.close()
 
 
 def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
@@ -499,7 +537,7 @@ async def create_leaderboard(dc_client: discord.Client,
                              event: db_event.Event = None,
                              time: datetime = None,
                              archived=False) -> discord.Embed:
-    client_scores: List[Tuple[Client, float]] = []
+    client_scores: List[Tuple[Client, float | Decimal]] = []
     value_strings: Dict[Client, str] = {}
     clients_rekt: List[Client] = []
     clients_missing: List[Client] = []
@@ -519,11 +557,9 @@ async def create_leaderboard(dc_client: discord.Client,
     else:
         # All global clients
         clients = await db_all(
-            select(db_client.Client).
-                filter(
+            select(db_client.Client).filter(
                 db_client.Client.id.in_(
-                    select(GuildAssociation.client_id).
-                        filter_by(guild_id=guild.id)
+                    select(GuildAssociation.client_id).filter_by(guild_id=guild.id)
                 )
             )
         )
@@ -575,14 +611,14 @@ async def create_leaderboard(dc_client: discord.Client,
                 dc_client.change_presence(
                     activity=discord.Activity(
                         type=discord.ActivityType.watching,
-                        name=f'Best Trader: {client_scores[0][0].discord_user.get_display_name(dc_client, guild_id)}'
+                        name=f'Best Trader: {DiscordUser.get_display_name(dc_client, client_scores[0][0].discord_user_id, guild_id)}'
                     )
                 )
             )
 
         prev_score = None
         for client, score in client_scores:
-            member = guild.get_member(client.discord_user.id)
+            member = guild.get_member(client.discord_user_id)
             if member:
                 if prev_score is not None and score < prev_score:
                     rank = rank_true
@@ -597,7 +633,7 @@ async def create_leaderboard(dc_client: discord.Client,
     if len(clients_rekt) > 0:
         description += f'\n**Rekt**\n'
         for user_rekt in clients_rekt:
-            member = guild.get_member(user_rekt.discord_user.id)
+            member = guild.get_member(user_rekt.discord_user_id)
             if member:
                 description += f'{member.display_name}'
                 if user_rekt.rekt_on:
@@ -607,99 +643,18 @@ async def create_leaderboard(dc_client: discord.Client,
     if len(clients_missing) > 0:
         description += f'\n**Missing**\n'
         for client_missing in clients_missing:
-            member = guild.get_member(client_missing.discord_user.id)
+            member = guild.get_member(client_missing.discord_user_id)
             if member:
                 description += f'{member.display_name}\n'
 
     description += f'\n{footer}'
 
     logging.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
+
     return discord.Embed(
         title='Leaderboard :medal:',
         description=description
     )
-
-
-async def calc_gains(clients: List[Client],
-                     event: db_event.Event,
-                     search: datetime,
-                     currency: str = None) -> List[ClientGain]:
-    """
-    :param event:
-    :param clients: users to calculate gain for
-    :param search: date since when gain should be calculated
-    :param currency:
-    :return:
-    Gain for each user is stored in a list of tuples following this structure: (User, (user gain rel, user gain abs)) success
-                                                                               (User, None) missing
-    """
-
-    if currency is None:
-        currency = '$'
-
-    results = []
-    for client in clients:
-        if not client:
-            logging.info('calc_gains: A none client was passed in?')
-            continue
-
-        # search, _ = dbutils.get_guild_start_end_times(guild_id, search, None, archived=archived)
-        #
-        # balance_then = user_manager.db_match_balance_currency(
-        #    Balance.query.filter(
-        #        Balance.client_id == client.id,
-        #        Balance.tz_time >= search
-        #    ).first(),
-        #    currency
-        # )
-
-        search, _ = await dbutils.get_guild_start_end_times(event, search, None)
-        balance_then = await client.get_balance_at_time(search, post=True, currency=currency)
-        # balance_then = db_match_balance_currency(
-        #    await db_first(
-        #        client.history.statement.filter(
-        #            Balance.time > search
-        #        ).order_by(asc(Balance.time))
-        #    ),
-        #    currency
-        # )
-
-        balance_now = await client.latest()
-
-        # history = await user_manager.get_client_history(client, event, since=search, currency=currency)
-        # balance_now = db_match_balance_currency(
-        #     await db_first(
-        #         client.statement.filter(
-        #             Balance.time < search
-        #         ).order_by(None).order_by(
-        #             desc(Balance.time)
-        #         )
-        #     ),
-        #     currency
-        # )
-
-        if balance_then and balance_now:
-            # balance_then = history.data[0]
-            # balance_now = db_match_balance_currency(history.data[len(history.data) - 1], currency)
-            diff = round(balance_now.unrealized - balance_then.unrealized,
-                         ndigits=CURRENCY_PRECISION.get(currency, 3))
-
-            if balance_then.unrealized > 0:
-                results.append(
-                    ClientGain(
-                        client=client,
-                        relative=round(100 * (diff / balance_then.unrealized), ndigits=CURRENCY_PRECISION.get('%', 2)),
-                        absolute=diff
-                    )
-                )
-            else:
-                results.append(
-                    ClientGain(client, Decimal(0), diff)
-                )
-        else:
-            results.append(ClientGain(client, None, None))
-
-    return results
 
 
 def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[datetime]:
@@ -787,7 +742,15 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     return date
 
 
+def combine_time_series(*time_series: typing.Iterable):
+    return sorted(
+        itertools.chain.from_iterable(time_series),
+        key=lambda a: a.time
+    )
+
+
 def calc_xs_ys(data: List[Balance],
+               pnl_data: List[PnlData],
                percentage=False,
                relative_to: Balance = None,
                mode: Literal['balance', 'pnl'] = 'balance') -> Tuple[List[datetime], List[float]]:
@@ -798,22 +761,28 @@ def calc_xs_ys(data: List[Balance],
         if mode == 'balance':
             relative_to = (relative_to or data[0]).unrealized
         else:
-            relative_to = (relative_to or data[0]).total_transfers_corrected
-        for balance in data:
-            if mode == 'balance':
-                current = balance.unrealized
-            else:
-                current = balance.total_transfers_corrected - relative_to
-
-            xs.append(balance.tz_time.replace(microsecond=0))
-            if percentage:
-                if relative_to > 0:
-                    amount = 100 * (current - relative_to) / relative_to
+            relative_to = (relative_to or data[0]).realized
+        upnl_by_trade = {}
+        amount = None
+        for prev_item, item, next_item in utils.prev_now_next(combine_time_series(data, pnl_data)):
+            if isinstance(item, PnlData):
+                upnl_by_trade[item.trade_id] = item.unrealized
+            if isinstance(item, Balance):
+                if mode == 'balance':
+                    current = item.unrealized
                 else:
-                    amount = 0.0
-            else:
-                amount = current
-            ys.append(round(amount, ndigits=3))
+                    current = item.realized - relative_to
+
+                if percentage:
+                    if relative_to > 0:
+                        amount = 100 * (current - relative_to) / relative_to
+                    else:
+                        amount = 0.0
+                else:
+                    amount = current
+            if amount is not None and (not prev_item or not next_item or prev_item.time != item.time != next_item.time):
+                xs.append(item.time)
+                ys.append(amount + sum(upnl_by_trade.values()))
         return xs, ys
 
 

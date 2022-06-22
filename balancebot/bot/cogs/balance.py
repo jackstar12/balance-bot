@@ -12,6 +12,7 @@ from balancebot.bot import utils
 from balancebot.common import dbutils
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
+from balancebot.common.utils import calc_gains
 
 
 class BalanceCog(CogBase):
@@ -113,7 +114,7 @@ class BalanceCog(CogBase):
         await ctx.defer()
         #await self.user_manager.fetch_data(clients=clients)
 
-        user_gains = await utils.calc_gains(
+        user_gains = await calc_gains(
             clients,
             event=await dbutils.get_event(ctx.guild_id, throw_exceptions=False),
             search=time,

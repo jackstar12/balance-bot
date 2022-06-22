@@ -104,22 +104,22 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(CurrentUse
                 )
             )
 
-        messenger.sub_channel(
+        await messenger.sub_channel(
             NameSpace.BALANCE, sub=Category.NEW, channel_id=new.id,
             callback=send_balance_update
         )
 
-        messenger.sub_channel(
+        await messenger.sub_channel(
             NameSpace.TRADE, sub=Category.NEW, channel_id=new.id,
             callback=send_trade_update
         )
 
-        messenger.sub_channel(
+        await messenger.sub_channel(
             NameSpace.TRADE, sub=Category.UPDATE, channel_id=new.id,
             callback=send_trade_update
         )
 
-        messenger.sub_channel(
+        await messenger.sub_channel(
             NameSpace.TRADE, sub=Category.UPNL, channel_id=new.id,
             callback=send_upnl_update
         )

@@ -17,6 +17,8 @@ authenticator = Authenticator(
     session_cookie_name=settings.session_cookie_name
 )
 
+messenger = Messenger(redis)
+
 
 def get_authenticator() -> Authenticator:
     return authenticator
@@ -32,7 +34,7 @@ async def get_db() -> AsyncSession:
 
 
 def get_messenger():
-    return Messenger()
+    return messenger
 
 
 class CurrentUserDep:

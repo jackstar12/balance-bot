@@ -35,7 +35,7 @@ class Transfer(Base, AmountMixin):
     client = relationship('Client')
     note = Column(String, nullable=True)
     coin = Column(String, nullable=True)
-    fee = Column(Numeric)
+    commission = Column(Numeric, nullable=True)
 
     execution_id = Column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=True)
     execution = relationship(

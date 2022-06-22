@@ -57,14 +57,16 @@ class Trade(Base, Serializer):
     max_pnl: PnlData = relationship(
         'PnlData',
         lazy='noload',
-        foreign_keys=max_pnl_id
+        foreign_keys=max_pnl_id,
+        post_update=True
     )
 
     min_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
     min_pnl: PnlData = relationship(
         'PnlData',
         lazy='noload',
-        foreign_keys=min_pnl_id
+        foreign_keys=min_pnl_id,
+        post_update=True
     )
 
     tp = Column(Numeric, nullable=True)
@@ -196,12 +198,15 @@ class Trade(Base, Serializer):
 
     def calc_rpnl(self):
         realized_qty = self.qty - self.open_qty - self.transferred_qty
-        return (self.exit * realized_qty - self.entry * realized_qty) * (Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
+        return (self.exit * realized_qty - self.entry * realized_qty) * (
+            Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
 
     def calc_upnl(self, price: Decimal):
-        return (price * self.open_qty - self.entry * self.open_qty) * (Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
+        return (price * self.open_qty - self.entry * self.open_qty) * (
+            Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
 
-    def update_pnl(self, price: Decimal, messenger: Messenger = None, realtime=True, commit=False, now: datetime = None):
+    def update_pnl(self, price: Decimal, messenger: Messenger = None, realtime=True, commit=False,
+                   now: datetime = None):
         if not now:
             now = datetime.now(pytz.utc)
         upnl = self.calc_upnl(price)
@@ -215,10 +220,11 @@ class Trade(Base, Serializer):
         self.min_pnl = self._compare_pnl(self.min_pnl, self.live_pnl, Decimal.__le__)
         self.latest_pnl = self._compare_pnl(self.latest_pnl,
                                             self.live_pnl,
-                                            lambda latest, live: not latest or abs((latest - live) / latest) > Decimal(.25))
+                                            lambda latest, live: not latest or abs((latest - live) / latest) > Decimal(
+                                                .25))
         if realtime and messenger:
             messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
-                                        obj={'id': self.id, 'upnl': upnl})
+                                  obj={'id': self.id, 'upnl': upnl})
 
     async def reverse_to(self,
                          date: datetime,
@@ -258,7 +264,7 @@ class Trade(Base, Serializer):
         if not old or cmp_func(new.total, old.total):
             Session.object_session(self).add(new)
             # TODO: Should the PNL objects be persisted in db before publishing them?
-            #self._messenger.pub_channel(NameSpace.TRADE, Category.SIGNIFICANT_PNL, channel_id=trade.client_id,
+            # self._messenger.pub_channel(NameSpace.TRADE, Category.SIGNIFICANT_PNL, channel_id=trade.client_id,
             #                            obj={'id': self.id, 'pnl': new.amount})
             return new
         return old
@@ -277,4 +283,11 @@ def trade_from_execution(execution: Execution):
         executions=[execution]
     )
     execution.trade = trade
+    pnl = PnlData(
+        trade=trade,
+        realized=0,
+        unrealized=0,
+        time=execution.time
+    )
+    trade.max_pnl = trade.min_pnl = pnl
     return trade

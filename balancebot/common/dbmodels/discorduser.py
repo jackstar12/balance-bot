@@ -62,9 +62,10 @@ class DiscordUser(Base, Serializer):
     async def get_discord_embed(self) -> List[discord.Embed]:
         return [await client.get_discord_embed() for client in self.clients]
 
-    def get_display_name(self, dc_client: discord.Client, guild_id: int):
+    @classmethod
+    def get_display_name(cls, dc_client: discord.Client, user_id: int, guild_id: int):
         try:
-            return dc_client.get_guild(guild_id).get_member(self.user_id).display_name
+            return dc_client.get_guild(guild_id).get_member(user_id).display_name
         except AttributeError:
             return None
 

@@ -6,17 +6,18 @@ from functools import wraps
 from typing import Callable, Dict, Optional
 
 import msgpack
+from aioredis import Redis
 from pydantic import BaseModel
 
 from balancebot.common import customjson
 from balancebot.common.config import TESTING
-from balancebot.common.dbsync import redis
 from balancebot.common.models.singleton import Singleton
 import balancebot.common.utils as utils
 
 
 class NameSpace(Enum):
     CLIENT = "client"
+    USER = "user"
     ALERT = "alert"
     BALANCE = "balance"
     TRADE = "trade"
@@ -25,6 +26,7 @@ class NameSpace(Enum):
     TICKER = "ticker"
     PNL = "pnl"
     KEYSPACE = "__keyspace@0__"
+    CACHE = "cache"
 
 
 class Category(Enum):
@@ -40,6 +42,10 @@ class Category(Enum):
     SESSIONS = "sessions"
 
 
+class Word(Enum):
+    TIMESTAMP = "ts"
+
+
 class ClientUpdate(BaseModel):
     id: int
     archived: Optional[bool]
@@ -49,7 +55,7 @@ class ClientUpdate(BaseModel):
 
 class Messenger(Singleton):
 
-    def init(self):
+    def init(self, redis: Redis):
         self._redis = redis
         self._pubsub = self._redis.pubsub()
         self._listening = False
@@ -66,6 +72,7 @@ class Messenger(Singleton):
         return wrapper
 
     async def listen(self):
+        logging.info('Started Listening.')
         async for msg in self._pubsub.listen():
             logging.info(f'MSGG!!!! {msg}')
 
@@ -78,13 +85,13 @@ class Messenger(Singleton):
             self._listening = True
             asyncio.create_task(self.listen())
 
-    def sub_channel(self, category: NameSpace, sub: Category, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
+    async def sub_channel(self, category: NameSpace, sub: Category, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
         channel = utils.join_args(category.value, sub.value, channel_id)
         if pattern:
             channel += '*'
         kwargs = {channel: self._wrap(callback)}
         logging.info(f'Sub: {kwargs}')
-        asyncio.create_task(self.sub(pattern=pattern, **kwargs))
+        await self.sub(pattern=pattern, **kwargs)
 
     def unsub_channel(self, category: NameSpace, sub: Category, channel_id: int = None, pattern=False):
         channel = utils.join_args(category.value, sub.value, channel_id)

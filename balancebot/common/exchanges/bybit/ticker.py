@@ -43,7 +43,7 @@ class BybitTicker(ExchangeTicker):
             await self._callbacks.get(Channel.TICKER.value).notify(
                 Ticker(
                     symbol=data["symbol"],
-                    exchange="bybit",
+                    exchange="bybit-derivatives",
                     price=Decimal(data["price"]),
                     ts=data["trade_time_ms"] / 1000
                 )

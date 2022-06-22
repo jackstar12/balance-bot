@@ -27,7 +27,7 @@ class Trade(BaseModel):
     open_time: datetime
     close_time: datetime
     #initial: Execution
-    initial_execution_id: int
+    #initial_execution_id: int
 
     class Config:
         orm_mode = True

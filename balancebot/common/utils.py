@@ -8,6 +8,7 @@ import sys
 import traceback
 from asyncio import Future
 from decimal import Decimal
+from enum import Enum
 from functools import wraps
 
 import discord
@@ -513,7 +514,7 @@ async def calc_gains(clients: List[Client],
         # )
 
         search, _ = await dbutils.get_guild_start_end_times(event, search, None)
-        balance_then = await client.get_balance_at_time(search, post=True, currency=currency)
+        balance_then = await client.get_balance_at_time(search, currency=currency)
         # balance_then = db_match_balance_currency(
         #    await db_first(
         #        client.history.statement.filter(
@@ -737,8 +738,21 @@ def db_match_balance_currency(balance: Balance, currency: str):
     return result
 
 
+def prev_now_next(iterable, skip: Callable = None):
+    i = iter(iterable)
+    prev = None
+    now = next(i, None)
+    while now:
+        _next = next(i, None)
+        if skip and _next and skip(_next):
+            continue
+        yield prev, now, _next
+        prev = now
+        now = _next
+
+
 def join_args(*args, denominator=':'):
-    return denominator.join([str(arg) for arg in args if arg])
+    return denominator.join([str(arg.value if isinstance(arg, Enum) else arg) for arg in args if arg])
 
 
 def truthy_dict(**kwargs):

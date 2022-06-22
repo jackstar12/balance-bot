@@ -43,6 +43,7 @@ from balancebot.common.dbmodels.client import Client
 from typing import TYPE_CHECKING
 
 from balancebot.common.models.ohlc import OHLC
+from balancebot.bot.utils import combine_time_series
 
 if TYPE_CHECKING:
     from balancebot.common.dbmodels.balance import Balance
@@ -222,7 +223,7 @@ class ExchangeWorker:
             if not balance.time:
                 balance.time = date
             balance.client_id = self.client_id
-            balance.total_transferred = getattr(
+            balance.total_transfered = getattr(
                 self.client.currently_realized, 'total_transfered', Decimal(0)
             )
             await self.client.update_journals(balance, date.date(), async_session)
@@ -461,9 +462,8 @@ class ExchangeWorker:
                         except ResponseError:
                             ohlc_data = []
 
-                        timeline = sorted(ohlc_data + current_executions, key=lambda item: item.time)
                         current_trade = None
-                        for item in timeline:
+                        for item in combine_time_series(ohlc_data, current_executions):
                             if isinstance(item, Execution):
                                 current_trade = await self._on_execution(item, realtime=False)
                             elif isinstance(item, OHLC) and current_trade:
@@ -507,36 +507,25 @@ class ExchangeWorker:
         # 8.4. 90
         # 7.4. 110
 
-        def prev_now_next(iterable, skip: Callable = None):
-            i = iter(iterable)
-            prev = None
-            now = next(i, None)
-            while now:
-                _next = next(i, None)
-                if skip and _next and skip(_next):
-                    continue
-                yield prev, now, _next
-                prev = now
-                now = _next
 
-        all_balances = []
         trans = list(zip(
             reversed(transfers),
             reversed(
-                list(itertools.accumulate((t.amount for t in transfers)))
+                list(itertools.accumulate((t.amount for t in transfers), initial=current_balance.total_transfered or 0))
             )
         ))
 
         transfer_iter = iter(trans)
 
         current_transfer, current_transferred = next(transfer_iter, (None, None))
-        current_balance.total_transfered = current_transferred
+        if current_transferred:
+            current_balance.total_transfered = current_transferred
 
-        for prev_exec, execution, next_exec in prev_now_next(reversed(all_executions), skip=lambda e: e.type == ExecType.TRANSFER):
+        for prev_exec, execution, next_exec in utils.prev_now_next(reversed(all_executions), skip=lambda e: e.type == ExecType.TRANSFER):
             new_balance = db_balance.Balance(
                 realized=current_balance.realized,
                 unrealized=current_balance.unrealized,
-                total_transfered=current_balance.total_transfered,
+                total_transfered=current_transferred,
                 time=execution.time,
                 client=self.client
             )
@@ -563,6 +552,7 @@ class ExchangeWorker:
 
             while current_transfer and execution.time <= current_transfer.time:
                 new_balance.realized -= current_transfer.amount
+                new_balance.unrealized -= current_transfer.amount
                 current_transfer, current_transferred = next(transfer_iter, (None, None))
 
             new_balance.total_transfered = current_transferred
@@ -573,10 +563,11 @@ class ExchangeWorker:
             else:
                 pass
 
-            all_balances.append(new_balance)
-            self._db.add(new_balance)
-            await self._db.commit()
+            if not next_exec or next_exec.time != execution.time:
+                self._db.add(new_balance)
+                await self._db.commit()
             current_balance = new_balance
+        await self._db.commit()
 
     async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
         if self._usd_like(coin):
@@ -727,16 +718,24 @@ class ExchangeWorker:
                                                          (active_trade.qty - active_trade.open_qty, execution.qty))
 
                     active_trade.open_qty -= execution.qty
-                    if active_trade.open_qty.is_zero():
-                        if self and not new_execution:
-                            self.in_position = False
                     rpnl = active_trade.calc_rpnl()
                     # Only set realized pnl if it isn't given by exchange implementation
                     if execution.realized_pnl is None:
-                        execution.realized_pnl = rpnl - (active_trade.realized_pnl or Decimal('0'))
+                        execution.realized_pnl = rpnl - (active_trade.realized_pnl or Decimal(0))
                     active_trade.realized_pnl = rpnl
                     if execution.commission:
                         active_trade.total_commissions += execution.commission
+
+                    if active_trade.open_qty.is_zero():
+                        if self and not new_execution:
+                            self.in_position = False
+                        pnl = PnlData(
+                            trade=active_trade,
+                            unrealized=0,
+                            realized=active_trade.realized_pnl,
+                            time=execution.time
+                        )
+                        self._db.add(pnl)
             asyncio.create_task(
                 utils.call_unknown_function(self._on_update_trade, self, active_trade)
             )
@@ -780,13 +779,13 @@ class ExchangeWorker:
 
             error = ''
             if response.status == 400:
-                error = "400 Bad Request. This is probably a bug in the test_bot, please contact dev"
+                error = "400 Bad Request. This is probably an internal bug, please contact dev"
             elif response.status == 401:
                 error = f"401 Unauthorized ({response.reason}). You might want to check your API access"
             elif response.status == 403:
                 error = f"403 Access Denied ({response.reason}). You might want to check your API access"
             elif response.status == 404:
-                error = f"404 Not Found. This is probably a bug in the test_bot, please contact dev"
+                error = f"404 Not Found. This is probably an internal bug, please contact dev"
             elif response.status == 429:
                 raise RateLimitExceeded(
                     root_error=e,

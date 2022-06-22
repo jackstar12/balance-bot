@@ -22,7 +22,7 @@ class DataService(BaseService, Observer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._exchanges: Dict[str, ExchangeTicker] = {}
-        self._tickers: Dict[str, Ticker] = {}
+        self._tickers: Dict[tuple[str, str], Ticker] = {}
 
     async def run_forever(self):
         await self._update_redis()
@@ -51,19 +51,19 @@ class DataService(BaseService, Observer):
 
     async def update(self, *new_state):
         ticker: Ticker = new_state[0]
-        self._tickers[f'{ticker.exchange}:{ticker.symbol}'] = ticker
+        self._tickers[(ticker.exchange, ticker.symbol)] = ticker
 
     def get_ticker(self, symbol, exchange):
-        ticker = self._tickers.get(f'{exchange}:{symbol}')
+        ticker = self._tickers.get((exchange, symbol))
         if not ticker:
             asyncio.create_task(self.subscribe(exchange, Channel.TICKER, self, symbol=symbol))
-        return self._tickers.get(f'{exchange}:{symbol}')
+        return self._tickers.get((exchange, symbol))
 
     async def _update_redis(self):
         while True:
             for ticker in self._tickers.values():
                 await self._redis.set(
                     utils.join_args(NameSpace.TICKER, ticker.exchange, ticker.symbol),
-                    ticker.price
+                    str(ticker.price)
                 )
             await asyncio.sleep(1)

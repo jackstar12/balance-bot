@@ -19,8 +19,8 @@ class AlertService(BaseService, Observer):
     def __init__(self, *args, data_service: DataService, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_service = data_service
-        self.alerts_by_symbol: Dict[str, List[Alert]] = {}
-        self._tickers: Dict[str, Ticker] = {}
+        self.alerts_by_symbol: Dict[tuple[str, str], List[Alert]] = {}
+        self._tickers: Dict[tuple[str, str], Ticker] = {}
 
     async def initialize_alerts(self):
         alerts = await db_all(select(Alert))
@@ -29,24 +29,23 @@ class AlertService(BaseService, Observer):
             await self.data_service.subscribe(alert.exchange, Channel.TICKER, self, symbol=alert.symbol)
             self.add_alert(alert)
 
-        self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.NEW, callback=self._update)
-        self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.DELETE, callback=self._delete)
+        await self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.NEW, callback=self._update)
+        await self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.DELETE, callback=self._delete)
 
     def add_alert(self, alert: Alert):
-        symbol = f'{alert.symbol}:{alert.exchange}'
+        symbol = (alert.symbol, alert.exchange)
         if symbol not in self.alerts_by_symbol:
             self.alerts_by_symbol[symbol] = []
         self.alerts_by_symbol[symbol].append(alert)
 
     def remove_alert(self, alert: Alert):
-        symbol = f'{alert.symbol}:{alert.exchange}'
-        alerts = self.alerts_by_symbol.get(symbol)
+        alerts = self.alerts_by_symbol.get((alert.symbol, alert.exchange))
         if alerts and alert in alerts:
             alerts.remove(alert)
 
     async def _update(self, data: Dict):
         new: Alert = await async_session.get(Alert, data['id'])
-        symbol = f'{new.symbol}:{new.exchange}'
+        symbol = (new.symbol, new.exchange)
         ticker = self._tickers.get(symbol)
         if not ticker:
             await self.data_service.subscribe(new.exchange, Channel.TICKER, self, symbol=new.symbol)
@@ -61,8 +60,7 @@ class AlertService(BaseService, Observer):
         self.add_alert(new)
 
     def _delete(self, data: Dict):
-        symbol = f'{data.get("symbol")}:{data.get("exchange")}'
-        alerts = self.alerts_by_symbol.get(symbol)
+        alerts = self.alerts_by_symbol.get((data.get("symbol"), data.get("exchange")))
         for alert in alerts:
             if alert.id == data.get('id'):
                 alerts.remove(alert)
@@ -70,7 +68,7 @@ class AlertService(BaseService, Observer):
     async def update(self, *new_state):
         ticker: Ticker = new_state[0]
 
-        symbol = f'{ticker.symbol}:{ticker.exchange}'
+        symbol = (ticker.symbol, ticker.exchange)
         self._tickers[symbol] = ticker
 
         alerts = self.alerts_by_symbol.get(symbol)

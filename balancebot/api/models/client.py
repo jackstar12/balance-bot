@@ -84,17 +84,25 @@ class ClientInfo(BaseModel):
 
 
 class Balance(OrmBaseModel):
-    time: datetime
+    time: Optional[datetime]
     realized: Decimal
     unrealized: Decimal
     total_transfered: Decimal
 
+    def __add__(self, other):
+        return Balance.construct(
+            realized=self.realized + other.realized,
+            unrealized=self.unrealized + other.unrealized,
+            total_transfered=self.total_transfered + other.total_transfered,
+            time=min(self.time, other.time)
+        )
+
 
 class Transfer(OrmBaseModel):
     id: str
-    note: str
+    note: Optional[str]
     coin: str
-    fee: Decimal
+    commission: Optional[Decimal]
     execution: Optional[Execution]
     type: TransferType
 
@@ -104,9 +112,7 @@ class ClientOverview(BaseModel):
     current_balance: Balance
 
     trades_by_id: dict[
-        date, dict[
-            str, Trade
-        ]
+        str, Trade
     ]
     transfers: dict[str, Transfer]
     daily: dict[date, Balance]

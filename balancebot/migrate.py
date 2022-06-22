@@ -38,22 +38,22 @@ if args.uuid:
     for user in users:
         user.uuid = uuid.uuid4()
         for alert in user._alerts:
-            alert.user_id = user.uuid
+            alert.USER_ID = user.uuid
         for label in user.labels:
-            label.user_id = user.uuid
+            label.USER_ID = user.uuid
         for client in user._alerts:
-            client.user_id = user.uuid
+            client.USER_ID = user.uuid
     db.session.commit()
 
     discord_users = db.session.query(DiscordUser).all()
 
     users = db.session.query(User).all()
     for user in users:
-        user.discord_user_id = user.discord_user.user_id
+        user.discord_user_id = user.discord_user.USER_ID
 
     for client in db.session.query(Client).all():
         if client.discord_user:
-            client.discord_user_id = client.discord_user.user_id
+            client.discord_user_id = client.discord_user.USER_ID
 
     db.session.commit()
 
@@ -68,7 +68,7 @@ if args.discordids:
     for discord_user in discord_users:
         db.session.add(discord_user)
         make_transient(discord_user)
-        discord_user.id = discord_user.user_id
+        discord_user.id = discord_user.USER_ID
         db.session.add(discord_user)
 
     db.session.commit()
@@ -77,11 +77,11 @@ if args.discordids:
 
     users = db.session.query(User).all()
     for user in users:
-        user.discord_user_id = user.discord_user.user_id
+        user.discord_user_id = user.discord_user.USER_ID
 
     for client in db.session.query(Client).all():
         if client.discord_user:
-            client.discord_user_id = client.discord_user.user_id
+            client.discord_user_id = client.discord_user.USER_ID
 
     db.session.commit()
 

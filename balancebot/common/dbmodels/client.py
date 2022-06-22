@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, date, timedelta
 from decimal import Decimal
@@ -35,6 +36,7 @@ import balancebot.common.utils as utils
 from balancebot.common.messenger import NameSpace
 
 from balancebot.common.dbmodels.trade import Trade
+from balancebot.common.redis.client import ClientSpace
 
 dotenv.load_dotenv()
 
@@ -104,25 +106,31 @@ class Client(Base, Serializer):
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
-    async def set_cache(self, id: int, redis_instance=None, **keys):
-        return await (redis_instance or redis).hset(utils.join_args(NameSpace.CLIENT, id), **keys, user_id=self.user_id)
+    async def set_cache(self, id: int, user_id, keys: dict, redis_instance=None):
+        asyncio.create_task((redis_instance or redis).expire(self.cache_key(id, user_id), 5 * 60))
+        keys[ClientSpace.USER_ID.value] = str(self.user_id)
+        return await (redis_instance or redis).hset(self.cache_key(id, user_id), mapping=keys)
 
     @classmethod
-    async def read_cache(cls, id: int, *keys, redis_instance=None):
+    async def read_cache(cls, user_id, *keys, id=None, redis_instance=None):
         """
         Class Method so that there's no need for an actual DB instance
         (useful when reading cache)
         """
         return await redis_bulk_keys(
-            redis_instance=redis_instance, hash=cls.redis_key(id), *keys
+            cls.cache_key(id, user_id), redis_instance, *keys
         )
 
     @classmethod
-    def redis_key(cls, id: int):
-        return utils.join_args(NameSpace.CLIENT, id)
+    def redis_key(cls, user_id, id: int = None):
+        return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, id or '*')
 
     @classmethod
-    async def redis_validate(cls, id: int, user_id: UUID) -> Boolean | None:
+    def cache_key(cls, user_id, id: int = None):
+        return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, NameSpace.CACHE, id or '*')
+
+    @classmethod
+    async def redis_validate(cls, id: int, user_id) -> Boolean | None:
         """
         Required to make sure no invalid access to clients is made
         when reading cached data
@@ -246,12 +254,12 @@ class Client(Base, Serializer):
     async def get_balance_at_time(self, time: datetime, currency: str = None):
         amount_cls = db_balance.Balance
         stmt = self.history.statement.filter(
-            amount_cls.time < time
+            amount_cls.time < time if time else True
         ).order_by(asc(amount_cls.time))
 
         balance = await db_first(stmt)
 
-        if self.is_premium:
+        if self.is_premium and time:
             # Probably the most beautiful query I've ever written
             subq = select(
                 PnlData.id.label('pnl_id'),

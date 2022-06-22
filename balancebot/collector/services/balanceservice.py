@@ -96,7 +96,6 @@ class BalanceService(BaseService):
         self._db: Optional[AsyncSession] = None
         self._base_db: Optional[AsyncSession] = None
         self._balance_session = None
-        self._scheduler.start()
 
     def __exit__(self):
         self._db.sync_session.close()
@@ -104,14 +103,17 @@ class BalanceService(BaseService):
 
     async def _initialize_positions(self):
 
-        self._messenger.sub_channel(NameSpace.TRADE, sub=Category.UPDATE, callback=self._on_trade_update, pattern=True)
-        self._messenger.sub_channel(NameSpace.TRADE, sub=Category.NEW, callback=self._on_trade_delete, pattern=True)
-        self._messenger.sub_channel(NameSpace.TRADE, sub=Category.FINISHED, callback=self._on_trade_delete,
+        await self._messenger.sub_channel(NameSpace.TRADE, sub=Category.UPDATE, callback=self._on_trade_update, pattern=True)
+        await self._messenger.sub_channel(NameSpace.TRADE, sub=Category.NEW, callback=self._on_trade_delete, pattern=True)
+
+        await self._messenger.sub_channel(NameSpace.TRADE, sub=Category.FINISHED, callback=self._on_trade_delete,
                                     pattern=True)
 
-        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add, pattern=True)
-        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete, pattern=True)
-        self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.UPDATE, callback=self._on_client_update, pattern=True)
+        await self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add, pattern=True)
+
+        await self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete, pattern=True)
+
+        await self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.UPDATE, callback=self._on_client_update, pattern=True)
 
         clients = await db_all(self._all_client_stmt, session=self._db)
 

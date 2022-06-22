@@ -39,6 +39,9 @@ class WebsocketManager:
     async def send_json(self, data):
         if self._ws and not self._ws.closed:
             return await self._ws.send_json(data, dumps=customjson.dumps_no_bytes)
+        else:
+            await self.connect()
+            return await self._ws.send_json(data, dumps=customjson.dumps_no_bytes)
 
     async def reconnect(self) -> None:
         if self.connected:

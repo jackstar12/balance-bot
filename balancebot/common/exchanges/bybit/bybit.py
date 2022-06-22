@@ -91,6 +91,31 @@ class _BybitBaseClient(ExchangeWorker, ABC):
     def _get_ws_url(self) -> str:
         return self._WS_ENDPOINT
 
+    @classmethod
+    def _parse_exec(cls, raw_exec: Dict):
+        if raw_exec['exec_type'] == "Trade":
+            symbol = raw_exec["symbol"]
+            commission = Decimal(raw_exec["exec_fee"])
+            price = Decimal(raw_exec["exec_price"])
+            qty = Decimal(raw_exec["exec_qty"])
+
+            # Unify Inverse and Linear
+            contract_type = _get_contract_type(symbol)
+            if contract_type == ContractType.INVERSE:
+                commission *= price
+            if contract_type == ContractType.INVERSE:
+                qty /= price
+
+            return Execution(
+                symbol=raw_exec["symbol"],
+                price=price,
+                qty=qty,
+                commission=commission,
+                time=cls._parse_ts(raw_exec["trade_time_ms"] / 1000),
+                side=Side.BUY if raw_exec["side"] == "Buy" else Side.SELL,
+                type=ExecType.TRADE
+            )
+
     async def _on_message(self, ws: WebsocketManager, message: Dict):
         # https://bybit-exchange.github.io/docs/inverse/#t-websocketexecution
         if message["topic"] == "execution":
@@ -110,17 +135,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 #     "is_maker": false,
                 #     "trade_time": "2020-01-14T14:07:23.629Z"
                 # }
-                await self._on_execution(
-                    Execution(
-                        symbol=execution["symbol"],
-                        side=Side.BUY if execution["side"] == "Buy" else Side.SELL,
-                        price=Decimal(execution["price"]),
-                        qty=Decimal(execution["exec_qty"]),
-                        commission=Decimal(execution["exec_fee"]),
-                        time=datetime.fromisoformat(execution["trade_time"].replace("Z", "+00:00")),  # for Z support
-                        type=ExecType.TRADE
-                    )
-                )
+                await self._on_execution(self._parse_exec(execution))
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
@@ -349,18 +364,7 @@ class BybitDerivativesClient(_BybitBaseClient):
 
             for raw_exec in raw_execs:
                 if raw_exec['exec_type'] == "Trade":
-                    execs.append(
-                        Execution(
-                            symbol=raw_exec["symbol"],
-                            price=Decimal(raw_exec["exec_price"]),
-                            qty=Decimal(raw_exec["exec_qty"]),
-                            commission=Decimal(raw_exec["exec_fee"]) * Decimal(raw_exec["exec_price"]),
-                            time=self._parse_ts(raw_exec["trade_time_ms"] / 1000),
-                            side=Side.BUY if raw_exec["side"] == "Buy" else Side.SELL,
-                            type=ExecType.TRADE
-                        )
-
-                    )
+                    execs.append(self._parse_exec(raw_exec))
 
         return execs
 
@@ -472,9 +476,5 @@ class BybitSpotClient(_BybitBaseClient):
 
     _limits = [
         # TODO: Tweak Rate Limiter (method based + continious limits)
-        create_limit(interval_seconds=2*60, max_amount=2*50, default_weight=1)  # Some kind of type=Type.CONTINIOUS
+        create_limit(interval_seconds=2 * 60, max_amount=2 * 50, default_weight=1)  # Some kind of type=Type.CONTINIOUS
     ]
-
-
-
-

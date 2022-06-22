@@ -41,8 +41,11 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
-    messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, channel_id=53)
+    await messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, channel_id=53)
     event_manager.initialize_events()
+
+    for cog in cog_instances:
+        await cog.on_ready()
 
     db_guilds_by_id = {
         db_guild.id: db_guild for db_guild in await db_all(
@@ -50,7 +53,7 @@ async def on_ready():
         )
     }
     discord_users = await db_all(select(DiscordUser))
-    #associations_by_guild_id = {guild.id: guild for guild in await db_all(select(GuildAssociation))}
+    # associations_by_guild_id = {guild.id: guild for guild in await db_all(select(GuildAssociation))}
 
     # Make sure database entries for guilds are up-to-date
     for guild in bot.guilds:
@@ -178,23 +181,23 @@ parser.add_argument("-r", "--reset", action="store_true", help="Archives the cur
 args = parser.parse_known_args()
 
 event_manager = EventManager(discord_client=bot)
-messenger = Messenger()
+messenger = Messenger(redis)
 
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
-
-for cog in [
-    balance.BalanceCog,
-    history.HistoryCog,
-    events.EventsCog,
-    misc.MiscCog,
-    register.RegisterCog,
-    user.UserCog,
-    alert.AlertCog
-]:
+cog_instances = [
     cog.setup(bot, redis, event_manager, messenger, slash)
-
+    for cog in [
+        balance.BalanceCog,
+        history.HistoryCog,
+        events.EventsCog,
+        misc.MiscCog,
+        register.RegisterCog,
+        user.UserCog,
+        alert.AlertCog
+    ]
+]
 
 if __name__ == '__main__':
     setup_logger()

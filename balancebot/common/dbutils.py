@@ -79,8 +79,9 @@ async def get_client(user_id: int,
         user_id,
         throw_exceptions=throw_exceptions,
         eager_loads=[
-            (DiscordUser.clients, client_eager),
+            DiscordUser.clients,
             DiscordUser.guilds,
+            DiscordUser.global_associations,
             *discord_user_eager
         ]
     )
@@ -130,13 +131,13 @@ async def get_event(guild_id: int, channel_id: int = None, state: str = 'active'
     stmt = select(db_event.Event).filter(db_event.Event.guild_id == guild_id)
 
     if state == 'archived':
-        stmt.filter(db_event.Event.end < now)
+        stmt = stmt.filter(db_event.Event.end < now)
     elif state == 'active':
-        stmt.filter(db_event.Event.start <= now)
-        stmt.filter(now <= db_event.Event.end)
+        stmt = stmt.filter(db_event.Event.start <= now)
+        stmt = stmt.filter(now <= db_event.Event.end)
     elif state == 'registration':
-        stmt.filter(db_event.Event.registration_start <= now)
-        stmt.filter(now <= db_event.Event.registration_end)
+        stmt = stmt.filter(db_event.Event.registration_start <= now)
+        stmt = stmt.filter(now <= db_event.Event.registration_end)
 
     if state == 'archived':
         events = await db_first(
@@ -190,11 +191,7 @@ async def get_discord_user(user_id: int, throw_exceptions=True, require_registra
     return result
 
 
-async def get_guild_start_end_times(event: db_event.Event, start: datetime, end: datetime, archived=False):
-
-    start = datetime.fromtimestamp(0, pytz.utc) if not start else start
-    end = datetime.now(pytz.utc) if not end else end
-
+async def get_guild_start_end_times(event: db_event.Event, start: datetime, end: datetime):
     if event:
         # When custom times are given make sure they don't exceed event boundaries (clients which are global might have more data)
         return max(start, event.start), min(end, event.end)

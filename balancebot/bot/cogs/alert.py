@@ -31,8 +31,8 @@ class AlertCog(CogBase):
                 message
             )
 
-    def on_ready(self):
-        self.messenger.sub_channel(NameSpace.ALERT, sub=Category.FINISHED, callback=self.on_alert_trigger)
+    async def on_ready(self):
+        await self.messenger.sub_channel(NameSpace.ALERT, sub=Category.FINISHED, callback=self.on_alert_trigger)
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -116,6 +116,7 @@ class AlertCog(CogBase):
         if user.alerts:
             ctx, selections = await utils.new_create_selection(
                 ctx,
+                self.slash_cmd_handler,
                 options=[
                     SelectionOption(
                         name=f'{alert.symbol}@{alert.price}',

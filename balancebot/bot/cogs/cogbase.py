@@ -15,8 +15,10 @@ from balancebot.common.messenger import Messenger
 class CogBase(Cog):
 
     @classmethod
-    def setup(cls, bot: Bot, redis: Redis, event_manager: EventManager, messenger: Messenger, slash_cmd_handler: SlashCommand):
-        bot.add_cog(cls(bot, redis, event_manager, messenger, slash_cmd_handler))
+    def setup(cls, bot: Bot, *args, **kwargs):
+        instance = cls(bot, *args, **kwargs)
+        bot.add_cog(instance)
+        return instance
 
     def __init__(self, bot: Bot, redis: Redis, event_manager: EventManager, messenger: Messenger, slash_cmd_handler: SlashCommand):
         self.bot = bot
@@ -25,7 +27,7 @@ class CogBase(Cog):
         self.messenger = messenger
         self.slash_cmd_handler = slash_cmd_handler
 
-    def on_ready(self):
+    async def on_ready(self):
         pass
 
     async def send_dm(self, user_id: int, message: str, embed: discord.Embed = None):

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from decimal import Decimal
 
@@ -5,6 +6,7 @@ import pytz
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
+from typing_extensions import Self
 
 from balancebot.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime
@@ -39,7 +41,7 @@ class Balance(Base, Serializer):
 
     @hybrid_property
     def total_transfers_corrected(self):
-        return self.realized - self.total_transfered
+        return self.unrealized - self.total_transfered
 
     # Backwards compatability
     @hybrid_property
