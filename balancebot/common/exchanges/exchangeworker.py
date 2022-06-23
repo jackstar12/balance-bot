@@ -21,7 +21,6 @@ from dataclasses import dataclass
 
 from sqlalchemy import select, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
 
 import balancebot.common.utils as utils
 from balancebot.common import customjson
@@ -133,6 +132,7 @@ class Limit:
 
 
 class ExchangeWorker:
+    supports_extended_data = False
     state = State.OK
     exchange: str = ''
     required_extra_args: Set[str] = set()

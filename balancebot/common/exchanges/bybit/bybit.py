@@ -66,6 +66,8 @@ _interval_map = {
 
 
 class _BybitBaseClient(ExchangeWorker, ABC):
+    supports_extended_data = True
+
     _ENDPOINT = 'https://api-testnet.bybit.com' if TESTING else 'https://api.bybit.com'
     _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime' if TESTING else 'wss://stream.bybit.com/realtime'
 

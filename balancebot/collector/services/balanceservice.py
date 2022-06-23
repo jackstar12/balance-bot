@@ -203,8 +203,7 @@ class BalanceService(BaseService):
             await db_unique(self._all_client_stmt.filter_by(id=client_id), session=self._db)
         )
 
-    def _add_worker(self, worker: ExchangeWorker):
-        premium = worker.client.is_premium
+    def _add_worker(self, worker: ExchangeWorker, premium):
         workers = self._premium_workers_by_id if premium else self._base_workers_by_id
         if worker.client.id not in workers:
             workers[worker.client.id] = worker
@@ -242,14 +241,14 @@ class BalanceService(BaseService):
             reschedule(exchange_job)
 
     async def add_client(self, client) -> Optional[ExchangeWorker]:
-        client_cls = self._exchanges.get(client.exchange)
-        if issubclass(client_cls, ExchangeWorker):
-            worker = client_cls(client,
+        exchange_cls = self._exchanges.get(client.exchange)
+        if issubclass(exchange_cls, ExchangeWorker):
+            worker = exchange_cls(client,
                                 self._http_session,
                                 self._db if client.is_premium else self._base_db,
                                 self._messenger,
                                 self.rekt_threshold)
-            if client.is_premium:
+            if client.is_premium and exchange_cls.supports_extended_data:
                 try:
                     await worker.synchronize_positions()
                 except InvalidClientError:
@@ -257,11 +256,13 @@ class BalanceService(BaseService):
                 except ResponseError:
                     logging.exception(f'Error while adding {client.id=}')
                 await worker.connect()
-            self._add_worker(worker)
+                self._add_worker(worker, premium=True)
+            else:
+                self._add_worker(worker, premium=False)
             return worker
         else:
             logging.error(
-                f'CRITICAL: Exchange class {client_cls} for exchange {client.exchange} does NOT subclass ClientWorker')
+                f'CRITICAL: Exchange class {exchange_cls} for exchange {client.exchange} does NOT subclass ClientWorker')
 
     async def get_worker(self, client_id: int, create_if_missing=True) -> ExchangeWorker:
         if client_id:

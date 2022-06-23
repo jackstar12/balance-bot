@@ -40,6 +40,8 @@ class Type(Enum):
 
 
 class _BinanceBaseClient(ExchangeWorker, ABC):
+    supports_extended_data = True
+
     _ENDPOINT = 'https://testnet.binance.vision' if TESTING else 'https://api.binance.com'
 
     _response_error = 'msg'

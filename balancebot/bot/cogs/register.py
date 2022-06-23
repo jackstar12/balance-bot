@@ -1,9 +1,8 @@
 import logging
 from typing import List
-
+import typing
 import aiohttp
 import pytz
-from asgiref import typing
 from datetime import datetime
 
 from discord_slash import cog_ext, SlashContext, ComponentContext
