@@ -151,6 +151,8 @@ class Client(Base, Serializer):
                 unrealized=Decimal(as_json['unrealized']),
                 total_transfered=Decimal(as_json['total_transfered'])
             )
+        else:
+            return await self.latest()
 
     def evaluate_balance(self, redis: Redis):
         if not self.currently_realized:
