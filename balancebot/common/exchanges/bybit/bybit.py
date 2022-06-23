@@ -175,7 +175,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
             res = await self._get('/asset/v1/private/transfer/list',
                                   params={
                                       'start_time': self._parse_date(since),
-                                      'status': Transfer.SUCCESS,
+                                      'status': Transfer.SUCCESS.value,
                                       'cursor': res['cursor'],
                                       'direction': Direction.NEXT.value
                                   })

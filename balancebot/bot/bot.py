@@ -115,7 +115,7 @@ async def on_guild_join(guild: discord.Guild):
     async_session.add(db_guild)
 
     discord_users = await db_select_all(DiscordUser)
-    for discord_user in discord_users:
+    for discord_umasterser in discord_users:
         member = guild.get_member(discord_user.id)
         if member:
             discord_user.guilds.append(db_guild)
