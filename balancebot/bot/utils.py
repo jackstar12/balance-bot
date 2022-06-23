@@ -49,7 +49,7 @@ import matplotlib.colors as mcolors
 
 from balancebot.common.dbmodels.pnldata import PnlData
 from balancebot.common.dbmodels.trade import Trade
-from balancebot.common.utils import calc_gains
+from balancebot.common.utils import calc_gains, combine_time_series
 from balancebot.common import utils
 
 if TYPE_CHECKING:
