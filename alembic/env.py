@@ -22,7 +22,7 @@ target_metadata = Base.metadata
 
 config.set_main_option(
     'sqlalchemy.url',
-    os.environ['DATABASE_URI']
+    f'postgresql://{os.environ["DATABASE_URI"]}'
 )
 
 # other values from the config, defined by the needs of env.py,
