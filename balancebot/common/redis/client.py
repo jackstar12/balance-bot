@@ -1,7 +1,7 @@
 from enum import Enum
 
 from balancebot.common import utils
-from common.messenger import Word
+from balancebot.common.messenger import Word
 
 
 class ClientSpace(Enum):

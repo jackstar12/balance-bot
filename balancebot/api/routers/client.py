@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from api.utils.analytics import create_cilent_analytics
+from balancebot.api.utils.analytics import create_cilent_analytics
 from balancebot.api.authenticator import Authenticator
 from balancebot.api.models.analytics import ClientAnalytics, FilteredPerformance, TradeAnalytics
 from balancebot.common.dbasync import db, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
@@ -45,8 +45,8 @@ from balancebot.common.exchanges import EXCHANGES
 from balancebot.common.utils import validate_kwargs, create_interval
 from balancebot.common.dbmodels import TradeDB, BalanceDB
 from balancebot.api.models.trade import Trade
-from common.models.daily import Daily
-from common.redis.client import ClientSpace, ClientCache
+from balancebot.common.models.daily import Daily
+from balancebot.common.redis.client import ClientSpace, ClientCache
 
 router = APIRouter(
     tags=["client"],

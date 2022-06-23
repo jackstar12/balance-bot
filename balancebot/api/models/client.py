@@ -6,8 +6,8 @@ import pydantic
 from fastapi import Query
 from pydantic import BaseModel, UUID4
 
-from api.models.execution import Execution
-from api.models.trade import Trade
+from balancebot.api.models.execution import Execution
+from balancebot.api.models.trade import Trade
 from balancebot.common.dbmodels.base import OrmBaseModel
 from balancebot.common.dbmodels.transfer import TransferType
 

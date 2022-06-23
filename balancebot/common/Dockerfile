@@ -6,6 +6,5 @@ COPY ./balancebot/common/requirements.txt /code/balancebot/common/requirements.t
 RUN pip install --no-cache-dir --upgrade -r ./balancebot/common/requirements.txt
 COPY ./balancebot/common /code/balancebot/common
 
-ENV PYTHONPATH=./
 
 CMD ["python3", "balancebot/collector/collector.py"]
