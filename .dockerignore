@@ -3,6 +3,7 @@ LOGS/
 docs/
 examples/
 archive/
-alembic/
 data/
-.idea/
+matplotlib/
+idea/
+.git/

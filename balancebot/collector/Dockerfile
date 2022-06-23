@@ -1,15 +1,13 @@
-FROM python:3.10.3
+FROM balancebot_common:latest
 
 WORKDIR /code
 
 COPY /balancebot/collector/requirements.txt /code/balancebot/collector/requirements.txt
-COPY /balancebot/common/requirements.txt /code/balancebot/common/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade -r /code/balancebot/collector/requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /code/balancebot/common/requirements.txt
 
 COPY /balancebot/collector /code/balancebot/collector
-COPY /balancebot/common /code/balancebot/common
 
+CMD ["alembic", "upgrade", "head"]
 
 CMD ["python3", "-m", "balancebot.collector.collector"]

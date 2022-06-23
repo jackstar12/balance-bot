@@ -1,5 +1,4 @@
 import asyncio
-import apscheduler
 from asyncio import current_task
 from enum import Enum
 from typing import List, Tuple, Union, Any
