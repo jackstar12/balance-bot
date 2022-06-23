@@ -41,6 +41,10 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
+
+    if not os.path.exists(DATA_PATH):
+        os.mkdir(DATA_PATH)
+
     await messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, pattern=True)
     await event_manager.initialize_events()
 
