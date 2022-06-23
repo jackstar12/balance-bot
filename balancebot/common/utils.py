@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import os
 import re
 import logging
 import sys
 import traceback
+import typing
 from asyncio import Future
 from decimal import Decimal
 from enum import Enum
@@ -736,6 +738,13 @@ def db_match_balance_currency(balance: Balance, currency: str):
         result = balance
 
     return result
+
+
+def combine_time_series(*time_series: typing.Iterable):
+    return sorted(
+        itertools.chain.from_iterable(time_series),
+        key=lambda a: a.time
+    )
 
 
 def prev_now_next(iterable, skip: Callable = None):

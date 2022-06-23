@@ -13,4 +13,4 @@ COPY /balancebot/common /code/balancebot/common
 
 EXPOSE 5000
 
-CMD ["uvicorn", "balancebot.api.app:app", "--port", "5000"]
+CMD ["uvicorn", "balancebot.api.app:app", "--host", "0.0.0.0", "--port", "5000"]

@@ -742,12 +742,6 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     return date
 
 
-def combine_time_series(*time_series: typing.Iterable):
-    return sorted(
-        itertools.chain.from_iterable(time_series),
-        key=lambda a: a.time
-    )
-
 
 def calc_xs_ys(data: List[Balance],
                pnl_data: List[PnlData],

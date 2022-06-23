@@ -10,7 +10,7 @@ import aiohttp
 
 
 if TYPE_CHECKING:
-    from balancebot.common.exchanges.binance.binance import BinanceFutures
+    from balancebot.common.exchanges.binance.worker import BinanceFutures
 
 
 # https://binance-docs.github.io/apidocs/futures/en/#user-data-streams

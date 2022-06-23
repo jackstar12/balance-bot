@@ -1,4 +1,4 @@
-from balancebot.common.exchanges.binance.binance import BinanceFutures, BinanceSpot
+from balancebot.common.exchanges.binance.worker import BinanceFutures, BinanceSpot
 from balancebot.common.exchanges.binance.ticker import BinanceFuturesTicker
 from balancebot.common.exchanges.bitmex.bitmex import BitmexClient
 from balancebot.common.exchanges.bybit.bybit import BybitDerivativesClient

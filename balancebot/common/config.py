@@ -29,5 +29,5 @@ CURRENCY_ALIASES = {
     'USD': '$'
 }
 
-LOG_OUTPUT_DIR = "C:/Users/jkran/PycharmProjects/BalanceBot/LOGS/"
-DATA_PATH = "C:/Users/jkran/PycharmProjects/BalanceBot/data/"
+LOG_OUTPUT_DIR = "/LOGS/"
+DATA_PATH = "/data/"

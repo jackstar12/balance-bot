@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from balancebot.common.dbsync import session
 from balancebot.common.dbmodels.event import Event
-from common.dbasync import db_all
+from balancebot.common.dbasync import db_all
 
 
 @dataclass
@@ -29,7 +29,7 @@ class EventManager:
         self._cur_timer = None
         self._dc_client = discord_client
 
-    def initialize_events(self):
+    async def initialize_events(self):
         events = await db_all(select(Event))
         for event in events:
             self.register(event)

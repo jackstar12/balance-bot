@@ -43,7 +43,7 @@ from balancebot.common.dbmodels.client import Client
 from typing import TYPE_CHECKING
 
 from balancebot.common.models.ohlc import OHLC
-from balancebot.bot.utils import combine_time_series
+from balancebot.common.utils import combine_time_series
 
 if TYPE_CHECKING:
     from balancebot.common.dbmodels.balance import Balance

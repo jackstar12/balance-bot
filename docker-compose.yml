@@ -6,17 +6,27 @@ services:
       context: .
     ports:
       - "5000:5000"
+    environment:
+      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
+      - REDIS_URI=redis://redis-server:6379
   collector:
     build:
       dockerfile: balancebot/collector/Dockerfile
       context: .
+    environment:
+      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
+      - REDIS_URI=redis://redis-server:6379
   bot:
     build:
       dockerfile: balancebot/bot/Dockerfile
       context: .
+    environment:
+      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
+      - REDIS_URI=redis://redis-server:6379
   redis:
+    container_name: redis-server
     image: "redis:latest"
-  pg:
+  pg-server:
     image: "postgres"
     container_name: pg-server
     ports:
@@ -25,6 +35,8 @@ services:
       - pg-data:/var/lib/postgresql/data
     environment:
       - "POSTGRES_PASSWORD=postgres"
+      - "POSTGRES_USER=postgres"
+      - "POSTGRES_DB=postgres"
 
 volumes:
   pg-data:

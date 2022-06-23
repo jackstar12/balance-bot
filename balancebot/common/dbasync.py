@@ -20,6 +20,8 @@ dotenv.load_dotenv()
 SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI')
 assert SQLALCHEMY_DATABASE_URI
 
+print(SQLALCHEMY_DATABASE_URI)
+
 engine = create_async_engine(
     f'postgresql+asyncpg://{SQLALCHEMY_DATABASE_URI}',
     json_serializer=customjson.dumps_no_bytes,
@@ -31,7 +33,11 @@ async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=curren
 #redis = aioredis.Redis(host='redis-16564.c300.eu-central-1-1.ec2.cloud.redislabs.com',
 #                       port=16564,
 #                       password='usTzjlI4SKy92HE6PGXgvTsaIQMdYWgo')
-redis = aioredis.Redis()
+
+REDIS_URI = os.environ.get('REDIS_URI')
+assert REDIS_URI
+
+redis = aioredis.from_url(REDIS_URI)
 
 
 async def db(stmt: Any, session: AsyncSession = None) -> Any:

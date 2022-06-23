@@ -64,8 +64,6 @@ app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), pref
 for module in (discord, auth, client, label, analytics, journal):
     app.include_router(module.router, prefix='/api/v1')
 
-Base.metadata.create_all(bind=engine)
-
 
 @app.post('/delete')
 async def delete_user(user: User = Depends(CurrentUser)):

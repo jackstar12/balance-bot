@@ -41,8 +41,8 @@ slash = SlashCommand(bot)
 
 @bot.event
 async def on_ready():
-    await messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, channel_id=53)
-    event_manager.initialize_events()
+    await messenger.sub_channel(NameSpace.CLIENT, Category.REKT, callback=on_rekt_async, pattern=True)
+    await event_manager.initialize_events()
 
     for cog in cog_instances:
         await cog.on_ready()

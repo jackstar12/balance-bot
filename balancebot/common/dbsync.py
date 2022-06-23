@@ -11,6 +11,8 @@ dotenv.load_dotenv()
 SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI')
 assert SQLALCHEMY_DATABASE_URI
 
+print(SQLALCHEMY_DATABASE_URI)
+
 engine = create_engine(
     f'postgresql://{SQLALCHEMY_DATABASE_URI}'
 )
