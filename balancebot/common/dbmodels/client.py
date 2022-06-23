@@ -62,7 +62,7 @@ class Client(Base, Serializer):
     exchange = Column(String, nullable=False)
     subaccount = Column(String, nullable=True)
     extra_kwargs = Column(PickleType, nullable=True)
-    currency = Column(String(10), nullable=True)
+    currency = Column(String(10), default='$')
 
     # Data
     name = Column(String, nullable=True)
