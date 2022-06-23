@@ -6,8 +6,9 @@ import discord.ext.commands
 import pytz
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
+from sqlalchemy import select
 
-from balancebot.common.dbasync import async_session
+from balancebot.common.dbasync import async_session, db_all
 from balancebot.common import dbutils
 from balancebot.bot import utils
 from balancebot.common.dbsync import session
@@ -29,10 +30,12 @@ class EventsCog(CogBase):
     async def event_show(self, ctx: SlashContext):
         now = datetime.now(pytz.utc)
 
-        events: List[Event] = session.query(Event).filter(
-            Event.guild_id == ctx.guild_id,
-            Event.end > now
-        ).all()
+        events: List[Event] = await db_all(
+            select(Event).filter(
+                Event.guild_id == ctx.guild_id,
+                Event.end > now
+            )
+        )
 
         if len(events) == 0:
             await ctx.send(content='There are no events', hidden=True)
@@ -40,9 +43,11 @@ class EventsCog(CogBase):
             await ctx.defer()
             for event in events:
                 if event.is_active:
-                    await ctx.send(content='Current Event:', embed=event.get_discord_embed(self.bot, registrations=True))
+                    await ctx.send(content='Current Event:',
+                                   embed=event.get_discord_embed(self.bot, registrations=True))
                 else:
-                    await ctx.send(content='Upcoming Event:', embed=event.get_discord_embed(self.bot, registrations=True))
+                    await ctx.send(content='Upcoming Event:',
+                                   embed=event.get_discord_embed(self.bot, registrations=True))
 
     @cog_ext.cog_subcommand(
         base="event",
@@ -134,10 +139,12 @@ class EventsCog(CogBase):
     async def archive(self, ctx: SlashContext):
         now = datetime.now(pytz.utc)
 
-        archived = session.query(Event).filter(
-            Event.guild_id == ctx.guild_id,
-            Event.end < now
-        ).all()
+        archived = await db_all(
+            select(Event).filter(
+                Event.guild_id == ctx.guild_id,
+                Event.end < now
+            )
+        )
 
         if len(archived) == 0:
             raise UserInputError('There are no archived events')
@@ -242,4 +249,3 @@ class EventsCog(CogBase):
         await ctx.send(content='',
                        embed=await utils.create_leaderboard(dc_client=self.bot, guild_id=ctx.guild_id, mode='gain',
                                                             time=time))
-

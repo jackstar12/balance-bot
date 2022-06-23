@@ -18,7 +18,7 @@ from discord_slash import SlashCommand
 
 from balancebot.common.config import TESTING
 from balancebot.common.dbsync import session
-from balancebot.common.dbasync import async_session, db_all, redis
+from balancebot.common.dbasync import async_session, db_all, redis, db_select_all, db_select
 from balancebot.common.dbmodels.guildassociation import GuildAssociation
 from balancebot.common.dbmodels.client import Client
 from balancebot.common.dbmodels.discorduser import DiscordUser
@@ -94,7 +94,7 @@ async def on_ready():
 @bot.event
 async def on_guild_update(before: discord.Guild, after: discord.Guild):
     if before.name != after.name:
-        db_guild = session.query(Guild).filter_by(id=after.id).first()
+        db_guild = await db_select(Guild, id=after.id)
         if db_guild:
             db_guild.name = after.name
             await async_session.commit()
@@ -108,9 +108,9 @@ async def on_guild_join(guild: discord.Guild):
         name=guild.name
     )
 
-    session.add(db_guild)
+    async_session.add(db_guild)
 
-    discord_users = session.query(DiscordUser).all()
+    discord_users = await db_select_all(DiscordUser)
     for discord_user in discord_users:
         member = guild.get_member(discord_user.id)
         if member:
@@ -133,7 +133,7 @@ async def on_guild_join(guild: discord.Guild):
 
 @bot.event
 async def on_guild_leave(guild: discord.Guild):
-    db_guild: Guild = session.query(Guild).filter_by(id=guild.id).first()
+    db_guild: Guild = await db_select(Guild, id=guild.id)
 
     if db_guild:
         for discord_user in db_guild.users:

@@ -7,7 +7,7 @@ from requests_oauthlib import OAuth2Session
 from starlette.responses import RedirectResponse, JSONResponse
 
 from balancebot.common.dbsync import session
-from balancebot.common.dbasync import async_session
+from balancebot.common.dbasync import async_session, db_select
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.user import User
 from balancebot.api.dependencies import CurrentUser
@@ -98,7 +98,7 @@ async def callback(request: Request, error: Optional[str] = None, user: User = D
 
     user_json = discord.get(API_BASE_URL + '/users/@me').json()
 
-    discord_user = session.query(DiscordUser).filter_by(user_id=user_json['id']).first()
+    discord_user = await db_select(DiscordUser, user_id=user_json['id'])
     new = False
     if not discord_user:
         new = True

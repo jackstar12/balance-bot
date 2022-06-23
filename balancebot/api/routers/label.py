@@ -118,10 +118,12 @@ async def remove_label(body: RemoveLabel, user: User = Depends(CurrentUser)):
         )
     )
     if isinstance(trade, Trade):
-        label = session.query(Label).filter(
-            Label.id == body.label_id,
-            Label.client_id == body.client_id
-        ).first()
+        label = await db_first(
+            select(Label).filter(
+                Label.id == body.label_id,
+                Label.client_id == body.client_id
+            )
+        )
         if label:
             if label in trade.labels:
                 trade.labels.remove(label)
@@ -141,12 +143,12 @@ async def set_labels(body: SetLabels, user: User = Depends(CurrentUser)):
     if trade:
 
         if len(body.label_ids) > 0:
-            #await db(
+            # await db(
             #    update(trade_association).where(
             #        trade_association.trade_id == trade.id,
             #
             #    )
-            #)
+            # )
             trade.labels = await db_all(
                 select(Label).filter(
                     or_(

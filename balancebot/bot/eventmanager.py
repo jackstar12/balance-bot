@@ -8,9 +8,11 @@ from typing import List, Callable
 
 import discord
 import pytz
+from sqlalchemy import select
 
 from balancebot.common.dbsync import session
 from balancebot.common.dbmodels.event import Event
+from common.dbasync import db_all
 
 
 @dataclass
@@ -28,7 +30,7 @@ class EventManager:
         self._dc_client = discord_client
 
     def initialize_events(self):
-        events = session.query(Event).all()
+        events = await db_all(select(Event))
         for event in events:
             self.register(event)
 

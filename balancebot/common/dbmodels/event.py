@@ -15,7 +15,7 @@ import discord
 
 from balancebot.common.dbsync import Base, session as session
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table, inspect
 
 event_association = Table('association', Base.metadata,
                           Column('event_id', Integer, ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
@@ -178,7 +178,7 @@ class Event(Base, Serializer):
     def _archive(self):
         if not self.archive:
             self.archive = Archive(event_id=self.id)
-            session.add(self.archive)
+            inspect(self).session.add(self.archive)
         return self.archive
 
     def __hash__(self):

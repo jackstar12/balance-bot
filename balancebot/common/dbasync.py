@@ -1,5 +1,5 @@
 import asyncio
-import json
+import apscheduler
 from asyncio import current_task
 from enum import Enum
 from typing import List, Tuple, Union, Any
@@ -21,7 +21,7 @@ SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI')
 assert SQLALCHEMY_DATABASE_URI
 
 engine = create_async_engine(
-    'postgresql+asyncpg://postgres:postgres@localhost:5432/single-user',
+    f'postgresql+asyncpg://{SQLALCHEMY_DATABASE_URI}',
     json_serializer=customjson.dumps_no_bytes,
     json_deserializer=customjson.loads
 )

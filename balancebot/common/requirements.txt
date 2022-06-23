@@ -21,3 +21,5 @@ sqlalchemy_utils~=0.38.2
 orjson~=3.6.8
 fastapi_users_db_sqlalchemy~=4.0.3
 psycopg2-binary~=2.9.3
+scipy~=1.8.1
+apscheduler~=3.9.1

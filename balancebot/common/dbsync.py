@@ -3,10 +3,8 @@ from sqlalchemy import create_engine, MetaData
 import dotenv
 import os
 import aioredis
-import psycopg2
 from sqlalchemy.orm import sessionmaker, scoped_session, Session
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession
 
 dotenv.load_dotenv()
 
@@ -14,7 +12,7 @@ SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI')
 assert SQLALCHEMY_DATABASE_URI
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URI
+    f'postgresql://{SQLALCHEMY_DATABASE_URI}'
 )
 #
 # session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
