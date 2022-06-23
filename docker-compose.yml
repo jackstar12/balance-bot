@@ -1,4 +1,4 @@
-version: '3'
+version: '3.9'
 services:
   api:
     build:
@@ -24,8 +24,10 @@ services:
       - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
       - REDIS_URI=redis://redis-server:6379
   redis:
-    container_name: redis-server
     image: "redis:latest"
+    container_name: redis-server
+    ports:
+      - "6379:6379"
   pg-server:
     image: "postgres"
     container_name: pg-server

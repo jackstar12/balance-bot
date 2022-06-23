@@ -213,8 +213,6 @@ def de_emojify(text):
     return _regrex_pattern.sub(r'', text)
 
 
-
-
 def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
     """
     Plot a line with a linear alpha gradient filled beneath it.
@@ -376,7 +374,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
             ys = interpolate.pchip_interpolate(xs, ys, new_x)
             xs = new_x
 
-            if mode == "balance":
+            if mode == "balance" or len(to_graph) > 1:
                 plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
             else:
                 gradient_fill(xs, np.array([float(y) for y in ys]), fill_color='green', alpha=0.55)
