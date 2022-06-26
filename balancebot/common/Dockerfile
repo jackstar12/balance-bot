@@ -10,5 +10,4 @@ COPY /balancebot/common /code/balancebot/common
 COPY ./alembic.ini /code/alembic.ini
 COPY ./alembic /code/alembic
 
-RUN echo "Starting Trade Alpha"
-RUN alembic upgrade head
+RUN echo "Trade Alpha"
