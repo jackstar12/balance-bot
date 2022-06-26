@@ -8,6 +8,4 @@ RUN pip install --no-cache-dir --upgrade -r ./balancebot/bot/requirements.txt
 
 COPY /balancebot/bot /code/balancebot/bot
 
-RUN alembic upgrade head
-
 CMD [ "python3", "-m", "balancebot.bot.bot" ]
