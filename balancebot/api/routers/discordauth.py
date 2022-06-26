@@ -4,13 +4,15 @@ from http import HTTPStatus
 from typing import Optional
 
 from requests_oauthlib import OAuth2Session
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse, JSONResponse
 
 from balancebot.common.dbsync import session
-from balancebot.common.dbasync import async_session, db_select
+from balancebot.common.dbasync import async_session, db_select, db
 from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.common.dbmodels.user import User
-from balancebot.api.dependencies import CurrentUser
+from balancebot.api.dependencies import CurrentUser, get_db
 
 from fastapi import APIRouter, Depends, Request
 
@@ -84,7 +86,10 @@ async def disconnect_discord(request: Request, user: User = Depends(CurrentUser)
 
 
 @router.get('/callback')
-async def callback(request: Request, error: Optional[str] = None, user: User = Depends(CurrentUser)):
+async def callback(request: Request,
+                   error: Optional[str] = None,
+                   user: User = Depends(CurrentUser),
+                   db_session: AsyncSession = Depends(get_db)):
     if error:
         return error, HTTPStatus.INTERNAL_SERVER_ERROR
     discord = make_session(state=request.session.get('oauth2_state'), request=request)
@@ -98,16 +103,17 @@ async def callback(request: Request, error: Optional[str] = None, user: User = D
 
     user_json = discord.get(API_BASE_URL + '/users/@me').json()
 
-    discord_user = await db_select(DiscordUser, user_id=user_json['id'])
-    new = False
-    if not discord_user:
-        new = True
-        discord_user = DiscordUser(user_id=user_json['id'], user=user)
+    await db(
+        update(DiscordUser).where(
+            DiscordUser.id == int(user_json['id'])
+        ).values(
+            name=user_json['username'],
+            avatar=user_json['avatar']
+        ),
+        session=db_session
+    )
 
-    discord_user.name = user_json['username']
-    discord_user.avatar = user_json['avatar']
+    user.discord_user_id = int(user_json['id'])
 
-    user.discord_user = discord_user
-
-    await async_session.commit()
+    await db_session.commit()
     return RedirectResponse(url='/app/profile')

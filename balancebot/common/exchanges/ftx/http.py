@@ -21,7 +21,7 @@ from balancebot.common.exchanges.ftx.websocket import FtxWebsocketClient
 from balancebot.common.models.ohlc import OHLC
 
 
-class FtxClient(ExchangeWorker):
+class FtxWorker(ExchangeWorker):
     supports_extended_data = True
     exchange = 'ftx'
     _ENDPOINT = 'https://ftx.com'

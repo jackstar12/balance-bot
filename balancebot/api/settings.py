@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     authjwt_cookie_max_age: int = timedelta(hours=48).total_seconds()
     authjwt_denylist_enabled: bool = True
 
-    session_cookie_name: str = 'session'
+    session_cookie_name: str = 'session-id'
     session_csfr_token_name: str = 'csrf'
 
     # authjwt_cookie_samesite: str = 'lax'

@@ -507,13 +507,14 @@ class ExchangeWorker:
         # 8.4. 90
         # 7.4. 110
 
-
-        trans = list(zip(
-            reversed(transfers),
-            reversed(
-                list(itertools.accumulate((t.amount for t in transfers), initial=current_balance.total_transfered or 0))
+        trans = list(
+            zip(
+                reversed(transfers),
+                reversed(
+                    list(itertools.accumulate((t.amount for t in transfers), initial=current_balance.total_transfered or 0))
+                )
             )
-        ))
+        )
 
         transfer_iter = iter(trans)
 

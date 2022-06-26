@@ -33,7 +33,7 @@ class Authenticator:
         user_id = await self.redis.get(session_id)
         if user_id is None:
             raise HTTPException(
-                status_code=HTTPStatus.BAD_REQUEST,
+                status_code=HTTPStatus.UNAUTHORIZED,
                 detail='Invalid session'
             )
 

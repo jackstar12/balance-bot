@@ -5,7 +5,7 @@ from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 import ccxt
 
 
-class OkxClient(ExchangeWorker):
+class OkxWorker(ExchangeWorker):
     ENDPOINT = 'https://www.bitmex.com/api/v1/'
 
     exchange = 'okx'

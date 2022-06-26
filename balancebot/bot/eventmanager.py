@@ -30,7 +30,8 @@ class EventManager:
         self._dc_client = discord_client
 
     async def initialize_events(self):
-        events = await db_all(select(Event))
+        now = datetime.now(tz=pytz.utc)
+        events = await db_all(select(Event).filter(Event.end < now))
         for event in events:
             self.register(event)
 

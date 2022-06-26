@@ -8,9 +8,10 @@ from balancebot.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Numeric, Enum
 from balancebot.common.dbmodels.serializer import Serializer
 from balancebot.common.enums import ExecType, Side
+from balancebot.common.dbmodels.symbol import CurrencyMixin
 
 
-class Execution(Base, Serializer):
+class Execution(Base, Serializer, CurrencyMixin):
     __tablename__ = 'execution'
     id = Column(Integer, primary_key=True)
     trade_id = Column(Integer, ForeignKey('trade.id', ondelete='CASCADE'), nullable=True)
@@ -29,4 +30,3 @@ class Execution(Base, Serializer):
     @hybrid_property
     def effective_qty(self):
         return self.qty * self.side.value
-

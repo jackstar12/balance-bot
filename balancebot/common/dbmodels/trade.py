@@ -1,3 +1,4 @@
+import operator
 from datetime import datetime
 from decimal import Decimal
 
@@ -17,6 +18,7 @@ from balancebot.common.enums import Side, ExecType, Status
 from balancebot.common.messenger import NameSpace, Category, Messenger
 from balancebot.common.models.pnldata import PnlData as CompactPnlData
 from balancebot.common import utils
+from balancebot.common.dbmodels.symbol import CurrencyMixin
 
 trade_association = Table('trade_association', Base.metadata,
                           Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
@@ -24,7 +26,7 @@ trade_association = Table('trade_association', Base.metadata,
                           )
 
 
-class Trade(Base, Serializer):
+class Trade(Base, Serializer, CurrencyMixin):
     __tablename__ = 'trade'
     __serializer_forbidden__ = ['client', 'initial']
 
@@ -198,15 +200,25 @@ class Trade(Base, Serializer):
 
     def calc_rpnl(self):
         realized_qty = self.qty - self.open_qty - self.transferred_qty
-        return (self.exit * realized_qty - self.entry * realized_qty) * (
-            Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
+        diff = self.exit - self.entry
+        raw = diff / realized_qty if self.inverse else diff * realized_qty
+        return raw * (1 if self.initial.side == Side.BUY else -1)
 
     def calc_upnl(self, price: Decimal):
-        return (price * self.open_qty - self.entry * self.open_qty) * (
-            Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
+        diff = price - self.entry
+        if self.open_qty != 0:
+            return (diff / self.open_qty if self.inverse else diff * self.open_qty) * (
+                Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
+        else:
+            return 0
 
-    def update_pnl(self, price: Decimal, messenger: Messenger = None, realtime=True, commit=False,
-                   now: datetime = None):
+    def update_pnl(self, price: Decimal,
+                   messenger: Messenger = None,
+                   realtime=True,
+                   commit=False,
+                   now: datetime = None,
+                   extra_currencies: dict[str, Decimal] = None):
+
         if not now:
             now = datetime.now(pytz.utc)
         upnl = self.calc_upnl(price)
@@ -215,7 +227,12 @@ class Trade(Base, Serializer):
             unrealized=upnl,
             realized=self.realized_pnl,
             time=now,
+            extra_currencies={
+                currency: rate * upnl
+                for currency, rate in extra_currencies if currency != self.settle
+            } if extra_currencies else None
         )
+
         self.max_pnl = self._compare_pnl(self.max_pnl, self.live_pnl, Decimal.__ge__)
         self.min_pnl = self._compare_pnl(self.min_pnl, self.live_pnl, Decimal.__le__)
         self.latest_pnl = self._compare_pnl(self.latest_pnl,
@@ -280,7 +297,9 @@ def trade_from_execution(execution: Execution):
         initial=execution,
         total_commissions=execution.commission,
         symbol=execution.symbol,
-        executions=[execution]
+        executions=[execution],
+        inverse=execution.inverse,
+        settle=execution.settle
     )
     execution.trade = trade
     pnl = PnlData(

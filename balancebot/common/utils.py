@@ -646,26 +646,6 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     return date
 
 
-def calc_xs_ys(data: List[Balance],
-               percentage=False,
-               relative_to: Balance = None) -> Tuple[List[datetime], List[float]]:
-    xs = []
-    ys = []
-
-    if data:
-        relative_to: Balance = relative_to or data[0]
-        for balance in data:
-            xs.append(balance.tz_time.replace(microsecond=0))
-            if percentage:
-                if relative_to.unrealized > 0:
-                    amount = 100 * (balance.unrealized - relative_to.unrealized) / relative_to.unrealized
-                else:
-                    amount = 0.0
-            else:
-                amount = balance.unrealized
-            ys.append(round(amount, ndigits=config.CURRENCY_PRECISION.get(balance.currency, 3)))
-        return xs, ys
-
 
 async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
     if callable(fn):

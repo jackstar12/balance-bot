@@ -9,6 +9,8 @@ class AmountMixin:
     time: DateTime = Column(DateTime(timezone=True), nullable=False, index=True)
     extra_currencies = Column(JSONB, nullable=True)
 
+
+
     #@orm.reconstructor
     #def init_on_load(self):
     #    self.error = None

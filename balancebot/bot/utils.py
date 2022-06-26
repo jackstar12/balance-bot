@@ -371,11 +371,12 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
             xs = np.array([mdates.date2num(d) for d in xs])
             new_x = np.linspace(min(xs), max(xs), num=500)
-            ys = interpolate.pchip_interpolate(xs, ys, new_x)
-            xs = new_x
+#            ys = interpolate.pchip_interpolate(xs, ys, new_x)
+            #xs = new_x
 
             if mode == "balance" or len(to_graph) > 1:
                 plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
+                plt.gca().xaxis_date()
             else:
                 gradient_fill(xs, np.array([float(y) for y in ys]), fill_color='green', alpha=0.55)
         plt.gcf().autofmt_xdate()
@@ -750,10 +751,9 @@ def calc_xs_ys(data: List[Balance],
     ys = []
 
     if data:
-        if mode == 'balance':
-            relative_to = (relative_to or data[0]).unrealized
-        else:
-            relative_to = (relative_to or data[0]).realized
+        relative_to = relative_to or data[0]
+        rel = relative_to
+        relative_to = relative_to.realized
         upnl_by_trade = {}
         amount = None
         for prev_item, item, next_item in utils.prev_now_next(combine_time_series(data, pnl_data)):
@@ -761,9 +761,9 @@ def calc_xs_ys(data: List[Balance],
                 upnl_by_trade[item.trade_id] = item.unrealized
             if isinstance(item, Balance):
                 if mode == 'balance':
-                    current = item.unrealized
+                    current = item.realized
                 else:
-                    current = item.realized - relative_to
+                    current = item.realized - (item.total_transfered - rel.total_transfered) - relative_to
 
                 if percentage:
                     if relative_to > 0:
@@ -772,8 +772,9 @@ def calc_xs_ys(data: List[Balance],
                         amount = 0.0
                 else:
                     amount = current
-            if amount is not None and (not prev_item or not next_item or prev_item.time != item.time != next_item.time):
+            if amount is not None and (True or not prev_item or not next_item or prev_item.time != item.time != next_item.time):
                 xs.append(item.time)
+                #ys.append(amount)
                 ys.append(amount + sum(upnl_by_trade.values()))
         return xs, ys
 

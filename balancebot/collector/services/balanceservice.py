@@ -242,7 +242,7 @@ class BalanceService(BaseService):
 
     async def add_client(self, client) -> Optional[ExchangeWorker]:
         exchange_cls = self._exchanges.get(client.exchange)
-        if issubclass(exchange_cls, ExchangeWorker):
+        if exchange_cls and issubclass(exchange_cls, ExchangeWorker):
             worker = exchange_cls(client,
                                 self._http_session,
                                 self._db if client.is_premium else self._base_db,
@@ -251,11 +251,11 @@ class BalanceService(BaseService):
             if client.is_premium and exchange_cls.supports_extended_data:
                 try:
                     await worker.synchronize_positions()
+                    await worker.connect()
                 except InvalidClientError:
                     return None
                 except ResponseError:
                     logging.exception(f'Error while adding {client.id=}')
-                await worker.connect()
                 self._add_worker(worker, premium=True)
             else:
                 self._add_worker(worker, premium=False)
@@ -300,7 +300,7 @@ class BalanceService(BaseService):
                 for trade in client.open_trades:
                     ticker = self.data_service.get_ticker(trade.symbol, client.exchange)
                     if ticker:
-                        trade.update_pnl(ticker.price, realtime=True)
+                        trade.update_pnl(ticker.price, realtime=True, extra_currencies={'USD': ticker.price})
                         if inspect(trade.max_pnl).transient or inspect(trade.min_pnl).transient:
                             new = True
                 balance = client.evaluate_balance(self._redis)

@@ -49,7 +49,9 @@ class BalanceCog(CogBase):
 
             #usr_balance = await self.user_manager.get_client_balance(registered_user, currency)
             usr_balance = await registered_user.get_latest_balance(self.redis, currency)
-            if usr_balance and usr_balance.error is None:
+            if not usr_balance:
+                await ctx.send(f'There are no records about {user.display_name}\'s balance')
+            if usr_balance.error is None:
                 await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
             else:
                 await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
@@ -63,6 +65,8 @@ class BalanceCog(CogBase):
                 k = await self.redis.keys()
                 usr_balance = await user_client.get_latest_balance(self.redis, currency)
                 balance_message = f'Your balance ({await user_client.get_events_and_guilds_string()}): '
+                if not usr_balance:
+                    await ctx.send('There are no records about your balance')
                 if usr_balance.error is None:
                     await ctx.send(f'{balance_message}{usr_balance.to_string()}')
                 else:

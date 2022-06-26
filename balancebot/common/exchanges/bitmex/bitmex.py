@@ -10,7 +10,7 @@ from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 import balancebot.common.dbmodels.balance as db_balance
 
 
-class BitmexClient(ExchangeWorker):
+class BitmexWorker(ExchangeWorker):
     exchange = 'bitmex'
     _ENDPOINT = 'https://www.bitmex.com'
 

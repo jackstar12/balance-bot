@@ -47,7 +47,7 @@ class _KuCoinClient(ExchangeWorker, ABC):
         headers['KC-API-KEY-VERSION'] = '2'
 
 
-class KuCoinFuturesClient(_KuCoinClient):
+class KuCoinFuturesWorker(_KuCoinClient):
     exchange = 'kucoin'
     _ENDPOINT = 'https://api-sandbox-futures.kucoin.com' if TESTING else 'https://api-futures.kucoin.com'
 

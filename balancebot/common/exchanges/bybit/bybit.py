@@ -103,19 +103,16 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
             # Unify Inverse and Linear
             contract_type = _get_contract_type(symbol)
-            if contract_type == ContractType.INVERSE:
-                commission *= price
-            if contract_type == ContractType.INVERSE:
-                qty /= price
-
             return Execution(
-                symbol=raw_exec["symbol"],
+                symbol=symbol,
                 price=price,
                 qty=qty,
                 commission=commission,
                 time=cls._parse_ts(raw_exec["trade_time_ms"] / 1000),
                 side=Side.BUY if raw_exec["side"] == "Buy" else Side.SELL,
-                type=ExecType.TRADE
+                type=ExecType.TRADE,
+                inverse=contract_type == ContractType.INVERSE,
+                settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
             )
 
     async def _on_message(self, ws: WebsocketManager, message: Dict):
@@ -229,7 +226,7 @@ def _get_contract_type(contract: str):
         return ContractType.INVERSE
 
 
-class BybitDerivativesClient(_BybitBaseClient):
+class _BybitDerivativesBaseClient(_BybitBaseClient):
     exchange = 'bybit-derivatives'
 
     _limits = [
@@ -274,7 +271,8 @@ class BybitDerivativesClient(_BybitBaseClient):
                 results.extend(result)
         return results
 
-    async def _get_executions(self,
+    async def _get_internal_executions(self,
+                                       contract_type: ContractType,
                               since: datetime,
                               init=False) -> List[Execution]:
 
@@ -313,14 +311,27 @@ class BybitDerivativesClient(_BybitBaseClient):
             }
             if ts:
                 params['start_time'] = ts
-            # https://bybit-exchange.github.io/docs/inverse/#t-usertraderecords
-            raw_execs.extend(await self._get_paginated(
-                limit=200,
-                path='/v2/private/execution/list',
-                params=params.copy(),
-                page_param='page',
-                result_path="trade_list"
-            ))
+            if contract_type == ContractType.INVERSE:
+                # https://bybit-exchange.github.io/docs/inverse/#t-usertraderecords
+                raw_execs.extend(await self._get_paginated(
+                    limit=200,
+                    path='/v2/private/execution/list',
+                    params=params.copy(),
+                    page_param='page',
+                    result_path="trade_list"
+
+                ))
+            elif contract_type == ContractType.LINEAR:
+                params['symbol'] = f'{coin}USDT'
+                raw_execs.extend(await self._get_paginated(
+                    limit=100,
+                    path='/private/linear/trade/execution/history-list',
+                    params=params,
+                    page_param='page_token',
+                    page_response='page_token',
+                    result_path="data",
+                    page_init=None
+                ))
             # https://bybit-exchange.github.io/docs/inverse_futures/#t-usertraderecords
             # raw_execs.extend(await self._get_paginated(
             #    limit=200,
@@ -330,16 +341,7 @@ class BybitDerivativesClient(_BybitBaseClient):
             #    result_path="trade_list"
             # ))
             # https://bybit-exchange.github.io/docs/linear/#t-userhistorytraderecords
-            params['symbol'] = f'{coin}USDT'
-            raw_execs.extend(await self._get_paginated(
-                limit=100,
-                path='/private/linear/trade/execution/history-list',
-                params=params,
-                page_param='page_token',
-                page_response='page_token',
-                result_path="data",
-                page_init=None
-            ))
+
 
             # {
             #     "order_id": "55bd3595-938d-4d7f-b1ab-7abd6a3ec1cb",
@@ -371,7 +373,7 @@ class BybitDerivativesClient(_BybitBaseClient):
         return execs
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
-    async def _get_balance(self, time: datetime, upnl=True):
+    async def _internal_get_balance(self, contract_type: ContractType, time: datetime, upnl=True):
 
         balances, tickers = await asyncio.gather(
             self._get('/v2/private/wallet/balance'),
@@ -388,10 +390,11 @@ class BybitDerivativesClient(_BybitBaseClient):
         for currency, balance in balances.items():
             realized = Decimal(balance['wallet_balance'])
             unrealized = Decimal(balance['equity'])
-            price = Decimal(0)
+            price = 0
             if currency == 'USDT':
-                price = Decimal(1)
-            elif unrealized > 0:
+                if contract_type == ContractType.LINEAR:
+                    price = Decimal(1)
+            elif unrealized > 0 and contract_type == ContractType.INVERSE:
                 price = ticker_prices.get(f'{currency}USD')
                 extra_currencies[currency] = realized
                 if not price:
@@ -471,6 +474,69 @@ class BybitDerivativesClient(_BybitBaseClient):
             ]
         else:
             return []
+
+
+class BybitInverseWorker(_BybitDerivativesBaseClient):
+    exchange = 'bybit-inverse'
+
+    _limits = [
+        create_limit(interval_seconds=5, max_amount=5 * 70, default_weight=1),
+        create_limit(interval_seconds=5, max_amount=5 * 50, default_weight=1),
+        create_limit(interval_seconds=120, max_amount=120 * 50, default_weight=1),
+        create_limit(interval_seconds=120, max_amount=120 * 20, default_weight=1)
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._internal_transfers: Optional[Tuple[datetime, List[RawTransfer]]] = None
+        # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
+
+    async def _get_transfers(self,
+                             since: datetime,
+                             to: datetime = None) -> List[RawTransfer]:
+        self._internal_transfers = (since, await self._get_internal_transfers(since, Wallet.DERIVATIVE))
+        return self._internal_transfers[1]
+
+    async def _get_executions(self,
+                              since: datetime,
+                              init=False) -> List[Execution]:
+        return await self._get_internal_executions(ContractType.INVERSE, since, init)
+
+    # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
+    async def _get_balance(self, time: datetime, upnl=True):
+        return await self._internal_get_balance(ContractType.INVERSE, time, upnl)
+
+
+class BybitLinearWorker(_BybitDerivativesBaseClient):
+    exchange = 'bybit-linear'
+
+    _limits = [
+        create_limit(interval_seconds=5, max_amount=5 * 70, default_weight=1),
+        create_limit(interval_seconds=5, max_amount=5 * 50, default_weight=1),
+        create_limit(interval_seconds=120, max_amount=120 * 50, default_weight=1),
+        create_limit(interval_seconds=120, max_amount=120 * 20, default_weight=1)
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._internal_transfers: Optional[Tuple[datetime, List[RawTransfer]]] = None
+        # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
+
+    async def _get_transfers(self,
+                             since: datetime,
+                             to: datetime = None) -> List[RawTransfer]:
+        self._internal_transfers = (since, await self._get_internal_transfers(since, Wallet.DERIVATIVE))
+        return self._internal_transfers[1]
+
+    async def _get_executions(self,
+                              since: datetime,
+                              init=False) -> List[Execution]:
+        return await self._get_internal_executions(ContractType.LINEAR, since, init)
+
+    # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
+    async def _get_balance(self, time: datetime, upnl=True):
+        return await self._internal_get_balance(ContractType.LINEAR, time, upnl)
+
 
 
 class BybitSpotClient(_BybitBaseClient):
