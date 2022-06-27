@@ -47,6 +47,8 @@ from balancebot.common.utils import combine_time_series
 if TYPE_CHECKING:
     from balancebot.common.dbmodels.balance import Balance
 
+import balancebot.common.dbmodels.balance as db_balance
+
 logger = logging.getLogger(__name__)
 
 
@@ -511,7 +513,8 @@ class ExchangeWorker:
             zip(
                 reversed(transfers),
                 reversed(
-                    list(itertools.accumulate((t.amount for t in transfers), initial=current_balance.total_transfered or 0))
+                    list(itertools.accumulate((t.amount for t in transfers),
+                                              initial=current_balance.total_transfered or 0))
                 )
             )
         )
@@ -522,7 +525,8 @@ class ExchangeWorker:
         if current_transferred:
             current_balance.total_transfered = current_transferred
 
-        for prev_exec, execution, next_exec in utils.prev_now_next(reversed(all_executions), skip=lambda e: e.type == ExecType.TRANSFER):
+        for prev_exec, execution, next_exec in utils.prev_now_next(reversed(all_executions),
+                                                                   skip=lambda e: e.type == ExecType.TRANSFER):
             new_balance = db_balance.Balance(
                 realized=current_balance.realized,
                 unrealized=current_balance.unrealized,
@@ -531,11 +535,11 @@ class ExchangeWorker:
                 client=self.client
             )
             pnl_by_trade = {}
-            if next_exec:
-                while cur_pnl and cur_pnl.time > next_exec.time:
-                    if cur_pnl.time < execution.time and cur_pnl.trade_id not in pnl_by_trade:
-                        pnl_by_trade[cur_pnl.trade_id] = cur_pnl
-                    cur_pnl = next(pnl_iter, None)
+            # if next_exec:
+            #    while cur_pnl and cur_pnl.time > next_exec.time:
+            #        if cur_pnl.time < execution.time and cur_pnl.trade_id not in pnl_by_trade:
+            #            pnl_by_trade[cur_pnl.trade_id] = cur_pnl
+            #        cur_pnl = next(pnl_iter, None)
             if prev_exec:
                 if prev_exec.type == ExecType.TRADE:
                     if prev_exec.realized_pnl:
@@ -568,6 +572,19 @@ class ExchangeWorker:
                 self._db.add(new_balance)
                 await self._db.commit()
             current_balance = new_balance
+
+        if all_executions:
+            first_execution = all_executions[0]
+            self._db.add(
+                db_balance.Balance(
+                    realized=current_balance.realized + (first_execution.commission or 0),
+                    unrealized=current_balance.unrealized + (first_execution.commission or 0),
+                    total_transfered=current_balance.total_transfered,
+                    time=first_execution.time - timedelta(seconds=1),
+                    client=self.client
+                )
+            )
+
         await self._db.commit()
 
     async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
@@ -919,7 +936,6 @@ class ExchangeWorker:
                     'id': self.client_id, 'invalid': True
                 })
             raise
-
 
     def _get(self, path: str, **kwargs):
         return self._request('GET', path, **kwargs)

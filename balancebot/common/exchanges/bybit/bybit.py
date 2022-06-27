@@ -226,8 +226,7 @@ def _get_contract_type(contract: str):
         return ContractType.INVERSE
 
 
-class _BybitDerivativesBaseClient(_BybitBaseClient):
-    exchange = 'bybit-derivatives'
+class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
 
     _limits = [
         create_limit(interval_seconds=5, max_amount=5 * 70, default_weight=1),
@@ -486,11 +485,6 @@ class BybitInverseWorker(_BybitDerivativesBaseClient):
         create_limit(interval_seconds=120, max_amount=120 * 20, default_weight=1)
     ]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._internal_transfers: Optional[Tuple[datetime, List[RawTransfer]]] = None
-        # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
-
     async def _get_transfers(self,
                              since: datetime,
                              to: datetime = None) -> List[RawTransfer]:
@@ -516,11 +510,6 @@ class BybitLinearWorker(_BybitDerivativesBaseClient):
         create_limit(interval_seconds=120, max_amount=120 * 50, default_weight=1),
         create_limit(interval_seconds=120, max_amount=120 * 20, default_weight=1)
     ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._internal_transfers: Optional[Tuple[datetime, List[RawTransfer]]] = None
-        # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
 
     async def _get_transfers(self,
                              since: datetime,
