@@ -1,14 +1,16 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
 
-from common.dbmodels.base import OrmBaseModel
+from balancebot.common.dbmodels.base import OrmBaseModel
+from balancebot.common.dbmodels.transfer import TransferType
 
 
 class Transfer(OrmBaseModel):
-
-    note: str
+    id: str
+    note: Optional[str]
     coin: str
-    commission: Decimal
-    amount: Decimal
-    time: datetime
+    commission: Optional[Decimal]
+    type: TransferType
     extra_currencies: dict[str, Decimal]
+

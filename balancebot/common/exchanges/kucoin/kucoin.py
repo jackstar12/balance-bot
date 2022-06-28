@@ -60,6 +60,12 @@ class KuCoinFuturesWorker(_KuCoinClient):
 
     async def _get_url(self):
         resp = await self._post('/api/v1/bullet-private')
+        server = resp["instanceServers"][0]
+        return server["endpoint"] + f'?token={resp["token"]}'
+
+
+    async def connect(self):
+        self._ws =
 
 
 

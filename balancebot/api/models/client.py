@@ -8,6 +8,7 @@ from pydantic import BaseModel, UUID4
 
 from balancebot.api.models.execution import Execution
 from balancebot.api.models.trade import Trade
+from balancebot.api.models.transfer import Transfer
 from balancebot.common.dbmodels.base import OrmBaseModel
 from balancebot.common.dbmodels.transfer import TransferType
 
@@ -98,21 +99,9 @@ class Balance(OrmBaseModel):
         )
 
 
-class Transfer(OrmBaseModel):
-    id: str
-    note: Optional[str]
-    coin: str
-    commission: Optional[Decimal]
-    execution: Optional[Execution]
-    type: TransferType
-
-
 class ClientOverview(BaseModel):
     initial_balance: Balance
     current_balance: Balance
-
-    trades_by_id: dict[
-        str, Trade
-    ]
+    trades_by_id: dict[str, Trade]
     transfers: dict[str, Transfer]
     daily: dict[date, Balance]

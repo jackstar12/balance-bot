@@ -19,14 +19,13 @@ class WebsocketManager:
     # Note that the url is provided through a function because some exchanges
     # have authentication embedded into the url
     def __init__(self, session: aiohttp.ClientSession,
-                 get_url: Callable[..., str] = None,
+                 get_url: Callable[..., str],
                  on_message: Callable[[Self, str], None] = None,
                  on_connect: Callable[[Self], None] = None,
                  ping_forever_seconds: int = None):
         self._ws = None
         self._session = session
-        if get_url:
-            self._get_url = get_url
+        self._get_url = get_url
         if on_message:
             self._on_message = on_message
         self._on_connect = on_connect
@@ -37,11 +36,9 @@ class WebsocketManager:
         self._ws.send(message)
 
     async def send_json(self, data):
-        if self._ws and not self._ws.closed:
-            return await self._ws.send_json(data, dumps=customjson.dumps_no_bytes)
-        else:
+        if not self._ws or self._ws.closed:
             await self.connect()
-            return await self._ws.send_json(data, dumps=customjson.dumps_no_bytes)
+        return await self._ws.send_json(data, dumps=customjson.dumps_no_bytes)
 
     async def reconnect(self) -> None:
         if self.connected:

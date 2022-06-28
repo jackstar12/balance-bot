@@ -9,7 +9,7 @@ from typing import Optional, Dict, List, Tuple
 import aiohttp
 import jwt
 import pytz
-from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query
+from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query, Body
 from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from sqlalchemy import or_, delete, select, update, asc, func, desc, Date, false
@@ -250,6 +250,7 @@ async def get_client(request: Request, response: Response,
                 daily[day] = daily_balance
 
         overview = ClientOverview.construct(
+            daily=daily,
             initial_balance=functools.reduce(
                 operator.add, (overview.initial_balance for overview in overviews)
             ),
@@ -260,7 +261,6 @@ async def get_client(request: Request, response: Response,
                 lambda a, b: a | b,
                 (overview.trades_by_id for overview in overviews)
             ),
-            daily=daily,
             transfers=functools.reduce(
                 lambda a, b: a | b,
                 (overview.transfers for overview in overviews)
