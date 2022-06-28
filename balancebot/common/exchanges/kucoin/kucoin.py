@@ -65,7 +65,7 @@ class KuCoinFuturesWorker(_KuCoinClient):
 
 
     async def connect(self):
-        self._ws =
+        self._ws = None
 
 
 
