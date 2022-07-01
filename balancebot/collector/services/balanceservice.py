@@ -132,7 +132,7 @@ class _BalanceServiceBase(BaseService):
             await self._add_worker(worker)
             return worker
         else:
-            logging.error(
+            self._logger.error(
                 f'CRITICAL: Exchange class {exchange_cls} for exchange {client.exchange} does NOT subclass ClientWorker')
 
     @abc.abstractmethod
@@ -194,11 +194,13 @@ class BasicBalanceService(_BalanceServiceBase):
 
         for client in await db_all(
                 self._all_client_stmt.filter(
-
-                    Client.exchange.in_([
-                        ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
-                        if not ExchangeCls.supports_extended_data
-                    ])
+                    or_(
+                        Client.is_premium == False,
+                        Client.exchange.in_([
+                            ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
+                            if not ExchangeCls.supports_extended_data
+                        ])
+                    )
                 ),
                 session=self._db
         ):
@@ -232,13 +234,11 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
         for client in await db_all(
                 self._all_client_stmt.filter(
-                    or_(
-                        Client.is_premium == False,
-                        Client.exchange.in_([
-                            ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
-                            if not ExchangeCls.supports_extended_data
-                        ])
-                    )
+                    Client.is_premium == True,
+                    Client.exchange.in_([
+                        ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
+                        if ExchangeCls.supports_extended_data
+                    ])
                 ),
                 session=self._db
         ):
@@ -303,7 +303,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
             except InvalidClientError:
                 return None
             except ResponseError:
-                logging.exception(f'Error while adding {worker.client_id=}')
+                self._logger.exception(f'Error while adding {worker.client_id=}')
                 return None
 
             workers[worker.client.id] = worker

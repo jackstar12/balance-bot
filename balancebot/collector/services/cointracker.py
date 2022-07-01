@@ -18,7 +18,7 @@ from typing import Dict, List
 import aiohttp
 
 
-class CoinTracker(Observer, BaseService):
+class CoinTracker(BaseService, Observer):
     _ENDPOINT = 'https://ftx.com'
 
     VolumeObservable = Observable()

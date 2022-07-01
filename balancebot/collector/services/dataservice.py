@@ -1,7 +1,7 @@
 import asyncio
 from enum import Enum
 from typing import Dict
-
+import sqlalchemy.ext.hybrid
 from balancebot.collector.errors import InvalidExchangeError
 from balancebot.common.exchanges.exchangeticker import ExchangeTicker
 from balancebot.collector.services.baseservice import BaseService
@@ -18,6 +18,11 @@ class Channel(Enum):
 
 
 class DataService(BaseService, Observer):
+    """
+    Provides market data.
+
+    It depends on the exchange having a ``ExchangeTicker``  implementation
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -28,7 +33,17 @@ class DataService(BaseService, Observer):
         await self._update_redis()
 
     async def subscribe(self, exchange: str, channel: Channel, observer: Observer = None, **kwargs):
+        """
+        Subscribes to the given ecxhange channel.
 
+            # Will subscribe to BTCUSDT Ticker Messages from binance-futures
+            >>> self.subscribe('binance-futures', Channel.TICKER, symbol='BTCUSDT')
+
+        :param exchange: which exchange?
+        :param channel: the channel to subscribe to (ticker, trade etc.)
+        :param observer: [Optional] will be notified whenever updates arrive
+        :param kwargs: will be passed down to the ``ExchangeTicker`` implementation.
+        """
         ticker = self._exchanges.get(exchange)
         if not ticker:
             ticker_cls = EXCHANGE_TICKERS.get(exchange)

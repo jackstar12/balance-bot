@@ -1,4 +1,6 @@
 import asyncio
+import logging
+
 import aiohttp
 from apscheduler.executors.asyncio import AsyncIOExecutor
 
@@ -13,6 +15,14 @@ from balancebot.collector.services.dataservice import DataService
 from balancebot.collector.services.balanceservice import ExtendedBalanceService, BasicBalanceService
 from balancebot.common.messenger import Messenger
 from balancebot.common.utils import setup_logger
+from balancebot.collector.services.baseservice import BaseService
+
+
+
+async def run_service(service: BaseService):
+    async with service:
+        await service.init()
+        await service.run_forever()
 
 
 async def run(session: aiohttp.ClientSession):
@@ -24,6 +34,7 @@ async def run(session: aiohttp.ClientSession):
             'default': AsyncIOExecutor()
         }
     )
+
     data_service = DataService(session, messenger, redis, scheduler, )
     alert_service = AlertService(session, messenger, redis, scheduler, data_service=data_service)
     coin_tracker = CoinTracker(session, messenger, redis, scheduler, data_service=data_service)
@@ -38,16 +49,12 @@ async def run(session: aiohttp.ClientSession):
                                           data_path=DATA_PATH,
                                           rekt_threshold=REKT_THRESHOLD)
 
-    async with (data_service, alert_service, pnl_service, balance_service):
-        scheduler.start()
-        await alert_service.initialize_alerts()
-        await pnl_service.init()
-        await balance_service.init()
-        await asyncio.gather(
-            pnl_service.run_forever(),
-            balance_service.run_forever()
-            # coin_tracker.run()
-        )
+    services = (data_service, alert_service, pnl_service, balance_service)
+
+    scheduler.start()
+    await asyncio.gather(
+        *[run_service(service) for service in services]
+    )
 
 
 async def main():
