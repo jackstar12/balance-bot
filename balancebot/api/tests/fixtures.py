@@ -35,16 +35,15 @@ def api_register_login(api_client):
 
 
 @pytest.fixture()
-def register_dummy_client(api_client):
-
+def register_dummy_client(exchange, api_key, api_secret, kwargs, api_client):
     api_client.post("/api/v1/client",
                     data={
-
+                        "name": "dummy",
+                        "exchange": exchange,
+                        "api_key": api_key,
+                        "api_secret": api_secret,
+                        **kwargs
                     })
-
-    return Client(
-
-    )
 
 
 

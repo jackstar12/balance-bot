@@ -9,7 +9,7 @@ from sqlalchemy.orm import relationship
 from typing_extensions import Self
 
 from balancebot.common.dbsync import Base
-from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime
+from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime, orm
 
 import balancebot.common.config as config
 from balancebot.common.dbmodels.amountmixin import AmountMixin
@@ -52,6 +52,10 @@ class Balance(Base, Serializer):
     def __init__(self, error=None, *args, **kwargs):
         self.error = error
         super().__init__(*args, **kwargs)
+
+    @orm.reconstructor
+    def reconstructor(self):
+        self.error = None
 
     def to_json(self, currency=False):
         json = {

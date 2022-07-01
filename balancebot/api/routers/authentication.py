@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from starlette.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
+from api.models.user import UserRead
 from balancebot.api.authenticator import Authenticator
 from balancebot.common.dbasync import db_select
 from balancebot.common.dbmodels.user import User
@@ -9,7 +11,7 @@ import bcrypt
 
 from balancebot.api.dependencies import get_authenticator
 from balancebot.api.users import fastapi_users
-from balancebot.api.utils.responses import OK
+from balancebot.api.utils.responses import OK, CustomJSONResponse
 
 router = APIRouter(
     tags=["authentication"],
@@ -52,8 +54,8 @@ async def login(body: AuthenticationBody, authenticator: Authenticator = Depends
     user = await db_select(User, email=body.email)
     if user:
         if bcrypt.checkpw(body.password.encode('utf-8'), user.hashed_password.encode('utf-8')):
-            response = JSONResponse(
-                {'msg': 'Successfully Logged in'}
+            response = CustomJSONResponse(
+                jsonable_encoder(UserRead.from_orm(user))
             )
 
             await authenticator.set_session_cookie(response, user)

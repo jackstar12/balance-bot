@@ -27,6 +27,7 @@ from balancebot.common.errors import InvalidClientError, ResponseError
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
 from balancebot.common.messenger import ClientUpdate
 from balancebot.common.messenger import NameSpace, Category
+from common.utils import join_args
 
 
 class ExchangeJob(NamedTuple):

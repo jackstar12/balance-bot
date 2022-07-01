@@ -327,7 +327,7 @@ class Client(Base, Serializer):
             # return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
 
     async def get_events_and_guilds_string(self, guilds: Optional[List[Guild]] = None):
-        return ', '.join([await self.get_guilds_string(guilds), self.get_event_string()])
+        return ', '.join((s for s in [await self.get_guilds_string(guilds), self.get_event_string()] if s))
 
     def get_event_string(self):
         return ', '.join(

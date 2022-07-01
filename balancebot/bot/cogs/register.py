@@ -211,17 +211,6 @@ class RegisterCog(CogBase):
                                     existing_clients, new_client, discord_user, init_balance, guilds, event
                                 )
                             return
-                            #button_row = create_yes_no_button_row(
-                            #    slash=self.slash_cmd_handler,
-                            #    author_id=ctx.author.id,
-                            #    yes_callback=lambda component_ctx: self.register_user(
-                            #        existing_clients, new_client, discord_user, init_balance, guilds,
-                            #        event,
-                            #    ),
-                            #    yes_message="You were successfully registered!",
-                            #    no_message="Registration cancelled",
-                            #    hidden=True
-                            #)
                     else:
                         error = f'An error occured while getting your balance: {init_balance.error}.'
 
