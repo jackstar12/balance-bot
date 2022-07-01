@@ -6,10 +6,9 @@ import api.dbmodels.balance as balance
 import urllib.parse
 import time
 import logging
-import ccxt.async_support
+import ccxt.async_support as ccxt
 from datetime import datetime
 from exchangeworker import ExchangeWorker
-import ccxt
 
 
 class OkxClient(ExchangeWorker):
