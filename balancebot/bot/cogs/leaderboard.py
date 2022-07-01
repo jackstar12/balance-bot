@@ -3,8 +3,8 @@ from datetime import datetime
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
-from bot import utils
-from bot.cogs.cogbase import CogBase
+from balancebot.bot import utils
+from balancebot.bot.cogs.cogbase import CogBase
 
 
 class LeaderboardCog(CogBase):

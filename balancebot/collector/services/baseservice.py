@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from balancebot.common.messenger import Messenger
 from balancebot.common.models.singleton import Singleton
-from common.dbasync import async_maker
+from balancebot.common.dbasync import async_maker
 
 
 class BaseService:
