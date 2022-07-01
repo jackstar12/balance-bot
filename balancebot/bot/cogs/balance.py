@@ -47,7 +47,6 @@ class BalanceCog(CogBase):
 
             await ctx.defer()
 
-            #usr_balance = await self.user_manager.get_client_balance(registered_user, currency)
             usr_balance = await registered_user.get_latest_balance(self.redis, currency)
             if not usr_balance:
                 await ctx.send(f'There are no records about {user.display_name}\'s balance')

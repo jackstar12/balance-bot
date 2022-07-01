@@ -839,6 +839,15 @@ class ExchangeWorker:
 
     @classmethod
     async def _request_handler(cls):
+        """
+        Task which is responsible for putting out the requests
+        for this specific Exchange.
+
+        All requests have to be put onto the :cls._request_queue:
+        so that the handler can properly execute them according to the current
+        rate limit states. If there is enough weight available it will also
+        decide to run requests in parallel.
+        """
         while True:
             try:
                 item = await cls._request_queue.get()

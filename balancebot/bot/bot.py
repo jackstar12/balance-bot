@@ -199,7 +199,8 @@ cog_instances = [
         misc.MiscCog,
         register.RegisterCog,
         user.UserCog,
-        alert.AlertCog
+        alert.AlertCog,
+        leaderboard.LeaderboardCog
     ]
 ]
 

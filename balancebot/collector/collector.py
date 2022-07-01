@@ -37,15 +37,17 @@ async def run(session: aiohttp.ClientSession):
                                           exchanges=EXCHANGES,
                                           data_path=DATA_PATH,
                                           rekt_threshold=REKT_THRESHOLD)
-    scheduler.start()
-    await alert_service.initialize_alerts()
-    await pnl_service.init()
-    await balance_service.init()
-    await asyncio.gather(
-        pnl_service.run_forever(),
-        balance_service.run_forever()
-        # coin_tracker.run()
-    )
+
+    async with (data_service, alert_service, pnl_service, balance_service):
+        scheduler.start()
+        await alert_service.initialize_alerts()
+        await pnl_service.init()
+        await balance_service.init()
+        await asyncio.gather(
+            pnl_service.run_forever(),
+            balance_service.run_forever()
+            # coin_tracker.run()
+        )
 
 
 async def main():

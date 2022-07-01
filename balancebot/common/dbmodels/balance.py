@@ -23,9 +23,7 @@ class Balance(Base, Serializer):
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
     client = relationship('Client', foreign_keys=client_id)
-    #currency = Column(String(10), nullable=False)
     time = Column(DateTime(timezone=True), nullable=False, index=True)
-    #amount = Column(Float, nullable=False)
 
     realized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
     unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))

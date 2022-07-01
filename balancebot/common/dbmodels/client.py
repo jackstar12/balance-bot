@@ -37,7 +37,7 @@ from balancebot.common.messenger import NameSpace
 
 from balancebot.common.dbmodels.trade import Trade
 from balancebot.common.redis.client import ClientSpace
-from common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.discorduser import DiscordUser
 
 dotenv.load_dotenv()
 
@@ -314,11 +314,9 @@ class Client(Base, Serializer):
             True or self.user_id or getattr(self.discord_user, 'user', None)
         )
 
-    @classmethod
     @is_premium.expression
     def is_premium(cls):
         return or_(cls.user_id is not None, DiscordUser.user_id is not None)
-
 
     async def initial(self):
         try:
