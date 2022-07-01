@@ -95,7 +95,7 @@ class Balance(OrmBaseModel):
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
             total_transfered=self.total_transfered + other.total_transfered,
-            time=min(self.time, other.time)
+            time=min(self.time, other.time) if self.time else None
         )
 
 

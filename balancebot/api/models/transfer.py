@@ -12,5 +12,5 @@ class Transfer(OrmBaseModel):
     coin: str
     commission: Optional[Decimal]
     type: TransferType
-    extra_currencies: dict[str, Decimal]
+    extra_currencies: Optional[dict[str, Decimal]]
 

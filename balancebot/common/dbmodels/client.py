@@ -37,6 +37,7 @@ from balancebot.common.messenger import NameSpace
 
 from balancebot.common.dbmodels.trade import Trade
 from balancebot.common.redis.client import ClientSpace
+from common.dbmodels.discorduser import DiscordUser
 
 dotenv.load_dotenv()
 
@@ -253,7 +254,7 @@ class Client(Base, Serializer):
         elif self.user_id:
             return True
 
-    async def get_balance_at_time(self, time: datetime, currency: str = None):
+    async def get_balance_at_time(self, time: datetime, currency: str = None, db: AsyncSession = None):
         amount_cls = db_balance.Balance
         stmt = self.history.statement.filter(
             amount_cls.time < time if time else True
@@ -286,7 +287,7 @@ class Client(Base, Serializer):
                 subq.c.row_number <= 1
             )
 
-            pnl_data = await db_all(full_stmt)
+            pnl_data = await db_all(full_stmt, session=db)
 
             return db_balance.Balance(
                 realized=balance.realized,
@@ -312,6 +313,12 @@ class Client(Base, Serializer):
         return bool(
             True or self.user_id or getattr(self.discord_user, 'user', None)
         )
+
+    @classmethod
+    @is_premium.expression
+    def is_premium(cls):
+        return or_(cls.user_id is not None, DiscordUser.user_id is not None)
+
 
     async def initial(self):
         try:

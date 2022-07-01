@@ -1,3 +1,4 @@
+import logging
 from http import HTTPStatus
 
 from fastapi import Request, HTTPException
@@ -30,6 +31,7 @@ async def get_user_id(request: Request, authenticator = Depends(get_authenticato
 
 async def get_db() -> AsyncSession:
     async with async_maker() as session:
+        logging.info('Creating session')
         yield session
 
 

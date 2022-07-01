@@ -7,6 +7,7 @@ from datetime import datetime, date, timedelta
 from http import HTTPStatus
 from typing import Optional, Dict, List, Tuple
 import aiohttp
+import ccxt
 import jwt
 import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query, Body
@@ -79,6 +80,7 @@ async def register_client(request: Request, body: RegisterBody,
                 async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session, db_session=db)
                     init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
+                    await worker.cleanup()
                 if init_balance.error is None:
                     if init_balance.realized.is_zero():
                         return BadRequest(
@@ -255,7 +257,7 @@ async def get_client(request: Request, response: Response,
                 operator.add, (overview.initial_balance for overview in overviews)
             ),
             current_balance=functools.reduce(
-                operator.add, (overview.current_balance for overview in overviews)
+                operator.add, (overview.current_balance for overview in overviews if overview.current_balance)
             ),
             trades_by_id=functools.reduce(
                 lambda a, b: a | b,
@@ -547,7 +549,6 @@ async def get_analytics(client_params: ClientQueryParams = Depends(),
     trades = await db_all(
         add_client_filters(
             select(TradeDB).filter(
-                TradeDB.client_id.in_(client_params.id) if client_params.id else True,
                 TradeDB.id.in_(trade_id) if trade_id else True,
                 TradeDB.open_time >= config.since if config.since else True,
                 TradeDB.open_time <= config.to if config.to else True
@@ -555,10 +556,9 @@ async def get_analytics(client_params: ClientQueryParams = Depends(),
                 TradeDB.client
             ),
             user=user,
-            client_ids=config.ids
+            client_ids=config.id
         ),
         TradeDB.executions,
-        TradeDB.pnl_data,
         TradeDB.initial,
         TradeDB.max_pnl,
         TradeDB.min_pnl,

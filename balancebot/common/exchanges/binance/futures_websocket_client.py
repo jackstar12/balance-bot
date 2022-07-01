@@ -18,7 +18,7 @@ class FuturesWebsocketClient(WebsocketManager):
     _ENDPOINT = 'wss://stream.binancefuture.com' if TESTING else 'wss://fstream.binance.com'
 
     def __init__(self, client: BinanceFutures, session: aiohttp.ClientSession, on_message: Callable = None):
-        super().__init__(session=session)
+        super().__init__(session=session, get_url=self._get_url)
         self._client = client
         self._listenKey = None
         self._on_message = on_message

@@ -1,9 +1,13 @@
+import abc
+
 import aiohttp
 from aioredis import Redis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from balancebot.common.messenger import Messenger
 from balancebot.common.models.singleton import Singleton
+from common.dbasync import async_maker
 
 
 class BaseService:
@@ -18,3 +22,17 @@ class BaseService:
         self._messenger = messenger
         self._redis = redis
         self._scheduler = scheduler
+        self._db: AsyncSession = None
+
+    async def init(self):
+        pass
+
+    @abc.abstractmethod
+    async def run_forever(self):
+        pass
+
+    async def __aenter__(self):
+        self._db = async_maker()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self._db.close()

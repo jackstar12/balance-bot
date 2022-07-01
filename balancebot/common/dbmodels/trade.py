@@ -233,12 +233,13 @@ class Trade(Base, Serializer, CurrencyMixin):
             } if extra_currencies else None
         )
 
-        self.max_pnl = self._compare_pnl(self.max_pnl, self.live_pnl, Decimal.__ge__)
-        self.min_pnl = self._compare_pnl(self.min_pnl, self.live_pnl, Decimal.__le__)
+        self._replace_pnl(self.max_pnl, self.live_pnl, Decimal.__ge__)
+        self._replace_pnl(self.min_pnl, self.live_pnl, Decimal.__le__)
         self.latest_pnl = self._compare_pnl(self.latest_pnl,
                                             self.live_pnl,
-                                            lambda latest, live: not latest or abs((latest - live) / latest) > Decimal(
-                                                .25))
+                                            lambda latest, live: (
+                                                    not latest or abs((latest - live) / latest) > Decimal(.25)
+                                            ))
         if realtime and messenger:
             messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
                                   obj={'id': self.id, 'upnl': upnl})
@@ -276,6 +277,12 @@ class Trade(Base, Serializer, CurrencyMixin):
 
         if commit:
             await db_session.commit()
+
+    def _replace_pnl(self, old: PnlData, new: PnlData, cmp_func):
+        if not old or cmp_func(new.total, old.total):
+            self.max_pnl.unrealized = self.live_pnl.unrealized
+            self.max_pnl.realized = self.live_pnl.realized
+            self.max_pnl.time = self.live_pnl.time
 
     def _compare_pnl(self, old: PnlData, new: PnlData, cmp_func):
         if not old or cmp_func(new.total, old.total):

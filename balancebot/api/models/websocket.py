@@ -11,7 +11,7 @@ class WebsocketMessage(BaseModel):
 
 
 class ClientConfig(BaseModel):
-    ids: Optional[List[int]]
+    id: Optional[List[int]]
     since: Optional[datetime]
     to: Optional[datetime]
     currency: Optional[str]

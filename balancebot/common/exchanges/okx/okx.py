@@ -1,12 +1,14 @@
+from decimal import Decimal
+
 import balancebot.common.dbmodels.balance as balance
-import ccxt.async_support
+import ccxt.async_support as ccxt
 from datetime import datetime
 from balancebot.common.exchanges.exchangeworker import ExchangeWorker
-import ccxt
 
 
 class OkxWorker(ExchangeWorker):
-    ENDPOINT = 'https://www.bitmex.com/api/v1/'
+
+    ENDPOINT = 'https://www.okx.com'
 
     exchange = 'okx'
     required_extra_args = ['passphrase']
@@ -16,10 +18,11 @@ class OkxWorker(ExchangeWorker):
         self.ccxt_client = ccxt.okex({
             'apiKey': self._api_key,
             'secret': self._api_secret,
-            'password': self._extra_kwargs['passphrase']
+            'password': self._extra_kwargs['passphrase'],
+            'session': self._http
         })
 
-    def _get_balance(self, time: datetime, upnl=True):
+    async def _get_balance(self, time: datetime, upnl=True):
 
         # Could do something like that for displaying a trade history
         # request = Request(
@@ -34,8 +37,8 @@ class OkxWorker(ExchangeWorker):
         error = None
 
         try:
-            total_balance = self.ccxt_client.fetch_total_balance()
-            tickers = self.ccxt_client.fetch_tickers()
+            tickers = await self.ccxt_client.fetch_tickers()
+            total_balance = await self.ccxt_client.fetch_balance()
         except ccxt.errors.AuthenticationError:
             error = 'Unauthorized. Is your api key valid? Did you specify the right subaccount? You might want to check your API access.'
         except ccxt.errors.ExchangeError:
@@ -45,13 +48,17 @@ class OkxWorker(ExchangeWorker):
 
         total = 0
         if error is None:
-            for currency in total_balance:
-                amount = total_balance[currency]
+            for currency, amount in total_balance['total'].items():
                 price = 0
                 if currency == 'USDT':
                     price = 1
                 elif amount > 0:
                     price = tickers.get(f'{currency}/USDT')['last']
                 total += amount * price
+        return balance.Balance(realized=Decimal(total), unrealized=Decimal(total), error=error)
 
-        return balance.Balance(amount=total, currency='$', error=error, extra_currencies={})
+    async def cleanup(self):
+        await self.ccxt_client.close()
+
+    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
+        pass

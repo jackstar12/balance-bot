@@ -19,7 +19,7 @@ class FtxWebsocketClient(WebsocketManager):
         return self._ENDPOINT
 
     def __init__(self, session: aiohttp.ClientSession, api_key=None, api_secret=None, on_message_callback=None, subaccount=None) -> None:
-        super().__init__(session=session, ping_forever_seconds=15)
+        super().__init__(session=session, get_url=lambda: self._ENDPOINT, ping_forever_seconds=15)
         self._fills: Deque = deque([], maxlen=10000)
         self._api_key = api_key
         self._api_secret = api_secret

@@ -51,6 +51,6 @@ class KucoinWebsocket(WebsocketManager):
         if msg_type == "pong":
             self._ping_timeout.cancel()
         if msg_type == "message":
-            await
+            pass
 
 

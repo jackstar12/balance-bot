@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import select, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 import balancebot.common.utils as utils
 from balancebot.common import customjson
@@ -636,6 +637,9 @@ class ExchangeWorker:
 
     def clear_callbacks(self):
         self._on_balance = self._on_new_trade = self._on_update_trade = None
+
+    async def cleanup(self):
+        pass
 
     async def connect(self):
         pass
