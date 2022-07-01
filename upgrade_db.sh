@@ -1,4 +1,3 @@
-export FLASK_APP='api/app.py'
-flask db init
-flask db migrate
-flask db upgrade
+docker build --tag balancebot_common --file balancebot/common/Dockerfile .
+docker-compose build migrate
+docker-compose up migrate

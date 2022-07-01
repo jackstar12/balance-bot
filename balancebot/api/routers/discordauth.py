@@ -4,13 +4,15 @@ from http import HTTPStatus
 from typing import Optional
 
 from requests_oauthlib import OAuth2Session
-from starlette.middleware.sessions import SessionMiddleware
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse, JSONResponse
 
-from balancebot.api.database import session
-from balancebot.api.dbmodels.discorduser import DiscordUser
-from balancebot.api.dbmodels.user import User
-from balancebot.api.dependencies import current_user
+from balancebot.common.dbsync import session
+from balancebot.common.dbasync import async_session, db_select, db
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.user import User
+from balancebot.api.dependencies import CurrentUser, get_db
 
 from fastapi import APIRouter, Depends, Request
 
@@ -25,7 +27,7 @@ assert OAUTH2_REDIRECT_URI
 router = APIRouter(
     prefix="/discord",
     tags=["discord"],
-    dependencies=[Depends(current_user)],
+    dependencies=[Depends(CurrentUser)],
     responses={400: {"msg": "Invalid Discord Account"}}
 )
 
@@ -60,8 +62,8 @@ def make_session(*, token=None, state=None, scope=None, request: Request = None)
 
 
 @router.get('/connect')
-def register_discord(request: Request, user: User = Depends(current_user)):
-    if user.discorduser:
+def register_discord(request: Request, user: User = Depends(CurrentUser)):
+    if user.discord_user:
         return {'msg': 'Discord is already connected'}, HTTPStatus.BAD_REQUEST
     else:
         discord = make_session(scope=['identify'], request=request)
@@ -73,18 +75,21 @@ def register_discord(request: Request, user: User = Depends(current_user)):
 
 
 @router.get('/disconnect')
-async def disconnect_discord(request: Request, user: User = Depends(current_user)):
-    if not user.discorduser:
+async def disconnect_discord(request: Request, user: User = Depends(CurrentUser)):
+    if not user.discord_user:
         return {'msg': 'Discord is not connected'}, HTTPStatus.BAD_REQUEST
     else:
         user.discord_user_id = None
         user.discord_user = None
-        session.commit()
+        await async_session.commit()
         return JSONResponse({'disconnect': True})
 
 
 @router.get('/callback')
-async def callback(request: Request, error: Optional[str] = None, user: User = Depends(current_user)):
+async def callback(request: Request,
+                   error: Optional[str] = None,
+                   user: User = Depends(CurrentUser),
+                   db_session: AsyncSession = Depends(get_db)):
     if error:
         return error, HTTPStatus.INTERNAL_SERVER_ERROR
     discord = make_session(state=request.session.get('oauth2_state'), request=request)
@@ -98,16 +103,17 @@ async def callback(request: Request, error: Optional[str] = None, user: User = D
 
     user_json = discord.get(API_BASE_URL + '/users/@me').json()
 
-    discord_user = session.query(DiscordUser).filter_by(user_id=user_json['id']).first()
-    new = False
-    if not discord_user:
-        new = True
-        discord_user = DiscordUser(user_id=user_json['id'], user=user)
+    await db(
+        update(DiscordUser).where(
+            DiscordUser.id == int(user_json['id'])
+        ).values(
+            name=user_json['username'],
+            avatar=user_json['avatar']
+        ),
+        session=db_session
+    )
 
-    discord_user.name = user_json['username']
-    discord_user.avatar = user_json['avatar']
+    user.discord_user_id = int(user_json['id'])
 
-    user.discorduser = discord_user
-
-    session.commit()
+    await db_session.commit()
     return RedirectResponse(url='/app/profile')

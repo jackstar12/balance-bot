@@ -2,58 +2,55 @@ import asyncio
 import time
 
 import pytz
-from sqlalchemy import inspect
-
-from balancebot.api.database import session, async_session
-from balancebot.collector.services.dataservice import DataService, Channel
+from sqlalchemy import select
+from balancebot.common.dbasync import db_all, async_session
+from balancebot.collector.services.baseservice import BaseService
+from balancebot.collector.services.dataservice import Channel
 from balancebot.common.models.observer import Observable, Observer
 import ccxt.async_support as ccxt
 from datetime import datetime, timedelta
 from collections import deque
-from balancebot.api.dbmodels.coin import Coin, Volume, OI
+from balancebot.common.dbmodels.coin import Coin, Volume, OI
 from balancebot.common.models.trade import Trade
 from balancebot.common.models.volumeratio import VolumeRatio
 from typing import Dict, List
 
-from balancebot.common.models.singleton import Singleton
 import aiohttp
 
 
-class CoinTracker(Singleton, Observer):
+class CoinTracker(BaseService, Observer):
     _ENDPOINT = 'https://ftx.com'
 
     VolumeObservable = Observable()
     OpenInterestObservable = Observable()
 
-    def init(self,
-             session: aiohttp.ClientSession = None,
-             time_window: timedelta = timedelta(seconds=14400),
-             max_time_range: timedelta = timedelta(days=13),
-             time_frames: List[timedelta] = None,
-             *args,
-             **kwargs):
+    def __init__(self,
+                 *args,
+                 data_service,
+                 time_window: timedelta = timedelta(seconds=14400),
+                 max_time_range: timedelta = timedelta(days=13),
+                 time_frames: List[timedelta] = None,
+                 **kwargs):
 
-        self._session = session
+        super().__init__(*args, **kwargs)
+
         self._time_window = time_window
         self._max_time_range = max_time_range
         self._coins_by_name: Dict[str, Coin] = {}
         self._current_coin_volume: Dict[Coin, Volume] = {}
-        self.data_service = DataService()
+        self.data_service = data_service
 
         self._ccxt = ccxt.ftx(
             config={
-                'session': self._session
+                'session': self._http_session
             }
         )
 
         self.volume_observable = Observable()
         self.oi_observable = Observable()
 
-        self._on_volume_update = None
-        self._on_open_interest_update = None
-
     async def _get(self, path: str, **kwargs):
-        async with self._session.request('GET', self._ENDPOINT + path, **kwargs) as response:
+        async with self._http_session.request('GET', self._ENDPOINT + path, **kwargs) as response:
             if response.status == 200:
                 j = await response.json()
                 if j.get('success'):
@@ -79,13 +76,21 @@ class CoinTracker(Singleton, Observer):
             **kwargs
         )
 
+    def _parse_date(self, date: datetime):
+        return str(date.timestamp())
+
     async def run(self, http_session: aiohttp.ClientSession = None):
 
         if http_session:
-            self._session = http_session
+            self._http_session = http_session
 
-        if self._session is None:
-            self._session = aiohttp.ClientSession()
+        if self._http_session is None:
+            self._http_session = aiohttp.ClientSession()
+
+        res = await self._get(f'/api/spot_margin/history', params={
+            'start_time': self._parse_date(datetime(2021, 11, 1)),
+            'end_time': self._parse_date(datetime(2021, 12, 1))
+        })
 
         spot_markets_by_name = await self._get_markets_by_name(params={"type": "spot"})
         perp_markets_by_name = await self._get_markets_by_name(params={"type": "future"})
@@ -96,7 +101,7 @@ class CoinTracker(Singleton, Observer):
         if not perp_markets_by_name:
             raise Exception
 
-        coins = async_session.query(Coin).all()
+        coins = await db_all(select(Coin))
         self._coins_by_name = {coin.name: coin for coin in coins}
 
         for perp_name in perp_markets_by_name:
@@ -124,7 +129,7 @@ class CoinTracker(Singleton, Observer):
                         symbol=spot_name
                     )
 
-        async_session.commit()
+        await async_session.commit()
 
         print('Tracker Initialized')
 
@@ -139,7 +144,7 @@ class CoinTracker(Singleton, Observer):
             split = symbol.split('/')
         return split[0]
 
-    def update(self, *new_state):
+    async def update(self, *new_state):
         trade: Trade = new_state[0]
 
         coin = self._coins_by_name.get(
@@ -173,7 +178,7 @@ class CoinTracker(Singleton, Observer):
             if trade.time.minute != current_volume.time.minute:
                 # TODO: avoid database spikes by smoothing / gathering volumes for commiting
                 async_session.add(current_volume)
-                async_session.commit()
+                await async_session.commit()
                 self._current_coin_volume.pop(coin)
 
     async def _update_volume_history(self, coin: Coin):
@@ -207,7 +212,7 @@ class CoinTracker(Singleton, Observer):
 
         coin.avg_ratio /= len(coin.ratio_data) if coin.ratio_data else 1
 
-        self.volume_observable.notify(coin)
+        await self.volume_observable.notify(coin)
 
     async def _update_forever(self):
         while False:
@@ -242,9 +247,9 @@ class CoinTracker(Singleton, Observer):
                             )
                         )
 
-        async_session.commit()
+        await async_session.commit()
 
-        self.oi_observable.notify(self._coins_by_name.values())
+        await self.oi_observable.notify(self._coins_by_name.values())
 
     async def _fetch_oi(self):
         while True:

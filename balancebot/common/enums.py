@@ -1,15 +1,21 @@
 from enum import Enum
 
 
+class EventState(Enum):
+    ARCHIVED = 1
+    REGISTRATION = 2
+    OPEN = 3
+
+
 class Side(Enum):
     BUY = 1
-    SELL = 2
+    SELL = -1
 
 
 class Status(Enum):
-    OPEN = 1
-    WIN = 2
-    LOSS = 3
+    OPEN = 0
+    WIN = 1
+    LOSS = -1
 
 
 class TimeFrame(Enum):
@@ -26,3 +32,23 @@ class TimeFrame(Enum):
 class Tier(Enum):
     BASE = 1
     PREMIUM = 2
+
+
+class Priority(Enum):
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    FORCE = 4
+
+
+class Filter(Enum):
+    WEEKDAY = "weekday"
+    SESSION = "session"
+    LABEL = "label"
+
+
+class ExecType(Enum):
+    TRADE = 1
+    STOP = 3
+    TP = 4
+    TRANSFER = 2

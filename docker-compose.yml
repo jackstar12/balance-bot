@@ -1,0 +1,59 @@
+version: '3.9'
+services:
+  migrate:
+    depends_on:
+      - pg-server
+    build:
+      dockerfile: migrations.Dockerfile
+      context: .
+    environment:
+      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
+      - REDIS_URI=redis://redis-server:6379
+  api:
+    depends_on:
+      - migrate
+    build:
+      dockerfile: balancebot/api/Dockerfile
+      context: .
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
+      - REDIS_URI=redis://redis-server:6379
+  collector:
+    depends_on:
+      - migrate
+    build:
+      dockerfile: balancebot/collector/Dockerfile
+      context: .
+    environment:
+      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
+      - REDIS_URI=redis://redis-server:6379
+  bot:
+    depends_on:
+      - migrate
+    build:
+      dockerfile: balancebot/bot/Dockerfile
+      context: .
+    environment:
+      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
+      - REDIS_URI=redis://redis-server:6379
+  redis:
+    image: "redis:latest"
+    container_name: redis-server
+    ports:
+      - "6379:6379"
+  pg-server:
+    image: "postgres"
+    container_name: pg-server
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      - "POSTGRES_PASSWORD=postgres"
+      - "POSTGRES_USER=postgres"
+      - "POSTGRES_DB=postgres"
+
+volumes:
+  pg-data:

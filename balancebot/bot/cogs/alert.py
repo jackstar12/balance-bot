@@ -1,14 +1,19 @@
+from decimal import Decimal
 from typing import List, Dict
 
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
-from discord_slash.utils.manage_commands import create_option
+from discord_slash.utils.manage_commands import create_option, create_choice
+from sqlalchemy import delete
 
-from balancebot.common import utils
-from balancebot.api import dbutils
-from balancebot.api.database import session
-from balancebot.api.dbmodels.alert import Alert
+from balancebot.common.dbasync import db, async_session, db_del_filter
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.bot import utils
+from balancebot.common import dbutils
+from balancebot.common.dbsync import session
+from balancebot.common.dbmodels.alert import Alert
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.common.messenger import Category, SubCategory
+from balancebot.common.exchanges import EXCHANGES
+from balancebot.common.messenger import NameSpace, Category
 from balancebot.common.models.selectionoption import SelectionOption
 
 
@@ -26,9 +31,8 @@ class AlertCog(CogBase):
                 message
             )
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messenger.sub_channel(Category.ALERT, sub=SubCategory.FINISHED, callback=self.on_alert_trigger)
+    async def on_ready(self):
+        await self.messenger.sub_channel(NameSpace.ALERT, sub=Category.FINISHED, callback=self.on_alert_trigger)
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -40,6 +44,18 @@ class AlertCog(CogBase):
                 description="Symbol to create Ticker for.",
                 required=True,
                 option_type=SlashCommandOptionType.STRING
+            ),
+            create_option(
+                name="exchange",
+                description="Exchange you want to look at",
+                required=True,
+                option_type=SlashCommandOptionType.STRING,
+                choices=[
+                    create_choice(
+                        name=key,
+                        value=key
+                    ) for key in EXCHANGES.keys()
+                ]
             ),
             create_option(
                 name="price",
@@ -56,26 +72,28 @@ class AlertCog(CogBase):
         ]
     )
     @utils.log_and_catch_errors()
-    async def new_alert(self, ctx: SlashContext, symbol: str, price: int, note: str = None):
+    async def new_alert(self, ctx: SlashContext, symbol: str, price: float, exchange: str, note: str = None):
 
         symbol = symbol.upper()
 
-        discord_user = dbutils.get_user(ctx.author_id)
+        discord_user = await dbutils.get_discord_user(ctx.author_id, require_registrations=False, eager_loads=[
+            DiscordUser.alerts,
+        ])
 
         alert = Alert(
             symbol=symbol,
-            price=price,
+            price=Decimal(price),
             note=note,
-            exchange='ftx',
+            exchange=exchange,
             discord_user_id=discord_user.id
         )
 
-        session.add(alert)
-        session.commit()
+        async_session.add(alert)
+        await async_session.commit()
 
         await ctx.send('Alert created', embed=alert.get_discord_embed())
 
-        self.messenger.pub_channel(Category.ALERT, SubCategory.NEW, obj=alert.serialize(data=True, full=False))
+        self.messenger.pub_channel(NameSpace.ALERT, Category.NEW, obj=await alert.serialize(data=True, full=False))
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -86,27 +104,19 @@ class AlertCog(CogBase):
                 name="symbol",
                 description="Symbol to delete",
                 option_type=SlashCommandOptionType.STRING,
-                required=True
+                required=False
             )
         ]
     )
     @utils.log_and_catch_errors()
-    async def delete_alert(self, ctx: SlashContext):
+    async def delete_alert(self, ctx: SlashContext, symbol: str = None):
 
-        user = dbutils.get_user(ctx.author_id)
-        query = session.query(Alert).filter(Alert.discord_user_id == user.id)
-        alerts = query.all()
+        user = await dbutils.get_discord_user(ctx.author_id, require_registrations=False, eager_loads=[DiscordUser.alerts])
 
-        def on_alert_select(selections: List[Alert]):
-            for selection in selections:
-                session.query(Alert).filter_by(id=selection.id).delete()
-                self.messenger.pub_channel(Category.ALERT, SubCategory.DELETE, selection.id)
-                session.commit()
-
-        if len(alerts) > 1:
-            component_row = utils.create_selection(
-                slash=self.slash_cmd_handler,
-                author_id=ctx.author_id,
+        if user.alerts:
+            ctx, selections = await utils.new_create_selection(
+                ctx,
+                self.slash_cmd_handler,
                 options=[
                     SelectionOption(
                         name=f'{alert.symbol}@{alert.price}',
@@ -114,15 +124,17 @@ class AlertCog(CogBase):
                         description=alert.note,
                         object=alert
                     )
-                    for alert in alerts
+                    for alert in user.alerts if alert.symbol == symbol or not symbol
                 ],
-                callback=on_alert_select,
-                max_values=1
+                msg_content='Select the alert you want to delete',
+                max_values=len(user.alerts)
             )
-            await ctx.send(components=[component_row])
+            for selection in selections:
+                await async_session.delete(selection)
+            await async_session.commit()
+            await ctx.send('Success')
         else:
-            query.delete()
-            session.commit()
+            await ctx.send("You do not have any active alerts")
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -143,7 +155,7 @@ class AlertCog(CogBase):
         if symbol:
             symbol = symbol.upper()
 
-        user = dbutils.get_user(ctx.author_id)
+        user = await dbutils.get_discord_user(ctx.author_id, require_registrations=False, eager_loads=[DiscordUser.alerts])
 
         embeds = [
             alert.get_discord_embed() for alert in user.alerts if alert.symbol == symbol or not symbol

@@ -3,18 +3,20 @@ from datetime import datetime
 from typing import List
 
 import discord.ext.commands
+import pytz
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
+from sqlalchemy import select
 
-from balancebot.common import utils
-from balancebot.api import dbutils
-from balancebot.api.database import session
-from balancebot.api.dbmodels.event import Event
+from balancebot.common.dbasync import async_session, db_all
+from balancebot.common import dbutils
+from balancebot.bot import utils
+from balancebot.common.dbsync import session
+from balancebot.common.dbmodels.event import Event
 from balancebot.bot import config
 from balancebot.bot.cogs.cogbase import CogBase
 from balancebot.common.errors import UserInputError
 from balancebot.common.models.selectionoption import SelectionOption
-from balancebot.common.utils import create_yes_no_button_row
 
 
 class EventsCog(CogBase):
@@ -26,12 +28,14 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def event_show(self, ctx: SlashContext):
-        now = datetime.now()
+        now = datetime.now(pytz.utc)
 
-        events: List[Event] = session.query(Event).filter(
-            Event.guild_id == ctx.guild_id,
-            Event.end > now
-        ).all()
+        events: List[Event] = await db_all(
+            select(Event).filter(
+                Event.guild_id == ctx.guild_id,
+                Event.end > now
+            )
+        )
 
         if len(events) == 0:
             await ctx.send(content='There are no events', hidden=True)
@@ -39,9 +43,11 @@ class EventsCog(CogBase):
             await ctx.defer()
             for event in events:
                 if event.is_active:
-                    await ctx.send(content='Current Event:', embed=event.get_discord_embed(self.bot, registrations=True))
+                    await ctx.send(content='Current Event:',
+                                   embed=event.get_discord_embed(self.bot, registrations=True))
                 else:
-                    await ctx.send(content='Upcoming Event:', embed=event.get_discord_embed(self.bot, registrations=True))
+                    await ctx.send(content='Upcoming Event:',
+                                   embed=event.get_discord_embed(self.bot, registrations=True))
 
     @cog_ext.cog_subcommand(
         base="event",
@@ -67,7 +73,7 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     @utils.admin_only
-    @utils.time_args(names=[('start', None), ('end', None), ('registration_start', None), ('registration_end', None)],
+    @utils.time_args(('start', None), ('end', None), ('registration_start', None), ('registration_end', None),
                      allow_future=True)
     async def register_event(self, ctx: SlashContext, name: str, description: str, start: datetime, end: datetime,
                              registration_start: datetime, registration_end: datetime):
@@ -82,7 +88,7 @@ class EventsCog(CogBase):
         if registration_start > start:
             raise UserInputError("Registration start should be before event start.")
 
-        active_event = dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
+        active_event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
 
         if active_event:
             if start < active_event.end:
@@ -91,8 +97,8 @@ class EventsCog(CogBase):
                 raise UserInputError(
                     f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
-        active_registration = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration',
-                                                throw_exceptions=False)
+        active_registration = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration',
+                                                      throw_exceptions=False)
 
         if active_registration:
             if registration_start < active_registration.registration_end:
@@ -110,21 +116,19 @@ class EventsCog(CogBase):
             channel_id=ctx.channel_id
         )
 
-        def register(ctx: SlashContext):
-            session.add(event)
-            session.commit()
-            self.event_manager.register(event)
-
-        row = create_yes_no_button_row(
-            slash=self.slash_cmd_handler,
-            author_id=ctx.author_id,
-            yes_callback=register,
-            yes_message="Event was successfully created",
+        ctx, consent = await utils.ask_for_consent(
+            ctx, ctx.slash,
+            msg_content=f'Do you want to create this event?',
+            msg_embeds=[event.get_discord_embed(dc_client=self.bot)],
             no_message="Event creation cancelled",
             hidden=True
         )
 
-        await ctx.send(embed=event.get_discord_embed(dc_client=self.bot), components=[row], hidden=True)
+        if consent:
+            async_session.add(event)
+            await async_session.commit()
+            self.event_manager.register(event)
+            await ctx.send("Event was successfully created")
 
     @cog_ext.cog_slash(
         name="archive",
@@ -133,12 +137,14 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def archive(self, ctx: SlashContext):
-        now = datetime.now()
+        now = datetime.now(pytz.utc)
 
-        archived = session.query(Event).filter(
-            Event.guild_id == ctx.guild_id,
-            Event.end < now
-        ).all()
+        archived = await db_all(
+            select(Event).filter(
+                Event.guild_id == ctx.guild_id,
+                Event.end < now
+            )
+        )
 
         if len(archived) == 0:
             raise UserInputError('There are no archived events')
@@ -151,7 +157,7 @@ class EventsCog(CogBase):
                 if os.path.exists:
                     history = discord.File(config.DATA_PATH + archive.history_path, "history.png")
 
-                info = archive.event.get_discord_embed(
+                info = archive.db_event.get_discord_embed(
                     self.bot, registrations=False
                 ).add_field(name="Registrations", value=archive.registrations, inline=False)
 
@@ -166,7 +172,7 @@ class EventsCog(CogBase):
                 )
 
                 await ctx.send(
-                    content=f'Archived results for {archive.event.name}',
+                    content=f'Archived results for {archive.db_event.name}',
                     embeds=[
                         info, leaderboard, summary
                     ],
@@ -179,7 +185,7 @@ class EventsCog(CogBase):
             options=[
                 SelectionOption(
                     name=event.name,
-                    description=f'From {event.start.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
+                    description=f'From {event.time.strftime("%Y-%m-%d")} to {event.end.strftime("%Y-%m-%d")}',
                     value=str(event.id),
                     object=event,
                 )
@@ -197,50 +203,14 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def summary(self, ctx: SlashContext):
-        event = dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active')
+        event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active')
         await ctx.defer()
         history = await event.create_complete_history(dc_client=self.bot)
         await ctx.send(
             embeds=[
                 await event.create_leaderboard(self.bot),
-                event.get_summary_embed(dc_client=self.bot).set_image(url=f'attachment://{history.filename}'),
+                await event.get_summary_embed(dc_client=self.bot).set_image(url=f'attachment://{history.filename}'),
             ],
             file=history
         )
-
-    @cog_ext.cog_subcommand(
-        base="leaderboard",
-        name="balance",
-        description="Shows you the highest ranked users by $ balance",
-        options=[]
-    )
-    @utils.log_and_catch_errors()
-    @utils.server_only
-    async def leaderboard_balance(self, ctx: SlashContext):
-        await ctx.defer()
-        await ctx.send(content='',
-                       embed=await utils.create_leaderboard(dc_client=self.bot, guild_id=ctx.guild_id, mode='balance',
-                                                            time=None))
-
-    @cog_ext.cog_subcommand(
-        base="leaderboard",
-        name="gain",
-        description="Shows you the highest ranked users by % gain",
-        options=[
-            create_option(
-                name="time",
-                description="Timeframe for gain. If not specified, gain since start will be used.",
-                required=False,
-                option_type=SlashCommandOptionType.STRING
-            )
-        ]
-    )
-    @utils.log_and_catch_errors()
-    @utils.time_args(names=[('time', None)])
-    @utils.server_only
-    async def leaderboard_gain(self, ctx: SlashContext, time: datetime = None):
-        await ctx.defer()
-        await ctx.send(content='',
-                       embed=await utils.create_leaderboard(dc_client=self.bot, guild_id=ctx.guild_id, mode='gain',
-                                                            time=time))
 

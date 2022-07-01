@@ -1,77 +1,125 @@
+from datetime import datetime
+
+import pytz
 import uvicorn
 import asyncio
 import aiohttp
 
-from fastapi_jwt_auth.exceptions import AuthJWTException
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import JSONResponse
+from sqlalchemy import select, delete
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from fastapi import Depends
-from fastapi_jwt_auth import AuthJWT
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
+from starlette_csrf import CSRFMiddleware
 
-from balancebot.api.database import session
+import balancebot.common.dbasync as aio_db
+from balancebot.api.db_session_middleware import DbSessionMiddleware
+from balancebot.common.dbmodels.trade import Trade
 
-from balancebot.api.dbmodels.user import User
-from balancebot.api.dependencies import current_user
+from balancebot.common.dbmodels.user import User
+from balancebot.api.dependencies import CurrentUser, CurrentUserDep
+from balancebot.api.models.user import UserInfo, UserRead, UserCreate
 from balancebot.api.settings import settings
-from balancebot.api.database import Base, engine
+from balancebot.common.dbsync import Base, engine
 
-import balancebot.api.routers.discordauth as discord
 import balancebot.api.routers.authentication as auth
 import balancebot.api.routers.client as client
 import balancebot.api.routers.label as label
-from balancebot.api.dbmodels.guild import Guild
+import balancebot.api.routers.analytics as analytics
+import balancebot.api.routers.journal as journal
+from balancebot.common.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbmodels.guild import Guild
+import balancebot.api.routers.discordauth as discord
 
-import balancebot.collector.collector as collector
+from balancebot.api.users import fastapi_users
+from balancebot.common.utils import setup_logger
 
 app = FastAPI(
-    root_path='/api/v1'
+    docs_url='/api/v1/docs',
+    openapi_url='/api/v1/openapi.json',
+    title="ChimichangApp",
+    description='yoyo',
+    version="0.0.1",
+    terms_of_service="http://example.com/terms/",
+    contact={
+        "name": "Deadpoolio the Amazing",
+        "url": "http://x-force.example.com/contact/",
+        "email": "dp@x-force.example.com",
+    },
+    license_info={
+        "name": "Apache 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
+    },
 )
 
+# app.add_middleware(SessionMiddleware, secret_key='SECRET')
+app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
+app.add_middleware(DbSessionMiddleware)
 app.add_middleware(SessionMiddleware, secret_key='SECRET')
-app.include_router(discord.router, prefix='/api/v1')
-app.include_router(auth.router, prefix='/api/v1')
-app.include_router(client.router, prefix='/api/v1')
-app.include_router(label.router, prefix='/api/v1')
 
-Base.metadata.create_all(bind=engine)
+app.include_router(fastapi_users.get_verify_router(UserRead), prefix='/api/v1')
+app.include_router(fastapi_users.get_reset_password_router(), prefix='/api/v1')
+app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix='/api/v1')
 
-
-@AuthJWT.load_config
-def get_config():
-    return settings
-
-
-# exception handler for authjwt
-# in production, you can tweak performance using orjson response
-@app.exception_handler(AuthJWTException)
-def authjwt_exception_handler(request: Request, exc: AuthJWTException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.message}
-    )
-
+for module in (discord, auth, client, label, analytics, journal):
+    app.include_router(module.router, prefix='/api/v1')
 
 @app.post('/delete')
-def delete(user: User = Depends(current_user)):
-    session.query(User).filter_by(id=user.id).delete()
-    session.commit()
+async def delete_user(user: User = Depends(CurrentUser)):
+    await aio_db.db_del_filter(User, id=user.id)
+    await aio_db.async_session.commit()
+
     return {'msg': 'Success'}
 
 
-@app.get('/api/v1/info')
-def info(user: User = Depends(current_user)):
-    return user.serialize(full=True, data=False)
+user_info = CurrentUserDep(
+    (
+        User.discord_user, [
+            DiscordUser.global_associations,
+            (DiscordUser.guilds, Guild.events)
+        ]
+    ),
+    User.all_clients,
+    User.labels,
+    User.alerts
+)
 
+# 916370614598651934
+# 715507174167806042
+@app.get('/api/v1/info', response_model=UserInfo)
+async def info(user: User = Depends(user_info)):
+    return UserInfo.from_orm(user)
+    # as_dict = user.__dict__
+    # as_dict['clients'] = [client.__dict__ for client in user.all_clients]
+    # jsonable_encoder
+    # return JSONResponse(dict(
+    #    clients=[
+    #        dict(
+    #
+    #        )
+    #    ]
+    # ))
+    #
+    # return UserInfo.construct(**as_dict)
+    # This generates a UserInfo model, however, for performance reasons, it's not converted to one.
 
-@app.post('/refresh')
-def refresh(Authorize: AuthJWT = Depends(), user: User = Depends(current_user)):
-    Authorize.jwt_refresh_token_required()
-    new_access_token = Authorize.create_access_token(subject=user.id)
-    Authorize.set_access_cookies(new_access_token)
-    return {"msg": "The token has been refreshed"}
+    # stmt = aio_db.db_eager(select(User),
+    #                       (User.clients, Client.trades),
+    #                       (User.clients, Client.events),
+    #                       User.alerts,
+    #                       User.labels,
+    #                       (User.discord_user, [(DiscordUser.clients, Client.events)]),
+    #                       (User.discord_user, [(DiscordUser.clients, Client.trades)]),
+    #                       )
 
+    # test2 = await aio_db.db_unique(stmt)
+    #
+    # stmt2 = Client.construct_load_options(full=False, data=True)
+    # test2 = await aio_db.db_unique(stmt2)
+    # stmt3 = Client.construct_load_options(full=True, data=False)
+    # test = await aio_db.db_unique(stmt3)
 
 # apiutils.create_endpoint(
 #    route='/api/v1/client',
@@ -168,19 +216,19 @@ def refresh(Authorize: AuthJWT = Depends(), user: User = Depends(current_user)):
 
 
 @app.on_event("startup")
-def on_start():
-    from balancebot.bot import bot
+async def on_start():
+    async with aio_db.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    setup_logger()
 
-    async def run_all():
-        async with aiohttp.ClientSession() as http_session:
-            await asyncio.gather(
-                bot.run(http_session),
-                collector.run(http_session)
-            )
-            print('done')
 
-    asyncio.create_task(run_all())
+async def db_test():
+    async with aio_db.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+def run():
+    uvicorn.run(app, host='localhost', port=5000)
 
 
 if __name__ == '__main__':
-    uvicorn.run(app, host='localhost', port=5000)
+    run()

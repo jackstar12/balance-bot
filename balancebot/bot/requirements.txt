@@ -1,0 +1,4 @@
+discord-py-slash-command~=3.0.1
+discord.py>=1.6.0
+pytest-shutil
+cryptography~=36.0.1

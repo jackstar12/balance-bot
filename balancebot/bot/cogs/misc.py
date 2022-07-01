@@ -4,10 +4,10 @@ import time
 import discord
 from discord_slash import cog_ext, SlashContext
 
-from balancebot.common import utils
-from balancebot.bot import config
+from balancebot.bot import utils
+import balancebot.common.config as config
+from balancebot.common.exchanges import EXCHANGES
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.common.utils import de_emojify
 
 
 class MiscCog(CogBase):
@@ -17,8 +17,8 @@ class MiscCog(CogBase):
         description="Shows available exchanges"
     )
     async def exchanges(self, ctx):
-        logging.info(f'New Interaction: Listing available exchanges for user {de_emojify(ctx.author.display_name)}')
-        exchange_list = '\n'.join(config.EXCHANGES.keys())
+        logging.info(f'New Interaction: Listing available exchanges for user {utils.de_emojify(ctx.author.display_name)}')
+        exchange_list = '\n'.join(EXCHANGES.keys())
         embed = discord.Embed(title="Available exchanges", description=exchange_list)
         await ctx.send(embed=embed)
 
@@ -28,7 +28,7 @@ class MiscCog(CogBase):
     )
     async def donate(self, ctx: SlashContext):
         embed = discord.Embed(
-            description="**Do you like this bot?**\n"
+            description="**Do you like this test_bot?**\n"
                         "If so, maybe consider helping out a poor student :cry:\n\n"
                         "**BTC**: 1NQuRagfTziZ1k4ijc38cuCmCncWQFthSQ\n"
                         "**ZBD**: jackstar12@zbd.gg\n"
@@ -44,7 +44,7 @@ class MiscCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def ping(self, ctx: SlashContext):
-        """Get the bot's current websocket and api latency."""
+        """Get the test_bot's current websocket and api latency."""
         start_time = time.time()
         message = discord.Embed(title="Testing Ping...")
         msg = await ctx.send(embed=message)
@@ -67,8 +67,8 @@ class MiscCog(CogBase):
             inline=False
         )
         embed.add_field(
-            name="Which information do I have to give the bot?",
-            value="The bot only requires an **read only** api access",
+            name="Which information do I have to give the test_bot?",
+            value="The test_bot only requires an **read only** api access",
             inline=False
         )
         # embed.add_field(

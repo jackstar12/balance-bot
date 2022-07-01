@@ -1,12 +1,11 @@
-FROM python:3.8
+FROM balancebot_common:latest
 
 WORKDIR /code
 
-COPY ./balancebot/bot/requirements.txt /code/requirements.txt
+COPY /balancebot/bot/requirements.txt /code/balancebot/bot/requirements.txt
 
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
+RUN pip install --no-cache-dir --upgrade -r ./balancebot/bot/requirements.txt
 
-COPY ./balancebot/common ./code/common
-COPY ./balancebot/bot ./code/bot
+COPY /balancebot/bot /code/balancebot/bot
 
-RUN [ "python3", "bot.py" ]
+CMD [ "python3", "-m", "balancebot.bot.bot" ]

@@ -1,11 +1,18 @@
 from __future__ import annotations
+
+from decimal import Decimal
 from typing import NamedTuple, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import balancebot.api.dbmodels.client as c
+    from balancebot.common.dbmodels.client import Client
 
 
 class Gain(NamedTuple):
-    client: c.Client
-    relative: Optional[float]
-    absolute: Optional[float]
+    relative: Decimal
+    absolute: Decimal
+
+
+class ClientGain(NamedTuple):
+    client: Client
+    relative: Optional[Decimal]
+    absolute: Optional[Decimal]

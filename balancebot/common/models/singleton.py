@@ -9,3 +9,6 @@ class Singleton(object):
 
     def init(self, *args, **kwargs):
         pass
+
+    def __init__(self, *args, **kwargs):
+        pass

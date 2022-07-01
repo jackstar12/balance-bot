@@ -2,10 +2,11 @@ import asyncio
 import hmac
 import json
 import time
+from decimal import Decimal
+
 import aiohttp
 from collections import defaultdict, deque
 from typing import DefaultDict, Deque, List, Dict
-from gevent.event import Event
 
 from balancebot.common import utils
 from balancebot.common.models.async_websocket_manager import WebsocketManager
@@ -17,16 +18,11 @@ class FtxWebsocketClient(WebsocketManager):
     def _get_url(self) -> str:
         return self._ENDPOINT
 
-    async def connect(self):
-        await super().connect()
-        asyncio.create_task(self._ping_forever())
-
     def __init__(self, session: aiohttp.ClientSession, api_key=None, api_secret=None, on_message_callback=None, subaccount=None) -> None:
-        super().__init__(session=session)
+        super().__init__(session=session, get_url=lambda: self._ENDPOINT, ping_forever_seconds=15)
         self._fills: Deque = deque([], maxlen=10000)
         self._api_key = api_key
         self._api_secret = api_secret
-        self._orderbook_update_events: DefaultDict[str, Event] = defaultdict(Event)
         self._reset_data()
         self._on_message_callback = on_message_callback
         self._subaccount = subaccount
@@ -94,11 +90,6 @@ class FtxWebsocketClient(WebsocketManager):
             'op': 'ping'
         })
 
-    async def _ping_forever(self):
-        while self.connected:
-            await self.ping()
-            await asyncio.sleep(15)
-
     def _handle_ticker_message(self, message: Dict) -> None:
         self._tickers[message['market']] = message['data']
 
@@ -110,7 +101,7 @@ class FtxWebsocketClient(WebsocketManager):
         self._orders.update({data['id']: data})
 
     async def _on_message(self, ws, raw_message: str) -> None:
-        message = json.loads(raw_message)
+        message = json.loads(raw_message, parse_float=Decimal)
         message_type = message['type']
         if message_type in {'subscribed', 'unsubscribed', 'pong'}:
             return

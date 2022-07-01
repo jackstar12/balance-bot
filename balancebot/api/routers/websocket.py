@@ -1,26 +1,21 @@
-import logging
-from datetime import datetime
-from http import HTTPStatus
 from typing import Optional, Dict
-from fastapi import APIRouter, Depends, Request, Response, WebSocket
+from fastapi import APIRouter, Depends, WebSocket
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
-from balancebot.api.models.websocket import WebsocketMessage, WebsocketConfig
-from balancebot.api.dependencies import current_user
-from balancebot.api.dbmodels.client import Client
-from balancebot.api.dbmodels.user import User
-from balancebot.api.utils.client import create_cilent_data_serialized, get_user_client
+from balancebot.api.models.websocket import WebsocketMessage, ClientConfig
+from balancebot.api.dependencies import CurrentUser
+from balancebot.common.dbmodels.client import Client
+from balancebot.common.dbmodels.user import User
+from balancebot.api.utils.client import create_client_data_serialized, get_user_client
 import balancebot.api.utils.client as client_utils
-from balancebot.common.messenger import Messenger, Category, SubCategory
-
-from balancebot.collector.usermanager import UserManager
+from balancebot.common.messenger import Messenger, NameSpace, Category
 
 
 router = APIRouter(
     tags=["websocket"],
-    dependencies=[Depends(current_user)],
+    dependencies=[Depends(CurrentUser)],
     responses={
         401: {"msg": "Wrong Email or Password"},
         400: {"msg": "Email is already used"}
@@ -39,19 +34,18 @@ def create_ws_message(type: str, channel: str = None, data: Dict = None, error: 
 
 
 @router.websocket('/client/ws')
-async def client_websocket(websocket: WebSocket, user: User = Depends(current_user)):
+async def client_websocket(websocket: WebSocket, user: User = Depends(CurrentUser)):
     await websocket.accept()
 
-    user_manager = UserManager()
     subscribed_client: Optional[Client] = None
-    config: Optional[WebsocketConfig] = None
+    config: Optional[ClientConfig] = None
     messenger = Messenger()
 
     async def send_client_snapshot(client: Client, type: str, channel: str):
         msg = jsonable_encoder(create_ws_message(
             type=type,
             channel=channel,
-            data=await create_cilent_data_serialized(
+            data=await create_client_data_serialized(
                 client,
                 config
             )
@@ -60,10 +54,10 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
 
     def unsub_client(client: Client):
         if client:
-            messenger.unsub_channel(Category.BALANCE, sub=SubCategory.NEW, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.NEW, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.UPDATE, channel_id=client.id)
-            messenger.unsub_channel(Category.TRADE, sub=SubCategory.UPNL, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.BALANCE, sub=Category.NEW, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.NEW, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.UPDATE, channel_id=client.id)
+            messenger.unsub_channel(NameSpace.TRADE, sub=Category.UPNL, channel_id=client.id)
 
     async def update_client(old: Client, new: Client):
 
@@ -102,7 +96,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 create_ws_message(
                     type='client',
                     channel='update',
-                    data=client_utils.update_client_data_balance(
+                    data=await client_utils.update_client_data_balance(
                         await client_utils.get_cached_data(config),
                         subscribed_client,
                         config
@@ -110,23 +104,23 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 )
             )
 
-        messenger.sub_channel(
-            Category.BALANCE, sub=SubCategory.NEW, channel_id=new.id,
+        await messenger.sub_channel(
+            NameSpace.BALANCE, sub=Category.NEW, channel_id=new.id,
             callback=send_balance_update
         )
 
-        messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.NEW, channel_id=new.id,
+        await messenger.sub_channel(
+            NameSpace.TRADE, sub=Category.NEW, channel_id=new.id,
             callback=send_trade_update
         )
 
-        messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.UPDATE, channel_id=new.id,
+        await messenger.sub_channel(
+            NameSpace.TRADE, sub=Category.UPDATE, channel_id=new.id,
             callback=send_trade_update
         )
 
-        messenger.sub_channel(
-            Category.TRADE, sub=SubCategory.UPNL, channel_id=new.id,
+        await messenger.sub_channel(
+            NameSpace.TRADE, sub=Category.UPNL, channel_id=new.id,
             callback=send_upnl_update
         )
 
@@ -139,7 +133,7 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
                 await websocket.send_json(create_ws_message(type='pong'))
             elif msg.type == 'subscribe':
                 id = msg.data.get('id')
-                new_client = get_user_client(user, id)
+                new_client = await get_user_client(user, id)
 
                 if not new_client:
                     await websocket.send_json(create_ws_message(
@@ -152,8 +146,8 @@ async def client_websocket(websocket: WebSocket, user: User = Depends(current_us
 
             elif msg.type == 'update':
                 if msg.channel == 'config':
-                    config = WebsocketConfig(**msg.data)
-                    new_client = get_user_client(user, config.id)
+                    config = ClientConfig(**msg.data)
+                    new_client = await get_user_client(user, config.id)
                     if not new_client:
                         await websocket.send_json(create_ws_message(
                             type='error',

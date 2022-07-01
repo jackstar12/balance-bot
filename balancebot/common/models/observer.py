@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import asyncio
 from abc import ABCMeta
 from abc import abstractmethod
 
@@ -24,36 +24,14 @@ class Observer(object):
     """
     __metaclass__ = ABCMeta
 
-    _object_counter = 0
-
-    def __init__(self, name=None):
-        """
-        :param name: A name may be set for the subtyping class object for easy identification.
-        if not set, the class name is used with a class object counter.
-        """
-        self.name = name if name else self.__class__.__name__ + str(Observer._object_counter)
-        Observer._object_counter += 1
-
     @abstractmethod
-    def update(self, *new_state):
+    async def update(self, *new_state):
         """
         Called by the concrete Observable when data has changed passing its state.
         :param new_state: The new state.
         :type new_state: A tuple of arbitrary content.
         """
         pass
-
-    @property
-    def object_counter(self):
-        """
-        Returns the number of created objects of this class.
-        :return: the number of created objects class attribute.
-        """
-        return Observer._object_counter
-
-    @classmethod
-    def __subclasshook__(cls, sub_class):  # correct behavior when isinstance, issubclass is called
-        return any(cls.update.__str__() in klazz.__dict__ for klazz in sub_class.__mro__) != []
 
 
 class Observable(object):
@@ -107,11 +85,13 @@ class Observable(object):
         if observer in self._observers:
             self._observers.discard(observer)
 
-    def notify(self, *new_state):
+    async def notify(self, *new_state):
         """
         The new state is updated to all registered Observers.
         :param new_state: The new state.
         :type new_state: A tuple of arbitrary content.
         """
-        for observer in self._observers:
-            observer.update(*new_state)
+        tasks = [asyncio.create_task(observer.update(*new_state)) for observer in self._observers]
+        await asyncio.gather(
+            *tasks
+        )

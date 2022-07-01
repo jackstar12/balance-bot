@@ -1,7 +1,6 @@
 from datetime import datetime
-import time
 
-from balancebot.collector.exchangeticker import ExchangeTicker, Channel
+from balancebot.common.exchanges.exchangeticker import ExchangeTicker, Channel
 from balancebot.common.exchanges.ftx.websocket import FtxWebsocketClient
 from balancebot.common.models.ticker import Ticker
 from balancebot.common.models.trade import Trade
@@ -30,7 +29,7 @@ class FtxTicker(ExchangeTicker):
 
         if channel == 'trades':
             data = data[0]
-            self._callbacks.get(Channel.TRADES.value).notify(
+            await self._callbacks.get(Channel.TRADES.value).notify(
                 Trade(
                     symbol=market,
                     price=data['price'],
@@ -42,7 +41,7 @@ class FtxTicker(ExchangeTicker):
                 )
             )
         elif channel == 'ticker':
-            self._callbacks.get(Channel.TICKER.value).notify(
+            await self._callbacks.get(Channel.TICKER.value).notify(
                 Ticker(
                     symbol=market,
                     price=data['last'],

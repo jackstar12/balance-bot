@@ -1,13 +1,13 @@
-FROM python:3.8
+FROM balancebot_common:latest
 
 WORKDIR /code
 
-COPY ./requirements.txt /code/requirements.txt
+COPY /balancebot/collector/requirements.txt /code/balancebot/collector/requirements.txt
 
+RUN pip install --no-cache-dir --upgrade -r /code/balancebot/collector/requirements.txt
 
+COPY /balancebot/collector /code/balancebot/collector
 
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
-RUN pip install --no-cache-dir --upgrade uvicorn[standard]
-RUN pip install --no-cache-dir --upgrade fastapi_jwt_auth
+CMD ["alembic", "upgrade", "head"]
 
-COPY ./balancebot /code/balancebot
+CMD ["python3", "-m", "balancebot.collector.collector"]

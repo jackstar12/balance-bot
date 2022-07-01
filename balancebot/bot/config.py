@@ -1,16 +1,9 @@
-from balancebot.common.exchanges.binance.binance import BinanceFutures, BinanceSpot
-from balancebot.common.exchanges.bitmex import BitmexClient
-from balancebot.common.exchanges.bybit import BybitClient
-from balancebot.common.exchanges.ftx.http import FtxClient
-from balancebot.common.exchanges.kucoin import KuCoinClient
-from balancebot.common.exchanges.okx.okx import OkxClient
-
 PREFIX = "c "
 DATA_PATH = "C:/Users/jkran/PycharmProjects/BalanceBot/data/"
 ARCHIVE_PATH = "C:/Users/jkran/PycharmProjects/BalanceBot/archive/"
 FETCHING_INTERVAL_HOURS = 1
-REKT_THRESHOLD = 0.5
-REGISTRATION_MINIMUM = 50
+REKT_THRESHOLD = 5000
+REGISTRATION_MINIMUM = 5
 REKT_MESSAGES = [
     "{name} hat sich mit der Leverage vergriffen :cry:",
     "{name} gone **REKT**!",
@@ -42,14 +35,4 @@ CURRENCY_ALIASES = {
     'XBT': 'BTC',
     'USD': '$'
 }
-EXCHANGES = {
-    'binance-futures': BinanceFutures,
-    'binance-spot': BinanceSpot,
-    'bitmex': BitmexClient,
-    'ftx': FtxClient,
-    'kucoin': KuCoinClient,
-    'bybit': BybitClient,
-    'okx': OkxClient
-}
-LOG_OUTPUT_DIR = "C:/Users/jkran/PycharmProjects/BalanceBot/LOGS/"
 

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from pydantic import BaseModel
 
@@ -10,8 +10,8 @@ class WebsocketMessage(BaseModel):
     data: Optional[Dict]
 
 
-class WebsocketConfig(BaseModel):
-    id: Optional[int]
+class ClientConfig(BaseModel):
+    id: Optional[List[int]]
     since: Optional[datetime]
     to: Optional[datetime]
     currency: Optional[str]

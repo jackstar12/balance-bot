@@ -5,5 +5,6 @@ __all__ = [
     "history",
     "misc",
     "user",
-    "alert"
+    "alert",
+    "leaderboard"
 ]

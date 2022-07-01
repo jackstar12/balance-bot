@@ -1,15 +1,23 @@
 import asyncio
+from decimal import Decimal
+
+from sqlalchemy import select
+
 import msgpack
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Mapping, Any
 
 import pytz
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import balancebot.common.utils as utils
-from balancebot.api.database import redis
-from balancebot.api.dbmodels.client import Client, get_client_query
-from balancebot.api.dbmodels.user import User
-from balancebot.api.models.websocket import WebsocketConfig
+from balancebot.common import customjson
+from balancebot.common.dbsync import redis
+from balancebot.common.dbasync import db_first, db_select, db_all
+from balancebot.common.dbmodels.balance import Balance
+from balancebot.common.dbmodels.client import Client, add_client_filters
+from balancebot.common.dbmodels.user import User
+from balancebot.api.models.websocket import ClientConfig
 
 
 def ratio(a: float, b: float):
@@ -21,15 +29,19 @@ def update_dicts(*dicts: Dict, **kwargs):
         arg.update(kwargs)
 
 
-def update_client_data_trades(cache: Dict, trades: List[Dict], config: WebsocketConfig, save_cache=True):
+def get_dec(mapping: Mapping, key: Any, default: Any):
+    return Decimal(mapping.get(key, default))
+
+
+def update_client_data_trades(cache: Dict, trades: List[Dict], config: ClientConfig, save_cache=True):
 
     result = {}
     new_trades = {}
-    existing_trades = cache['trades']
+    existing_trades = cache.get('trades', None)
     now = datetime.now(tz=pytz.utc)
 
-    winners, losers = cache.get('winners', 0), cache.get('losers', 0)
-    total_win, total_loss = cache.get('avg_win', 0.0) * winners, cache.get('avg_loss', 0.0) * losers
+    winners, losers = get_dec(cache, 'winners', 0), get_dec(cache, 'losers', 0)
+    total_win, total_loss = get_dec(cache, 'avg_win', 0) * winners, get_dec(cache, 'avg_loss', 0) * losers
 
     for trade in trades:
         # Get existing entry
@@ -43,7 +55,8 @@ def update_client_data_trades(cache: Dict, trades: List[Dict], config: Websocket
         update_dicts(
             result, cache
         )
-        new_trades[trade['id']] = existing_trades[trade['id']] = trade
+        tr_id = str(trade['id'])
+        new_trades[tr_id] = existing_trades[tr_id] = trade
 
     update_dicts(result, trades=new_trades)
 
@@ -63,9 +76,9 @@ def update_client_data_trades(cache: Dict, trades: List[Dict], config: Websocket
     return result
 
 
-def update_client_data_balance(cache: Dict, client: Client, config: WebsocketConfig, save_cache=True) -> Dict:
+async def update_client_data_balance(cache: Dict, client: Client, config: ClientConfig, save_cache=True) -> Dict:
 
-    cached_date = datetime.fromtimestamp(cache.get('ts', 0), tz=pytz.UTC)
+    cached_date = datetime.fromtimestamp(int(cache.get('ts', 0)), tz=pytz.UTC)
     now = datetime.now(tz=pytz.UTC)
 
     if config.since:
@@ -76,13 +89,17 @@ def update_client_data_balance(cache: Dict, client: Client, config: WebsocketCon
     result = {}
 
     new_history = []
-    daily = utils.calc_daily(
+
+    async def append(balance: Balance):
+        new_history.append(await balance.serialize(full=True, data=True, currency=config.currency))
+
+    daily = await utils.calc_daily(
         client=client,
         throw_exceptions=False,
         since=since_date,
         to=config.to,
         now=now,
-        forEach=lambda balance: new_history.append(balance.serialize(full=True, data=True, currency=config.currency))
+        forEach=append
     )
     result['history'] = new_history
     cache['history'] += new_history
@@ -119,31 +136,31 @@ def update_client_data_balance(cache: Dict, client: Client, config: WebsocketCon
     return result
 
 
-async def get_cached_data(config: WebsocketConfig):
+async def get_cached_data(config: ClientConfig):
     redis_key = f'client:data:{config.id}:{config.since.timestamp() if config.since else None}:{config.to.timestamp() if config.to else None}:{config.currency}'
     cached = await redis.get(redis_key)
     if cached:
-        return msgpack.unpackb(cached, raw=False)
+        return customjson.loads(cached)
 
 
-async def set_cached_data(data: Dict, config: WebsocketConfig):
+async def set_cached_data(data: Dict, config: ClientConfig):
     redis_key = f'client:data:{config.id}:{config.since.timestamp() if config.since else None}:{config.to.timestamp() if config.to else None}:{config.currency}'
-    await redis.set(redis_key, msgpack.packb(data))
+    await redis.set(redis_key, customjson.dumps(data))
 
 
-async def create_cilent_data_serialized(client: Client, config: WebsocketConfig):
+async def create_client_data_serialized(client: Client, config: ClientConfig):
 
     cached = await get_cached_data(config)
-
+    cached = None
     if cached:
         s = cached
         s['source'] = 'cache'
     else:
-        s = client.serialize(full=True, data=False)
+        s = await client.serialize(full=False, data=False)
         s['trades'] = {}
         s['source'] = 'database'
 
-    cached_date = datetime.fromtimestamp(s.get('ts', 0), tz=pytz.UTC)
+    cached_date = datetime.fromtimestamp(int(s.get('ts', 0)), tz=pytz.UTC)
 
     now = datetime.now(tz=pytz.UTC)
 
@@ -159,9 +176,9 @@ async def create_cilent_data_serialized(client: Client, config: WebsocketConfig)
     if to_date > cached_date:
         since_date = max(since_date, cached_date)
 
-        update_client_data_balance(s, client, config, save_cache=False)
+        await update_client_data_balance(s, client, config, save_cache=False)
 
-        trades = [trade.serialize(data=True) for trade in client.trades if since_date <= trade.initial.tz_time <= to_date]
+        trades = [await trade.serialize(data=True) for trade in client.trades if since_date <= trade.open_time <= to_date]
         update_client_data_trades(s, trades, config, save_cache=False)
 
         s['ts'] = now.timestamp()
@@ -170,12 +187,9 @@ async def create_cilent_data_serialized(client: Client, config: WebsocketConfig)
     return s
 
 
-def get_user_client(user: User, id: int = None):
-    client: Optional[Client] = None
-    if id:
-        client = get_client_query(user, id).first()
-    elif user.discorduser:
-        client = user.discorduser.global_client
-    elif len(user.clients) > 0:
-        client = user.clients[0]
-    return client
+async def get_user_client(user: User, id: int = None, *eager, db: AsyncSession = None):
+    return utils.list_last(await get_user_clients(user, [id] if id else None, *eager, db=db), None)
+
+
+async def get_user_clients(user: User, ids: List[int] = None, *eager, db: AsyncSession = None) -> list[Client]:
+    return await db_all(add_client_filters(select(Client), user, ids), *eager, session=db)

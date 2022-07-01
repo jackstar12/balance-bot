@@ -1,11 +1,11 @@
 from discord_slash import cog_ext, SlashContext
 
-from balancebot.common import utils
-from balancebot.api import dbutils
-from balancebot.api.database import session
-from balancebot.api.dbmodels.discorduser import DiscordUser
+from balancebot.common.dbasync import db_del_filter, async_session
+from balancebot.common.dbmodels.client import Client
+from balancebot.common import dbutils
+from balancebot.bot import utils
+from balancebot.common.dbmodels.discorduser import DiscordUser
 from balancebot.bot.cogs.cogbase import CogBase
-from balancebot.common.utils import create_yes_no_button_row
 
 
 class UserCog(CogBase):
@@ -17,15 +17,15 @@ class UserCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def delete_all(self, ctx: SlashContext):
-        user = dbutils.get_user(ctx.author_id)
+        user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[DiscordUser.clients])
 
-        def confirm_delete(ctx):
+        async def confirm_delete(ctx):
             for client in user.clients:
-                dbutils.delete_client(client, self.messenger, commit=False)
-            session.query(DiscordUser).filter_by(id=user.id).delete()
-            session.commit()
+                await dbutils.delete_client(client, self.messenger, commit=False)
+            await db_del_filter(DiscordUser, id=user.id)
+            await async_session.commit()
 
-        button_row = create_yes_no_button_row(
+        button_row = utils.create_yes_no_button_row(
             slash=self.slash_cmd_handler,
             author_id=ctx.author_id,
             yes_callback=confirm_delete,
@@ -44,8 +44,11 @@ class UserCog(CogBase):
     )
     @utils.log_and_catch_errors()
     async def info(self, ctx: SlashContext):
-        user = dbutils.get_user(ctx.author_id)
-        embeds = user.get_discord_embed()
+        user = await dbutils.get_discord_user(
+            ctx.author_id,
+            eager_loads=[(DiscordUser.clients, Client.events)]
+        )
+        embeds = await user.get_discord_embed()
         await ctx.send(content='', embeds=embeds, hidden=True)
 
 

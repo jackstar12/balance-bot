@@ -2,29 +2,43 @@ import asyncio
 import json
 import logging
 import time
-from threading import Thread, Lock
-import aiohttp
-import threading
+from typing import Callable
 
-import websockets
+import aiohttp
+import typing_extensions
+
 from aiohttp import WSMessage
-from websocket import WebSocketApp
+from typing_extensions import Self
+
+from balancebot.common import utils, customjson
 
 
 class WebsocketManager:
     _CONNECT_TIMEOUT_S = 5
 
-    def __init__(self, session: aiohttp.ClientSession):
+    # Note that the url is provided through a function because some exchanges
+    # have authentication embedded into the url
+    def __init__(self, session: aiohttp.ClientSession,
+                 get_url: Callable[..., str],
+                 on_message: Callable[[Self, str], None] = None,
+                 on_connect: Callable[[Self], None] = None,
+                 ping_forever_seconds: int = None):
         self._ws = None
         self._session = session
+        self._get_url = get_url
+        if on_message:
+            self._on_message = on_message
+        self._on_connect = on_connect
+        self._ping_forever_seconds = ping_forever_seconds
 
     async def send(self, message):
         await self.connect()
         self._ws.send(message)
 
     async def send_json(self, data):
-        if self._ws and not self._ws.closed:
-            return await self._ws.send_json(data)
+        if not self._ws or self._ws.closed:
+            await self.connect()
+        return await self._ws.send_json(data, dumps=customjson.dumps_no_bytes)
 
     async def reconnect(self) -> None:
         if self.connected:
@@ -50,7 +64,9 @@ class WebsocketManager:
 
     async def _run(self):
         async with self._session.ws_connect(self._get_url(), autoping=True) as ws:
-            self._ws = ws
+            asyncio.create_task(self._ping_forever())
+            await utils.call_unknown_function(self._on_connect, self)
+            self._ws: aiohttp.ClientWebSocketResponse = ws
             async for msg in ws:
                 msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
                 if msg.type == aiohttp.WSMsgType.PING:
@@ -68,6 +84,15 @@ class WebsocketManager:
                     logging.info(f'DISCONNECTED {self=}')
                     await self._callback(self._on_close, ws)
                     break
+
+    async def ping(self):
+        raise NotImplementedError()
+
+    async def _ping_forever(self):
+        if self._ping_forever_seconds:
+            while self.connected:
+                await self.ping()
+                await asyncio.sleep(self._ping_forever_seconds)
 
     async def _callback(self, f, ws, *args, **kwargs):
         if callable(f) and ws is self._ws:

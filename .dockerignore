@@ -1,0 +1,9 @@
+venv/
+LOGS/
+docs/
+examples/
+archive/
+data/
+matplotlib/
+idea/
+.git/

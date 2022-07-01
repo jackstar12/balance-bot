@@ -1,7 +1,9 @@
 import json
+from decimal import Decimal
 from typing import List
 
-from balancebot.collector.exchangeticker import ExchangeTicker, Channel
+from balancebot.common.exchanges.exchangeticker import ExchangeTicker, Channel
+from balancebot.common.config import TESTING
 from balancebot.common.models.async_websocket_manager import WebsocketManager
 from balancebot.common.models.ticker import Ticker
 
@@ -11,8 +13,8 @@ def _symbol_stream(symbol: str):
 
 
 class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
-    #_ENDPOINT = 'wss://stream.binancefuture.com' if settings.testing else 'wss://fstream.binance.com'
-    _ENDPOINT = 'wss://fstream.binance.com'
+    _ENDPOINT = 'wss://stream.binancefuture.com' if TESTING else 'wss://fstream.binance.com'
+    #_ENDPOINT = 'wss://fstream.binance.com'
 
     def __init__(self, *args, **kwargs):
         WebsocketManager.__init__(self, *args, **kwargs)
@@ -42,10 +44,10 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
         msg = json.loads(msg_raw)
         event = msg.get('e')
         if event == "aggTrade":
-            self._callbacks.get(Channel.TICKER.value).notify(
+            await self._callbacks.get(Channel.TICKER.value).notify(
                 Ticker(
                     symbol=msg['s'],
-                    price=float(msg['p']),
+                    price=Decimal(msg['p']),
                     ts=msg['T'],
                     exchange='binance-futures'
                 )

@@ -7,10 +7,12 @@ from threading import RLock
 from typing import List, Callable
 
 import discord
+import pytz
+from sqlalchemy import select
 
-from balancebot.api.database import session
-from balancebot.api.dbmodels.event import Event
-from balancebot.collector.usermanager import UserManager
+from balancebot.common.dbsync import session
+from balancebot.common.dbmodels.event import Event
+from balancebot.common.dbasync import db_all
 
 
 @dataclass
@@ -25,11 +27,11 @@ class EventManager:
         self._scheduled: List[FutureCallback] = []
         self._schedule_lock = RLock()
         self._cur_timer = None
-        self._user_manager = UserManager()
         self._dc_client = discord_client
 
-    def initialize_events(self):
-        events = session.query(Event).all()
+    async def initialize_events(self):
+        now = datetime.now(tz=pytz.utc)
+        events = await db_all(select(Event).filter(Event.end < now))
         for event in events:
             self.register(event)
 
@@ -40,7 +42,7 @@ class EventManager:
             (event.registration_start, lambda: self._event_registration_start(event)),
             (event.registration_end, lambda: self._event_registration_end(event))
         ]
-        now = datetime.now()
+        now = datetime.now(tz=pytz.utc)
         for time, callback in event_callbacks:
             if time > now:
                 self._schedule(
@@ -55,7 +57,6 @@ class EventManager:
         return guild.get_channel(event.channel_id)
 
     async def _event_start(self, event: Event):
-        self._user_manager.synch_workers()
         await self._get_event_channel(event).send(content=f'Event **{event.name}** just started!',
                                                   embed=event.get_discord_embed(dc_client=self._dc_client, registrations=True))
 
@@ -66,12 +67,11 @@ class EventManager:
         )
 
         complete_history = await event.create_complete_history(dc_client=self._dc_client)
+        summary = await event.get_summary_embed(dc_client=self._dc_client)
         await self._get_event_channel(event).send(
-            embed=event.get_summary_embed(dc_client=self._dc_client).set_image(url=f'attachment://{complete_history.filename}'),
+            embed=summary.set_image(url=f'attachment://{complete_history.filename}'),
             file=complete_history
         )
-
-        self._user_manager.synch_workers()
 
     async def _event_registration_start(self, event: Event):
         await self._get_event_channel(event).send(content=f'Registration period for **{event.name}** has started!')
@@ -102,7 +102,7 @@ class EventManager:
     async def _execute(self):
         while len(self._scheduled) > 0:
             cur_event = self._scheduled[0]
-            diff_seconds = (cur_event.time - datetime.now()).total_seconds()
+            diff_seconds = (cur_event.time - datetime.now(pytz.utc)).total_seconds()
             await asyncio.sleep(diff_seconds)
 
             try:
