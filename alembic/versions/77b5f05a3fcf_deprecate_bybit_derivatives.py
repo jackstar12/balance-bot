@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from balancebot.common.dbmodels import Client
+from tradealpha.common.dbmodels import Client
 
 revision = '77b5f05a3fcf'
 down_revision = 'becc5951bf45'

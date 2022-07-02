@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from balancebot.common.dbmodels.execution import Execution
+from tradealpha.common.dbmodels.execution import Execution
 
 revision = 'd03e280b54ba'
 down_revision = '77b5f05a3fcf'

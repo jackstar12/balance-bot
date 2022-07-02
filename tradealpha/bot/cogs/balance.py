@@ -1,0 +1,177 @@
+import logging
+
+import discord
+from datetime import datetime
+
+from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
+from discord_slash.utils.manage_commands import create_option
+
+from tradealpha.common.dbmodels.client import Client
+from tradealpha.common.dbmodels.discorduser import DiscordUser
+from tradealpha.bot import utils
+from tradealpha.common import dbutils
+from tradealpha.bot import config
+from tradealpha.bot.cogs.cogbase import CogBase
+from tradealpha.common.utils import calc_gains
+
+
+class BalanceCog(CogBase):
+
+    @cog_ext.cog_slash(
+        name="balance",
+        description="Gives balance of user",
+        options=[
+            create_option(
+                name="user",
+                description="User to get balance for",
+                required=False,
+                option_type=6
+            ),
+            create_option(
+                name="currency",
+                description="Currency to show. Not supported for all exchanges",
+                required=False,
+                option_type=3
+            )
+        ]
+    )
+    @utils.log_and_catch_errors()
+    @utils.set_author_default(name='user')
+    async def balance(self, ctx: SlashContext, user: discord.Member = None, currency: str = None):
+        if currency is None:
+            currency = '$'
+        currency = currency.upper()
+
+        if ctx.guild:
+            registered_user = await dbutils.get_client(user.id, ctx.guild.id)
+
+            await ctx.defer()
+
+            usr_balance = await registered_user.get_latest_balance(self.redis, currency)
+            if not usr_balance:
+                await ctx.send(f'There are no records about {user.display_name}\'s balance')
+            if usr_balance.error is None:
+                await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
+            else:
+                await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
+        else:
+            user: DiscordUser = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events)])
+
+            await ctx.defer()
+
+            for user_client in user.clients:
+                #usr_balance = await self.user_manager.get_client_balance(user_client, currency)
+                k = await self.redis.keys()
+                usr_balance = await user_client.get_latest_balance(self.redis, currency)
+                balance_message = f'Your balance ({await user_client.get_events_and_guilds_string()}): '
+                if not usr_balance:
+                    await ctx.send('There are no records about your balance')
+                if usr_balance.error is None:
+                    await ctx.send(f'{balance_message}{usr_balance.to_string()}')
+                else:
+                    await ctx.send(
+                        f'Error while getting your balance ({await user_client.get_events_and_guilds_string()}): {usr_balance.error}')
+
+    @cog_ext.cog_slash(
+        name="gain",
+        description="Calculate gain",
+        options=[
+            create_option(
+                name="user",
+                description="User to calculate gain for",
+                required=False,
+                option_type=6
+            ),
+            create_option(
+                name="time",
+                description="Time frame for gain. Default is start",
+                required=False,
+                option_type=3
+            ),
+            create_option(
+                name="currency",
+                description="Currency to calculate gain for",
+                required=False,
+                option_type=3
+            )
+        ]
+    )
+    @utils.log_and_catch_errors()
+    @utils.time_args(('time', None))
+    @utils.set_author_default(name='user')
+    async def gain(self, ctx: SlashContext, user: discord.Member, time: datetime = None, currency: str = None):
+        if currency is None:
+            currency = '$'
+        currency = currency.upper()
+
+        if ctx.guild:
+            registered_client = await dbutils.get_client(user.id, ctx.guild_id, client_eager=[Client.events])
+            clients = [registered_client]
+        else:
+            discord_user = await dbutils.get_discord_user(ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events)])
+            clients = discord_user.clients
+
+        since_start = time is None
+        time_str = utils.readable_time(time)
+
+        await ctx.defer()
+        #await self.user_manager.fetch_data(clients=clients)
+
+        user_gains = await calc_gains(
+            clients,
+            event=await dbutils.get_event(ctx.guild_id, throw_exceptions=False),
+            search=time,
+            currency=currency
+        )
+
+        for user_gain in user_gains:
+            guild = self.bot.get_guild(ctx.guild_id)
+            if ctx.guild:
+                gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
+            else:
+                gain_message = f"Your gain ({await user_gain.client.get_events_and_guilds_string()}): " if not guild else f"Your gain on {guild}: "
+            if user_gain.relative is None:
+                logging.info(
+                    f'Not enough data for calculating {utils.de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
+                if ctx.guild:
+                    await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
+                else:
+                    await ctx.send(f'Not enough data for calculating your gain ({await user_gain.client.get_events_and_guilds_string()})')
+            else:
+                await ctx.send(
+                    f'{gain_message}{round(user_gain.relative, ndigits=3)}% ({round(user_gain.absolute, ndigits=config.CURRENCY_PRECISION.get(currency, 3))}{currency})')
+
+    @cog_ext.cog_slash(
+        name="daily",
+        description="Shows your daily gains.",
+        options=[
+            create_option(
+                name="user",
+                description="User to display daily gains for (Author default)",
+                option_type=SlashCommandOptionType.USER,
+                required=False
+            ),
+            create_option(
+                name="amount",
+                description="Amount of days",
+                option_type=SlashCommandOptionType.INTEGER,
+                required=False
+            ),
+            create_option(
+                name="currency",
+                description="Currency to use",
+                option_type=SlashCommandOptionType.STRING,
+                required=False
+            )
+        ]
+    )
+    @utils.log_and_catch_errors()
+    @utils.set_author_default(name="user")
+    async def daily(self, ctx: SlashContext, user: discord.Member, amount: int = None, currency: str = None):
+        client = await dbutils.get_client(user.id, ctx.guild_id, registration=True)
+        await ctx.defer()
+        daily_gains = await utils.calc_daily(client, amount, ctx.guild_id, string=True, currency=currency)
+        await ctx.send(embed=discord.Embed(
+            title=f'Daily gains for {ctx.author.display_name}',
+            description=f'```\n{daily_gains}```')
+        )

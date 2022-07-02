@@ -16,8 +16,8 @@ fileConfig(config.config_file_name)
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-from balancebot.common.dbsync import Base
-import balancebot.common.dbmodels
+from tradealpha.common.dbsync import Base
+import tradealpha.common.dbmodels
 target_metadata = Base.metadata
 
 config.set_main_option(

@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from balancebot.common.dbsync import Base
-from balancebot.common.dbmodels.trade import Trade
+from tradealpha.common.dbsync import Base
+from tradealpha.common.dbmodels.trade import Trade
 
 revision = 'becc5951bf45'
 down_revision = '3227580df717'

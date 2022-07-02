@@ -13,7 +13,7 @@ services:
     depends_on:
       - migrate
     build:
-      dockerfile: balancebot/api/Dockerfile
+      dockerfile: tradealpha/api/Dockerfile
       context: .
     ports:
       - "5000:5000"
@@ -24,7 +24,7 @@ services:
     depends_on:
       - migrate
     build:
-      dockerfile: balancebot/collector/Dockerfile
+      dockerfile: tradealpha/collector/Dockerfile
       context: .
     environment:
       - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
@@ -33,7 +33,7 @@ services:
     depends_on:
       - migrate
     build:
-      dockerfile: balancebot/bot/Dockerfile
+      dockerfile: tradealpha/bot/Dockerfile
       context: .
     environment:
       - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
