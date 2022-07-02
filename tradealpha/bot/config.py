@@ -1,6 +1,6 @@
 PREFIX = "c "
-DATA_PATH = "C:/Users/jkran/PycharmProjects/BalanceBot/data/"
-ARCHIVE_PATH = "C:/Users/jkran/PycharmProjects/BalanceBot/archive/"
+DATA_PATH = "/data/"
+ARCHIVE_PATH = "/archive/"
 FETCHING_INTERVAL_HOURS = 1
 REKT_THRESHOLD = 5000
 REGISTRATION_MINIMUM = 5

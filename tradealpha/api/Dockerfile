@@ -1,13 +1,13 @@
-FROM balancebot_common:latest
+FROM tradealpha_common:latest
 
 WORKDIR /code
 
-COPY /balancebot/api/requirements.txt /code/balancebot/api/requirements.txt
+COPY /tradealpha/api/requirements.txt /code/tradealpha/api/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade -r ./tradealpha/api/requirements.txt
 
-COPY /balancebot/api /code/balancebot/api
+COPY /tradealpha/api /code/tradealpha/api
 
 EXPOSE 5000
 
-CMD ["uvicorn", "balancebot.api.app:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "tradealpha.api.app:app", "--host", "0.0.0.0", "--port", "5000"]

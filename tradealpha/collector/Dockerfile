@@ -1,13 +1,13 @@
-FROM balancebot_common:latest
+FROM tradealpha_common:latest
 
 WORKDIR /code
 
-COPY /balancebot/collector/requirements.txt /code/balancebot/collector/requirements.txt
+COPY /tradealpha/collector/requirements.txt /code/tradealpha/collector/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade -r /code/tradealpha/collector/requirements.txt
 
-COPY /balancebot/collector /code/balancebot/collector
+COPY /tradealpha/collector /code/tradealpha/collector
 
 CMD ["alembic", "upgrade", "head"]
 
-CMD ["python3", "-m", "balancebot.collector.collector"]
+CMD ["python3", "-m", "tradealpha.collector.collector"]

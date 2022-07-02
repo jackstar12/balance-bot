@@ -2,11 +2,11 @@ FROM python:3.10.3
 
 WORKDIR /code
 
-COPY /balancebot/common/requirements.txt /code/balancebot/common/requirements.txt
+COPY /tradealpha/common/requirements.txt /code/tradealpha/common/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade -r ./tradealpha/common/requirements.txt
 
-COPY /balancebot/common /code/balancebot/common
+COPY /tradealpha/common /code/tradealpha/common
 COPY ./alembic.ini /code/alembic.ini
 COPY ./alembic /code/alembic
 

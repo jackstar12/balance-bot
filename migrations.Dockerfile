@@ -1,3 +1,3 @@
-FROM balancebot_common:latest
+FROM tradealpha_common:latest
 
 CMD ["alembic", "upgrade", "head"]
