@@ -16,14 +16,14 @@ class BaseOrmModel(BaseModel):
 
 
 class JournalCreate(BaseModel):
-    clients: List[int]
+    clients: List[str]
     title: str
     chapter_interval: timedelta
     auto_generate: bool
 
 
 class JournalInfo(JournalCreate):
-    id: int
+    id: str
     notes: Optional[str]
 
     class Config:
@@ -31,7 +31,7 @@ class JournalInfo(JournalCreate):
 
 
 class JournalUpdate(BaseOrmModel):
-    clients: Optional[Set[int]]
+    clients: Optional[Set[str]]
     title: Optional[str]
     notes: Optional[str]
     auto_generate: Optional[bool]
@@ -43,7 +43,7 @@ class Gain(NamedTuple):
 
 
 class ChapterInfo(BaseModel):
-    id: int
+    id: str
     start_date: date
     end_date: date
     balances: List[FullBalance]
@@ -57,7 +57,7 @@ class ChapterInfo(BaseModel):
 
 class ChapterUpdate(BaseModel):
     notes: Optional[str]
-    trades: Optional[Set[int]]
+    trades: Optional[Set[str]]
 
 
 class ChapterCreate(BaseModel):

@@ -39,8 +39,8 @@ from tradealpha.common.utils import setup_logger
 app = FastAPI(
     docs_url='/api/v1/docs',
     openapi_url='/api/v1/openapi.json',
-    title="ChimichangApp",
-    description='yoyo',
+    title="TradeAlpha",
+    description='Trade Analytics and Journaling platform',
     version="0.0.1",
     terms_of_service="http://example.com/terms/",
     contact={

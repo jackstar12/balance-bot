@@ -381,6 +381,13 @@ class Client(Base, Serializer):
 
 
 def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: List[int] = None) -> Union[Select, Delete, Update]:
+    """
+    Commonly used utility to add filters that ensure authorized client access
+    :param stmt: stmt to add filters to
+    :param user: desired user
+    :param client_ids: possible client ids. If None, all clients will be used
+    :return:
+    """
     #user_checks = [Client.user_id == user.id]
     #if user.discord_user_id:
     #    user_checks.append(Client.discord_user_id == user.discord_user_id)

@@ -15,8 +15,8 @@ from typing import Optional, Dict, List, Tuple
 import pytz
 
 import tradealpha.common.utils as utils
-from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance, Performance, Calculation, \
-    TradeAnalytics
+from api.models.trade import DetailledTrade
+from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance, Performance, Calculation
 from tradealpha.api.models.execution import Execution
 from tradealpha.common.dbsync import redis
 from tradealpha.common.dbasync import db_first
@@ -90,7 +90,7 @@ async def create_cilent_analytics(client: Client,
                 performance_by_filter[filter_value].absolute += trade.realized_pnl
         try:
             trade_analytics.append(
-                TradeAnalytics.from_orm(trade)
+                DetailledTrade.from_orm(trade)
             )
         except ValidationError as e:
             logging.exception('Validation Error')

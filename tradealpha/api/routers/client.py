@@ -12,15 +12,16 @@ import jwt
 import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query, Body
 from fastapi.encoders import jsonable_encoder
-from pydantic import ValidationError
+from pydantic import ValidationError, BaseModel
 from sqlalchemy import or_, delete, select, update, asc, func, desc, Date, false
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
+from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.api.utils.analytics import create_cilent_analytics
 from tradealpha.api.authenticator import Authenticator
-from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance, TradeAnalytics
+from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance
 from tradealpha.common.dbasync import db, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
     redis_bulk_hashes, redis_bulk
 from tradealpha.common.dbmodels.guildassociation import GuildAssociation
@@ -45,7 +46,7 @@ from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
 from tradealpha.common.exchanges import EXCHANGES
 from tradealpha.common.utils import validate_kwargs, create_interval
 from tradealpha.common.dbmodels import TradeDB, BalanceDB
-from tradealpha.api.models.trade import Trade
+from tradealpha.api.models.trade import Trade, BasicTrade, DetailledTrade
 from tradealpha.common.models.daily import Daily
 from tradealpha.common.redis.client import ClientSpace, ClientCache
 
@@ -216,7 +217,7 @@ async def get_client(request: Request, response: Response,
                         await client.get_balance_at_time(client_params.to)
                         if client_params.to else
                         await client.get_latest_balance(redis=redis)
-                        #await client.latest()
+                        # await client.latest()
                     )
                 ),
                 trades_by_id={
@@ -539,39 +540,91 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),
             break
 
 
-@router.get('/client/trades', response_model=ClientAnalytics)
-async def get_analytics(client_params: ClientQueryParams = Depends(),
-                        trade_id: list[int] = Query(None, alias='trade-id'),
-                        user: User = Depends(CurrentUser),
-                        db_session: AsyncSession = Depends(get_db)):
-    config = ClientConfig.construct(**client_params.__dict__)
+@router.get('/client/trade-overview', response_model=List[BasicTrade])
+async def get_trade_overview(client_params: ClientQueryParams = Depends(),
+                             trade_id: list[int] = Query(None, alias='trade-id'),
+                             user: User = Depends(CurrentUser),
+                             db_session: AsyncSession = Depends(get_db)):
+    trades = await client_utils.query_trades(
+        user=user,
+        client_params=client_params,
+        trade_id=trade_id,
+        db_session=db_session
+    )
 
-    trades = await db_all(
-        add_client_filters(
-            select(TradeDB).filter(
-                TradeDB.id.in_(trade_id) if trade_id else True,
-                TradeDB.open_time >= config.since if config.since else True,
-                TradeDB.open_time <= config.to if config.to else True
-            ).join(
-                TradeDB.client
-            ),
-            user=user,
-            client_ids=config.id
-        ),
+    return CustomJSONResponse(
+        content=jsonable_encoder([
+            jsonable_encoder(BasicTrade.from_orm(trade))
+            for trade in trades
+        ])
+    )
+
+
+@router.get('/client/trade-detailled', response_model=List[DetailledTrade])
+async def get_detailled_trades(client_params: ClientQueryParams = Depends(),
+                               trade_id: list[int] = Query(None, alias='trade-id'),
+                               user: User = Depends(CurrentUser),
+                               db_session: AsyncSession = Depends(get_db)):
+    trades = await client_utils.query_trades(
         TradeDB.executions,
         TradeDB.initial,
         TradeDB.max_pnl,
         TradeDB.min_pnl,
         TradeDB.labels,
         TradeDB.init_balance,
+        user=user,
+        client_params=client_params,
+        trade_id=trade_id,
+        db_session=db_session
+    )
+
+    return CustomJSONResponse(
+        content=jsonable_encoder([
+            jsonable_encoder(DetailledTrade.from_orm(trade))
+            for trade in trades
+        ])
+    )
+
+
+@router.get('/client/trade-detailled/pnl-data')
+async def get_detailled_trades(trade_id: list[int] = Query(..., alias='trade-id'),
+                               user: User = Depends(CurrentUser),
+                               db_session: AsyncSession = Depends(get_db)):
+    data: List[PnlData] = await db_all(
+        add_client_filters(
+            select(PnlData)
+            .filter(PnlData.trade_id.in_(trade_id))
+            .join(PnlData.trade)
+            .join(TradeDB.client)
+            .order_by(asc(PnlData.time)),
+            user=user
+        ),
         session=db_session
     )
 
-    response = [
-        jsonable_encoder(TradeAnalytics.from_orm(trade))
-        for trade in trades
-    ]
+    result = {}
+    for pnl_data in data:
+        result.setdefault(pnl_data.trade_id, []).append(pnl_data.compact())
 
+    return CustomJSONResponse(content=jsonable_encoder(result))
+
+
+@router.get('/client/trade', response_model=List[Trade])
+async def get_trades(client_params: ClientQueryParams = Depends(),
+                     trade_id: list[int] = Query(None, alias='trade-id'),
+                     user: User = Depends(CurrentUser),
+                     db_session: AsyncSession = Depends(get_db)):
+    trades = await client_utils.query_trades(
+        TradeDB.executions,
+        TradeDB.labels,
+        user=user,
+        client_params=client_params,
+        trade_id=trade_id,
+        db_session=db_session
+    )
     return CustomJSONResponse(
-        content=jsonable_encoder(response)
+        content=[
+            jsonable_encoder(Trade.from_orm(trade))
+            for trade in trades
+        ]
     )

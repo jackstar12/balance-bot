@@ -16,7 +16,7 @@ from tradealpha.common.dbmodels.serializer import Serializer
 from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.enums import Side, ExecType, Status
 from tradealpha.common.messenger import NameSpace, Category, Messenger
-from tradealpha.common.models.pnldata import PnlData as CompactPnlData
+from tradealpha.common.models.compactpnldata import CompactPnlData
 from tradealpha.common import utils
 from tradealpha.common.dbmodels.symbol import CurrencyMixin
 

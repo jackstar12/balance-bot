@@ -11,6 +11,8 @@ import pytz
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import tradealpha.common.utils as utils
+from tradealpha.api.models.client import ClientQueryParams
+from tradealpha.common.dbmodels import TradeDB
 from tradealpha.common import customjson
 from tradealpha.common.dbsync import redis
 from tradealpha.common.dbasync import db_first, db_select, db_all
@@ -185,6 +187,26 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
         asyncio.create_task(set_cached_data(s, config))
 
     return s
+
+
+def query_trades(*eager,
+                 user: User,
+                 trade_id: List[int],
+                 client_params: ClientQueryParams,
+                 db_session: AsyncSession):
+    return db_all(
+        add_client_filters(
+            select(TradeDB).join(
+                TradeDB.id.in_(trade_id) if trade_id else True,
+                TradeDB.open_time >= client_params.since if client_params.since else True,
+                TradeDB.open_time <= client_params.to if client_params.to else True
+            ),
+            user=user,
+            client_ids=client_params.id
+        ),
+        *eager,
+        session=db_session
+    )
 
 
 async def get_user_client(user: User, id: int = None, *eager, db: AsyncSession = None):

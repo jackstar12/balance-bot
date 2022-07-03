@@ -1,26 +1,21 @@
-from datetime import date
-from decimal import Decimal
-from typing import Optional, List, NamedTuple
-from typing import Optional
+from typing import List
 
-from fastapi import APIRouter, Depends, Body, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tradealpha.api.dependencies import CurrentUser, get_messenger, CurrentUserDep, get_db
-from tradealpha.api.models.amount import FullBalance
-from tradealpha.api.models.completejournal import JournalCreate, JournalInfo, CompleteJournal, Chapter, JournalUpdate, \
+from tradealpha.api.models.completejournal import (
+    JournalCreate, JournalInfo, Chapter, JournalUpdate,
     ChapterInfo, ChapterCreate, ChapterUpdate
-from tradealpha.common.dbmodels import journal
-from tradealpha.common.dbmodels.chapter import Chapter as DbChapter
-from tradealpha.api.utils.client import get_user_client
-from tradealpha.api.utils.responses import BadRequest, OK, NotFound
+)
+from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse
 from tradealpha.common.dbasync import async_session, db_unique, db_all
+from tradealpha.common.dbmodels.chapter import Chapter as DbChapter
 from tradealpha.common.dbmodels.client import add_client_filters, Client
 from tradealpha.common.dbmodels.journal import Journal, JournalType
 from tradealpha.common.dbmodels.user import User
-from tradealpha.common.models.gain import Gain
 
 router = APIRouter(
     tags=["journal"],
@@ -101,12 +96,20 @@ async def create_journal(body: JournalCreate,
     return JournalInfo.from_orm(journal)
 
 
-@router.get('/')
-async def get_journals(user: User = Depends(CurrentUserDep(User.journals))) -> List[JournalInfo]:
-    return [
-        JournalInfo.from_orm(journal)
-        for journal in user.journals
-    ]
+@router.get(
+    '/',
+    description="Query all the users journals",
+    response_model=List[JournalInfo]
+)
+async def get_journals(user: User = Depends(CurrentUserDep(User.journals))):
+    return CustomJSONResponse(
+        content=jsonable_encoder(
+            [
+                JournalInfo.from_orm(journal)
+                for journal in user.journals
+            ]
+        )
+    )
 
 
 @router.get('/{journal_id}')
@@ -154,7 +157,7 @@ async def delete_journal(journal_id: int, user: User = Depends(CurrentUser)):
     return OK('Deleted')
 
 
-@router.get('/{journal_id}/chapters')
+@router.get('/{journal_id}/chapters', response_model=List[ChapterInfo])
 async def get_chapters(journal_id: int, user: User = Depends(CurrentUser)):
     journal = await query_journal(
         journal_id, user,
@@ -173,7 +176,7 @@ async def get_chapter(journal_id: int, chapter_id: int, user: User = Depends(Cur
     chapter = await query_chapter(
         journal_id,
         user,
-        DbChapter.trades,
+        # DbChapter.trades,
         DbChapter.balances,
         session=async_session,
         id=chapter_id

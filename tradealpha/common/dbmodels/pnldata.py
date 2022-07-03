@@ -8,7 +8,7 @@ from sqlalchemy.orm import relationship
 from tradealpha.common.dbsync import Base
 from tradealpha.common.dbmodels.amountmixin import AmountMixin
 from enum import Enum as PyEnum
-
+from tradealpha.common.models.compactpnldata import CompactPnlData
 from tradealpha.common.dbmodels.serializer import Serializer
 
 
@@ -41,6 +41,13 @@ class PnlData(Base, Serializer):
     @classmethod
     def is_data(cls):
         return True
+
+    def compact(self) -> CompactPnlData:
+        return CompactPnlData(
+            ts=self.time.timestamp(),
+            realized=self.realized,
+            unrealized=self.unrealized
+        )
 
 
 

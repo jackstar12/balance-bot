@@ -361,6 +361,7 @@ async def create_leaderboard(dc_client: discord.Client,
                              event: db_event.Event = None,
                              time: datetime = None,
                              archived=False) -> discord.Embed:
+
     client_scores: List[Tuple[Client, float]] = []
     value_strings: Dict[Client, str] = {}
     clients_rekt: List[Client] = []

@@ -4,7 +4,6 @@ import json
 import orjson
 from fastapi.encoders import jsonable_encoder
 
-from tradealpha.common.models.pnldata import PnlData
 
 
 def default(obj: Any):

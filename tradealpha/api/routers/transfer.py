@@ -20,7 +20,7 @@ from starlette.websockets import WebSocketDisconnect
 from tradealpha.api.models.transfer import Transfer
 from tradealpha.api.utils.analytics import create_cilent_analytics
 from tradealpha.api.authenticator import Authenticator
-from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance, TradeAnalytics
+from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance
 from tradealpha.common.dbasync import db, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
     redis_bulk_hashes, redis_bulk
 from tradealpha.common.dbmodels.guildassociation import GuildAssociation

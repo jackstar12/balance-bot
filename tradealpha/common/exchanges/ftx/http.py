@@ -69,6 +69,9 @@ class FtxWorker(ExchangeWorker):
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime, upnl=True):
+        response = await self._get('/api/wallet/balances')
+
+
         response = await self._get('/api/account')
 
         return balance.Balance(
