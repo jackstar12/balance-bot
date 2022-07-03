@@ -17,7 +17,7 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
     #_ENDPOINT = 'wss://fstream.binance.com'
 
     def __init__(self, *args, **kwargs):
-        WebsocketManager.__init__(self, *args, **kwargs)
+        WebsocketManager.__init__(self, *args, **kwargs, get_url=self._get_url)
         ExchangeTicker.__init__(self, *args, **kwargs)
 
     def _get_url(self):
