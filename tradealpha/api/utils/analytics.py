@@ -15,7 +15,7 @@ from typing import Optional, Dict, List, Tuple
 import pytz
 
 import tradealpha.common.utils as utils
-from api.models.trade import DetailledTrade
+from tradealpha.api.models.trade import DetailledTrade
 from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance, Performance, Calculation
 from tradealpha.api.models.execution import Execution
 from tradealpha.common.dbsync import redis

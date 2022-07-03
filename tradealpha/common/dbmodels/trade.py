@@ -229,7 +229,7 @@ class Trade(Base, Serializer, CurrencyMixin):
             time=now,
             extra_currencies={
                 currency: rate * upnl
-                for currency, rate in extra_currencies if currency != self.settle
+                for currency, rate in extra_currencies.items() if currency != self.settle
             } if extra_currencies else None
         )
 
