@@ -17,12 +17,21 @@ class FtxClient(ExchangeWorker):
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime):
-        response = await self._get('/api/account')
+
+        response = await self._get('/api/wallet/balances')
         if response['success']:
-            amount = response['result']['totalAccountValue']
+            amount = sum(coin['usdValue'] for coin in response['result'])
         else:
             amount = 0
         return balance.Balance(amount=amount, currency='$', error=response.get('error'), time=time)
+
+
+        # response = await self._get('/api/account')
+        # if response['success']:
+        #     amount = response['result']['totalAccountValue']
+        # else:
+        #     amount = 0
+        # return balance.Balance(amount=amount, currency='$', error=response.get('error'), time=time)
 
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs) -> None:
         ts = int(time.time() * 1000)
