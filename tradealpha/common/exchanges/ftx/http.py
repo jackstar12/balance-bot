@@ -63,15 +63,18 @@ class FtxWorker(ExchangeWorker):
                     price=float(data['price']),
                     qty=float(data['size']),
                     time=datetime.now(pytz.utc),
-                    type=data.get('type')
+                    type=ExecType.TRADE
                 )
             )
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime, upnl=True):
         response = await self._get('/api/wallet/balances')
-
-
+        return balance.Balance(
+            realized=sum(coin['usdValue'] for coin in response),
+            unrealized=sum(coin['usdValue'] for coin in response),
+            time=time
+        )
         response = await self._get('/api/account')
 
         return balance.Balance(

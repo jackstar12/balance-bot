@@ -45,8 +45,8 @@ class Chapter(Base):
     #start_balance = orm.relationship('Balance', lazy='noload', foreign_keys=start_balance_id)
     #end_balance = orm.relationship('Balance', lazy='noload', foreign_keys=end_balance_id)
 
-
     notes = sa.Column(sa.Text, nullable=True)
+    title = sa.Column(sa.String(25), nullable=True)
 
     @hybrid_property
     def performance(self) -> Gain:

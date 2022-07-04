@@ -48,6 +48,7 @@ class ChapterInfo(BaseModel):
     end_date: date
     balances: List[FullBalance]
     performance: Optional[Gain]
+    title: str
     #start_balance: FullBalance
     #end_balance: FullBalance
 
@@ -57,11 +58,12 @@ class ChapterInfo(BaseModel):
 
 class ChapterUpdate(BaseModel):
     notes: Optional[str]
-    trades: Optional[Set[str]]
+    #trades: Optional[Set[str]]
 
 
 class ChapterCreate(BaseModel):
     start_date: date
+    title: str
 
 
 class Chapter(ChapterInfo):
