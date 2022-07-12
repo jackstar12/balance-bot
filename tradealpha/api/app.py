@@ -42,7 +42,7 @@ app = FastAPI(
 
 app.add_middleware(SessionMiddleware, secret_key='SECRET')
 app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
-# app.add_middleware(SessionMiddleware, secret_key='SECRET')
+app.add_middleware(DbSessionMiddleware, secret_key='SECRET')
 
 app.include_router(fastapi_users.get_verify_router(UserRead), prefix='/api/v1')
 app.include_router(fastapi_users.get_reset_password_router(), prefix='/api/v1')
@@ -50,6 +50,7 @@ app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), pref
 
 for module in (discord, auth, client, label, analytics, journal):
     app.include_router(module.router, prefix='/api/v1')
+
 
 @app.post('/delete')
 async def delete_user(user: User = Depends(CurrentUser)):
