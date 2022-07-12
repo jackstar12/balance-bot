@@ -6,9 +6,7 @@ from collections import deque
 from typing import Dict, Optional, Deque, NamedTuple, Type
 
 from aioredis.client import Pipeline
-from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.job import Job
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +34,8 @@ class ExchangeJob(NamedTuple):
 
 
 class _BalanceServiceBase(BaseService):
+
+
     def __init__(self,
                  *args,
                  data_service: DataService,
@@ -79,14 +79,27 @@ class _BalanceServiceBase(BaseService):
     def __exit__(self):
         self._db.sync_session.close()
 
-    async def _initialize_positions(self):
-        await self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.NEW, callback=self._on_client_add,
+    @classmethod
+    def is_valid(cls, worker: ExchangeWorker, category: Category):
+        if category == Category.ADVANCED:
+            return worker.client.is_premium and worker.supports_extended_data
+        elif category == Category.BASIC:
+            return not (worker.client.is_premium and worker.supports_extended_data)
+
+    async def _sub_client(self):
+        await self._messenger.sub_channel(NameSpace.CLIENT,
+                                          sub=Category.NEW,
+                                          callback=self._on_client_add,
                                           pattern=True)
 
-        await self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.DELETE, callback=self._on_client_delete,
+        await self._messenger.sub_channel(NameSpace.CLIENT,
+                                          sub=Category.DELETE,
+                                          callback=self._on_client_delete,
                                           pattern=True)
 
-        await self._messenger.sub_channel(NameSpace.CLIENT, sub=Category.UPDATE, callback=self._on_client_update,
+        await self._messenger.sub_channel(NameSpace.CLIENT,
+                                          sub=Category.UPDATE,
+                                          callback=self._on_client_update,
                                           pattern=True)
 
     def _on_client_delete(self, data: Dict):
@@ -146,6 +159,8 @@ class _BalanceServiceBase(BaseService):
 
 class BasicBalanceService(_BalanceServiceBase):
 
+    client_sub_category = Category.BASIC
+
     def __init__(self,
                  *args,
                  **kwargs):
@@ -159,7 +174,7 @@ class BasicBalanceService(_BalanceServiceBase):
         exchange_job.job.reschedule(trigger)
 
     async def _add_worker(self, worker: ExchangeWorker):
-        if worker.client.id not in self._workers_by_id:
+        if worker.client.id not in self._workers_by_id and self.is_valid(worker, Category.BASIC):
             self._workers_by_id[worker.client.id] = worker
 
             exchange_job = self._exchange_jobs[worker.exchange]
@@ -182,6 +197,8 @@ class BasicBalanceService(_BalanceServiceBase):
             worker_queue.rotate()
 
     async def init(self):
+
+        await self._sub_client()
 
         for exchange in self._exchanges:
             exchange_queue = deque()
@@ -222,7 +239,10 @@ class BasicBalanceService(_BalanceServiceBase):
 
 class ExtendedBalanceService(_BalanceServiceBase):
 
+    client_sub_category = Category.ADVANCED
+
     async def init(self):
+        await self._sub_client()
 
         await self._messenger.sub_channel(NameSpace.TRADE, sub=Category.UPDATE, callback=self._on_trade_update,
                                           pattern=True)
@@ -295,7 +315,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
     async def _add_worker(self, worker: ExchangeWorker):
         workers = self._workers_by_id
-        if worker.client.id not in workers:
+        if worker.client.id not in workers and self.is_valid(worker, Category.ADVANCED):
 
             try:
                 await worker.synchronize_positions()

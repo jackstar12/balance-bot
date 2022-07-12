@@ -40,6 +40,8 @@ class Category(Enum):
     VOLUME = "volume"
     OI = "oi"
     SESSIONS = "sessions"
+    BASIC = "basic"
+    ADVANCED = "advanced"
 
 
 class Word(Enum):
@@ -85,8 +87,8 @@ class Messenger(Singleton):
             self._listening = True
             asyncio.create_task(self.listen())
 
-    async def sub_channel(self, category: NameSpace, sub: Category, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
-        channel = utils.join_args(category.value, sub.value, channel_id)
+    async def sub_channel(self, category: NameSpace, sub: Category | str, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
+        channel = utils.join_args(category, sub, channel_id)
         if pattern:
             channel += '*'
         kwargs = {channel: self._wrap(callback)}
