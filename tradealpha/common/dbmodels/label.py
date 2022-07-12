@@ -7,7 +7,7 @@ from tradealpha.common.dbmodels.serializer import Serializer
 
 class Label(Base, Serializer):
     __tablename__ = 'label'
-    id: int = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True)
     user_id = Column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=False)
     name: str = Column(String, nullable=False)
     color: str = Column(String, nullable=False)

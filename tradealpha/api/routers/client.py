@@ -3,9 +3,10 @@ import functools
 import itertools
 import logging
 import operator
+import time
 from datetime import datetime, date, timedelta
 from http import HTTPStatus
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Type
 import aiohttp
 import ccxt
 import jwt
@@ -117,7 +118,7 @@ async def register_client(request: Request, body: RegisterBody,
         return BadRequest(f'Exchange {body.exchange} unknown')
 
 
-@router.get('/client')
+@router.get('/client', response_model=ClientOverview)
 async def get_client(request: Request, response: Response,
                      client_params: ClientQueryParams = Depends(),
                      user: User = Depends(CurrentUser),
@@ -154,7 +155,7 @@ async def get_client(request: Request, response: Response,
                         ClientCache.OVERVIEW.value,
                         id=client_id
                     )
-                    if raw_overview:
+                    if raw_overview and False:
                         overviews.append(
                             ClientOverview(**customjson.loads(raw_overview))
                         )
@@ -172,10 +173,6 @@ async def get_client(request: Request, response: Response,
         clients = await client_utils.get_user_clients(
             user,
             None if any_client else non_cached,
-            (Client.trades, [
-                TradeDB.executions,
-                TradeDB.labels
-            ]),
             Client.transfers,
             db=db_session
         )
@@ -220,10 +217,6 @@ async def get_client(request: Request, response: Response,
                         # await client.latest()
                     )
                 ),
-                trades_by_id={
-                    str(trade.id): Trade.from_orm(trade)
-                    for trade in client.trades
-                },
                 daily={
                     balance.time.date(): Balance.from_orm(balance)
                     for balance in daily
@@ -233,14 +226,15 @@ async def get_client(request: Request, response: Response,
                     for transfer in client.transfers
                 }
             )
-            asyncio.create_task(client.set_cache(client.id,
-                                                 user.id,
-                                                 keys={
-                                                     ClientCache.OVERVIEW.value:
-                                                         customjson.dumps(jsonable_encoder(overview)),
-                                                     ClientCache.OVERVIEW_EXEC_TS.value:
-                                                         str(data.get(Client.cache_key(user.id, client.id), 0))
-                                                 }))
+            asyncio.create_task(
+                client.redis_set(
+                    keys={
+                        ClientCache.OVERVIEW.value: customjson.dumps(jsonable_encoder(overview)),
+                        ClientCache.OVERVIEW_EXEC_TS.value: str(data.get(Client.cache_key(user.id, client.id), 0))
+                    },
+                    space='cache'
+                )
+            )
             overviews.append(overview)
 
     if overviews:
@@ -259,10 +253,6 @@ async def get_client(request: Request, response: Response,
             ),
             current_balance=functools.reduce(
                 operator.add, (overview.current_balance for overview in overviews if overview.current_balance)
-            ),
-            trades_by_id=functools.reduce(
-                lambda a, b: a | b,
-                (overview.trades_by_id for overview in overviews)
             ),
             transfers=functools.reduce(
                 lambda a, b: a | b,
@@ -540,50 +530,52 @@ async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),
             break
 
 
-@router.get('/client/trade-overview', response_model=List[BasicTrade])
-async def get_trade_overview(client_params: ClientQueryParams = Depends(),
-                             trade_id: list[int] = Query(None, alias='trade-id'),
-                             user: User = Depends(CurrentUser),
-                             db_session: AsyncSession = Depends(get_db)):
-    trades = await client_utils.query_trades(
-        user=user,
-        client_params=client_params,
-        trade_id=trade_id,
-        db_session=db_session
-    )
+def create_trade_endpoint(path: str,
+                          model: Type[BaseModel],
+                          *eager,
+                          **kwargs):
+    @router.get(f'/client/{path}', response_model=List[model], **kwargs)
+    async def get_trades(client_params: ClientQueryParams = Depends(),
+                         trade_id: list[int] = Query(None, alias='trade-id'),
+                         user: User = Depends(CurrentUser),
+                         db_session: AsyncSession = Depends(get_db)):
+        trades = await client_utils.query_trades(
+            *eager,
+            user=user,
+            client_params=client_params,
+            trade_id=trade_id,
+            db_session=db_session
+        )
 
-    return CustomJSONResponse(
-        content=jsonable_encoder([
-            jsonable_encoder(BasicTrade.from_orm(trade))
-            for trade in trades
-        ])
-    )
+        return CustomJSONResponse(
+            content=[
+                jsonable_encoder(model.from_orm(trade))
+                for trade in trades
+            ]
+        )
 
 
-@router.get('/client/trade-detailled', response_model=List[DetailledTrade])
-async def get_detailled_trades(client_params: ClientQueryParams = Depends(),
-                               trade_id: list[int] = Query(None, alias='trade-id'),
-                               user: User = Depends(CurrentUser),
-                               db_session: AsyncSession = Depends(get_db)):
-    trades = await client_utils.query_trades(
-        TradeDB.executions,
-        TradeDB.initial,
-        TradeDB.max_pnl,
-        TradeDB.min_pnl,
-        TradeDB.labels,
-        TradeDB.init_balance,
-        user=user,
-        client_params=client_params,
-        trade_id=trade_id,
-        db_session=db_session
-    )
-
-    return CustomJSONResponse(
-        content=jsonable_encoder([
-            jsonable_encoder(DetailledTrade.from_orm(trade))
-            for trade in trades
-        ])
-    )
+create_trade_endpoint(
+    'trade-overview',
+    BasicTrade,
+)
+create_trade_endpoint(
+    'trade',
+    Trade,
+    TradeDB.executions,
+    TradeDB.labels,
+)
+create_trade_endpoint(
+    'trade-detailled',
+    DetailledTrade,
+    TradeDB.executions,
+    TradeDB.initial,
+    TradeDB.max_pnl,
+    TradeDB.min_pnl,
+    TradeDB.pnl_data,
+    TradeDB.labels,
+    TradeDB.init_balance,
+)
 
 
 @router.get('/client/trade-detailled/pnl-data')
@@ -593,10 +585,10 @@ async def get_detailled_trades(trade_id: list[int] = Query(..., alias='trade-id'
     data: List[PnlData] = await db_all(
         add_client_filters(
             select(PnlData)
-            .filter(PnlData.trade_id.in_(trade_id))
-            .join(PnlData.trade)
-            .join(TradeDB.client)
-            .order_by(asc(PnlData.time)),
+                .filter(PnlData.trade_id.in_(trade_id))
+                .join(PnlData.trade)
+                .join(TradeDB.client)
+                .order_by(asc(PnlData.time)),
             user=user
         ),
         session=db_session
@@ -609,22 +601,16 @@ async def get_detailled_trades(trade_id: list[int] = Query(..., alias='trade-id'
     return CustomJSONResponse(content=jsonable_encoder(result))
 
 
-@router.get('/client/trade', response_model=List[Trade])
-async def get_trades(client_params: ClientQueryParams = Depends(),
-                     trade_id: list[int] = Query(None, alias='trade-id'),
-                     user: User = Depends(CurrentUser),
-                     db_session: AsyncSession = Depends(get_db)):
-    trades = await client_utils.query_trades(
-        TradeDB.executions,
-        TradeDB.labels,
+@router.get('/client/balance')
+async def get_client_balance(client_params: ClientQueryParams = Depends(),
+                             balance_id: list[int] = Query(None, alias='balance-id'),
+                             user: User = Depends(CurrentUser),
+                             db_session: AsyncSession = Depends(get_db)):
+    data: List[BalanceDB] = await client_utils.query_balance(
         user=user,
+        balance_id=balance_id,
         client_params=client_params,
-        trade_id=trade_id,
         db_session=db_session
     )
-    return CustomJSONResponse(
-        content=[
-            jsonable_encoder(Trade.from_orm(trade))
-            for trade in trades
-        ]
-    )
+
+

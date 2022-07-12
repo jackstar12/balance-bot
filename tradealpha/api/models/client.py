@@ -18,11 +18,13 @@ class ClientQueryParams:
                  id: List[int] = Query(default=[]),
                  currency: str = Query(default='$'),
                  since: datetime = Query(default=None),
-                 to: datetime = Query(default=None)):
+                 to: datetime = Query(default=None),
+                 limit: int = Query(default=None)):
         self.id = id
         self.currency = currency
         self.since = since
         self.to = to
+        self.limit = limit
 
 
 class RegisterBody(BaseModel):
@@ -102,6 +104,5 @@ class Balance(OrmBaseModel):
 class ClientOverview(BaseModel):
     initial_balance: Balance
     current_balance: Balance
-    trades_by_id: dict[str, Trade]
     transfers: dict[str, Transfer]
     daily: dict[date, Balance]

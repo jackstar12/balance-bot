@@ -1,9 +1,7 @@
 from decimal import Decimal
-from typing import Any, NamedTuple
+from typing import Any
 import json
 import orjson
-from fastapi.encoders import jsonable_encoder
-
 
 
 def default(obj: Any):

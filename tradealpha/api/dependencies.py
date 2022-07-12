@@ -1,8 +1,10 @@
+import asyncio
 import logging
 from http import HTTPStatus
 
 from fastapi import Request, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tradealpha.api.authenticator import Authenticator
@@ -30,9 +32,16 @@ async def get_user_id(request: Request, authenticator = Depends(get_authenticato
 
 
 async def get_db() -> AsyncSession:
-    async with async_maker() as session:
-        logging.info('Creating session')
-        yield session
+    logging.info('Creating session')
+    db: AsyncSession = async_maker()
+    # The cleanup code has to be shielded, see:
+    # https://github.com/tiangolo/fastapi/issues/4719
+    try:
+        yield db
+    except SQLAlchemyError:
+        await asyncio.shield(db.rollback())
+    finally:
+        await asyncio.shield(db.close())
 
 
 def get_messenger():

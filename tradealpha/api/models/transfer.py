@@ -10,6 +10,8 @@ class Transfer(OrmBaseModel):
     id: str
     note: Optional[str]
     coin: str
+    amount: Decimal
+    time: datetime
     commission: Optional[Decimal]
     type: TransferType
     extra_currencies: Optional[dict[str, Decimal]]

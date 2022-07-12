@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 import tradealpha.common.utils as utils
+from common.redis.client import ClientSpace
 from tradealpha.common import customjson
 from tradealpha.common.dbasync import async_session, db_unique, db_all, db_first, async_maker, db_select
 from tradealpha.common.dbmodels.amountmixin import AmountMixin
@@ -689,6 +690,15 @@ class ExchangeWorker:
         self.in_position = True
 
         if realtime:
+            # Updating LAST_EXEC is siginificant for caching
+            asyncio.create_task(
+                self.client.redis_set(
+                    keys={
+                        ClientSpace.LAST_EXEC.value: execution.time.timestamp()
+                    },
+                    space='normal'
+                )
+            )
             asyncio.create_task(
                 self._update_realized_balance()
             )

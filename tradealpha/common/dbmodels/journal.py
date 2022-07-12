@@ -1,23 +1,22 @@
 import asyncio
 import itertools
 from enum import Enum
-from itertools import zip_longest
 from typing import Iterator
-
+from typing import TYPE_CHECKING
 import sqlalchemy as sa
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy import orm, Table
-from datetime import datetime, timedelta, date
-
+from sqlalchemy import orm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.ext.hybrid import hybrid_property
 
 from tradealpha.common import utils
 from tradealpha.common.dbsync import Base
-from tradealpha.common.dbmodels.chapter import Chapter
-from tradealpha.common.models.daily import Interval
-from tradealpha.common.models.gain import Gain
 from tradealpha.common.utils import list_last
+
+from tradealpha.common.dbmodels.types import Document, Data
+
+
+if TYPE_CHECKING:
+    from tradealpha.common.dbmodels.chapter import Chapter
 
 journal_association = sa.Table(
     'journal_association', Base.metadata,
@@ -58,16 +57,30 @@ class Journal(Base):
         back_populates="journal"
     )
 
-    current_chapter: Chapter = orm.relationship('Chapter',
-                                                primaryjoin="and_("
-                                                            "Chapter.journal_id == Journal.id, "
-                                                            "Chapter.end_date >= func.current_date()"
-                                                            ")",
-                                                lazy='noload',
-                                                back_populates="journal",
-                                                viewonly=True,
-                                                uselist=False
-                                                )
+    current_chapter: 'Chapter' = orm.relationship('Chapter',
+                                                  primaryjoin="and_("
+                                                              "Chapter.journal_id == Journal.id, "
+                                                              "Chapter.end_date >= func.current_date()"
+                                                              ")",
+                                                  lazy='noload',
+                                                  back_populates="journal",
+                                                  viewonly=True,
+                                                  uselist=False
+                                                  )
+
+    overview = sa.Column(Document, nullable=True)
+
+    default_template_id = sa.Column(sa.Integer, sa.ForeignKey('template.id'), nullable=True)
+    default_template = orm.relationship('Template',
+                                        lazy='noload',
+                                        foreign_keys=default_template_id,
+                                        uselist=False)
+
+    templates = orm.relationship('Template',
+                                 lazy='noload',
+                                 foreign_keys='Template.journal_id',
+                                 back_populates='journal',
+                                 cascade="all, delete")
 
     async def _calc_intervals(self, db_session: AsyncSession) -> Iterator:
         client_intervals = await asyncio.gather(*[

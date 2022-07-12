@@ -1,10 +1,17 @@
+from __future__ import annotations
+from abc import ABC
+from typing import Optional
 import sqlalchemy as sa
-from sqlalchemy import orm
+from pydantic import BaseModel, Extra
+from sqlalchemy import orm, TypeDecorator
 from datetime import datetime
 
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
+from typing_extensions import Self
 
 import tradealpha.common.utils as utils
+from tradealpha.common.dbmodels.types import Document, Data
 from tradealpha.common.dbsync import Base
 from tradealpha.common.models.gain import Gain
 
@@ -23,12 +30,17 @@ chapter_trade_association = sa.Table(
 )
 
 
+
+
 class Chapter(Base):
     __tablename__ = 'chapter'
 
     id = sa.Column(sa.Integer, primary_key=True)
     start_date = sa.Column(sa.Date, nullable=False)
     end_date = sa.Column(sa.Date, nullable=False)
+
+    parent_id = sa.Column(sa.Integer, sa.ForeignKey('chapter.id'), nullable=True)
+    children = orm.relationship('Chapter', backref=orm.backref('parent', remote_side=[id]))
 
     journal_id = sa.Column(sa.Integer,
                            sa.ForeignKey('journal.id', ondelete="CASCADE"),
@@ -45,7 +57,9 @@ class Chapter(Base):
     #start_balance = orm.relationship('Balance', lazy='noload', foreign_keys=start_balance_id)
     #end_balance = orm.relationship('Balance', lazy='noload', foreign_keys=end_balance_id)
 
-    notes = sa.Column(sa.Text, nullable=True)
+    notes = sa.Column(Document, nullable=True)
+    data = sa.Column(Data, nullable=True)
+
     title = sa.Column(sa.String(25), nullable=True)
 
     @hybrid_property

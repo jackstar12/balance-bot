@@ -1,11 +1,11 @@
 import asyncio
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, Table, Column
 
 import msgpack
 from datetime import datetime
-from typing import Optional, Dict, List, Mapping, Any
+from typing import Optional, Dict, List, Mapping, Any, Type
 
 import pytz
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,7 @@ import tradealpha.common.utils as utils
 from tradealpha.api.models.client import ClientQueryParams
 from tradealpha.common.dbmodels import TradeDB
 from tradealpha.common import customjson
-from tradealpha.common.dbsync import redis
+from tradealpha.common.dbsync import redis, Base
 from tradealpha.common.dbasync import db_first, db_select, db_all
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.client import Client, add_client_filters
@@ -36,7 +36,6 @@ def get_dec(mapping: Mapping, key: Any, default: Any):
 
 
 def update_client_data_trades(cache: Dict, trades: List[Dict], config: ClientConfig, save_cache=True):
-
     result = {}
     new_trades = {}
     existing_trades = cache.get('trades', None)
@@ -79,7 +78,6 @@ def update_client_data_trades(cache: Dict, trades: List[Dict], config: ClientCon
 
 
 async def update_client_data_balance(cache: Dict, client: Client, config: ClientConfig, save_cache=True) -> Dict:
-
     cached_date = datetime.fromtimestamp(int(cache.get('ts', 0)), tz=pytz.UTC)
     now = datetime.now(tz=pytz.UTC)
 
@@ -151,7 +149,6 @@ async def set_cached_data(data: Dict, config: ClientConfig):
 
 
 async def create_client_data_serialized(client: Client, config: ClientConfig):
-
     cached = await get_cached_data(config)
     cached = None
     if cached:
@@ -180,13 +177,41 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
 
         await update_client_data_balance(s, client, config, save_cache=False)
 
-        trades = [await trade.serialize(data=True) for trade in client.trades if since_date <= trade.open_time <= to_date]
+        trades = [await trade.serialize(data=True) for trade in client.trades if
+                  since_date <= trade.open_time <= to_date]
         update_client_data_trades(s, trades, config, save_cache=False)
 
         s['ts'] = now.timestamp()
         asyncio.create_task(set_cached_data(s, config))
 
     return s
+
+
+def query_table(*eager,
+                table: Type[Base],
+                time_col: Column,
+                user: User,
+                ids: List[int],
+                client_params: ClientQueryParams,
+                db_session: AsyncSession):
+    return db_all(
+        add_client_filters(
+            select(table).filter(
+                table.id.in_(ids) if ids else True,
+                time_col >= client_params.since if client_params.since else True,
+                time_col <= client_params.to if client_params.to else True
+            ).join(
+                table.client
+            ).limit(
+                client_params.limit
+            ),
+            user=user,
+            client_ids=client_params.id
+        ),
+        *eager,
+        session=db_session
+    )
+
 
 
 def query_trades(*eager,
@@ -196,10 +221,38 @@ def query_trades(*eager,
                  db_session: AsyncSession):
     return db_all(
         add_client_filters(
-            select(TradeDB).join(
+            select(TradeDB).filter(
                 TradeDB.id.in_(trade_id) if trade_id else True,
                 TradeDB.open_time >= client_params.since if client_params.since else True,
                 TradeDB.open_time <= client_params.to if client_params.to else True
+            ).join(
+                TradeDB.client
+            ).limit(
+                client_params.limit
+            ),
+            user=user,
+            client_ids=client_params.id
+        ),
+        *eager,
+        session=db_session
+    )
+
+
+def query_balance(*eager,
+                  user: User,
+                  balance_id: List[int],
+                  client_params: ClientQueryParams,
+                  db_session: AsyncSession):
+    return db_all(
+        add_client_filters(
+            select(Balance).filter(
+                Balance.id.in_(balance_id) if balance_id else True,
+                Balance.time >= client_params.since if client_params.since else True,
+                Balance.time <= client_params.to if client_params.to else True
+            ).join(
+                Balance.client
+            ).limit(
+                client_params.limit
             ),
             user=user,
             client_ids=client_params.id

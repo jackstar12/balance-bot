@@ -25,7 +25,7 @@ class BasicTrade(OrmBaseModel):
     open_qty: Decimal
     realized_pnl: Decimal
     open_time: datetime
-    close_time: datetime
+    close_time: Optional[datetime]
 
 
 class Trade(BasicTrade):

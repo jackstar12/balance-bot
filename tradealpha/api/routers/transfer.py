@@ -27,7 +27,7 @@ from tradealpha.common.dbmodels.guildassociation import GuildAssociation
 from tradealpha.common.dbmodels.guild import Guild
 from tradealpha.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams, \
     ClientOverview, Balance
-from tradealpha.common.dbmodels.transfer import TransferDB
+from tradealpha.common.dbmodels.transfer import Transfer as TransferDB
 from tradealpha.api.models.websocket import WebsocketMessage, ClientConfig
 from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
 from tradealpha.common import utils, customjson

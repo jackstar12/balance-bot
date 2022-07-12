@@ -2,16 +2,18 @@ from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, Body
 from fastapi.exceptions import HTTPException
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tradealpha.common.dbmodels import TradeDB
 from tradealpha.api.utils.client import get_user_client
-from tradealpha.common.dbasync import async_session, db_first, db_eager, db_all, db_select, db
+from tradealpha.common.dbasync import async_session, db_first, db_eager, db_all, db_select, db, db_del_filter
 from tradealpha.api.dependencies import CurrentUser, get_db
 from tradealpha.common.dbsync import session
 
 from tradealpha.common.dbmodels.client import Client, add_client_filters
-from tradealpha.common.dbmodels.label import Label
+from tradealpha.common.dbmodels.label import Label as LabelDB
+from tradealpha.api.models.label import Label
 from tradealpha.common.dbmodels.trade import Trade, trade_association
 from tradealpha.common.dbmodels.user import User
 from tradealpha.api.models.label import SetLabels, RemoveLabel, AddLabel, PatchLabel, CreateLabel
@@ -28,85 +30,94 @@ router = APIRouter(
 )
 
 
-async def get_label(id: int, user: User):
-    label: Label = await db_select(Label, id=id)
+async def query_label(id: int, user: User):
+    label: LabelDB = await db_select(LabelDB, id=id, user_id=user.id)
     if label:
         if label.user_id == user.id:
             return label
         else:
-            return Response('You are not allowed to delete this label', code=40100, status=HTTPStatus.UNAUTHORIZED)
+            raise HTTPException(detail='Unauthorized', code=40100, status=HTTPStatus.UNAUTHORIZED)
     else:
-        BadRequest('Invalid ID')
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail='Unknown')
 
 
 @router.post('/')
 async def create_label(body: CreateLabel, user: User = Depends(CurrentUser)):
-    label = Label(name=body.name, color=body.color, user_id=user.id)
+    label = LabelDB(name=body.name, color=body.color, user_id=user.id)
     async_session.add(label)
     await async_session.commit()
-    return label.serialize()
+    return Label.construct(label.__dict__)
 
 
 @router.delete('/')
 async def delete_label(id: int = Body(...), user: User = Depends(CurrentUser)):
-    result = await get_label(id, user)
-    if isinstance(result, Label):
-        await async_session.delete(result)
-        await async_session.commit()
-        return {'msg': 'Success'}, HTTPStatus.OK
-    else:
-        return result
+    await db_del_filter(LabelDB, id=id, user_id=user.id)
+    await async_session.commit()
+    return OK('Deleted')
 
 
 @router.patch('/')
 async def update_label(body: PatchLabel, user: User = Depends(CurrentUser)):
-    result = await get_label(body.id, user)
-    if isinstance(result, Label):
-        if body.name:
-            result.name = body.name
-        if body.color:
-            result.color = body.color
-        await async_session.commit()
-        return OK('Success')
-    else:
-        return result
+    values = {}
+    if body.name:
+        values['name'] = body.name
+    if body.color:
+        values['color'] = body.color
+    await db(
+        update(LabelDB).where(
+            LabelDB.id == body.id,
+            LabelDB.user_Id == user.id
+        ).values(**values)
+    )
+    await async_session.commit()
+    return OK('Success')
 
 
-async def add_trade_filters(stmt, user: User, client_id: int, trade_id: int, label_id: int = None, db_session=None):
-    client = await get_user_client(user, client_id, db=db_session)
-    if client:
-        return stmt.filter(
+def add_trade_filters(stmt, user: User, client_id: int, trade_id: int):
+    return add_client_filters(
+        stmt.filter(
             Trade.id == trade_id,
-            Trade.client_id == client_id
-        )
-    else:
-        raise HTTPException(
-            status_code=HTTPStatus.UNAUTHORIZED,
-            detail='Invalid Client ID'
-        )
+            Trade.client_id == client_id,
+        ).join(Trade.client),
+        user, [client_id]
+    )
 
 
 @router.post('/trade')
 async def add_label(body: AddLabel, user: User = Depends(CurrentUser), db_session: AsyncSession = Depends(get_db)):
-    trade = await db_first(
-        db_eager(
-            await add_trade_filters(select(Trade), user, body.trade_id, body.label_id),
-            Trade.labels
+    verify_trade_id = await db(
+        add_trade_filters(
+            select(TradeDB.id),
+            user=user,
+            client_id=body.client_id,
+            trade_id=body.trade_id
         ),
         session=db_session
     )
-    if trade:
-        label = await db_first(select(Label).filter(
-            Label.id == body.label_id,
-            Label.client_id == body.client_id
-        ))
-        if label:
-            if label not in trade.labels:
-                trade.labels.append(label)
-            else:
-                return BadRequest('Trade already has this label')
-        else:
-            return BadRequest('Invalid Label ID')
+
+    if not verify_trade_id:
+        return BadRequest('Invalid Trade ID')
+
+    verify_label_id = await db_select(
+        LabelDB,
+        id=body.label_id,
+        user_id=user.id,
+        session=db_session
+    )
+
+    if not verify_label_id:
+        return BadRequest('Invalid Label ID')
+
+    await db(
+        insert(trade_association).values(
+            trade_id=body.trade_id,
+            label_id=body.label_id
+        ),
+        session=db_session
+    )
+    await db_session.commit()
+
+    return OK('Success')
 
 
 @router.delete('/trade')
@@ -119,9 +130,9 @@ async def remove_label(body: RemoveLabel, user: User = Depends(CurrentUser)):
     )
     if isinstance(trade, Trade):
         label = await db_first(
-            select(Label).filter(
-                Label.id == body.label_id,
-                Label.client_id == body.client_id
+            select(LabelDB).filter(
+                LabelDB.id == body.label_id,
+                LabelDB.client_id == body.client_id
             )
         )
         if label:
@@ -136,25 +147,22 @@ async def remove_label(body: RemoveLabel, user: User = Depends(CurrentUser)):
 
 
 @router.patch('/trade')
-async def set_labels(body: SetLabels, user: User = Depends(CurrentUser)):
+async def set_labels(body: SetLabels, user: User = Depends(CurrentUser), db_session: AsyncSession = Depends(get_db)):
     trade = await db_first(
-        await add_trade_filters(select(Trade), user, body.client_id, body.trade_id)
+        add_trade_filters(select(Trade), user, body.client_id, body.trade_id),
+        Trade.labels
     )
+
+    if not trade:
+        return BadRequest('Invalid Trade ID')
+
     if trade:
 
         if len(body.label_ids) > 0:
-            # await db(
-            #    update(trade_association).where(
-            #        trade_association.trade_id == trade.id,
-            #
-            #    )
-            # )
             trade.labels = await db_all(
-                select(Label).filter(
-                    or_(
-                        Label.id == label_id for label_id in body.label_ids
-                    ),
-                    Label.user_id == user.id
+                select(LabelDB).filter(
+                    LabelDB.id.in_(body.label_ids),
+                    LabelDB.user_id == user.id
                 )
             )
         else:

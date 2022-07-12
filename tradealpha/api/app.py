@@ -1,39 +1,25 @@
-from datetime import datetime
-
-import pytz
 import uvicorn
-import asyncio
-import aiohttp
-
-from sqlalchemy import select, delete
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
-
 from fastapi import Depends
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 from starlette_csrf import CSRFMiddleware
 
+import tradealpha.api.routers.analytics as analytics
+import tradealpha.api.routers.authentication as auth
+import tradealpha.api.routers.client as client
+import tradealpha.api.routers.discordauth as discord
+import tradealpha.api.routers.journal as journal
+import tradealpha.api.routers.label as label
 import tradealpha.common.dbasync as aio_db
 from tradealpha.api.db_session_middleware import DbSessionMiddleware
-from tradealpha.common.dbmodels.trade import Trade
-
-from tradealpha.common.dbmodels.user import User
 from tradealpha.api.dependencies import CurrentUser, CurrentUserDep
 from tradealpha.api.models.user import UserInfo, UserRead, UserCreate
 from tradealpha.api.settings import settings
-from tradealpha.common.dbsync import Base, engine
-
-import tradealpha.api.routers.authentication as auth
-import tradealpha.api.routers.client as client
-import tradealpha.api.routers.label as label
-import tradealpha.api.routers.analytics as analytics
-import tradealpha.api.routers.journal as journal
+from tradealpha.api.users import fastapi_users
 from tradealpha.common.dbmodels.discorduser import DiscordUser
 from tradealpha.common.dbmodels.guild import Guild
-import tradealpha.api.routers.discordauth as discord
-
-from tradealpha.api.users import fastapi_users
+from tradealpha.common.dbmodels.user import User
+from tradealpha.common.dbsync import Base
 from tradealpha.common.utils import setup_logger
 
 app = FastAPI(
@@ -54,10 +40,9 @@ app = FastAPI(
     },
 )
 
-# app.add_middleware(SessionMiddleware, secret_key='SECRET')
-app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
-app.add_middleware(DbSessionMiddleware)
 app.add_middleware(SessionMiddleware, secret_key='SECRET')
+app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
+# app.add_middleware(SessionMiddleware, secret_key='SECRET')
 
 app.include_router(fastapi_users.get_verify_router(UserRead), prefix='/api/v1')
 app.include_router(fastapi_users.get_reset_password_router(), prefix='/api/v1')
@@ -217,14 +202,7 @@ async def info(user: User = Depends(user_info)):
 
 @app.on_event("startup")
 async def on_start():
-    async with aio_db.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     setup_logger()
-
-
-async def db_test():
-    async with aio_db.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
 
 def run():
     uvicorn.run(app, host='localhost', port=5000)

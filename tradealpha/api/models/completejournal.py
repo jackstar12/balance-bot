@@ -4,10 +4,8 @@ from typing import List, Literal, Optional, NamedTuple, Set
 
 from pydantic import BaseModel
 
+from tradealpha.api.models.template import TemplateInfo
 from tradealpha.api.models.amount import FullBalance
-from tradealpha.common.dbmodels.balance import Balance
-from tradealpha.common.models.gain import Gain
-from tradealpha.api.models.trade import Trade
 
 
 class BaseOrmModel(BaseModel):
@@ -24,10 +22,14 @@ class JournalCreate(BaseModel):
 
 class JournalInfo(JournalCreate):
     id: str
-    notes: Optional[str]
 
     class Config:
         orm_mode = True
+
+
+class JournalDetailledInfo(JournalInfo):
+    overview: Optional[dict]
+    templates: list[TemplateInfo]
 
 
 class JournalUpdate(BaseOrmModel):
@@ -64,6 +66,7 @@ class ChapterUpdate(BaseModel):
 class ChapterCreate(BaseModel):
     start_date: date
     title: str
+    parent_id: Optional[int]
 
 
 class Chapter(ChapterInfo):

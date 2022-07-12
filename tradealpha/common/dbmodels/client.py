@@ -2,7 +2,9 @@ import asyncio
 import json
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import List, Optional, Union, TYPE_CHECKING, Literal
+from uuid import UUID
+
 import discord
 import pytz
 from aioredis import Redis
@@ -107,10 +109,12 @@ class Client(Base, Serializer):
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
-    async def set_cache(self, id: int, user_id, keys: dict, redis_instance=None):
-        asyncio.create_task((redis_instance or redis).expire(self.cache_key(id, user_id), 5 * 60))
+    async def redis_set(self, keys: dict, space: Literal['cache', 'normal'], redis_instance=None, ):
+        client_hash = self.cache_key(self.user_id, self.id) if space == 'cache' else self.redis_key(self.user_id, self.id)
+        if space == 'cache':
+            asyncio.create_task((redis_instance or redis).expire(client_hash, 5 * 60))
         keys[ClientSpace.USER_ID.value] = str(self.user_id)
-        return await (redis_instance or redis).hset(self.cache_key(id, user_id), mapping=keys)
+        return await (redis_instance or redis).hset(client_hash, mapping=keys)
 
     @classmethod
     async def read_cache(cls, user_id, *keys, id=None, redis_instance=None):
@@ -123,12 +127,12 @@ class Client(Base, Serializer):
         )
 
     @classmethod
-    def redis_key(cls, user_id, id: int = None):
-        return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, id or '*')
+    def redis_key(cls, user_id, client_id: int = None):
+        return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, client_id or '*')
 
     @classmethod
-    def cache_key(cls, user_id, id: int = None):
-        return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, NameSpace.CACHE, id or '*')
+    def cache_key(cls, user_id: UUID, client_id: int = None):
+        return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, NameSpace.CACHE, client_id or '*')
 
     @classmethod
     async def redis_validate(cls, id: int, user_id) -> Boolean | None:

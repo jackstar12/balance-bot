@@ -21,6 +21,7 @@ import tradealpha.common.dbmodels.trade
 import tradealpha.common.dbmodels.transfer
 import tradealpha.common.dbmodels.user
 import tradealpha.common.dbmodels.chapter
+import tradealpha.common.dbmodels.template
 
 Client = client.Client
 BalanceDB = balance.Balance
