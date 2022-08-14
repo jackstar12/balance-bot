@@ -48,7 +48,7 @@ class FtxWorker(ExchangeWorker):
                 'FTX-SUBACCOUNT': self._subaccount
             }
 
-    async def connect(self):
+    async def _connect(self):
         await self.ws.connect()
         await self.ws.get_fills()
 
@@ -83,7 +83,7 @@ class FtxWorker(ExchangeWorker):
             time=time
         )
 
-    async def _get_executions(self, since: datetime, init=False) -> Iterator[Execution]:
+    async def _get_executions(self, since: datetime, init=False):
         since = since or datetime.now(pytz.utc) - timedelta(days=365)
         # Offset by 1 millisecond because otherwise the same executions are refetched (ftx probably compares with >=)
         trades = await self._get('/api/fills', params={
@@ -91,18 +91,21 @@ class FtxWorker(ExchangeWorker):
             'end_time': str(time.time()),
             'order': 'asc'
         })
-        return [
-            Execution(
-                symbol=trade['market'] if trade['market'] else f'{trade["baseCurrency"]}/{trade["quoteCurrency"]}',
-                price=trade['price'],
-                qty=trade['size'],
-                side=Side.BUY if trade['side'] == 'buy' else Side.SELL,
-                time=datetime.fromisoformat(trade["time"]),
-                commission=trade["fee"],
-                type=ExecType.TRADE
-            )
-            for trade in trades
-        ]
+        return (
+            [
+                Execution(
+                    symbol=trade['market'] if trade['market'] else f'{trade["baseCurrency"]}/{trade["quoteCurrency"]}',
+                    price=trade['price'],
+                    qty=trade['size'],
+                    side=Side.BUY if trade['side'] == 'buy' else Side.SELL,
+                    time=datetime.fromisoformat(trade["time"]),
+                    commission=trade["fee"],
+                    type=ExecType.TRADE
+                )
+                for trade in trades
+            ],
+            []
+        )
 
     def _parse_date(self, date: datetime):
         return str(int(date.timestamp()))
@@ -113,7 +116,8 @@ class FtxWorker(ExchangeWorker):
         ticker = await self._get_ohlc(f'{coin}/USD', since=date, limit=1)
         return amount * (ticker[0].open + ticker[0].close) / 2
 
-    async def _get_ohlc(self, market: str, since: datetime = None, to: datetime = None, resolution_s: int = None, limit: int = None) -> List[OHLC]:
+    async def _get_ohlc(self, market: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
+                        limit: int = None) -> List[OHLC]:
 
         resolution_s = resolution_s or 15
         params = {'resolution': resolution_s}

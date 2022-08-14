@@ -14,7 +14,7 @@ from tradealpha.common import dbutils
 from tradealpha.bot import config
 from tradealpha.bot.cogs.cogbase import CogBase
 from tradealpha.common.dbmodels.client import Client
-from tradealpha.common.dbasync import db, async_session, db_first
+from tradealpha.common.dbasync import db_exec, async_session, db_first
 from tradealpha.common.dbmodels.balance import Balance
 
 
@@ -181,7 +181,7 @@ class HistoryCog(CogBase):
     @classmethod
     async def clear_history(cls, clients: Sequence[Client], start: datetime, end: datetime):
         for client in clients:
-            await db(
+            await db_exec(
                 delete(Balance).filter(
                     Balance.client_id == client.id,
                     Balance.time >= start if start else True,

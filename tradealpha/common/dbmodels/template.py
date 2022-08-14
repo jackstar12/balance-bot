@@ -1,16 +1,28 @@
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from tradealpha.common.dbmodels.types import Document
+from tradealpha.common.dbmodels.editsmixin import EditsMixin
+from tradealpha.common.dbmodels.types import Document, Data, DocumentModel
 
 from tradealpha.common.dbsync import Base
+from typing import TYPE_CHECKING
 
-
-class Template(Base):
+class Template(Base, EditsMixin):
     __tablename__ = 'template'
 
     id = sa.Column(sa.Integer, primary_key=True)
-    journal_id = sa.Column(sa.Integer, sa.ForeignKey('journal.id'), nullable=False)
-    journal = orm.relationship('Journal', lazy='noload', foreign_keys=journal_id)
+    user_id = sa.Column(sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    user = orm.relationship('User', lazy='noload')
     title = sa.Column(sa.Text, nullable=False)
-    content = sa.Column(Document, nullable=False)
+
+    if TYPE_CHECKING:
+        doc: DocumentModel
+    else:
+        doc = sa.Column(Document, nullable=True)
+    data = sa.Column(Data, nullable=True)
+
+    journals = orm.relationship('Journal',
+                                foreign_keys='Journal.default_template_id',
+                                back_populates='default_template',
+                                lazy='noload')
+

@@ -2,12 +2,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+from tradealpha.api.models import BaseModel, OutputID
 
 from tradealpha.common.enums import ExecType, Side
 
 
 class Execution(BaseModel):
+    id: OutputID
     symbol: str
     price: Decimal
     qty: Decimal

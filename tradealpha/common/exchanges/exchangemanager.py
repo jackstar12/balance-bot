@@ -62,10 +62,10 @@ class RequestItem(NamedTuple):
     request: Request
 
     def __gt__(self, other):
-        return self.priority.value > other.priority.value
+        return self.priority.value > other.priority.values
 
     def __lt__(self, other):
-        return self.priority.value < other.priority.value
+        return self.priority.value < other.priority.values
 
 
 class State(Enum):

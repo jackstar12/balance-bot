@@ -1,18 +1,14 @@
 import asyncio
 import logging
-from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
 from typing import Callable, Dict, Optional
 
-import msgpack
 from aioredis import Redis
 from pydantic import BaseModel
 
-from tradealpha.common import customjson
-from tradealpha.common.config import TESTING
-from tradealpha.common.models.singleton import Singleton
 import tradealpha.common.utils as utils
+from tradealpha.common import customjson
 
 
 class NameSpace(Enum):
@@ -35,6 +31,8 @@ class Category(Enum):
     UPDATE = "update"
     FINISHED = "finished"
     UPNL = "upnl"
+    ADDED = "added"
+    REMOVED = "removed"
     SIGNIFICANT_PNL = "significantpnl"
     REKT = "rekt"
     VOLUME = "volume"
@@ -55,9 +53,9 @@ class ClientUpdate(BaseModel):
     premium: Optional[bool]
 
 
-class Messenger(Singleton):
+class Messenger:
 
-    def init(self, redis: Redis):
+    def __init__(self, redis: Redis):
         self._redis = redis
         self._pubsub = self._redis.pubsub()
         self._listening = False
@@ -70,7 +68,10 @@ class Messenger(Singleton):
                 data = event
             else:
                 data = customjson.loads(event['data'])
-            asyncio.create_task(utils.call_unknown_function(coro, data, *args, **kwargs))
+            asyncio.create_task(
+                utils.call_unknown_function(coro, data, *args, **kwargs)
+            )
+
         return wrapper
 
     async def listen(self):
@@ -87,7 +88,14 @@ class Messenger(Singleton):
             self._listening = True
             asyncio.create_task(self.listen())
 
-    async def sub_channel(self, category: NameSpace, sub: Category | str, callback: Callable, channel_id: int = None, pattern=False, rcv_event=False):
+    async def unsub(self, channel: str, is_pattern=False):
+        if is_pattern:
+            await self._pubsub.punsubscribe(channel)
+        else:
+            await self._pubsub.unsubscribe(channel)
+
+    async def sub_channel(self, category: NameSpace, sub: Category | str, callback: Callable, channel_id: int = None,
+                          pattern=False, rcv_event=False):
         channel = utils.join_args(category, sub, channel_id)
         if pattern:
             channel += '*'
@@ -95,20 +103,28 @@ class Messenger(Singleton):
         logging.info(f'Sub: {kwargs}')
         await self.sub(pattern=pattern, **kwargs)
 
-    def unsub_channel(self, category: NameSpace, sub: Category, channel_id: int = None, pattern=False):
+    async def unsub_channel(self, category: NameSpace, sub: Category, channel_id: int = None, pattern=False):
         channel = utils.join_args(category.value, sub.value, channel_id)
-        if pattern:
-            channel += '*'
-        if pattern:
-            asyncio.create_task(self._pubsub.punsubscribe(channel))
-        else:
-            asyncio.create_task(self._pubsub.unsubscribe(channel))
+        await self.unsub(channel, pattern)
+
+    async def setup_waiter(self, channel: str, is_pattern=False, timeout=.25):
+        fut = asyncio.get_running_loop().create_future()
+        await self.sub(
+            pattern=is_pattern,
+            **{channel: fut.set_result}
+        )
+
+        async def wait():
+            try:
+                return await asyncio.wait_for(fut, timeout)
+            except asyncio.exceptions.TimeoutError:
+                return False
+            finally:
+                await self.unsub(channel, is_pattern)
+
+        return wait
 
     def pub_channel(self, category: NameSpace, sub: Category, obj: object, channel_id: int = None):
         ch = utils.join_args(category.value, sub.value, channel_id)
         logging.info(f'Pub: {ch=} {obj=}')
-        asyncio.create_task(self._redis.publish(ch, customjson.dumps(obj)))
-
-
-if __name__ == '__main__':
-    messenger = Messenger()
+        return asyncio.create_task(self._redis.publish(ch, customjson.dumps(obj)))

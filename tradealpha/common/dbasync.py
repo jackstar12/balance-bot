@@ -1,7 +1,6 @@
 import asyncio
-from asyncio import current_task
 from enum import Enum
-from typing import List, Tuple, Union, Any
+from typing import List, Tuple, Union, Any, OrderedDict, TypeVar, Type
 
 import dotenv
 import os
@@ -16,22 +15,16 @@ from tradealpha.common import customjson
 
 dotenv.load_dotenv()
 
-SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI')
-assert SQLALCHEMY_DATABASE_URI
-
-print(SQLALCHEMY_DATABASE_URI)
+SA_DATABASE_URI = os.environ.get('DATABASE_URI')
+assert SA_DATABASE_URI
 
 engine = create_async_engine(
-    f'postgresql+asyncpg://{SQLALCHEMY_DATABASE_URI}',
+    f'postgresql+asyncpg://{SA_DATABASE_URI}',
     json_serializer=customjson.dumps_no_bytes,
-    json_deserializer=customjson.loads
+    json_deserializer=customjson.loads,
 )
 async_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=current_task)
-# }+dg}E\w37/jWpSP
-#redis = aioredis.Redis(host='redis-16564.c300.eu-central-1-1.ec2.cloud.redislabs.com',
-#                       port=16564,
-#                       password='usTzjlI4SKy92HE6PGXgvTsaIQMdYWgo')
+async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=asyncio.current_task)
 
 REDIS_URI = os.environ.get('REDIS_URI')
 assert REDIS_URI
@@ -39,7 +32,7 @@ assert REDIS_URI
 redis = aioredis.from_url(REDIS_URI)
 
 
-async def db(stmt: Any, session: AsyncSession = None) -> Any:
+async def db_exec(stmt: Any, session: AsyncSession = None) -> Any:
     return await (session or async_session).execute(stmt)
 
 
@@ -53,7 +46,7 @@ def db_select_all(cls, eager=None, session=None, **filters):
     return db_all(stmt.filter_by(**filters), session=session)
 
 
-async def db_all(stmt: Select, *eager, session=None):
+async def db_all(stmt: Select, *eager, session=None) -> list[Any]:
     if eager:
         stmt = db_eager(stmt, *eager)
     return (await (session or async_session).scalars(stmt)).unique().all()
@@ -69,7 +62,7 @@ db_first = db_unique
 
 
 async def db_del_filter(cls, session=None, **kwargs):
-    return await db(delete(cls).filter_by(**kwargs), session)
+    return await db_exec(delete(cls).filter_by(**kwargs), session)
 
 
 def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False):
@@ -122,7 +115,7 @@ async def redis_bulk_hashes(key: str, *hashes, redis_instance=None):
         return await pipe.execute()
 
 
-async def redis_bulk(hash_keys: dict, redis_instance=None):
+async def redis_bulk(hash_keys: OrderedDict, redis_instance=None):
     async with (redis_instance or redis).pipeline(transaction=True) as pipe:
         for hash, keys in hash_keys.items():
             for key in keys:

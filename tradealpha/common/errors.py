@@ -23,6 +23,10 @@ class ResponseError(Exception):
         self.human = human
 
 
+class ClientDeletedError(Exception):
+    pass
+
+
 class InvalidClientError(ResponseError):
     pass
 

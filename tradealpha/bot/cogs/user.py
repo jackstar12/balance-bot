@@ -21,7 +21,7 @@ class UserCog(CogBase):
 
         async def confirm_delete(ctx):
             for client in user.clients:
-                await dbutils.delete_client(client, self.messenger, commit=False)
+                await dbutils.delete_client(client, self.messenger, async_session)
             await db_del_filter(DiscordUser, id=user.id)
             await async_session.commit()
 

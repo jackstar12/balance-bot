@@ -1,21 +1,23 @@
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Dict, List, Set, Optional, Any
-
 import pydantic
 from fastapi import Query
-from pydantic import BaseModel, UUID4
+from pydantic import UUID4
+from starlette.requests import Request
 
-from tradealpha.api.models.execution import Execution
-from tradealpha.api.models.trade import Trade
+from api.models.amount import FullBalance
+from tradealpha.common.dbmodels.user import User
+from tradealpha.common.dbmodels import Client
+from tradealpha.api.models import BaseModel, OutputID, InputID
 from tradealpha.api.models.transfer import Transfer
 from tradealpha.common.dbmodels.base import OrmBaseModel
-from tradealpha.common.dbmodels.transfer import TransferType
 
 
 class ClientQueryParams:
     def __init__(self,
-                 id: List[int] = Query(default=[]),
+                 request: Request,
+                 id: List[InputID] = Query(default=[]),
                  currency: str = Query(default='$'),
                  since: datetime = Query(default=None),
                  to: datetime = Query(default=None),
@@ -25,15 +27,17 @@ class ClientQueryParams:
         self.since = since
         self.to = to
         self.limit = limit
+        self.other = request.query_params
 
 
-class RegisterBody(BaseModel):
-    name: str
+class ClientCreate(BaseModel):
+    name: Optional[str]
     exchange: str
     api_key: str
     api_secret: str
     subaccount: Optional[str]
-    extra: Optional[Dict]
+    sandbox: Optional[bool]
+    extra_kwargs: Optional[Dict]
 
     @pydantic.root_validator(pre=True)
     def build_extra(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -48,33 +52,47 @@ class RegisterBody(BaseModel):
         values['extra'] = extra
         return values
 
+    def create_client(self, user: User = None) -> Client:
+        return Client(user=user, **self.dict())
 
-class ConfirmBody(BaseModel):
+
+class ClientCreateBody(ClientCreate):
+    import_since: Optional[datetime]
+
+    def create_client(self, user: User = None) -> Client:
+        client = Client(user=user, **self.dict(exclude={'import_since'}))
+        if self.import_since:
+            client.last_execution_sync = self.import_since
+            client.last_transfer_sync = self.import_since
+        return client
+
+
+class ClientCreateResponse(OrmBaseModel):
+    token: str
+    balance: FullBalance
+
+
+class ClientConfirm(BaseModel):
     token: str
 
 
-class DeleteBody(BaseModel):
-    id: int
-
-
-class UpdateBody(BaseModel):
-    id: int
+class ClientEdit(BaseModel):
     name: Optional[str]
     archived: Optional[bool]
     discord: Optional[bool]
-    servers: Optional[Set[int]]
-    events: Optional[Set[int]]
+    servers: Optional[Set[InputID]]
+    events: Optional[Set[InputID]]
 
 
 class ClientInfo(BaseModel):
-    id: int
+    id: OutputID
     user_id: Optional[UUID4]
-    discord_user_id: Optional[int]
+    discord_user_id: Optional[OutputID]
 
     api_key: str
     exchange: str
     subaccount: Optional[str]
-    extra_kwargs: Dict
+    extra_kwargs: Optional[Dict]
 
     name: Optional[str]
     rekt_on: Optional[datetime]

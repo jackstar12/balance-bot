@@ -2,7 +2,8 @@ import asyncio
 import json
 import logging
 import time
-from typing import Callable
+from asyncio import Future
+from typing import Callable, Optional, Any
 
 import aiohttp
 import typing_extensions
@@ -13,37 +14,63 @@ from typing_extensions import Self
 from tradealpha.common import utils, customjson
 
 
+class MissingMessageError(Exception):
+    pass
+
+
 class WebsocketManager:
     _CONNECT_TIMEOUT_S = 5
 
     # Note that the url is provided through a function because some exchanges
     # have authentication embedded into the url
-    def __init__(self, session: aiohttp.ClientSession,
+    def __init__(self,
+                 session: aiohttp.ClientSession,
                  get_url: Callable[..., str],
-                 on_message: Callable[[Self, str], None] = None,
                  on_connect: Callable[[Self], None] = None,
-                 ping_forever_seconds: int = None):
-        self._ws = None
+                 ping_forever_seconds: int = None,
+                 logger: logging.Logger = None):
+        self._ws: aiohttp.ClientWebSocketResponse = None
         self._session = session
         self._get_url = get_url
-        if on_message:
-            self._on_message = on_message
         self._on_connect = on_connect
         self._ping_forever_seconds = ping_forever_seconds
+        self._logger = logger.getChild('WS') if logger else logging.getLogger(__name__)
 
-    async def send(self, message):
+        self._waiting: dict[str, Future] = {}
+
+    @classmethod
+    def _generate_id(cls) -> int:
+        return time.monotonic_ns()
+
+    def _get_message_id(self, message: dict) -> Any:
+        raise NotImplementedError()
+
+    async def send(self, msg: str | bytes, msg_id: Any = None):
         await self.connect()
-        self._ws.send(message)
 
-    async def send_json(self, data):
-        if not self._ws or self._ws.closed:
-            await self.connect()
-        return await self._ws.send_json(data, dumps=customjson.dumps_no_bytes)
+        if isinstance(msg, str):
+            msg = msg.encode('utf-8')
+        await self._ws.send_bytes(msg)
 
-    async def reconnect(self) -> None:
+        if msg_id:
+            fut = asyncio.get_running_loop().create_future()
+            self._waiting[msg_id] = fut
+
+            try:
+                return await asyncio.wait_for(fut, 5)
+            except asyncio.exceptions.CancelledError:
+                raise MissingMessageError()
+
+    async def send_json(self, data: dict, msg_id: Any = None):
+        await self.send(customjson.dumps(data), msg_id=msg_id)
+
+    async def close(self):
         if self.connected:
             await self._ws.close()
             self._ws = None
+
+    async def reconnect(self) -> None:
+        await self.close()
         await self.connect()
 
     async def connect(self):
@@ -54,6 +81,7 @@ class WebsocketManager:
         ts = time.time()
         while not self.connected:
             if time.time() - ts > self._CONNECT_TIMEOUT_S:
+                self._logger.info('Timeout')
                 self._ws = None
                 break
             await asyncio.sleep(0.1)
@@ -63,10 +91,12 @@ class WebsocketManager:
         return self._ws and not self._ws.closed
 
     async def _run(self):
-        async with self._session.ws_connect(self._get_url(), autoping=True) as ws:
+        url = self._get_url()
+        self._logger.info(f'Connecting to {url}')
+        async with self._session.ws_connect(url, autoping=True) as ws:
             asyncio.create_task(self._ping_forever())
             await utils.call_unknown_function(self._on_connect, self)
-            self._ws: aiohttp.ClientWebSocketResponse = ws
+            self._ws = ws
             async for msg in ws:
                 msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
                 if msg.type == aiohttp.WSMsgType.PING:
@@ -75,13 +105,20 @@ class WebsocketManager:
                 if msg.type == aiohttp.WSMsgType.PONG:
                     continue
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    await self._callback(self._on_message, ws, msg.data)
+                    message = customjson.loads(msg.data)
+                    try:
+                        msg_id = self._get_message_id(message)
+                        if msg_id in self._waiting:
+                            self._waiting.pop(msg_id).set_result(message)
+                    except NotImplementedError:
+                        pass
+                    await self._callback(self._on_message, ws, message)
                 if msg.type == aiohttp.WSMsgType.ERROR:
-                    logging.info(f'DISCONNECTED {self=}')
+                    self._logger.info(f'DISCONNECTED {self=}')
                     await self._callback(self._on_error, ws)
                     break
                 if msg.type == aiohttp.WSMsgType.CLOSED:
-                    logging.info(f'DISCONNECTED {self=}')
+                    self._logger.info(f'DISCONNECTED {self=}')
                     await self._callback(self._on_close, ws)
                     break
 
@@ -91,7 +128,10 @@ class WebsocketManager:
     async def _ping_forever(self):
         if self._ping_forever_seconds:
             while self.connected:
-                await self.ping()
+                try:
+                    await self.ping()
+                except MissingMessageError:
+                    await self.reconnect()
                 await asyncio.sleep(self._ping_forever_seconds)
 
     async def _callback(self, f, ws, *args, **kwargs):

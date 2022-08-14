@@ -1,40 +1,63 @@
 from __future__ import annotations
-from abc import ABC
+
 from typing import Optional
-import sqlalchemy as sa
-from pydantic import BaseModel, Extra
-from sqlalchemy import orm, TypeDecorator
-from datetime import datetime
 
+from pydantic import Extra
+
+from sqlalchemy import TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.hybrid import hybrid_property
-import tradealpha.common.utils as utils
-from tradealpha.common.dbsync import Base
-from tradealpha.common.models.gain import Gain
+
+# class DataModel(BaseModel):
+from tradealpha.common.models import BaseModel
 
 
-#class DataModel(BaseModel):
+class Mark(BaseModel):
+    type: str
+    attrs: Optional[dict]
+
+
 class DocumentModel(BaseModel):
     type: str
-    content: 'DocumentModel' = None
+    content: 'Optional[list[DocumentModel]]'
+    type: 'Optional[str]'
+    text: 'Optional[str]'
+    attrs: 'Optional[dict]'
+    marks: 'Optional[list[Mark]]'
 
-    class Config:
-        extra = Extra.allow
+    def title(self):
+        titleNode = self.content[0]
+        return titleNode.content[0].text if titleNode else None
+
+    def __getitem__(self, i) -> 'DocumentModel' | None:
+        if self.content:
+            return self.content[i]
+        return None
+
+    def __setitem__(self, key, value):
+        return self.content.__setitem__(key, value)
+
+    def __len__(self):
+        return self.content.__len__()
+
+
+DocumentModel.update_forward_refs()
 
 
 class Document(TypeDecorator):
-
     impl = JSONB
 
     def process_bind_param(self, value, dialect):
+        if isinstance(value, DocumentModel):
+            return value.dict()
         return value
 
     def process_result_value(self, value, dialect):
+        if value:
+            return DocumentModel.construct(**value)
         return value
 
 
 class Data(TypeDecorator):
-
     impl = JSONB
 
     def process_bind_param(self, value, dialect):

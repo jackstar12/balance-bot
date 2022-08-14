@@ -12,10 +12,10 @@ class Label(Base, Serializer):
     name: str = Column(String, nullable=False)
     color: str = Column(String, nullable=False)
 
-    async def serialize(self, full=True, data=True, *args, **kwargs):
+    def serialize(self, full=True, data=True, *args, **kwargs):
         if data:
             return self.id
         else:
-            return await super().serialize(full, data, *args, **kwargs)
+            return super().serialize(full, data, *args, **kwargs)
 
 

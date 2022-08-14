@@ -2,11 +2,13 @@ from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID
 from sqlalchemy import Column, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship, backref
 import jwt
+
+from tradealpha.common.dbmodels.editsmixin import EditsMixin
 from tradealpha.common.dbsync import Base
 from tradealpha.common.dbmodels.serializer import Serializer
 
 
-class User(Base, Serializer, SQLAlchemyBaseUserTableUUID):
+class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
     __tablename__ = 'user'
     __serializer_forbidden__ = ['hashed_password', 'salt']
 
@@ -19,7 +21,7 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID):
 
     all_clients = relationship(
         'Client',
-        lazy='noload',
+        lazy='raise',
         primaryjoin='or_('
                     'Client.user_id == User.id,'
                     'and_(Client.discord_user_id == User.discord_user_id, User.discord_user_id != None)'
@@ -28,10 +30,23 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID):
     )
 
     # Data
-    clients = relationship('Client', back_populates='user', lazy='noload', cascade="all, delete", foreign_keys="[Client.user_id]")
-    labels = relationship('Label', backref='user', lazy='noload', cascade="all, delete")
+    clients = relationship('Client', back_populates='user', lazy='noload', cascade="all, delete",
+                           foreign_keys="[Client.user_id]")
+    labels = relationship('Label', backref='user', lazy='raise', cascade="all, delete")
     alerts = relationship('Alert', backref='user', lazy='noload', cascade="all, delete")
     journals = relationship('Journal',
                             back_populates='user',
                             cascade="all, delete",
                             lazy='raise')
+    templates = relationship('Template',
+                             back_populates='user',
+                             cascade="all, delete",
+                             lazy='noload')
+
+    @classmethod
+    def mock(cls):
+        return cls(
+            email='mock@gmail.com',
+            hashed_password='SUPER_SECUER'
+        )
+

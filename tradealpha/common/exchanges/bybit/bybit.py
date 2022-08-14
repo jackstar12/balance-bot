@@ -68,8 +68,8 @@ _interval_map = {
 class _BybitBaseClient(ExchangeWorker, ABC):
     supports_extended_data = True
 
-    _ENDPOINT = 'https://api-testnet.bybit.com' if TESTING else 'https://api.bybit.com'
-    _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime' if TESTING else 'wss://stream.bybit.com/realtime'
+    _ENDPOINT = 'https://api.bybit.com'
+    _SANDBOX_ENDPOINT = 'https://api-testnet.bybit.com'
 
     _response_error = 'ret_msg'
     _response_result = 'result'
@@ -77,21 +77,26 @@ class _BybitBaseClient(ExchangeWorker, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ws = BybitWebsocketClient(self._http,
-                                        get_url=lambda: self._WS_ENDPOINT,
+                                        get_url=self._get_ws_url,
                                         on_message=self._on_message,
                                         on_connect=self._on_connect)
         # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
 
-    async def connect(self):
+    async def _connect(self):
+        self._logger.info('Connecting')
         await self._ws.connect()
-        await self._ws.authenticate(self._api_key, self._api_secret)
-        await self._ws.subscribe("execution")
+        resp = await self._ws.authenticate(self._api_key, self._api_secret)
+        resp = await self._ws.subscribe("execution")
+        self._logger.info('Connected')
+
+    async def cleanup(self):
+        await self._ws.close()
 
     async def _on_connect(self, ws: BybitWebsocketClient):
         pass
 
     def _get_ws_url(self) -> str:
-        return self._WS_ENDPOINT
+        return self._WS_SANDBOX_ENDPOINT if self.client.sandbox else self._WS_ENDPOINT
 
     @classmethod
     def _parse_exec(cls, raw_exec: Dict):
@@ -167,15 +172,15 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                                   'start_time': self._parse_date(since),
                                   'status': Transfer.SUCCESS.value
                               })
-        while res['list']:
-            transfers.extend(res['list'])
-            res = await self._get('/asset/v1/private/transfer/list',
-                                  params={
-                                      'start_time': self._parse_date(since),
-                                      'status': Transfer.SUCCESS.value,
-                                      'cursor': res['cursor'],
-                                      'direction': Direction.NEXT.value
-                                  })
+        # while res['list']:
+        #     transfers.extend(res['list'])
+        #     res = await self._get('/asset/v1/private/transfer/list',
+        #                           params={
+        #                               'start_time': self._parse_date(since),
+        #                               'status': Transfer.SUCCESS.value,
+        #                               'cursor': res['cursor'],
+        #                               'direction': Direction.NEXT.value
+        #                           })
 
         results = []
 
@@ -478,6 +483,9 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
 class BybitInverseWorker(_BybitDerivativesBaseClient):
     exchange = 'bybit-inverse'
 
+    _WS_ENDPOINT = 'wss://stream.bybit.com/realtime'
+    _WS_SANDBOX_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime'
+
     _limits = [
         create_limit(interval_seconds=5, max_amount=5 * 70, default_weight=1),
         create_limit(interval_seconds=5, max_amount=5 * 50, default_weight=1),
@@ -493,8 +501,8 @@ class BybitInverseWorker(_BybitDerivativesBaseClient):
 
     async def _get_executions(self,
                               since: datetime,
-                              init=False) -> List[Execution]:
-        return await self._get_internal_executions(ContractType.INVERSE, since, init)
+                              init=False):
+        return await self._get_internal_executions(ContractType.INVERSE, since, init), []
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):
@@ -503,6 +511,9 @@ class BybitInverseWorker(_BybitDerivativesBaseClient):
 
 class BybitLinearWorker(_BybitDerivativesBaseClient):
     exchange = 'bybit-linear'
+
+    _WS_ENDPOINT = 'wss://stream.bybit.com/realtime_private'
+    _WS_SANDBOX_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime_private'
 
     _limits = [
         create_limit(interval_seconds=5, max_amount=5 * 70, default_weight=1),
@@ -525,7 +536,6 @@ class BybitLinearWorker(_BybitDerivativesBaseClient):
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):
         return await self._internal_get_balance(ContractType.LINEAR, time, upnl)
-
 
 
 class BybitSpotClient(_BybitBaseClient):

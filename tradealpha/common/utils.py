@@ -47,6 +47,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels.client import Client
 
+
+def now():
+    return datetime.now(pytz.utc)
+
+
+def date_string(d: date | datetime):
+    return d.strftime('%Y-%m-%d')
+
+
 # Some consts to make TF tables prettier
 MINUTE = 60
 HOUR = MINUTE * 60
@@ -107,6 +116,8 @@ def setup_logger(debug: bool = False):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     return logger
+
+
 
 
 
@@ -198,10 +209,10 @@ async def calc_daily(client: Client,
                 daily.time = daily.time.replace(minute=0, second=0)
                 prev_daily = prev_daily or daily
                 values = Daily(
-                    current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
-                    daily.unrealized,
-                    round(daily.unrealized - prev_daily.unrealized, ndigits=config.CURRENCY_PRECISION.get(currency, 2)),
-                    calc_percentage(prev_daily.unrealized, daily.unrealized, string=False)
+                    day=date_string(current_day) if string else current_day.timestamp(),
+                    amount=daily.unrealized,
+                    diff_absolute=round(daily.unrealized - prev_daily.unrealized, ndigits=config.CURRENCY_PRECISION.get(currency, 2)),
+                    diff_relative=calc_percentage(prev_daily.unrealized, daily.unrealized, string=False)
                 )
                 if string:
                     results.add_row([*values])
@@ -216,7 +227,7 @@ async def calc_daily(client: Client,
 
     if prev_balance.time < current_search:
         values = Daily(
-            day=current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
+            day=date_string(current_day) if string else current_day.timestamp(),
             amount=prev_balance.unrealized,
             diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized,
                                 ndigits=config.CURRENCY_PRECISION.get(currency, 2)),
@@ -647,7 +658,6 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     return date
 
 
-
 async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
     if callable(fn):
         try:
@@ -659,6 +669,9 @@ async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
                     return await res
                 return res
         except Exception:
+            print(
+                f'Exception occured while execution {fn} {args=} {kwargs=}'
+            )
             logging.exception(
                 f'Exception occured while execution {fn} {args=} {kwargs=}'
             )
@@ -666,7 +679,6 @@ async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
 
 def validate_kwargs(kwargs: Dict, required: list[str] | set[str]):
     return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
-
 
 
 def readable_time(time: datetime) -> str:
@@ -743,6 +755,21 @@ def prev_now_next(iterable, skip: Callable = None):
 
 def join_args(*args, denominator=':'):
     return denominator.join([str(arg.value if isinstance(arg, Enum) else arg) for arg in args if arg])
+
+
+T = typing.TypeVar('T')
+
+
+def groupby(items: list[T], key: str | Callable[[T], Any]):
+    res = {}
+    if isinstance(key, str):
+        key = lambda x: getattr(x, key)
+    for item in items:
+        val = key(item)
+        if val not in res:
+            res[val] = []
+        res[val].append(item)
+    return res
 
 
 def truthy_dict(**kwargs):

@@ -9,7 +9,7 @@ from sqlalchemy.orm import relationship, Session
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from tradealpha.common.dbsync import Base
-from tradealpha.common.dbasync import async_session, db
+from tradealpha.common.dbasync import async_session, db_exec
 from tradealpha.common.dbmodels.amountmixin import AmountMixin
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.serializer import Serializer
@@ -87,7 +87,8 @@ class Trade(Base, Serializer, CurrencyMixin):
                             lazy='noload',
                             cascade="all, delete",
                             back_populates='trade',
-                            foreign_keys="PnlData.trade_id")
+                            foreign_keys="PnlData.trade_id",
+                            order_by="PnlData.time")
 
     initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
     initial: Execution = relationship(
@@ -174,11 +175,19 @@ class Trade(Base, Serializer, CurrencyMixin):
     @hybrid_property
     def fomo_ratio(self):
         if self.max_pnl.total != self.min_pnl.total:
-            return 1 - (self.max_pnl.total / (self.max_pnl.total - self.min_pnl.total))
+            return 1 - (self.realized_pnl - self.min_pnl.total) / (self.max_pnl.total - self.min_pnl.total)
+            if self.realized_pnl > 0:
+                return (self.max_pnl.total - self.realized_pnl) / (self.realized_pnl - self.min_pnl.total)
+            else:
+                return (self.realized_pnl - self.min_pnl.total) / (self.max_pnl.total - self.realized_pnl)
+        else:
+            return 0
 
     @hybrid_property
     def greed_ratio(self):
-        if self.max_pnl.total:
+        if self.max_pnl.total > 0:
+            return 1 - abs(self.realized_pnl) / self.max_pnl.total
+        elif self.max_pnl.total < 0:
             return 1 - self.realized_pnl / self.max_pnl.total
         return 0
         if self.realized_pnl:
@@ -191,12 +200,6 @@ class Trade(Base, Serializer, CurrencyMixin):
             else
             Status.WIN if self.realized_pnl > 0 else Status.LOSS
         )
-
-    async def serialize(self, data=True, full=True, *args, **kwargs):
-        s = await super().serialize(*args, data=data, full=full, **kwargs)
-        if s:
-            s['status'] = 'open' if self.open_qty > Decimal(0) else 'win' if self.realized_pnl > Decimal(0) else 'loss'
-        return s
 
     def calc_rpnl(self):
         realized_qty = self.qty - self.open_qty - self.transferred_qty
@@ -212,16 +215,15 @@ class Trade(Base, Serializer, CurrencyMixin):
         else:
             return 0
 
-    def update_pnl(self, price: Decimal,
+    def update_pnl(self,
+                   upnl: int | Decimal,
                    messenger: Messenger = None,
                    realtime=True,
-                   commit=False,
                    now: datetime = None,
                    extra_currencies: dict[str, Decimal] = None):
 
         if not now:
             now = datetime.now(pytz.utc)
-        upnl = self.calc_upnl(price)
         self.live_pnl = PnlData(
             trade_id=self.id,
             unrealized=upnl,
@@ -238,7 +240,7 @@ class Trade(Base, Serializer, CurrencyMixin):
         self.latest_pnl = self._compare_pnl(self.latest_pnl,
                                             self.live_pnl,
                                             lambda latest, live: (
-                                                    not latest or abs((latest - live) / latest) > Decimal(.25)
+                                                    not latest or abs((live - latest) / latest) > Decimal(.25)
                                             ))
         if realtime and messenger:
             messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
@@ -259,7 +261,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                 if execution.time > date:
                     # If the side of the execution equals the side of the trade,
                     # remove_qty will be positive, so the size of the trade decreases
-                    remove_qty = execution.effective_qty * self.initial.side.value
+                    remove_qty = execution.effective_qty * self.initial.side.values
                     if execution.type == ExecType.TRANSFER:
                         self.transferred_qty -= remove_qty
                     else:
@@ -280,9 +282,9 @@ class Trade(Base, Serializer, CurrencyMixin):
 
     def _replace_pnl(self, old: PnlData, new: PnlData, cmp_func):
         if not old or cmp_func(new.total, old.total):
-            self.max_pnl.unrealized = self.live_pnl.unrealized
-            self.max_pnl.realized = self.live_pnl.realized
-            self.max_pnl.time = self.live_pnl.time
+            old.unrealized = new.unrealized
+            old.realized = new.realized
+            old.time = new.time
 
     def _compare_pnl(self, old: PnlData, new: PnlData, cmp_func):
         if not old or cmp_func(new.total, old.total):
@@ -309,11 +311,16 @@ def trade_from_execution(execution: Execution):
         settle=execution.settle
     )
     execution.trade = trade
-    pnl = PnlData(
+    trade.max_pnl = PnlData(
         trade=trade,
         realized=0,
         unrealized=0,
         time=execution.time
     )
-    trade.max_pnl = trade.min_pnl = pnl
+    trade.min_pnl = PnlData(
+        trade=trade,
+        realized=0,
+        unrealized=0,
+        time=execution.time
+    )
     return trade

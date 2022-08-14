@@ -43,8 +43,7 @@ class KucoinWebsocket(WebsocketManager):
     async def unsubscribe(self, topic: str, private_channel: bool):
         return await self.send_message("unsubscribe", topic=topic, privateChannel=private_channel)
 
-    def _on_message(self, ws, raw_message):
-        message = customjson.loads(raw_message)
+    def _on_message(self, ws, message: dict):
         msg_type = message["type"]
         msg_id = message["id"]
         self._waiting_ids.remove(int(msg_id))

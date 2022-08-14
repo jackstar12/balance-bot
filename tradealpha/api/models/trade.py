@@ -3,8 +3,9 @@ from decimal import Decimal
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, Extra
+from pydantic import Field, Extra
 
+from api.models import OutputID
 from tradealpha.api.models.pnldata import PnlData
 from tradealpha.common.dbmodels.base import OrmBaseModel
 from tradealpha.api.models.execution import Execution
@@ -13,7 +14,7 @@ from tradealpha.common.models.compactpnldata import CompactPnlData
 
 
 class BasicTrade(OrmBaseModel):
-    id: str
+    id: OutputID
     client_id: str
     symbol: str
     entry: Decimal
@@ -58,5 +59,3 @@ class DetailledTrade(Trade):
         orm_mode = True
         arbitrary_types_allowed = False
         extra = Extra.ignore
-
-

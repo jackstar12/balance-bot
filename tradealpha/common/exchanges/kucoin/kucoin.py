@@ -49,7 +49,8 @@ class _KuCoinClient(ExchangeWorker, ABC):
 
 class KuCoinFuturesWorker(_KuCoinClient):
     exchange = 'kucoin'
-    _ENDPOINT = 'https://api-sandbox-futures.kucoin.com' if TESTING else 'https://api-futures.kucoin.com'
+    _ENDPOINT = 'https://api-futures.kucoin.com'
+    _SANDBOX_ENDPOINT = 'https://api-sandbox-futures.kucoin.com'
 
     required_extra_args = [
         'passphrase'
@@ -64,7 +65,7 @@ class KuCoinFuturesWorker(_KuCoinClient):
         return server["endpoint"] + f'?token={resp["token"]}'
 
 
-    async def connect(self):
+    async def _connect(self):
         self._ws = None
 
 

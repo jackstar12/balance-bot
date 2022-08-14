@@ -23,7 +23,6 @@ class Execution(Base, Serializer, CurrencyMixin):
     side = Column(Enum(Side), nullable=False)
     time: datetime = Column(DateTime(timezone=True), nullable=False)
     type = Column(Enum(ExecType), nullable=True)
-
     commission = Column(Numeric, nullable=True)
     realized_pnl = Column(Numeric, nullable=True)
 

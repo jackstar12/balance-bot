@@ -22,6 +22,7 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
+from tradealpha.common.dbmodels.editsmixin import EditsMixin
 from tradealpha.common import customjson
 from tradealpha.common.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys
 import tradealpha.common.dbmodels.balance as db_balance
@@ -47,7 +48,7 @@ _key = os.environ.get('ENCRYPTION_SECRET')
 assert _key, 'Missing ENCRYPTION_SECRET in env'
 
 
-class Client(Base, Serializer):
+class Client(Base, Serializer, EditsMixin):
     __tablename__ = 'client'
     __serializer_forbidden__ = ['api_secret']
     __serializer_data_forbidden__ = ['api_secret', 'discorduser']
@@ -66,12 +67,13 @@ class Client(Base, Serializer):
     subaccount = Column(String, nullable=True)
     extra_kwargs = Column(PickleType, nullable=True)
     currency = Column(String(10), default='$')
+    sandbox = Column(Boolean, default=False)
 
     # Data
     name = Column(String, nullable=True)
     rekt_on = Column(DateTime(timezone=True), nullable=True)
 
-    trades = relationship('Trade', lazy='raise',
+    trades = relationship('Trade', lazy='noload',
                           cascade="all, delete",
                           back_populates='client',
                           order_by="Trade.open_time")
@@ -109,11 +111,12 @@ class Client(Base, Serializer):
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
-    async def redis_set(self, keys: dict, space: Literal['cache', 'normal'], redis_instance=None, ):
-        client_hash = self.cache_key(self.user_id, self.id) if space == 'cache' else self.redis_key(self.user_id, self.id)
+    @classmethod
+    async def redis_set(cls, user_id, client_id, keys: dict, space: Literal['cache', 'normal'], redis_instance=None):
+        client_hash = cls.cache_hash(user_id, client_id) if space == 'cache' else cls.normal_hash(user_id, client_id)
         if space == 'cache':
             asyncio.create_task((redis_instance or redis).expire(client_hash, 5 * 60))
-        keys[ClientSpace.USER_ID.value] = str(self.user_id)
+        keys[ClientSpace.USER_ID.value] = str(user_id)
         return await (redis_instance or redis).hset(client_hash, mapping=keys)
 
     @classmethod
@@ -123,15 +126,15 @@ class Client(Base, Serializer):
         (useful when reading cache)
         """
         return await redis_bulk_keys(
-            cls.cache_key(id, user_id), redis_instance, *keys
+            cls.cache_hash(user_id, id), redis_instance, *keys
         )
 
     @classmethod
-    def redis_key(cls, user_id, client_id: int = None):
+    def normal_hash(cls, user_id, client_id: int = None):
         return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, client_id or '*')
 
     @classmethod
-    def cache_key(cls, user_id: UUID, client_id: int = None):
+    def cache_hash(cls, user_id: UUID, client_id: int = None):
         return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, NameSpace.CACHE, client_id or '*')
 
     @classmethod
@@ -159,7 +162,7 @@ class Client(Base, Serializer):
         else:
             return await self.latest()
 
-    def evaluate_balance(self, redis: Redis):
+    def evaluate_balance(self):
         if not self.currently_realized:
             return
         realized = getattr(self.currently_realized, 'realized', Decimal(0))
@@ -167,12 +170,6 @@ class Client(Base, Serializer):
         for trade in self.open_trades:
             if trade.live_pnl:
                 unrealized += trade.live_pnl.amount
-            #else:
-            #    price = await redis.get(
-            #        utils.join_args(NameSpace.TICKER, self.exchange, trade.symbol)
-            #    )
-            #    if price:
-            #        unrealized += trade.calc_upnl(Decimal(str(price)))
         new = db_balance.Balance(
             realized=realized,
             unrealized=realized + unrealized,
@@ -180,10 +177,6 @@ class Client(Base, Serializer):
             time=datetime.now(pytz.utc),
             client_id=self.id
         )
-        # await redis.set(
-        #    utils.join_args(NameSpace.CLIENT, NameSpace.BALANCE, self.id),
-        #    new.serialize(data=True)
-        # )
         return new
 
     async def update_journals(self, current_balance: db_balance.Balance, today: date, db_session: AsyncSession):
@@ -262,7 +255,7 @@ class Client(Base, Serializer):
         amount_cls = db_balance.Balance
         stmt = self.history.statement.filter(
             amount_cls.time < time if time else True
-        ).order_by(asc(amount_cls.time))
+        ).order_by(desc(amount_cls.time))
 
         balance = await db_first(stmt)
 
@@ -283,7 +276,6 @@ class Client(Base, Serializer):
             ).subquery()
 
             full_stmt = select(
-                subq,
                 PnlData
             ).filter(
                 PnlData.id == subq.c.pnl_id,
@@ -296,7 +288,8 @@ class Client(Base, Serializer):
             return db_balance.Balance(
                 realized=balance.realized,
                 unrealized=balance.realized + sum(pnl.amount for pnl in pnl_data),
-                time=balance.time
+                time=balance.time,
+                total_transfered=balance.total_transfered
             )
 
         else:

@@ -18,14 +18,12 @@ import tradealpha.common.utils as utils
 from tradealpha.api.models.trade import DetailledTrade
 from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance, Performance, Calculation
 from tradealpha.api.models.execution import Execution
-from tradealpha.common.dbsync import redis
 from tradealpha.common.dbasync import db_first
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.client import Client, add_client_filters
 from tradealpha.common.dbmodels.user import User
 from tradealpha.api.models.websocket import ClientConfig
 from tradealpha.common.enums import Filter
-
 
 logger = logging.getLogger(__name__)
 
@@ -36,28 +34,13 @@ async def get_cached_data(config):
 
 async def get_chached_filters(config: ClientConfig, filters: Tuple[Filter, ...], filter_calculation: Calculation):
     return
-    await redis.hset()
-    await redis.hget()
 
 
 async def create_cilent_analytics(client: Client,
                                   config: ClientConfig,
                                   filters: Tuple[Filter, ...],
                                   filter_calculation: Calculation):
-
     cached = await get_cached_data(config)
-
-    # label_performance = {}
-    # for label in user.labels:
-    #     for trade in label.trades:
-    #         if not trade.open_qty:
-    #             label_performance[label.id] += trade.realized_pnl
-
-#     daily = await utils.calc_daily(client)
-#
-#     weekday_performance = [0] * 7
-#     for day in daily:
-#         weekday_performance[day.day.weekday()] += day.diff_absolute
 
     performance_by_filter = {}
     trade_analytics = []
@@ -100,7 +83,7 @@ async def create_cilent_analytics(client: Client,
         filtered_performance=FilteredPerformance.construct(
             filters=filters,
             performances=[]
-            #performances=list(performance_by_filter.values())
+            # performances=list(performance_by_filter.values())
         ),
         trades=trade_analytics
     )

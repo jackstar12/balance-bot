@@ -32,6 +32,10 @@ class DataService(BaseService, Observer):
     async def run_forever(self):
         await self._update_redis()
 
+    async def teardown(self):
+        for exchange in self._exchanges.values():
+            await exchange.disconnect()
+
     async def subscribe(self, exchange: str, channel: Channel, observer: Observer = None, **kwargs):
         """
         Subscribes to the given ecxhange channel.
@@ -44,28 +48,31 @@ class DataService(BaseService, Observer):
         :param observer: [Optional] will be notified whenever updates arrive
         :param kwargs: will be passed down to the ``ExchangeTicker`` implementation.
         """
+        self._logger.info(f'Subscribe: {exchange=} {channel=} {kwargs=}')
         ticker = self._exchanges.get(exchange)
         if not ticker:
+            self._logger.info(f'Creating ticker for {exchange}')
             ticker_cls = EXCHANGE_TICKERS.get(exchange)
             if ticker_cls and issubclass(ticker_cls, ExchangeTicker):
                 ticker = ticker_cls(self._http_session)
-                await ticker.connect()
                 self._exchanges[exchange] = ticker
+                await ticker.connect()
             else:
                 raise InvalidExchangeError()
 
-        if observer:
-            await ticker.subscribe(channel, observer, **kwargs)
-        else:
-            await ticker.subscribe(channel, self, **kwargs)
+        observer = observer or self
+        await ticker.subscribe(channel, observer, **kwargs)
 
-    async def unsubscribe(self, exchange: str, channel: Channel, **kwargs):
+    async def unsubscribe(self, exchange: str, channel: Channel, observer: Observer = None, **kwargs):
+        self._logger.info(f'Unsubscribe: {exchange=} {channel=} {kwargs=}')
+
         ticker = self._exchanges.get(exchange)
         if ticker:
-            await ticker.unsubscribe(channel, )
+            observer = observer or self
+            await ticker.unsubscribe(channel, observer, **kwargs)
 
-    async def update(self, *new_state):
-        ticker: Ticker = new_state[0]
+    async def update(self, ticker: Ticker):
+        #ticker: Ticker = new_state[0]
         self._tickers[(ticker.exchange, ticker.symbol)] = ticker
 
     def get_ticker(self, symbol, exchange):

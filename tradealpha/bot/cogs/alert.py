@@ -5,7 +5,7 @@ from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import delete
 
-from tradealpha.common.dbasync import db, async_session, db_del_filter
+from tradealpha.common.dbasync import db_exec, async_session, db_del_filter
 from tradealpha.common.dbmodels.discorduser import DiscordUser
 from tradealpha.bot import utils
 from tradealpha.common import dbutils
@@ -93,7 +93,7 @@ class AlertCog(CogBase):
 
         await ctx.send('Alert created', embed=alert.get_discord_embed())
 
-        self.messenger.pub_channel(NameSpace.ALERT, Category.NEW, obj=await alert.serialize(data=True, full=False))
+        self.messenger.pub_channel(NameSpace.ALERT, Category.NEW, obj=alert.serialize(data=True, full=False))
 
     @cog_ext.cog_subcommand(
         base="alert",

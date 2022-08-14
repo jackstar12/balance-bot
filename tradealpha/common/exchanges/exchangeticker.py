@@ -22,17 +22,22 @@ class ExchangeTicker:
 
     async def subscribe(self, channel: Channel, observer: Observer, **kwargs):
         self._callbacks[channel.value].attach(observer)
-        await self._subscribe(channel, **kwargs)
+        if len(self._callbacks[channel.value]) == 1:
+            await self._subscribe(channel, **kwargs)
 
     async def _subscribe(self, channel: Channel, **kwargs):
         raise NotImplementedError
 
     async def unsubscribe(self, channel: Channel, observer: Observer, **kwargs):
         self._callbacks[channel.value].detach(observer)
-        await self._unsubscribe(channel, **kwargs)
+        if len(self._callbacks[channel.value]) == 0:
+            await self._unsubscribe(channel, **kwargs)
 
     async def _unsubscribe(self, channel: Channel, **kwargs):
         raise NotImplementedError
 
-    def connect(self):
+    async def connect(self):
+        raise NotImplementedError
+
+    async def disconnect(self):
         raise NotImplementedError

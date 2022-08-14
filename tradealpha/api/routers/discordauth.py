@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse, JSONResponse
 
 from tradealpha.common.dbsync import session
-from tradealpha.common.dbasync import async_session, db_select, db
+from tradealpha.common.dbasync import async_session, db_select, db_exec
 from tradealpha.common.dbmodels.discorduser import DiscordUser
 from tradealpha.common.dbmodels.user import User
 from tradealpha.api.dependencies import CurrentUser, get_db
@@ -103,7 +103,7 @@ async def callback(request: Request,
 
     user_json = discord.get(API_BASE_URL + '/users/@me').json()
 
-    await db(
+    await db_exec(
         update(DiscordUser).where(
             DiscordUser.id == int(user_json['id'])
         ).values(

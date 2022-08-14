@@ -7,7 +7,7 @@ from typing_extensions import Self
 
 from tradealpha.common import customjson, utils
 from tradealpha.common.models.async_websocket_manager import WebsocketManager
-from typing import TYPE_CHECKING, Callable, List, Dict, Awaitable
+from typing import TYPE_CHECKING, Callable, List, Dict, Awaitable, Any
 
 
 class BybitWebsocketClient(WebsocketManager):
@@ -17,11 +17,18 @@ class BybitWebsocketClient(WebsocketManager):
                  get_url: Callable[..., str],
                  on_message: Callable[[Self, Dict], Awaitable],
                  **kwargs):
-        super().__init__(session=session, get_url=get_url, on_message=self._on_message, ping_forever_seconds=30, **kwargs)
+        super().__init__(session=session, get_url=get_url, ping_forever_seconds=30, **kwargs)
         self._on_data_message = on_message
 
+    def _get_request_id(self, request: dict):
+        return request['op'] + ''.join(str(arg) for arg in request['args'])
+
+    def _get_message_id(self, message: dict) -> Any:
+        return self._get_request_id(message['request'])
+
     async def _send_op(self, op: str, *args):
-        return await self.send_json({'op': op, 'args': args})
+        request = {'op': op, 'args': args}
+        return await self.send_json(request, msg_id=self._get_request_id(request))
 
     # https://bybit-exchange.github.io/docs/inverse/#t-heartbeat
     async def ping(self):
@@ -50,11 +57,9 @@ class BybitWebsocketClient(WebsocketManager):
             _val.encode('utf-8'),
             digestmod='sha256'
         ).hexdigest())
-        await self._send_op("auth", api_key, expires, sign)
+        return await self._send_op("auth", api_key, expires, sign)
 
-    async def _on_message(self, ws: WebsocketManager, raw_message: str):
-        message = customjson.loads(raw_message)
-
+    async def _on_message(self, ws: WebsocketManager, message: dict):
         request = message.get("request")
         if request:
             op = request["op"]
@@ -69,5 +74,3 @@ class BybitWebsocketClient(WebsocketManager):
             await utils.call_unknown_function(
                 self._on_data_message, self, message
             )
-
-

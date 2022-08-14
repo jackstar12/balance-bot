@@ -1,42 +1,13 @@
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from typing import List, Literal, Optional, NamedTuple, Set
+from typing import List, Literal, Optional, NamedTuple, Set, Any
 
-from pydantic import BaseModel
+from tradealpha.api.models import BaseModel, OutputID, InputID
 
+from tradealpha.common.dbmodels.types import DocumentModel
+from tradealpha.common.dbmodels.journal import JournalType
 from tradealpha.api.models.template import TemplateInfo
 from tradealpha.api.models.amount import FullBalance
-
-
-class BaseOrmModel(BaseModel):
-    class Config:
-        orm_mode = True
-
-
-class JournalCreate(BaseModel):
-    clients: List[str]
-    title: str
-    chapter_interval: timedelta
-    auto_generate: bool
-
-
-class JournalInfo(JournalCreate):
-    id: str
-
-    class Config:
-        orm_mode = True
-
-
-class JournalDetailledInfo(JournalInfo):
-    overview: Optional[dict]
-    templates: list[TemplateInfo]
-
-
-class JournalUpdate(BaseOrmModel):
-    clients: Optional[Set[str]]
-    title: Optional[str]
-    notes: Optional[str]
-    auto_generate: Optional[bool]
 
 
 class Gain(NamedTuple):
@@ -45,12 +16,14 @@ class Gain(NamedTuple):
 
 
 class ChapterInfo(BaseModel):
-    id: str
-    start_date: date
-    end_date: date
+    id: OutputID
+    title: Optional[str]
+    start_date: Optional[date]
+    end_date: Optional[date]
     balances: List[FullBalance]
     performance: Optional[Gain]
-    title: str
+    child_ids: List[OutputID]
+    parent_id: Optional[OutputID]
     #start_balance: FullBalance
     #end_balance: FullBalance
 
@@ -58,21 +31,61 @@ class ChapterInfo(BaseModel):
         orm_mode = True
 
 
+class JournalInfo(BaseModel):
+    id: OutputID
+    client_ids: List[OutputID]
+    title: Optional[str]
+    type: JournalType
+    chapter_interval: Optional[timedelta]
+    chapter_interval_days: Optional[int]
+    auto_generate: Optional[bool]
+    default_template_id: Optional[OutputID]
+
+    class Config:
+        orm_mode = True
+
+
+class JournalDetailledInfo(JournalInfo):
+    overview: Optional[dict]
+    default_template: Optional[TemplateInfo]
+    chapters: list[ChapterInfo]
+
+
+class JournalUpdate(BaseModel):
+    client_ids: Optional[Set[InputID]]
+    title: Optional[str]
+    overview: Optional[DocumentModel]
+    public: Optional[bool]
+    default_template_id: Optional[InputID]
+
+
+class JournalCreate(BaseModel):
+    client_ids: List[InputID]
+    title: str
+    type: JournalType
+
+    chapter_interval: Optional[timedelta]
+    chapter_interval_days: Optional[int]
+    auto_generate: Optional[bool]
+
+    default_template_id: Optional[InputID]
+
+
+
+
+class DetailedChapter(ChapterInfo):
+    #trades: List[Trade]
+    data: Optional[dict]
+    doc: Optional[DocumentModel]
+
+
 class ChapterUpdate(BaseModel):
-    notes: Optional[str]
+    doc: Optional[DocumentModel]
+    data: Optional[dict]
     #trades: Optional[Set[str]]
 
 
 class ChapterCreate(BaseModel):
-    start_date: date
-    title: str
-    parent_id: Optional[int]
-
-
-class Chapter(ChapterInfo):
-    #trades: List[Trade]
-    notes: Optional[str]
-
-
-class CompleteJournal(JournalInfo):
-    chapters: List[ChapterInfo]
+    start_date: Optional[date]
+    parent_id: Optional[InputID]
+    template_id: Optional[InputID]

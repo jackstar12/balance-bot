@@ -1,53 +1,14 @@
-import asyncio
-import functools
-import itertools
-import logging
-import operator
-from datetime import datetime, date, timedelta
-from http import HTTPStatus
-from typing import Optional, Dict, List, Tuple
-import aiohttp
-import jwt
-import pytz
-from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query, Body
-from fastapi.encoders import jsonable_encoder
-from pydantic import ValidationError
-from sqlalchemy import or_, delete, select, update, asc, func, desc, Date, false
+from fastapi import APIRouter, Depends, Body
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import JSONResponse
-from starlette.websockets import WebSocketDisconnect
 
+from tradealpha.api.dependencies import CurrentUser, get_messenger, get_db
 from tradealpha.api.models.transfer import Transfer
-from tradealpha.api.utils.analytics import create_cilent_analytics
-from tradealpha.api.authenticator import Authenticator
-from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance
-from tradealpha.common.dbasync import db, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
-    redis_bulk_hashes, redis_bulk
-from tradealpha.common.dbmodels.guildassociation import GuildAssociation
-from tradealpha.common.dbmodels.guild import Guild
-from tradealpha.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams, \
-    ClientOverview, Balance
-from tradealpha.common.dbmodels.transfer import Transfer as TransferDB
-from tradealpha.api.models.websocket import WebsocketMessage, ClientConfig
-from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
-from tradealpha.common import utils, customjson
-from tradealpha.api.dependencies import CurrentUser, CurrentUserDep, get_authenticator, get_messenger, get_db
-from tradealpha.common.dbsync import session
+from tradealpha.api.utils.responses import OK, NotFound
+from tradealpha.common.dbasync import db_exec, db_first
 from tradealpha.common.dbmodels.client import Client, add_client_filters
+from tradealpha.common.dbmodels.transfer import Transfer as TransferDB
 from tradealpha.common.dbmodels.user import User
-from tradealpha.api.settings import settings
-from tradealpha.api.utils.client import create_client_data_serialized, get_user_client
-import tradealpha.api.utils.client as client_utils
-from tradealpha.common.dbutils import add_client
-from tradealpha.common.messenger import Messenger, NameSpace, Category, Word
-import tradealpha.common.dbmodels.event as db_event
-
-from tradealpha.common.exchanges import EXCHANGES
-from tradealpha.common.utils import validate_kwargs, create_interval
-from tradealpha.common.dbmodels import TradeDB, BalanceDB
-from tradealpha.api.models.trade import Trade
-from tradealpha.common.models.daily import Daily
-from tradealpha.common.redis.client import ClientSpace, ClientCache
 
 router = APIRouter(
     tags=["transfer"],
@@ -84,7 +45,7 @@ async def update_transfer(transfer_id: int,
                           note: str = Body(...),
                           user: User = Depends(CurrentUser),
                           db_session: AsyncSession = Depends(get_db)):
-    await db(
+    await db_exec(
         update(TransferDB).
         where(TransferDB.id == transfer_id).
         where(TransferDB.client_id == Client.id).

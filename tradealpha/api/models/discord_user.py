@@ -1,12 +1,12 @@
 from typing import List, Optional
 
-from pydantic import BaseModel
+from tradealpha.api.models import BaseModel, OutputID
 
 from tradealpha.api.models.guild import Guild, GuildAssociation
 
 
 class DiscordUserInfo(BaseModel):
-    id: str
+    id: OutputID
     name: str
     avatar: Optional[str]
     guilds: List[Guild]

@@ -37,6 +37,9 @@ class _BybitTicker(ExchangeTicker):
     async def connect(self):
         await self._ws.connect()
 
+    async def disconnect(self):
+        await self._ws.close()
+
     async def _on_message(self, ws: WebsocketManager, message: Dict):
         all_data = message["data"]
         if "trade" in message["topic"]:
@@ -46,7 +49,6 @@ class _BybitTicker(ExchangeTicker):
                     symbol=data["symbol"],
                     exchange=self.EXCHANGE,
                     price=Decimal(data["price"]),
-                    ts=data["trade_time_ms"] / 1000
                 )
             )
 

@@ -1,13 +1,13 @@
 from typing import List, Optional
 
-from pydantic import BaseModel
+from tradealpha.api.models import BaseModel, OutputID
 
 from tradealpha.api.models.event import Event
 from tradealpha.common.enums import Tier
 
 
 class GuildAssociation(BaseModel):
-    client_id: Optional[str]
+    client_id: Optional[OutputID]
     guild_id: str
 
     class Config:
@@ -15,7 +15,7 @@ class GuildAssociation(BaseModel):
 
 
 class Guild(BaseModel):
-    id: str
+    id: OutputID
     name: str
     tier: Tier
     avatar: Optional[str]

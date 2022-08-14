@@ -20,6 +20,7 @@ from typing import Dict
 import pytz
 from aiohttp import ClientResponse
 
+from tradealpha.common.models.miscincome import MiscIncome
 from tradealpha.common.config import TESTING
 from tradealpha.common.dbmodels.transfer import RawTransfer
 from tradealpha.common import utils
@@ -42,7 +43,8 @@ class Type(Enum):
 class _BinanceBaseClient(ExchangeWorker, ABC):
     supports_extended_data = True
 
-    _ENDPOINT = 'https://testnet.binance.vision' if TESTING else 'https://api.binance.com'
+    _ENDPOINT = 'https://api.binance.com'
+    _SANDBOX_ENDPOINT = 'https://testnet.binance.vision'
 
     _response_error = 'msg'
 
@@ -58,9 +60,9 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
     async def _get_internal_transfers(self,
                                       type: Type,
                                       since: datetime,
-                                      to: datetime = None) -> Optional[List[RawTransfer]]:
-        if TESTING:
-            return
+                                      to: datetime = None) -> List[RawTransfer]:
+        if self.client.sandbox:
+            return []
         response = await self._get(
             '/sapi/v1/futures/transfer',
             params={
@@ -92,7 +94,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
         elif type == Type.SPOT:
             deposit, withdraw = (2, 4), (1, 3)
         else:
-            logger.error(f'Received invalid internal type: {type}')
+            self._logger.error(f'Received invalid internal type: {type}')
             return
 
         results = []
@@ -131,7 +133,9 @@ _interval_map = {
 
 
 class BinanceFutures(_BinanceBaseClient):
-    _ENDPOINT = 'https://testnet.binancefuture.com' if TESTING else 'https://fapi.binance.com'
+
+    _ENDPOINT = 'https://fapi.binance.com'
+    _SANDBOX_ENDPOINT = 'https://testnet.binancefuture.com'
     exchange = 'binance-futures'
 
     _limits = [
@@ -200,7 +204,7 @@ class BinanceFutures(_BinanceBaseClient):
             for data in data
         ]
 
-    async def _fetch_trades(self, symbol: str, fromId: int):
+    async def _fetch_execs(self, symbol: str, fromId: int):
         trades = await self._get('/fapi/v1/userTrades', params={
             'symbol': symbol,
             'fromId': fromId
@@ -227,7 +231,7 @@ class BinanceFutures(_BinanceBaseClient):
         """
         # -1790.6910700000062
         # -1695.67399983
-        all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
+        #all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
         return (
             Execution(
                 symbol=symbol,
@@ -241,7 +245,7 @@ class BinanceFutures(_BinanceBaseClient):
             for trade in trades
         )
 
-    async def _get_executions(self, since: datetime, init=False) -> Iterator[Execution]:
+    async def _get_executions(self, since: datetime, init=False) -> tuple[Iterator[Execution], Iterator[MiscIncome]]:
 
         since_ts = self._parse_datetime(since or datetime.now(pytz.utc) - timedelta(days=180))
         # https://binance-docs.github.io/apidocs/futures/en/#get-income-history-user_data
@@ -253,39 +257,49 @@ class BinanceFutures(_BinanceBaseClient):
             }
         )
         symbols_done = set()
-        results = []
         current_commision_trade_id = {}
+
+        results = []
+        misc = []
 
         for income in incomes:
             symbol = income.get('symbol')
+            trade_id = income["tradeId"]
+            income_type = income["incomeType"]
             if symbol not in symbols_done:
-                trade_id = income["tradeId"]
-                income_type = income["incomeType"]
 
                 if income_type == "COMMISSION":
                     if (current_commision_trade_id.get(symbol)) or since:
                         # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
                         symbols_done.add(symbol)
                         results.extend(
-                            await self._fetch_trades(
+                            await self._fetch_execs(
                                 symbol,
                                 trade_id if since is not None else current_commision_trade_id[symbol]
                             )
                         )
                     current_commision_trade_id[symbol] = trade_id
-                elif income_type == "REALIZED_PNL" and current_commision_trade_id.get(symbol) == trade_id:
-                    current_commision_trade_id[symbol] = None
+                elif income_type == "REALIZED_PNL":
+                    if current_commision_trade_id.get(symbol) == trade_id:
+                        current_commision_trade_id[symbol] = None
+            if income_type == "INSURANCE_CLEAR" or income_type == "FUNDING_FEE":
+                misc.append(
+                    MiscIncome(
+                        amount=Decimal(income['income']),
+                        time=self._parse_ms(income['time'])
+                    )
+                )
 
         for symbol, trade_id in current_commision_trade_id.items():
             if symbol not in symbols_done:
                 results.extend(
-                    await self._fetch_trades(
+                    await self._fetch_execs(
                         symbol,
                         trade_id
                     )
                 )
 
-        return results
+        return results, misc
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     async def _get_balance(self, time: datetime, upnl=True):
@@ -307,8 +321,11 @@ class BinanceFutures(_BinanceBaseClient):
             time=time if time else datetime.now(pytz.utc)
         )
 
-    async def connect(self):
+    async def _connect(self):
         await self._ws.start()
+
+    async def cleanup(self):
+        await self._ws.stop()
 
     async def _on_message(self, ws, message):
         message = json.loads(message)
@@ -323,6 +340,7 @@ class BinanceFutures(_BinanceBaseClient):
                     qty=Decimal(data['q']),
                     side=data['S'],
                     time=self._parse_ms(message['E']),
+                    type=ExecType.TRADE
                 )
                 await utils.call_unknown_function(self._on_execution, trade)
 
@@ -338,7 +356,8 @@ class BinanceFutures(_BinanceBaseClient):
 
 
 class BinanceSpot(_BinanceBaseClient):
-    _ENDPOINT = 'https://testnet.binance.vision' if TESTING else 'https://api.binance.com'
+    _ENDPOINT = 'https://api.binance.com'
+    _SANDBOX_ENDPOINT = 'https://testnet.binance.vision'
     exchange = 'binance-spot'
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
@@ -373,7 +392,7 @@ class BinanceSpot(_BinanceBaseClient):
                 price = Decimal(ticker_prices.get(f'{currency}USDT', 0.0))
             total_balance += amount * price
 
-        return balance.Balance(amount=total_balance, time=time)
+        return balance.Balance(realized=total_balance, unrealized=total_balance, time=time)
 
     async def _get_transfers(self,
                              since: datetime,

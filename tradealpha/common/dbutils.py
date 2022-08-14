@@ -3,6 +3,7 @@ from datetime import datetime
 
 import pytz
 from sqlalchemy import select, desc, JSON
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import tradealpha.common.dbmodels.client as db_client
 from tradealpha.common.dbasync import async_session, db_first, db_eager, db_del_filter, db_unique, db_all, \
@@ -154,15 +155,16 @@ async def get_event(guild_id: int, channel_id: int = None, state: str = 'active'
     return event
 
 
-async def delete_client(client: db_client.Client, messenger: Messenger, commit=False):
-    await db_del_filter(db_client.Client, id=client.id)
-    messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj={'id': client.id})
-    if commit:
-        await async_session.commit()
-
-
-def add_client(client: db_client.Client, messenger: Messenger):
+async def register_client(client: db_client.Client, messenger: Messenger, db: AsyncSession):
+    db.add(client)
+    await db.commit()
     messenger.pub_channel(NameSpace.CLIENT, Category.NEW, obj={'id': client.id})
+
+
+async def delete_client(client: db_client.Client, messenger: Messenger, db: AsyncSession):
+    await db.delete(client)
+    await db.commit()
+    messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj={'id': client.id})
 
 
 def get_all_events(guild_id: int, channel_id):
@@ -186,7 +188,7 @@ async def get_discord_user(user_id: int, throw_exceptions=True, require_registra
     if not result:
         if throw_exceptions:
             raise UserInputError("User {name} is not registered", user_id)
-    elif len(result.clients) == 0 and throw_exceptions and require_registrations:
+    elif len(result.client_ids) == 0 and throw_exceptions and require_registrations:
         raise UserInputError("User {name} does not have any registrations", user_id)
     return result
 

@@ -9,7 +9,7 @@ from discord_slash import cog_ext, SlashContext, ComponentContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from sqlalchemy import inspect, select, or_, update, insert
 
-from tradealpha.common.dbasync import async_session, db_unique, db_all, db, db_select, async_maker
+from tradealpha.common.dbasync import async_session, db_unique, db_all, db_exec, db_select, async_maker
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.event import Event, event_association
 from tradealpha.common.dbmodels.guild import Guild
@@ -248,7 +248,7 @@ class RegisterCog(CogBase):
 
         if existing_clients:
             for existing_client in existing_clients:
-                await dbutils.delete_client(existing_client, self.messenger, commit=False)
+                await dbutils.delete_client(existing_client, self.messenger, async_session)
 
         new_client.discord_user_id = discord_user.id
 
@@ -260,7 +260,7 @@ class RegisterCog(CogBase):
         await async_session.refresh(new_client)
 
         for guild in guilds:
-            await db(
+            await db_exec(
                 update(GuildAssociation).where(
                     GuildAssociation.discord_user_id == new_client.discord_user_id,
                     GuildAssociation.guild_id == guild.id
@@ -269,17 +269,17 @@ class RegisterCog(CogBase):
 
         await async_session.commit()
         if event:
-            await db(
+            await db_exec(
                 insert(event_association).values(event_id=event.id, client_id=new_client.id)
             )
         init_balance.client_id = new_client.id
 
-        dbutils.add_client(new_client, self.messenger)
+        await dbutils.register_client(new_client, self.messenger, async_session)
 
         await async_session.commit()
 
     async def register_client(self, ctx, event: Event, client: Client):
-        await db(
+        await db_exec(
             insert(event_association).values(event_id=event.id, client_id=client.id)
         )
         await async_session.commit()
@@ -331,9 +331,9 @@ class RegisterCog(CogBase):
         if event:
             client.events.remove(event)
             if not client.is_active and not await client.is_global(ctx.guild_id):
-                await dbutils.delete_client(client, self.messenger)
+                await dbutils.delete_client(client, self.messenger, async_session)
         elif remove_guild:
-            await db(
+            await db_exec(
                 update(GuildAssociation).where(
                     GuildAssociation.client_id == client.id,
                     GuildAssociation.discord_user_id == client.discord_user_id,
@@ -341,7 +341,7 @@ class RegisterCog(CogBase):
                 ).values(client_id=None)
             )
         else:
-            await dbutils.delete_client(client, self.messenger)
+            await dbutils.delete_client(client, self.messenger, async_session)
         await async_session.commit()
 
         discord_user = await db_select(
@@ -349,7 +349,7 @@ class RegisterCog(CogBase):
             eager=[DiscordUser.clients, DiscordUser.user],
             id=ctx.author_id
         )
-        if len(discord_user.clients) == 0 and not discord_user.user:
+        if len(discord_user.client_ids) == 0 and not discord_user.user:
             await async_session.delete(discord_user)
             await async_session.commit()
         logging.info(f'Successfully unregistered user {ctx.author.display_name}')

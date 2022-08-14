@@ -4,7 +4,8 @@ from decimal import Decimal
 from enum import Enum
 from typing import List, Dict, NamedTuple, Optional, Any, Tuple
 
-from pydantic import BaseModel, Field, Extra
+from pydantic import Field, Extra
+from tradealpha.api.models import BaseModel, OutputID
 
 from tradealpha.api.models.trade import DetailledTrade
 from tradealpha.common.enums import Filter
@@ -28,6 +29,6 @@ class FilteredPerformance(BaseModel):
 
 
 class ClientAnalytics(BaseModel):
-    id: str
+    id: OutputID
     filtered_performance: FilteredPerformance
     trades: List[DetailledTrade]

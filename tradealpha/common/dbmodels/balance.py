@@ -86,7 +86,7 @@ class Balance(Base, Serializer):
     def is_data(cls):
         return True
 
-    async def serialize(self, data=True, full=True, *args, **kwargs):
+    def serialize(self, data=True, full=True, *args, **kwargs):
         currency = kwargs.get('currency', '$')
         if data:
             if currency == '$':
@@ -101,7 +101,7 @@ class Balance(Base, Serializer):
                     round(self.time.timestamp() * 1000)
                 )
         else:
-            return await super().serialize(full=False, data=True)
+            return super().serialize(full=False, data=True)
 
     @hybrid_property
     def tz_time(self, tz=pytz.UTC):

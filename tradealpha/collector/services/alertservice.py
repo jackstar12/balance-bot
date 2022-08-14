@@ -23,7 +23,7 @@ class AlertService(BaseService, Observer):
         self._tickers: Dict[tuple[str, str], Ticker] = {}
 
     async def initialize_alerts(self):
-        alerts = await db_all(select(Alert))
+        alerts = await db_all(select(Alert), session=self._db)
 
         for alert in alerts:
             await self.data_service.subscribe(alert.exchange, Channel.TICKER, self, symbol=alert.symbol)
@@ -31,6 +31,11 @@ class AlertService(BaseService, Observer):
 
         await self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.NEW, callback=self._update)
         await self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.DELETE, callback=self._delete)
+
+    async def run_forever(self):
+        # Do nothing, required because otherwise service would finish and the db session would close
+        fut = asyncio.get_running_loop().create_future()
+        await fut
 
     def add_alert(self, alert: Alert):
         symbol = (alert.symbol, alert.exchange)
@@ -44,7 +49,7 @@ class AlertService(BaseService, Observer):
             alerts.remove(alert)
 
     async def _update(self, data: Dict):
-        new: Alert = await async_session.get(Alert, data['id'])
+        new: Alert = await self._db.get(Alert, data['id'])
         symbol = (new.symbol, new.exchange)
         ticker = self._tickers.get(symbol)
         if not ticker:
@@ -56,7 +61,7 @@ class AlertService(BaseService, Observer):
             new.side = Side.BUY
         else:
             new.side = Side.SELL
-        await async_session.commit()
+        await self._db.commit()
         self.add_alert(new)
 
     def _delete(self, data: Dict):
@@ -73,22 +78,18 @@ class AlertService(BaseService, Observer):
 
         alerts = self.alerts_by_symbol.get(symbol)
         if alerts:
-            changes = False
             for alert in self.alerts_by_symbol.get(symbol):
                 if alert.side == Side.BUY:
                     if ticker.price > alert.price:
                         await self._finish_alert(alert)
-                        changes = True
                 elif alert.side == Side.SELL:
                     if ticker.price < alert.price:
                         await self._finish_alert(alert)
-                        changes = True
 
-            if changes:
-                await async_session.commit()
+            await self._db.commit()
 
     async def _finish_alert(self, finished: Alert):
-        self._messenger.pub_channel(MsgChannel.ALERT, Category.FINISHED, obj=await finished.serialize())
+        self._messenger.pub_channel(MsgChannel.ALERT, Category.FINISHED, obj=finished.serialize())
         self.remove_alert(finished)
         await db_del_filter(Alert, id=finished.id)
 

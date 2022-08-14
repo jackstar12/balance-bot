@@ -100,8 +100,7 @@ class FtxWebsocketClient(WebsocketManager):
         data = message['data']
         self._orders.update({data['id']: data})
 
-    async def _on_message(self, ws, raw_message: str) -> None:
-        message = json.loads(raw_message, parse_float=Decimal)
+    async def _on_message(self, ws, message: str) -> None:
         message_type = message['type']
         if message_type in {'subscribed', 'unsubscribed', 'pong'}:
             return

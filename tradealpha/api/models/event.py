@@ -1,12 +1,12 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from tradealpha.api.models import BaseModel, OutputID
 
 
 class Event(BaseModel):
-    id: str
-    guild_id: str
-    channel_id: str
+    id: OutputID
+    guild_id: OutputID
+    channel_id: OutputID
 
     registration_start: datetime
     registration_end: datetime

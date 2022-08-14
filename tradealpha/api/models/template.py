@@ -1,22 +1,22 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from tradealpha.api.models import BaseModel, InputID, OutputID
 
 
 class TemplateCreate(BaseModel):
-    journal_id: int
     title: str
+    journal_id: Optional[InputID]
 
 
 class TemplateUpdate(BaseModel):
-    id: int
     title: Optional[str]
-    content: Optional[dict]
+    doc: Optional[dict]
+    public: Optional[bool]
 
 
 class TemplateInfo(TemplateCreate):
-    id: str
-    content: dict
+    id: OutputID
+    doc: Optional[dict]
 
     class Config:
         orm_mode = True

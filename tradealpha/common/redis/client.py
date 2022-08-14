@@ -8,8 +8,10 @@ class ClientSpace(Enum):
     LAST_EXEC = "last-exec"
     USER_ID = "user-id"
     BALANCE = "balance"
+    SINCE = "since"
+    TO = "to"
 
 
-class ClientCache(Enum):
+class ClientCacheKeys(Enum):
     OVERVIEW = "overview"
-    OVERVIEW_EXEC_TS = utils.join_args(OVERVIEW, ClientSpace.LAST_EXEC)
+    TRADE = "trade"

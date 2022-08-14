@@ -370,9 +370,10 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                 title += f' vs. {name} (Total: {ys[-1] if percentage else total_gain}%)'
 
             xs = np.array([mdates.date2num(d) for d in xs])
-            new_x = np.linspace(min(xs), max(xs), num=500)
-#            ys = interpolate.pchip_interpolate(xs, ys, new_x)
-            #xs = new_x
+            if len(xs) < 200:
+                new_x = np.linspace(min(xs), max(xs), num=500)
+                ys = interpolate.pchip_interpolate(xs, ys, new_x)
+                xs = new_x
 
             if mode == "balance" or len(to_graph) > 1:
                 plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
@@ -774,8 +775,8 @@ def calc_xs_ys(data: List[Balance],
                     amount = current
             if amount is not None and (True or not prev_item or not next_item or prev_item.time != item.time != next_item.time):
                 xs.append(item.time)
-                #ys.append(amount)
-                ys.append(amount + sum(upnl_by_trade.values()))
+                ys.append(amount)
+                #ys.append(amount + sum(upnl_by_trade.values()))
         return xs, ys
 
 

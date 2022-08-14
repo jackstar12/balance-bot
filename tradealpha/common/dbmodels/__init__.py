@@ -29,6 +29,7 @@ Chapter = chapter.Chapter
 Execution = execution.Execution
 TradeDB = trade.Trade
 
+
 partioned_balance = select(
     BalanceDB,
     func.row_number().over(
@@ -74,6 +75,21 @@ chapter.Chapter.trades = relationship('Trade',
                                       viewonly=True,
                                       uselist=True
                                       )
+
+
+#ChildChapter = aliased(Chapter)
+#child_ids = select(ChildChapter.id)
+#
+#query = aliased(Chapter, child_ids)
+#
+#Chapter.child_ids = relationship(
+#    query,
+#    lazy='noload',
+#    primaryjoin=ChildChapter.parent_id == Chapter.id,
+#    viewonly=True,
+#    uselist=True
+#)
+
 
 __all__ = [
     "balance",

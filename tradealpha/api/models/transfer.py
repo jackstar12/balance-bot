@@ -2,12 +2,13 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
+from api.models import OutputID
 from tradealpha.common.dbmodels.base import OrmBaseModel
 from tradealpha.common.dbmodels.transfer import TransferType
 
 
 class Transfer(OrmBaseModel):
-    id: str
+    id: OutputID
     note: Optional[str]
     coin: str
     amount: Decimal

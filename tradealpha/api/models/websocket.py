@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, Dict, List
 
-from pydantic import BaseModel
+from tradealpha.api.models import BaseModel
 
 
 class WebsocketMessage(BaseModel):

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,13 +6,15 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tradealpha.common.dbmodels.types import DocumentModel
+from tradealpha.api.routers.template import query_templates
 from tradealpha.api.dependencies import CurrentUser, get_messenger, CurrentUserDep, get_db
 from tradealpha.api.models.completejournal import (
-    JournalCreate, JournalInfo, Chapter, JournalUpdate,
+    JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
     ChapterInfo, ChapterCreate, ChapterUpdate, JournalDetailledInfo
 )
-from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse
-from tradealpha.common.dbasync import async_session, db_unique, db_all
+from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
+from tradealpha.common.dbasync import db_unique, db_all
 from tradealpha.common.dbmodels.chapter import Chapter as DbChapter
 from tradealpha.common.dbmodels.client import add_client_filters, Client
 from tradealpha.common.dbmodels.journal import Journal, JournalType
@@ -83,16 +86,23 @@ async def query_clients(client_ids: list[int] | set[int], user: User, db_session
 async def create_journal(body: JournalCreate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
-    clients = await query_clients(body.clients, user, db)
-    if len(clients) != len(body.clients):
+    clients = await query_clients(body.client_ids, user, db)
+    if len(clients) != len(body.client_ids):
         return BadRequest(detail='Invalid client IDs')
     journal = Journal(
         title=body.title,
-        chapter_interval=body.chapter_interval,
+        chapter_interval=body.chapter_interval or (
+                body.chapter_interval_days and timedelta(days=body.chapter_interval_days)),
         user=user,
-        clients=clients
+        clients=clients,
+        type=body.type
     )
-    await journal.init(db)
+    db.add(journal)
+
+    if body.type == JournalType.INTERVAL and body.auto_generate:
+        await journal.init(db)
+
+    await db.commit()
     return JournalInfo.from_orm(journal)
 
 
@@ -112,13 +122,16 @@ async def get_journals(user: User = Depends(CurrentUserDep(User.journals))):
     )
 
 
-@router.get('/{journal_id}')
-async def get_journal(journal_id: int, user: User = Depends(CurrentUser)):
+@router.get('/{journal_id}', response_model=JournalDetailledInfo)
+async def get_journal(journal_id: int,
+                      user: User = Depends(CurrentUser),
+                      db: AsyncSession = Depends(get_db)):
     journal = await query_journal(
         journal_id, user,
-        (Journal.chapters, DbChapter.balances),
-        Journal.templates,
-        session=async_session
+        (Journal.chapters, [DbChapter.balances, DbChapter.children]),
+        Journal.default_template,
+        Journal.clients,
+        session=db
     )
 
     return JournalDetailledInfo.from_orm(journal)
@@ -132,61 +145,52 @@ async def update_journal(journal_id: int,
     journal = await query_journal(
         journal_id,
         user,
-        session=async_session
+        Journal.clients,
+        session=db
     )
     # Check explicitly for None because falsy values shouldn't be ignored
     if body.title is not None:
         journal.title = body.title
-    if body.notes is not None:
-        journal.notes = body.notes
-    if body.clients is not None:
-        if body.clients != set(journal.clients):
-            clients = await query_clients(body.clients, user, db)
+    if body.overview is not None:
+        journal.overview = body.overview
+    if body.client_ids is not None:
+        if body.client_ids != set(journal.client_ids):
+            clients = await query_clients(body.client_ids, user, db)
             journal.clients = clients
-
             await journal.re_init(db)
 
-    return JournalInfo.from_orm(journal)
+    if body.default_template_id:
+        journal.default_template_id = body.default_template_id
+
+    await db.commit()
+    return OK('Success')
 
 
 @router.delete('/{journal_id}')
-async def delete_journal(journal_id: int, user: User = Depends(CurrentUser)):
-    journal = await query_journal(journal_id, user, session=async_session)
+async def delete_journal(journal_id: int, user: User = Depends(CurrentUser), db: AsyncSession = Depends(get_db)):
+    journal = await query_journal(journal_id, user, session=db)
     if journal:
-        await async_session.delete(journal)
-        await async_session.commit()
+        await db.delete(journal)
+        await db.commit()
     return OK('Deleted')
 
 
-@router.get('/{journal_id}/chapters', response_model=List[ChapterInfo])
-async def get_chapters(journal_id: int, user: User = Depends(CurrentUser), db: AsyncSession = Depends(get_db)):
-    journal = await query_journal(
-        journal_id, user,
-        (Journal.chapters, DbChapter.balances),
-        session=db
-    )
-
-    return [
-        ChapterInfo.from_orm(chapter)
-        for chapter in journal.chapters
-    ]
-
-
-@router.get('/{journal_id}/chapters/{chapter_id}')
-async def get_chapter(journal_id: int, chapter_id: int, user: User = Depends(CurrentUser)):
+@router.get('/{journal_id}/chapter/{chapter_id}')
+async def get_chapter(journal_id: int, chapter_id: int, user: User = Depends(CurrentUser),
+                      db: AsyncSession = Depends(get_db)):
     chapter = await query_chapter(
         journal_id,
         user,
         # DbChapter.trades,
         DbChapter.balances,
-        session=async_session,
+        session=db,
         id=chapter_id
     )
 
-    return Chapter.from_orm(chapter)
+    return DetailedChapter.from_orm(chapter)
 
 
-@router.patch('/{journal_id}/chapters/{chapter_id}')
+@router.patch('/{journal_id}/chapter/{chapter_id}')
 async def update_chapter(journal_id: int,
                          chapter_id: int,
                          body: ChapterUpdate,
@@ -198,61 +202,49 @@ async def update_chapter(journal_id: int,
         session=db,
         id=chapter_id
     )
-    if body.notes is not None:
-        chapter.notes = body.notes
-    if body.trades is not None:
-        if chapter.journal.type == JournalType.MANUAL:
-            if body.trades != set(chapter.trades_by_id):
-                # TODO: How to handle manually added trades?
-                pass
-        else:
-            return BadRequest('Trades can only be set for manual journals')
+    if body.doc is not None:
+        chapter.doc = body.doc
+    if body.data:
+        chapter.data = body.data
     await db.commit()
     return OK('OK')
 
 
-@router.post('/{journal_id}/chapters')
+@router.post('/{journal_id}/chapter', response_model=DetailedChapter)
 async def create_chapter(journal_id: int,
                          body: ChapterCreate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
     journal = await query_journal(journal_id, user, session=db)
-    chapter = await db_unique(
-        select(DbChapter).filter_by(
-            journal_id=journal.id,
-            start_date=body.start_date
-        ),
-        session=db
-    )
-    if chapter:
-        return BadRequest('Already exists')
-    new_chapter = DbChapter(
-        start_date=body.start_date,
-        end_date=body.start_date + journal.chapter_interval,
-        journal=journal,
-        parent_id=body.parent_id
-    )
+
+    template = None
+    if body.template_id:
+        template = await query_templates([body.template_id],
+                                         user,
+                                         session=db)
+
+    new_chapter = journal.create_chapter(body.parent_id, template)
+
     db.add(new_chapter)
     await db.commit()
-    return Chapter.from_orm(new_chapter)
+    return DetailedChapter.from_orm(new_chapter)
 
 
 @router.get('/{journal_id}/trades')
 async def get_journal_trades(journal_id: int,
                              user: User = Depends(CurrentUser),
-                             db_session: AsyncSession = Depends(get_db)):
-
-    journal = await query_journal(journal_id, user, session=db_session)
+                             db: AsyncSession = Depends(get_db)):
+    journal = await query_journal(journal_id, user, session=db)
 
     await db_all(
-        select(DbChapter.notes['doc']['content']['id']).filter(
-            DbChapter.notes['doc']['type'] == 'trade-mention',
+        select(DbChapter.doc['doc']['content']['id']).filter(
+            DbChapter.doc['doc']['type'] == 'trade-mention',
             DbChapter.journal_id == journal.id
         )
     )
 
 
-@router.delete('/{journal_id}/chapters/{chapter_id}')
+@router.delete('/{journal_id}/chapter/{chapter_id}')
 async def delete_chapter(journal_id: int,
                          chapter_id: int,
                          user: User = Depends(CurrentUser),

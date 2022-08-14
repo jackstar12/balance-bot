@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from tradealpha.common.models import BaseModel
 
 
 class OrmBaseModel(BaseModel):

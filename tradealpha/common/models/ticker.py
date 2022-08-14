@@ -7,4 +7,3 @@ class Ticker(NamedTuple):
     symbol: str
     exchange: str
     price: Decimal
-    ts: int

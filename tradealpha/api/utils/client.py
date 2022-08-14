@@ -1,21 +1,30 @@
 import asyncio
+import dataclasses
 from decimal import Decimal
+from enum import Enum
+from uuid import UUID
 
+from fastapi import Depends
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, Table, Column
 
 import msgpack
 from datetime import datetime
-from typing import Optional, Dict, List, Mapping, Any, Type
+from typing import Optional, Dict, List, Mapping, Any, Type, TypeVar, Coroutine
+from collections import OrderedDict
 
 import pytz
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import tradealpha.common.utils as utils
+from tradealpha.api.dependencies import get_user_id, get_db
+from tradealpha.common.models import BaseModel
+from tradealpha.common.redis.client import ClientSpace, ClientCacheKeys
 from tradealpha.api.models.client import ClientQueryParams
 from tradealpha.common.dbmodels import TradeDB
 from tradealpha.common import customjson
-from tradealpha.common.dbsync import redis, Base
-from tradealpha.common.dbasync import db_first, db_select, db_all
+from tradealpha.common.dbsync import Base
+from tradealpha.common.dbasync import redis, db_all, redis_bulk, redis_bulk_hashes
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.client import Client, add_client_filters
 from tradealpha.common.dbmodels.user import User
@@ -91,7 +100,7 @@ async def update_client_data_balance(cache: Dict, client: Client, config: Client
     new_history = []
 
     async def append(balance: Balance):
-        new_history.append(await balance.serialize(full=True, data=True, currency=config.currency))
+        new_history.append(balance.serialize(full=True, data=True, currency=config.currency))
 
     daily = await utils.calc_daily(
         client=client,
@@ -155,7 +164,7 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
         s = cached
         s['source'] = 'cache'
     else:
-        s = await client.serialize(full=False, data=False)
+        s = client.serialize(full=False, data=False)
         s['trades'] = {}
         s['source'] = 'database'
 
@@ -177,7 +186,7 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
 
         await update_client_data_balance(s, client, config, save_cache=False)
 
-        trades = [await trade.serialize(data=True) for trade in client.trades if
+        trades = [trade.serialize(data=True) for trade in client.trades if
                   since_date <= trade.open_time <= to_date]
         update_client_data_trades(s, trades, config, save_cache=False)
 
@@ -187,14 +196,123 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
     return s
 
 
-def query_table(*eager,
-                table: Type[Base],
-                time_col: Column,
-                user: User,
-                ids: List[int],
-                client_params: ClientQueryParams,
-                db_session: AsyncSession):
-    return db_all(
+T = TypeVar('T', bound=BaseModel)
+
+
+@dataclasses.dataclass
+class ClientCache:
+    cache_data_key: ClientCacheKeys
+    data_model: Type[T]
+    client_params: ClientQueryParams
+    user_id: UUID
+    client_last_exec: dict = dataclasses.field(default_factory=lambda: {})
+
+    async def read(self, db: AsyncSession) -> tuple[list[T], list[int]]:
+        pairs = OrderedDict()
+
+        if not self.client_params.id:
+            self.client_params.id = await db_all(
+                select(Client.id).filter(
+                    Client.user_id == self.user_id
+                ),
+                session=db
+            )
+
+        for client_id in self.client_params.id:
+            pairs[Client.normal_hash(self.user_id, client_id)] = [
+                ClientSpace.LAST_EXEC,
+                ClientSpace.USER_ID
+            ]
+            pairs[Client.cache_hash(self.user_id, client_id)] = [
+                utils.join_args(self.cache_data_key, ClientSpace.LAST_EXEC),
+                utils.join_args(self.cache_data_key, ClientSpace.SINCE),
+                utils.join_args(self.cache_data_key, ClientSpace.TO),
+                ClientSpace.USER_ID,
+            ]
+
+        data = await redis_bulk(pairs, redis_instance=redis)
+
+        hits = []
+        misses = []
+
+        for client_id in self.client_params.id:
+            raw_client_user_id, last_exec_raw = data[Client.normal_hash(self.user_id, client_id)]
+
+            if raw_client_user_id and last_exec_raw:
+                last_exec_ts = float(last_exec_raw)
+                last_exec = datetime.fromtimestamp(last_exec_ts, pytz.utc)
+                self.client_last_exec[client_id] = last_exec_ts
+
+                if UUID(raw_client_user_id.decode('utf-8')) == self.user_id:
+                    if False and (cached_last_exec and cached_last_exec > last_exec):
+                        raw_overview = await Client.read_cache(
+                            self.user_id,
+                            self.cache_data_key,
+                            id=client_id
+                        )
+                        if raw_overview:
+                            hits.append(
+                                self.data_model.construct(
+                                    **customjson.loads(raw_overview)
+                                )
+                            )
+                        else:
+                            misses.append(client_id)
+                    else:
+                        misses.append(client_id)
+                else:
+                    pass  # Illegal access
+            else:
+                misses.append(client_id)
+
+        return hits, misses
+
+    async def write(self, client_id: int, data: T):
+        last_exec = self.client_last_exec.get(client_id, 0)
+        return await Client.redis_set(
+            user_id=self.user_id,
+            client_id=client_id,
+            keys={
+                self.cache_data_key.value if isinstance(self.cache_data_key,
+                                                        Enum) else self.cache_data_key: customjson.dumps(
+                    jsonable_encoder(data)),
+                utils.join_args(self.cache_data_key, ClientSpace.LAST_EXEC): last_exec,
+                utils.join_args(self.cache_data_key, ClientSpace.SINCE): last_exec,
+                utils.join_args(self.cache_data_key, ClientSpace.TO): last_exec,
+            },
+            space='cache'
+        )
+
+
+class ClientCacheDependency:
+
+    def __init__(self,
+                 cache_data_key: ClientCacheKeys,
+                 data_model: Type[BaseModel], ):
+        self.cache_data_key = cache_data_key
+        self.data_model = data_model
+
+    def __call__(self, client_params: ClientQueryParams = Depends(),
+                 user_id: UUID = Depends(get_user_id)):
+        return ClientCache(
+            cache_data_key=self.cache_data_key,
+            data_model=self.data_model,
+            client_params=client_params,
+            user_id=user_id
+        )
+
+
+TTable = TypeVar('TTable')
+
+
+async def query_table(*eager,
+                      table: TTable,
+                      time_col: Column,
+                      user: User,
+                      ids: List[int],
+                      client_params: ClientQueryParams,
+                      db: AsyncSession) -> list[TTable]:
+    return await db_all(
         add_client_filters(
             select(table).filter(
                 table.id.in_(ids) if ids else True,
@@ -209,40 +327,49 @@ def query_table(*eager,
             client_ids=client_params.id
         ),
         *eager,
-        session=db_session
+        session=db
     )
-
 
 
 def query_trades(*eager,
                  user: User,
                  trade_id: List[int],
                  client_params: ClientQueryParams,
-                 db_session: AsyncSession):
-    return db_all(
-        add_client_filters(
-            select(TradeDB).filter(
-                TradeDB.id.in_(trade_id) if trade_id else True,
-                TradeDB.open_time >= client_params.since if client_params.since else True,
-                TradeDB.open_time <= client_params.to if client_params.to else True
-            ).join(
-                TradeDB.client
-            ).limit(
-                client_params.limit
-            ),
-            user=user,
-            client_ids=client_params.id
-        ),
+                 db: AsyncSession) -> Coroutine[Any, Any, list[TradeDB]]:
+    return query_table(
         *eager,
-        session=db_session
+        table=TradeDB,
+        time_col=TradeDB.open_time,
+        user=user,
+        ids=trade_id,
+        client_params=client_params,
+        db=db
     )
+
+    # return db_all(
+    #    add_client_filters(
+    #        select(TradeDB).filter(
+    #            TradeDB.id.in_(trade_id) if trade_id else True,
+    #            TradeDB.open_time >= client_params.since if client_params.since else True,
+    #            TradeDB.open_time <= client_params.to if client_params.to else True
+    #        ).join(
+    #            TradeDB.client
+    #        ).limit(
+    #            client_params.limit
+    #        ),
+    #        user=user,
+    #        client_ids=client_params.id
+    #    ),
+    #    *eager,
+    #    session=db
+    # )
 
 
 def query_balance(*eager,
                   user: User,
                   balance_id: List[int],
                   client_params: ClientQueryParams,
-                  db_session: AsyncSession):
+                  db: AsyncSession):
     return db_all(
         add_client_filters(
             select(Balance).filter(
@@ -258,7 +385,7 @@ def query_balance(*eager,
             client_ids=client_params.id
         ),
         *eager,
-        session=db_session
+        session=db
     )
 
 

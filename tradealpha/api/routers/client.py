@@ -1,10 +1,12 @@
 import asyncio
 import functools
 import itertools
+import json
 import logging
 import operator
 import time
 from datetime import datetime, date, timedelta
+from decimal import Decimal
 from http import HTTPStatus
 from typing import Optional, Dict, List, Tuple, Type
 import aiohttp
@@ -13,33 +15,38 @@ import jwt
 import pytz
 from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query, Body
 from fastapi.encoders import jsonable_encoder
-from pydantic import ValidationError, BaseModel
-from sqlalchemy import or_, delete, select, update, asc, func, desc, Date, false
+from pydantic import ValidationError
+from sqlalchemy import or_, delete, select, update, asc, func, desc, Date, false, case
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTasks
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
+from api.models.amount import FullBalance
+from tradealpha.common.dbmodels.execution import Execution
+from tradealpha.common.models import BaseModel, BaseOrmModel
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.api.utils.analytics import create_cilent_analytics
 from tradealpha.api.authenticator import Authenticator
 from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance
-from tradealpha.common.dbasync import db, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
-    redis_bulk_hashes, redis_bulk
+from tradealpha.common.dbasync import db_exec, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
+    redis_bulk_hashes, redis_bulk, async_maker
 from tradealpha.common.dbmodels.guildassociation import GuildAssociation
 from tradealpha.common.dbmodels.guild import Guild
-from tradealpha.api.models.client import RegisterBody, DeleteBody, ConfirmBody, UpdateBody, ClientQueryParams, \
-    ClientOverview, Balance, Transfer
+from tradealpha.api.models.client import ClientConfirm, ClientEdit, ClientQueryParams, \
+    ClientOverview, Balance, Transfer, ClientCreateBody, ClientInfo, ClientCreateResponse
 from tradealpha.api.models.websocket import WebsocketMessage, ClientConfig
-from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse
+from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
 from tradealpha.common import utils, customjson
-from tradealpha.api.dependencies import CurrentUser, CurrentUserDep, get_authenticator, get_messenger, get_db
+from tradealpha.api.dependencies import CurrentUser, CurrentUserDep, get_authenticator, get_messenger, get_db, \
+    FilterQueryParamsDep
 from tradealpha.common.dbsync import session
 from tradealpha.common.dbmodels.client import Client, add_client_filters
 from tradealpha.common.dbmodels.user import User
 from tradealpha.api.settings import settings
 from tradealpha.api.utils.client import create_client_data_serialized, get_user_client
 import tradealpha.api.utils.client as client_utils
-from tradealpha.common.dbutils import add_client
+from tradealpha.common.dbutils import register_client, delete_client
 from tradealpha.common.messenger import Messenger, NameSpace, Category, Word
 import tradealpha.common.dbmodels.event as db_event
 
@@ -49,7 +56,7 @@ from tradealpha.common.utils import validate_kwargs, create_interval
 from tradealpha.common.dbmodels import TradeDB, BalanceDB
 from tradealpha.api.models.trade import Trade, BasicTrade, DetailledTrade
 from tradealpha.common.models.daily import Daily
-from tradealpha.common.redis.client import ClientSpace, ClientCache
+from tradealpha.common.redis.client import ClientSpace, ClientCacheKeys
 
 router = APIRouter(
     tags=["client"],
@@ -61,49 +68,41 @@ router = APIRouter(
 )
 
 
-@router.post('/client')
-async def register_client(request: Request, body: RegisterBody,
-                          authenticator: Authenticator = Depends(get_authenticator),
-                          db: AsyncSession = Depends(get_db)):
+@router.post('/client', response_model=ClientCreateResponse)
+async def new_client(request: Request, body: ClientCreateBody,
+                     authenticator: Authenticator = Depends(get_authenticator)):
     await authenticator.verify_id(request)
     try:
         exchange_cls = EXCHANGES[body.exchange]
         if issubclass(exchange_cls, ExchangeWorker):
             # Check if required keyword args are given
-            if validate_kwargs(body.extra or {}, exchange_cls.required_extra_args):
-                client = Client(
-                    name=body.name,
-                    api_key=body.api_key,
-                    api_secret=body.api_secret,
-                    subaccount=body.subaccount,
-                    extra_kwargs=body.extra,
-                    exchange=body.exchange
-                )
+            if validate_kwargs(body.extra_kwargs or {}, exchange_cls.required_extra_args):
+                client = body.create_client()
                 async with aiohttp.ClientSession() as http_session:
-                    worker = exchange_cls(client, http_session, db_session=db)
+                    worker = exchange_cls(client, http_session, db_maker=async_maker)
                     init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
                     await worker.cleanup()
+
                 if init_balance.error is None:
                     if init_balance.realized.is_zero():
                         return BadRequest(
                             f'You do not have any balance in your account. Please fund your account before registering.'
                         )
                     else:
-                        payload = await client.serialize(full=True, data=True)
+                        payload = body.dict()
                         # TODO: CHANGE THIS
                         payload['api_secret'] = client.api_secret
 
-                        return JSONResponse(jsonable_encoder({
-                            'msg': 'Success',
-                            'token': jwt.encode(payload, settings.authjwt_secret_key, algorithm='HS256'),
-                            'balance': await init_balance.serialize()
-                        }))
+                        return ClientCreateResponse(
+                            token=jwt.encode(payload, settings.authjwt_secret_key, algorithm='HS256'),
+                            balance=FullBalance.from_orm(init_balance)
+                        )
                 else:
                     return BadRequest(f'An error occured while getting your balance: {init_balance.error}.')
             else:
                 logging.error(
                     f'Not enough kwargs for exchange {exchange_cls.exchange} were given.'
-                    f'\nGot: {body.extra}\nRequired: {exchange_cls.required_extra_args}'
+                    f'\nGot: {body.extra_kwargs}\nRequired: {exchange_cls.required_extra_args}'
                 )
                 args_readable = '\n'.join(exchange_cls.required_extra_args)
                 return BadRequest(
@@ -111,62 +110,46 @@ async def register_client(request: Request, body: RegisterBody,
                            f'\nRequirements:\n {args_readable}',
                     code=40100
                 )
-
         else:
             logging.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
     except KeyError:
         return BadRequest(f'Exchange {body.exchange} unknown')
 
 
+@router.post('/client/confirm', response_model=ClientInfo)
+async def confirm_client(body: ClientConfirm,
+                         user: User = Depends(CurrentUser),
+                         messenger: Messenger = Depends(get_messenger),
+                         db: AsyncSession = Depends(get_db)):
+    client_data = ClientCreateBody(
+        **jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
+    )
+    try:
+        client = client_data.create_client(user)
+        await register_client(client, messenger, db)
+        return ClientInfo.from_orm(client)
+    except TypeError:
+        return BadRequest(detail='Invalid token')
+
+
+OverviewCache = client_utils.ClientCacheDependency(
+    ClientCacheKeys.OVERVIEW,
+    ClientOverview
+)
+
+
 @router.get('/client', response_model=ClientOverview)
 async def get_client(request: Request, response: Response,
+                     cache: client_utils.ClientCache = Depends(OverviewCache),
                      client_params: ClientQueryParams = Depends(),
                      user: User = Depends(CurrentUser),
-                     db_session: AsyncSession = Depends(get_db)):
-    non_cached = []
-    overviews = []
-
+                     db: AsyncSession = Depends(get_db)):
     any_client = False
     if not client_params.id:
         client_params.id = [None]
         any_client = True
 
-    # We want to first read data from cache
-    pairs = {}
-    for client_id in client_params.id:
-        pairs[Client.redis_key(user.id, client_id)] = (
-            ClientSpace.LAST_EXEC,
-            ClientSpace.USER_ID
-        )
-        pairs[Client.cache_key(user.id, client_id)] = (
-            utils.join_args(ClientCache.OVERVIEW_EXEC_TS),
-        )
-    data = await redis_bulk(pairs, redis_instance=redis)
-
-    for client_id in client_params.id:
-
-        last_exec, user_id = data[Client.redis_key(user.id, client_id)]
-        cached_last_exec, = data[Client.cache_key(user.id, client_id)]
-        if user_id or True:
-            if user_id == user.id or True:
-                if cached_last_exec and cached_last_exec > last_exec or True:
-                    raw_overview = await Client.read_cache(
-                        user.id,
-                        ClientCache.OVERVIEW.value,
-                        id=client_id
-                    )
-                    if raw_overview and False:
-                        overviews.append(
-                            ClientOverview(**customjson.loads(raw_overview))
-                        )
-                    else:
-                        non_cached.append(client_id)
-                else:
-                    non_cached.append(client_id)
-            else:
-                pass  # Illegal access
-        else:
-            non_cached.append(client_id)
+    overviews, non_cached = await cache.read(db)
 
     if non_cached:
         # All clients that weren't found in cache have to be read from DB
@@ -174,7 +157,7 @@ async def get_client(request: Request, response: Response,
             user,
             None if any_client else non_cached,
             Client.transfers,
-            db=db_session
+            db=db
         )
         for client in clients:
             # We always want to fetch the last balance of the date (first balance of next date),
@@ -189,6 +172,7 @@ async def get_client(request: Request, response: Response,
             ).filter(
                 BalanceDB.client_id == client.id,
             ).subquery()
+
             stmt = select(
                 BalanceDB,
                 subq
@@ -196,7 +180,7 @@ async def get_client(request: Request, response: Response,
                 subq.c.row_number == 1,
                 BalanceDB.id == subq.c.id
             )
-            daily = await db_all(stmt, session=db_session)
+            daily = await db_all(stmt, session=db)
 
             overview = ClientOverview.construct(
                 initial_balance=(
@@ -205,7 +189,7 @@ async def get_client(request: Request, response: Response,
                         if client_params.since else
                         await db_first(
                             client.history.statement.order_by(asc(BalanceDB.time)),
-                            session=db_session
+                            session=db
                         )
                     )
                 ),
@@ -227,12 +211,9 @@ async def get_client(request: Request, response: Response,
                 }
             )
             asyncio.create_task(
-                client.redis_set(
-                    keys={
-                        ClientCache.OVERVIEW.value: customjson.dumps(jsonable_encoder(overview)),
-                        ClientCache.OVERVIEW_EXEC_TS.value: str(data.get(Client.cache_key(user.id, client.id), 0))
-                    },
-                    space='cache'
+                cache.write(
+                    client.id,
+                    overview,
                 )
             )
             overviews.append(overview)
@@ -265,19 +246,29 @@ async def get_client(request: Request, response: Response,
         return BadRequest('Invalid client id', 40000)
 
 
-@router.delete('/client')
-async def delete_client(body: DeleteBody, user: User = Depends(CurrentUser)):
-    await db(
-        add_client_filters(delete(Client), user, [body.id])
+@router.delete('/client/{id}')
+async def delete_client_endpoint(id: int,
+                                 user: User = Depends(CurrentUser),
+                                 messenger: Messenger = Depends(get_messenger),
+                                 db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        add_client_filters(delete(Client), user, [id]),
     )
-    await async_session.commit()
-    return OK(detail='Success')
+    await db.commit()
+    if result.rowcount == 1:
+        messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj={'id': id})
+        return OK(detail='Success')
+    else:
+        return NotFound(detail='Invalid ID')
 
 
-@router.patch('/client')
-async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(User.discord_user))):
+@router.patch('/client/{id}', response_model=ClientInfo)
+async def update_client(id: int, body: ClientEdit,
+                        user: User = Depends(CurrentUserDep(User.discord_user)),
+                        db: AsyncSession = Depends(get_db)):
     client: Client = await db_first(
-        add_client_filters(select(Client), user, [body.id])
+        add_client_filters(select(Client), user, [id]),
+        session=db
     )
 
     if body.name is not None:
@@ -290,10 +281,11 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
     if body.discord is False:
         client.discord_user_id = None
         client.user_id = user.id
-        await db(
+        await db_exec(
             update(GuildAssociation).where(
                 GuildAssociation.client_id == client.id
-            ).values(client_id=None)
+            ).values(client_id=None),
+            session=db
         )
 
     elif body.discord is True:
@@ -303,19 +295,21 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
             if body.servers is not None:
 
                 if body.servers:
-                    await db(
+                    await db_exec(
                         update(GuildAssociation).where(
                             GuildAssociation.discord_user_id == user.discord_user_id,
                             GuildAssociation.guild_id.in_(body.servers)
-                        ).values(client_id=client.id)
+                        ).values(client_id=client.id),
+                        session=db
                     )
 
-                await db(
+                await db_exec(
                     update(GuildAssociation).where(
                         GuildAssociation.discord_user_id == user.discord_user_id,
                         GuildAssociation.client_id == client.id,
                         GuildAssociation.guild_id.not_in(body.servers)
-                    ).values(client_id=None)
+                    ).values(client_id=None),
+                    session=db
                 )
 
                 # guilds: List[Guild] = await db_all(
@@ -334,14 +328,15 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
                 #        )
                 #    else:
                 #        return BadRequest(f'You are not eligible to register in guild {guild.name}')
-                await async_session.commit()
+                await db.commit()
             if body.events is not None:
                 now = datetime.now(tz=pytz.UTC)
                 if body.events:
                     events = await db_all(
                         select(db_event.Event).filter(
                             db_event.Event.id.in_(body.events)
-                        )
+                        ),
+                        session=db
                     )
                 else:
                     events = []
@@ -361,197 +356,71 @@ async def update_client(body: UpdateBody, user: User = Depends(CurrentUserDep(Us
         else:
             return BadRequest('No discord account found')
 
-    await async_session.commit()
-    return OK('Changes applied')
-
-
-@router.post('/client/confirm')
-async def confirm_client(body: ConfirmBody,
-                         user: User = Depends(CurrentUser),
-                         messenger: Messenger = Depends(get_messenger),
-                         db_session: AsyncSession = Depends(get_db)):
-    client_json = jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
-    print(client_json)
-    try:
-        client = Client(**client_json)
-        client.user = user
-        db_session.add(client)
-        await db_session.commit()
-        add_client(client, messenger)
-        return OK('Success')
-    except TypeError:
-        return BadRequest(detail='Invalid token')
-
-
-def create_ws_message(type: str, channel: str = None, data: Dict = None, error: str = None, *args):
-    return {
-        "type": type,
-        "channel": channel,
-        "data": data,
-        "error": error
-    }
-
-
-@router.websocket('/client/ws')
-async def client_websocket(websocket: WebSocket, csrf_token: str = Query(...),
-                           authenticator: Authenticator = Depends(get_authenticator)):
-    await websocket.accept()
-
-    authenticator.verify_id()
-    subscribed_client: Optional[Client] = None
-    config: Optional[ClientConfig] = None
-    messenger = Messenger()
-
-    async def send_client_snapshot(client: Client, type: str, channel: str):
-        msg = jsonable_encoder(create_ws_message(
-            type=type,
-            channel=channel,
-            data=await create_client_data_serialized(
-                client,
-                config
-            )
-        ))
-        await websocket.send_json(msg)
-
-    def unsub_client(client: Client):
-        if client:
-            messenger.unsub_channel(NameSpace.BALANCE, sub=Category.NEW, channel_id=client.id)
-            messenger.unsub_channel(NameSpace.TRADE, sub=Category.NEW, channel_id=client.id)
-            messenger.unsub_channel(NameSpace.TRADE, sub=Category.UPDATE, channel_id=client.id)
-            messenger.unsub_channel(NameSpace.TRADE, sub=Category.UPNL, channel_id=client.id)
-
-    async def update_client(old: Client, new: Client):
-
-        unsub_client(old)
-        await send_client_snapshot(new, type='initial', channel='client')
-
-        async def send_json_message(json: Dict):
-            await websocket.send_json(
-                jsonable_encoder(json)
-            )
-
-        async def send_upnl_update(data: Dict):
-            await send_json_message(
-                create_ws_message(
-                    type='trade',
-                    channel='upnl',
-                    data=data
-                )
-            )
-
-        async def send_trade_update(trade: Dict):
-            await send_json_message(
-                create_ws_message(
-                    type='client',
-                    channel='update',
-                    data=client_utils.update_client_data_trades(
-                        await client_utils.get_cached_data(config),
-                        [trade],
-                        config
-                    )
-                )
-            )
-
-        async def send_balance_update(balance: Dict):
-            await send_json_message(
-                create_ws_message(
-                    type='client',
-                    channel='update',
-                    data=await client_utils.update_client_data_balance(
-                        await client_utils.get_cached_data(config),
-                        subscribed_client,
-                        config
-                    )
-                )
-            )
-
-        await messenger.sub_channel(
-            NameSpace.BALANCE, sub=Category.NEW, channel_id=new.id,
-            callback=send_balance_update
-        )
-
-        await messenger.sub_channel(
-            NameSpace.TRADE, sub=Category.NEW, channel_id=new.id,
-            callback=send_trade_update
-        )
-
-        await messenger.sub_channel(
-            NameSpace.TRADE, sub=Category.UPDATE, channel_id=new.id,
-            callback=send_trade_update
-        )
-
-        await messenger.sub_channel(
-            NameSpace.TRADE, sub=Category.UPNL, channel_id=new.id,
-            callback=send_upnl_update
-        )
-
-    while True:
-        try:
-            raw_msg = await websocket.receive_json()
-            msg = WebsocketMessage(**raw_msg)
-            print(msg)
-            if msg.type == 'ping':
-                await websocket.send_json(create_ws_message(type='pong'))
-            elif msg.type == 'subscribe':
-                id = msg.data.get('id')
-                new_client = await get_user_client(user, id)
-
-                if not new_client:
-                    await websocket.send_json(create_ws_message(
-                        type='error',
-                        error='Invalid Client ID'
-                    ))
-                else:
-                    await update_client(old=subscribed_client, new=new_client)
-                    subscribed_client = new_client
-
-            elif msg.type == 'update':
-                if msg.channel == 'config':
-                    config = ClientConfig(**msg.data)
-                    logging.info(config)
-                    new_client = await get_user_client(user, config.id)
-                    if not new_client:
-                        await websocket.send_json(create_ws_message(
-                            type='error',
-                            error='Invalid Client ID'
-                        ))
-                    else:
-                        config.id = new_client.id
-                        config.currency = config.currency or '$'
-                        await update_client(old=subscribed_client, new=new_client)
-                        subscribed_client = new_client
-        except ValidationError as e:
-            await websocket.send_json(create_ws_message(
-                type='error',
-                error=str(e)
-            ))
-        except WebSocketDisconnect:
-            unsub_client(subscribed_client)
-            break
+    await db.commit()
+    return ClientInfo.from_orm(client)
 
 
 def create_trade_endpoint(path: str,
-                          model: Type[BaseModel],
+                          model: Type[BaseOrmModel],
                           *eager,
                           **kwargs):
-    @router.get(f'/client/{path}', response_model=List[model], **kwargs)
-    async def get_trades(client_params: ClientQueryParams = Depends(),
-                         trade_id: list[int] = Query(None, alias='trade-id'),
-                         user: User = Depends(CurrentUser),
-                         db_session: AsyncSession = Depends(get_db)):
-        trades = await client_utils.query_trades(
-            *eager,
-            user=user,
-            client_params=client_params,
-            trade_id=trade_id,
-            db_session=db_session
-        )
+    class Trades(BaseModel):
+        data: list[model]
 
+    TradeCache = client_utils.ClientCacheDependency(
+        utils.join_args(ClientCacheKeys.TRADE, path),
+        Trades
+    )
+
+    FilterQueryParams = FilterQueryParamsDep(model)
+
+    @router.get(f'/client/{path}', response_model=model, **kwargs)
+    async def get_trades(background_tasks: BackgroundTasks,
+                         trade_id: list[int] = Query(None, alias='trade-id'),
+                         cache: client_utils.ClientCache = Depends(TradeCache),
+                         client_params: ClientQueryParams = Depends(),
+                         filter_params: FilterQueryParams = Depends(),
+                         user: User = Depends(CurrentUser),
+                         db: AsyncSession = Depends(get_db)):
+        ts1 = time.perf_counter()
+        hits, misses = await cache.read(db)
+        ts2 = time.perf_counter()
+        if misses:
+            client_params.id = misses
+            trades_db = await client_utils.query_trades(
+                *eager,
+                user=user,
+                client_params=client_params,
+                trade_id=trade_id,
+                db=db
+            )
+            trades_by_client = {}
+            for trade_db in trades_db:
+                if trade_db.client_id not in trades_by_client:
+                    trades_by_client[trade_db.client_id] = Trades(data=[])
+                trades_by_client[trade_db.client_id].data.append(
+                    model.from_orm(trade_db)
+                )
+            for client_id, trades in trades_by_client.items():
+                hits.append(trades)
+                background_tasks.add_task(
+                    cache.write,
+                    client_id,
+                    trades
+                )
+
+        res = []
+        for trades in hits:
+            for trade in trades.data:
+                if all(f.check(trade) for f in filter_params):
+                    res.append(jsonable_encoder(trade))
+        ts4 = time.perf_counter()
+        print(ts2 - ts1)
+        print(ts4 - ts2)
         return CustomJSONResponse(
-            content=[
-                jsonable_encoder(model.from_orm(trade))
-                for trade in trades
-            ]
+            content={
+                'data': res
+            }
         )
 
 
@@ -581,7 +450,7 @@ create_trade_endpoint(
 @router.get('/client/trade-detailled/pnl-data')
 async def get_detailled_trades(trade_id: list[int] = Query(..., alias='trade-id'),
                                user: User = Depends(CurrentUser),
-                               db_session: AsyncSession = Depends(get_db)):
+                               db: AsyncSession = Depends(get_db)):
     data: List[PnlData] = await db_all(
         add_client_filters(
             select(PnlData)
@@ -591,7 +460,7 @@ async def get_detailled_trades(trade_id: list[int] = Query(..., alias='trade-id'
                 .order_by(asc(PnlData.time)),
             user=user
         ),
-        session=db_session
+        session=db
     )
 
     result = {}
@@ -601,16 +470,74 @@ async def get_detailled_trades(trade_id: list[int] = Query(..., alias='trade-id'
     return CustomJSONResponse(content=jsonable_encoder(result))
 
 
+class PnlStat(BaseOrmModel):
+    win: Decimal
+    loss: Decimal
+    total: Decimal
+
+
+class PnlStats(BaseOrmModel):
+    gross: PnlStat
+    net: Decimal
+    commissions: Decimal
+
+
+@router.get('/client/performance')
+async def get_client_performance(client_params: ClientQueryParams = Depends(),
+                                 trade_id: list[int] = Query(default=None),
+                                 user: User = Depends(CurrentUser),
+                                 db: AsyncSession = Depends(get_db)):
+    stmt = add_client_filters(
+        select(
+            TradeDB.open_time.cast(Date).label('date'),
+            func.sum(
+                case(
+                    {TradeDB.realized_pnl > 0: TradeDB.realized_pnl},
+                    else_=0
+                )
+            ).label('gross_win'),
+            func.sum(
+                case(
+                    {TradeDB.realized_pnl < 0: TradeDB.realized_pnl},
+                    else_=0
+                )
+            ).label('gross_loss'),
+            func.sum(TradeDB.total_commissions).label('total_commissions'),
+        ).filter(
+            TradeDB.open_time > client_params.since if client_params.since else True,
+            TradeDB.open_time < client_params.to if client_params.to else True,
+            TradeDB.id.in_(trade_id) if trade_id else True
+        ).group_by(
+            TradeDB.open_time.cast(Date)
+        ),
+        user=user,
+        client_ids=client_params.id
+    )
+    test = await db_exec(stmt, session=db)
+    all = test.all()
+    res = all[0]
+
+    result = PnlStats.construct(
+        gross=PnlStat(
+            win=res.gross_win,
+            loss=abs(res.gross_loss),
+            total=res.gross_win + res.gross_loss
+        ),
+        commissions=res.total_commissions,
+        net=res.gross_win + res.gross_loss - res.total_commissions
+    )
+
+    return result
+
+
 @router.get('/client/balance')
 async def get_client_balance(client_params: ClientQueryParams = Depends(),
                              balance_id: list[int] = Query(None, alias='balance-id'),
                              user: User = Depends(CurrentUser),
-                             db_session: AsyncSession = Depends(get_db)):
+                             db: AsyncSession = Depends(get_db)):
     data: List[BalanceDB] = await client_utils.query_balance(
         user=user,
         balance_id=balance_id,
         client_params=client_params,
-        db_session=db_session
+        db=db
     )
-
-

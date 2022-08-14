@@ -63,6 +63,9 @@ class Observable(object):
         self.name = name if name else self.__class__.__name__
         self._observers = set()  # use a set to avoid duplicate registered observers
 
+    def __len__(self):
+        return self._observers.__len__()
+
     def attach(self, observer):
         """
         Attach an Observer wanting to be notified of updates from the concrete Observable.

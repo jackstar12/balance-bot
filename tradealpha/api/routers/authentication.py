@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
@@ -9,7 +10,7 @@ from tradealpha.common.dbasync import db_select
 from tradealpha.common.dbmodels.user import User
 import bcrypt
 
-from tradealpha.api.dependencies import get_authenticator
+from tradealpha.api.dependencies import get_authenticator, get_db
 from tradealpha.api.utils.responses import OK, CustomJSONResponse
 
 router = APIRouter(
@@ -49,8 +50,10 @@ class AuthenticationBody(BaseModel):
 
 
 @router.post('/login')
-async def login(body: AuthenticationBody, authenticator: Authenticator = Depends(get_authenticator)):
-    user = await db_select(User, email=body.email)
+async def login(body: AuthenticationBody,
+                authenticator: Authenticator = Depends(get_authenticator),
+                db: AsyncSession = Depends(get_db)):
+    user = await db_select(User, email=body.email, session=db)
     if user:
         if bcrypt.checkpw(body.password.encode('utf-8'), user.hashed_password.encode('utf-8')):
             response = CustomJSONResponse(
@@ -59,17 +62,9 @@ async def login(body: AuthenticationBody, authenticator: Authenticator = Depends
 
             await authenticator.set_session_cookie(response, user)
 
-            # Create the tokens and passing to set_access_cookies or set_refresh_cookies
-            #access_token = Authorize.create_access_token(subject=user.id, fresh=True)
-            #refresh_token = Authorize.create_refresh_token(subject=user.id)
-
-            # Set the JWT and CSRF double submit cookies in the response
-            #Authorize.set_access_cookies(access_token, response=response)
-            #Authorize.set_refresh_cookies(refresh_token, response=response)
-
             return response
 
-    raise HTTPException(status_code=401)
+    raise HTTPException(status_code=401, detail='Wrong email or password')
 
 
 #@router.post('/refresh')
