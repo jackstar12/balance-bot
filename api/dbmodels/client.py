@@ -16,6 +16,11 @@ _key = os.environ.get('ENCRYPTION_SECRET')
 assert _key, 'Missing ENCRYPTION_SECRET in env'
 
 
+def embed_add_value(embed: discord.Embed, name, value, **kwargs):
+    if value:
+        embed.add_field(name=name, value=value, **kwargs)
+
+
 class Client(db.Model):
     __tablename__ = 'client'
 
@@ -77,16 +82,15 @@ class Client(db.Model):
     def get_discord_embed(self, is_global=False):
 
         embed = discord.Embed(title="User Information")
-        embed.add_field(name='Event', value=self.get_event_string(is_global), inline=False)
-        embed.add_field(name='Exchange', value=self.exchange)
-        embed.add_field(name='Api Key', value=self.api_key)
+        embed_add_value(embed, name='Event', value=self.get_event_string(is_global), inline=False)
+        embed_add_value(embed, name='Exchange', value=self.exchange)
+        embed_add_value(embed, name='Api Key', value=self.api_key)
 
-        if self.subaccount:
-            embed.add_field(name='Subaccount', value=self.subaccount)
+        embed_add_value(embed, name='Subaccount', value=self.subaccount)
         for extra in self.extra_kwargs:
-            embed.add_field(name=extra, value=self.extra_kwargs[extra])
+            embed_add_value(embed, name=extra, value=self.extra_kwargs[extra])
 
         if len(self.history) > 0:
-            embed.add_field(name='Initial Balance', value=self.history[0].to_string())
+            embed_add_value(embed, name='Initial Balance', value=self.history[0].to_string())
 
         return embed
