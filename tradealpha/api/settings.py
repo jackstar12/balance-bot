@@ -4,7 +4,7 @@ from pydantic import BaseSettings
 import dotenv
 
 
-dotenv.load_dotenv('tradealpha/api/.env')
+dotenv.load_dotenv()
 
 
 class Settings(BaseSettings):

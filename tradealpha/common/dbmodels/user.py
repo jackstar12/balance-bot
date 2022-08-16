@@ -1,11 +1,18 @@
+import enum
+import sqlalchemy as sa
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID
 from sqlalchemy import Column, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship, backref
-import jwt
 
-from tradealpha.common.dbmodels.editsmixin import EditsMixin
+from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
 from tradealpha.common.dbsync import Base
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
+
+
+class Subscription(enum.Enum):
+    FREE = 1
+    BASIC = 2
+    PREMIUM = 3
 
 
 class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
@@ -18,6 +25,8 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
                                 lazy='noload',
                                 backref=backref('user', lazy='noload', uselist=False),
                                 uselist=False, foreign_keys=discord_user_id)
+
+    subscription = Column(sa.Enum(Subscription), default=Subscription.BASIC, nullable=False)
 
     all_clients = relationship(
         'Client',
@@ -32,8 +41,10 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
     # Data
     clients = relationship('Client', back_populates='user', lazy='noload', cascade="all, delete",
                            foreign_keys="[Client.user_id]")
+
     labels = relationship('Label', backref='user', lazy='raise', cascade="all, delete")
     alerts = relationship('Alert', backref='user', lazy='noload', cascade="all, delete")
+
     journals = relationship('Journal',
                             back_populates='user',
                             cascade="all, delete",
@@ -47,6 +58,6 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
     def mock(cls):
         return cls(
             email='mock@gmail.com',
-            hashed_password='SUPER_SECUER'
+            hashed_password='SUPER_SECURE'
         )
 

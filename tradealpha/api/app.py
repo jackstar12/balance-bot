@@ -1,6 +1,7 @@
 import dotenv
 import uvicorn
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
 from starlette_csrf import CSRFMiddleware
 
 import tradealpha.api.routers.analytics as analytics
@@ -13,7 +14,7 @@ import tradealpha.api.routers.template as template
 import tradealpha.api.routers.user as user
 
 import tradealpha.common.dbasync as aio_db
-from api.utils.responses import OK
+from tradealpha.api.utils.responses import OK
 from tradealpha.api.db_session_middleware import DbSessionMiddleware
 from tradealpha.api.dependencies import CurrentUser, CurrentUserDep
 from tradealpha.api.models.user import UserInfo, UserRead, UserCreate
@@ -39,8 +40,8 @@ app = FastAPI(
     },
 )
 
-# app.add_middleware(SessionMiddleware, secret_key='SECRET')
-app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
+#app.add_middleware(SessionMiddleware, secret_key='SECRET')
+#app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
 # app.add_midleware(DbSessionMiddleware)
 
 app.include_router(fastapi_users.get_verify_router(UserRead), prefix='/api/v1')

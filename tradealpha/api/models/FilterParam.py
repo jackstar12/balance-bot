@@ -2,11 +2,7 @@ import operator
 from enum import Enum
 from typing import Any, Type, TypeVar
 
-from pydantic import ValidationError, Field, create_model
-from pydantic.validators import find_validators
-from starlette.requests import Request
 
-from api.models.trade import DetailledTrade
 from tradealpha.api.models import BaseModel
 
 

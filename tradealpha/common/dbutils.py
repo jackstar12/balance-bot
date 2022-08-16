@@ -2,16 +2,18 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytz
-from sqlalchemy import select, desc, JSON
+from sqlalchemy import select, desc, JSON, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import Select, Delete, Update
 
 import tradealpha.common.dbmodels.client as db_client
+from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbasync import async_session, db_first, db_eager, db_del_filter, db_unique, db_all, \
     db_select
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.discorduser import DiscordUser
 import tradealpha.common.dbmodels.event as db_event
-from typing import Optional
+from typing import Optional, Union
 from tradealpha.common.errors import UserInputError
 from tradealpha.common.messenger import Messenger, NameSpace, Category
 from tradealpha.common.models.history import History
@@ -167,6 +169,27 @@ async def delete_client(client: db_client.Client, messenger: Messenger, db: Asyn
     messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj={'id': client.id})
 
 
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: list[int] = None) -> Union[Select, Delete, Update]:
+    """
+    Commonly used utility to add filters that ensure authorized client access
+    :param stmt: stmt to add filters to
+    :param user: desired user
+    :param client_ids: possible client ids. If None, all clients will be used
+    :return:
+    """
+    #user_checks = [Client.user_id == user.id]
+    #if user.discord_user_id:
+    #    user_checks.append(Client.discord_user_id == user.discord_user_id)
+    return stmt.filter(
+        db_client.Client.id.in_(client_ids) if client_ids else True,
+        or_(
+            db_client.Client.user_id == user.id,
+            db_client.Client.discord_user_id == user.discord_user_id if user.discord_user_id else False
+        )
+    )
+
+
+
 def get_all_events(guild_id: int, channel_id):
     pass
 
@@ -183,12 +206,10 @@ async def get_discord_user(user_id: int, throw_exceptions=True, require_registra
     """
     eager = eager_loads or [DiscordUser.clients]
     result = await db_select(DiscordUser, eager=eager, id=user_id)
-
-    #result = session.query(DiscordUser).filter_by(user_id=user_id).first()
     if not result:
         if throw_exceptions:
             raise UserInputError("User {name} is not registered", user_id)
-    elif len(result.client_ids) == 0 and throw_exceptions and require_registrations:
+    elif len(result.clients) == 0 and throw_exceptions and require_registrations:
         raise UserInputError("User {name} does not have any registrations", user_id)
     return result
 

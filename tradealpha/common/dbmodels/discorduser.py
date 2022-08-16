@@ -1,12 +1,11 @@
 from datetime import datetime
-from typing import List, Callable
+from typing import List
 import discord
-from discord_slash import SlashCommand
 from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from tradealpha.common.dbasync import async_session, db_unique
 import tradealpha.common.dbmodels.client as db_client
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 
 from tradealpha.common.dbsync import Base, session as session
 from sqlalchemy.orm import relationship, backref

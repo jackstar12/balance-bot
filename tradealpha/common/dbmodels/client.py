@@ -1,18 +1,18 @@
 import asyncio
-import json
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from typing import List, Optional, Union, TYPE_CHECKING, Literal
+from typing import List, Optional, Union, Literal, Any, Sequence
 from uuid import UUID
 
 import discord
 import pytz
 from aioredis import Redis
+from fastapi.encoders import jsonable_encoder
 from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, BigInteger, or_, desc, asc, \
-    Boolean, select, func, subquery, and_
+    Boolean, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship, aliased
+from sqlalchemy.orm import relationship
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -22,22 +22,23 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
-from tradealpha.common.dbmodels.editsmixin import EditsMixin
-from tradealpha.common import customjson
-from tradealpha.common.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys
 import tradealpha.common.dbmodels.balance as db_balance
+import tradealpha.common.utils as utils
+from common.models import BaseModel
+
+from tradealpha.common.dbmodels.mixins.querymixin import QueryMixin
+from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
+from tradealpha.common import customjson
+from tradealpha.common.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey
 from tradealpha.common.dbmodels.chapter import Chapter
-from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.dbmodels.guild import Guild
 from tradealpha.common.dbmodels.guildassociation import GuildAssociation
 from tradealpha.common.dbmodels.journal import Journal
 from tradealpha.common.dbmodels.pnldata import PnlData
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbsync import Base
-import tradealpha.common.utils as utils
 from tradealpha.common.messenger import NameSpace
-
 from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.redis.client import ClientSpace
 from tradealpha.common.dbmodels.discorduser import DiscordUser
@@ -48,7 +49,49 @@ _key = os.environ.get('ENCRYPTION_SECRET')
 assert _key, 'Missing ENCRYPTION_SECRET in env'
 
 
-class Client(Base, Serializer, EditsMixin):
+class ClientRedis:
+
+    def __init__(self, user_id: UUID, client_id: int, redis_instance: Redis = None):
+        self.user_id = user_id
+        self.client_id = client_id
+        self.redis = redis_instance or redis
+
+    async def redis_set(self, keys: dict[RedisKey, Any], space: Literal['cache', 'normal']):
+        client_hash = self.cache_hash if space == 'cache' else self.normal_hash
+        if space == 'cache':
+            asyncio.ensure_future(self.redis.expire(client_hash, 5 * 60))
+        keys[RedisKey(client_hash, self.user_id)] = str(self.user_id)
+        from pydantic import BaseModel as PydanticBaseModel
+        return await self.redis.hset(client_hash, mapping={
+            k.key: customjson.dumps(v.json()) if isinstance(v, PydanticBaseModel) else v
+            for k, v in keys.items()
+        })
+
+    async def read_cache(self, *keys: RedisKey):
+        """
+        Class Method so that there's no need for an actual DB instance
+        (useful when reading cache)
+        """
+        return await redis_bulk_keys(
+            self.cache_hash, redis_instance=self.redis, *keys
+        )
+
+    async def set_last_exec(self, dt: datetime):
+        await self.redis_set(
+            keys={RedisKey(ClientSpace.LAST_EXEC): dt.timestamp()},
+            space='normal'
+        )
+
+    @property
+    def normal_hash(self):
+        return utils.join_args(NameSpace.USER, self.user_id, NameSpace.CLIENT, self.client_id or '*')
+
+    @property
+    def cache_hash(self):
+        return utils.join_args(NameSpace.USER, self.user_id, NameSpace.CLIENT, NameSpace.CACHE, self.client_id or '*')
+
+
+class Client(Base, Serializer, EditsMixin, QueryMixin):
     __tablename__ = 'client'
     __serializer_forbidden__ = ['api_secret']
     __serializer_data_forbidden__ = ['api_secret', 'discorduser']
@@ -73,10 +116,10 @@ class Client(Base, Serializer, EditsMixin):
     name = Column(String, nullable=True)
     rekt_on = Column(DateTime(timezone=True), nullable=True)
 
-    trades = relationship('Trade', lazy='noload',
-                          cascade="all, delete",
-                          back_populates='client',
-                          order_by="Trade.open_time")
+    trades: list[Trade] = relationship('Trade', lazy='raise',
+                                       cascade="all, delete",
+                                       back_populates='client',
+                                       order_by="Trade.open_time")
 
     open_trades = relationship('Trade', lazy='noload',
                                back_populates='client',
@@ -90,7 +133,7 @@ class Client(Base, Serializer, EditsMixin):
                                           order_by='Balance.time',
                                           foreign_keys='Balance.client_id')
 
-    #journals = relationship('Journal',
+    # journals = relationship('Journal',
     #                        back_populates='client',
     #                        cascade="all, delete",
     #                        lazy='noload')
@@ -111,44 +154,8 @@ class Client(Base, Serializer, EditsMixin):
     last_transfer_sync = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
-    @classmethod
-    async def redis_set(cls, user_id, client_id, keys: dict, space: Literal['cache', 'normal'], redis_instance=None):
-        client_hash = cls.cache_hash(user_id, client_id) if space == 'cache' else cls.normal_hash(user_id, client_id)
-        if space == 'cache':
-            asyncio.create_task((redis_instance or redis).expire(client_hash, 5 * 60))
-        keys[ClientSpace.USER_ID.value] = str(user_id)
-        return await (redis_instance or redis).hset(client_hash, mapping=keys)
-
-    @classmethod
-    async def read_cache(cls, user_id, *keys, id=None, redis_instance=None):
-        """
-        Class Method so that there's no need for an actual DB instance
-        (useful when reading cache)
-        """
-        return await redis_bulk_keys(
-            cls.cache_hash(user_id, id), redis_instance, *keys
-        )
-
-    @classmethod
-    def normal_hash(cls, user_id, client_id: int = None):
-        return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, client_id or '*')
-
-    @classmethod
-    def cache_hash(cls, user_id: UUID, client_id: int = None):
-        return utils.join_args(NameSpace.USER, user_id, NameSpace.CLIENT, NameSpace.CACHE, client_id or '*')
-
-    @classmethod
-    async def redis_validate(cls, id: int, user_id) -> Boolean | None:
-        """
-        Required to make sure no invalid access to clients is made
-        when reading cached data
-        (authorization through DB would kinda make caching redundant)
-        """
-        redis_user_id = await cls.read_cache(id, key=user_id)
-        if redis_user_id:
-            return redis_user_id == user_id
-        else:
-            return None
+    def as_redis(self, redis_instance=None) -> ClientRedis:
+        return ClientRedis(self.user_id, self.client_id, redis_instance=redis_instance)
 
     async def get_latest_balance(self, redis: Redis, currency=None):
         raw = await redis.hget(utils.join_args(NameSpace.CLIENT, self.id), key=NameSpace.BALANCE.value)
@@ -368,16 +375,8 @@ class Client(Base, Serializer, EditsMixin):
         return embed
 
 
-# recent_history = select(
-#    Client.id.label('id'),
-#
-#    Client.history.order_by(
-#        desc(db_balance.Balance.time)
-#    ).limit(3)
-# ).alias()
-
-
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: List[int] = None) -> Union[Select, Delete, Update]:
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: set[int] = None) -> Union[
+    Select, Delete, Update]:
     """
     Commonly used utility to add filters that ensure authorized client access
     :param stmt: stmt to add filters to
@@ -385,8 +384,8 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
     :param client_ids: possible client ids. If None, all clients will be used
     :return:
     """
-    #user_checks = [Client.user_id == user.id]
-    #if user.discord_user_id:
+    # user_checks = [Client.user_id == user.id]
+    # if user.discord_user_id:
     #    user_checks.append(Client.discord_user_id == user.discord_user_id)
     return stmt.filter(
         Client.id.in_(client_ids) if client_ids else True,

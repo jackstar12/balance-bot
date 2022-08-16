@@ -4,11 +4,11 @@ from decimal import Decimal
 from typing import NamedTuple, Optional
 
 from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Numeric
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from tradealpha.common.dbsync import Base
-from tradealpha.common.dbmodels.amountmixin import AmountMixin
+from tradealpha.common.dbmodels.mixins.amountmixin import AmountMixin
 
 
 class TransferType(enum.Enum):

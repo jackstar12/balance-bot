@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from pydantic import Field, Extra
 
-from api.models import OutputID
+from tradealpha.api.models import OutputID
 from tradealpha.api.models.pnldata import PnlData
 from tradealpha.common.dbmodels.base import OrmBaseModel
 from tradealpha.api.models.execution import Execution

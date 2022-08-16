@@ -1,8 +1,8 @@
 import asyncio
 import itertools
-from datetime import date
+from datetime import date, datetime, timedelta
 from enum import Enum
-from typing import Iterator
+from typing import Iterator, TypedDict, Optional
 from typing import TYPE_CHECKING
 from fastapi_users_db_sqlalchemy import GUID
 
@@ -12,10 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from .template import Template
-from .. import utils
-from ..dbsync import Base
-from ..utils import list_last
-from ..dbmodels.types import Document, DocumentModel
+from tradealpha.common import utils
+from tradealpha.common.dbsync import Base
+from tradealpha.common.dbmodels.types import Document, DocumentModel, Data
 import tradealpha.common.dbmodels.chapter as db_chapter
 
 if TYPE_CHECKING:
@@ -33,6 +32,10 @@ class JournalType(Enum):
     INTERVAL = "interval"
 
 
+class JournalData(TypedDict):
+    chapter_interval: Optional[timedelta]
+
+
 class Journal(Base):
     __tablename__ = 'journal'
 
@@ -43,6 +46,8 @@ class Journal(Base):
     title = sa.Column(sa.Text, nullable=False)
     chapter_interval = sa.Column(sa.Interval, nullable=True)
     type = sa.Column(sa.Enum(JournalType), default=JournalType.MANUAL)
+
+    #data: JournalData = sa.Column(Data, nullable=True)
 
     clients = orm.relationship(
         'Client',
@@ -61,7 +66,7 @@ class Journal(Base):
     current_chapter: 'Chapter' = orm.relationship('Chapter',
                                                   primaryjoin="and_("
                                                               "Chapter.journal_id == Journal.id, "
-                                                              "Chapter.end_date >= func.current_date()"
+                                                              "Chapter.data['end_date'].astext.cast(Date) >= func.current_date()"
                                                               ")",
                                                   lazy='noload',
                                                   back_populates="journal",
@@ -82,6 +87,11 @@ class Journal(Base):
             journal=self,
             parent_id=parent_id
         )
+
+        if self.type == JournalType.INTERVAL:
+            start = self.current_chapter.data['end_date'] if self.current_chapter else date.today()
+            new_chapter.data['start_date'] = start
+            new_chapter.data['end_date'] = new_chapter.data['start_date'] + self.chapter_interval
 
         if template:
             new_chapter.doc = template.doc
@@ -113,73 +123,24 @@ class Journal(Base):
                         ]
                     )
 
+        self.current_chapter = new_chapter
         return new_chapter
+
+    async def update(self, db: AsyncSession, template: Template = None):
+        template = template or self.default_template
+        if self.type == JournalType.INTERVAL:
+            now = utils.now()
+            while now > self.current_chapter.data['end_date']:
+                chapter = self.create_chapter(template=template)
+                db.add(chapter)
+        await db.commit()
 
     @hybrid_property
     def client_ids(self):
         return [client.id for client in self.clients]
 
-    async def _calc_intervals(self, db_session: AsyncSession) -> Iterator:
-        client_intervals = await asyncio.gather(*[
-            utils.calc_intervals(
-                client,
-                self.chapter_interval,
-                as_string=False,
-                db_session=db_session
-            )
-            for client in self.clients
-        ])
-        return sorted(
-            itertools.chain.from_iterable(client_intervals),
-            key=lambda inter: inter.day
-        )
-
     async def init(self, db_session: AsyncSession):
-        client_intervals = await self._calc_intervals(db_session)
-
-        current_chapter = None
-        chapters = []
-        for interval in client_intervals:
-            current_chapter = list_last(chapters, None)
-            if not current_chapter or interval.day >= current_chapter.end_date:
-                chapters.append(
-                    db_chapter.Chapter(
-                        data=dict(
-                            start_balance_id=interval.start_balance.id
-                        ),
-                        start_date=interval.day,
-                        end_date=interval.day + self.chapter_interval,
-                        journal=self,
-                    )
-                )
-            else:
-                current_chapter.balances.append(interval.start_balance)
-                current_chapter.balances.append(interval.end_balance)
-
-        self.current_chapter = current_chapter
-
-        db_session.add_all(chapters)
         return
 
-    async def re_init(self, db_session: AsyncSession):
-        interval_iter = iter(await self._calc_intervals(db_session))
-        cur_interval = next(interval_iter, None)
-
-        for index, chapter in enumerate(self.chapters):
-            chapter.balances = []
-
-            while cur_interval and cur_interval.day <= chapter.start_day:
-                if cur_interval.day == chapter.start_day:
-                    chapter.balances.append(cur_interval.start_balance)
-                    chapter.balances.append(cur_interval.end_balance)
-                else:
-                    self.chapters.insert(index, Chapter(
-                        start_date=cur_interval.day,
-                        end_date=cur_interval.day + self.chapter_interval,
-                        journal=self,
-                        balances=[],
-                    ))
-
-                cur_interval = next(interval_iter, None)
-
-        await db_session.commit()
+    def flatten_content(self):
+        pass

@@ -2,7 +2,7 @@ import dotenv
 import os
 from tradealpha.common.enums import Priority
 
-dotenv.load_dotenv('tradealpha/common/.env')
+dotenv.load_dotenv()
 
 TESTING = os.environ.get('TESTING').lower() == 'true'
 

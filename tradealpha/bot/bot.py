@@ -30,7 +30,7 @@ from tradealpha.common.enums import Tier
 from tradealpha.common.messenger import Messenger, NameSpace, Category
 from tradealpha.common.utils import setup_logger
 
-dotenv.load_dotenv('tradealpha/bot/.env')
+dotenv.load_dotenv()
 intents = discord.Intents().default()
 intents.members = True
 intents.guilds = True

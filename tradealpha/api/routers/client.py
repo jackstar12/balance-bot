@@ -22,19 +22,20 @@ from starlette.background import BackgroundTasks
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from api.models.amount import FullBalance
+from tradealpha.api.models.amount import FullBalance
+from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
 from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.models import BaseModel, BaseOrmModel
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.api.utils.analytics import create_cilent_analytics
 from tradealpha.api.authenticator import Authenticator
 from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance
-from tradealpha.common.dbasync import db_exec, db_first, async_session, db_all, db_select, redis, redis_bulk_keys, \
+from tradealpha.common.dbasync import db_exec, db_first, db_all, db_select, redis, redis_bulk_keys, \
     redis_bulk_hashes, redis_bulk, async_maker
 from tradealpha.common.dbmodels.guildassociation import GuildAssociation
 from tradealpha.common.dbmodels.guild import Guild
-from tradealpha.api.models.client import ClientConfirm, ClientEdit, ClientQueryParams, \
-    ClientOverview, Balance, Transfer, ClientCreateBody, ClientInfo, ClientCreateResponse
+from tradealpha.api.models.client import ClientConfirm, ClientEdit, \
+    ClientOverview, Balance, Transfer, ClientCreateBody, ClientInfo, ClientCreateResponse, get_query_params
 from tradealpha.api.models.websocket import WebsocketMessage, ClientConfig
 from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
 from tradealpha.common import utils, customjson
@@ -139,14 +140,14 @@ OverviewCache = client_utils.ClientCacheDependency(
 
 
 @router.get('/client', response_model=ClientOverview)
-async def get_client(request: Request, response: Response,
+async def get_client(background_tasks: BackgroundTasks,
                      cache: client_utils.ClientCache = Depends(OverviewCache),
-                     client_params: ClientQueryParams = Depends(),
+                     query_params: QueryParams = Depends(get_query_params),
                      user: User = Depends(CurrentUser),
                      db: AsyncSession = Depends(get_db)):
     any_client = False
-    if not client_params.id:
-        client_params.id = [None]
+    if not query_params.client_ids:
+        # query_params.client_ids = [None]
         any_client = True
 
     overviews, non_cached = await cache.read(db)
@@ -185,8 +186,8 @@ async def get_client(request: Request, response: Response,
             overview = ClientOverview.construct(
                 initial_balance=(
                     Balance.from_orm(
-                        await client.get_balance_at_time(client_params.since)
-                        if client_params.since else
+                        await client.get_balance_at_time(query_params.since)
+                        if query_params.since else
                         await db_first(
                             client.history.statement.order_by(asc(BalanceDB.time)),
                             session=db
@@ -195,14 +196,14 @@ async def get_client(request: Request, response: Response,
                 ),
                 current_balance=(
                     Balance.from_orm(
-                        await client.get_balance_at_time(client_params.to)
-                        if client_params.to else
+                        await client.get_balance_at_time(query_params.to)
+                        if query_params.to else
                         await client.get_latest_balance(redis=redis)
                         # await client.latest()
                     )
                 ),
                 daily={
-                    balance.time.date(): Balance.from_orm(balance)
+                    utils.date_string(balance.time): Balance.from_orm(balance)
                     for balance in daily
                 },
                 transfers={
@@ -210,11 +211,11 @@ async def get_client(request: Request, response: Response,
                     for transfer in client.transfers
                 }
             )
-            asyncio.create_task(
-                cache.write(
-                    client.id,
-                    overview,
-                )
+            background_tasks.add_task(
+                cache.write,
+                client.id,
+                overview,
+
             )
             overviews.append(overview)
 
@@ -378,7 +379,7 @@ def create_trade_endpoint(path: str,
     async def get_trades(background_tasks: BackgroundTasks,
                          trade_id: list[int] = Query(None, alias='trade-id'),
                          cache: client_utils.ClientCache = Depends(TradeCache),
-                         client_params: ClientQueryParams = Depends(),
+                         query_params: QueryParams = Depends(get_query_params),
                          filter_params: FilterQueryParams = Depends(),
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
@@ -386,11 +387,11 @@ def create_trade_endpoint(path: str,
         hits, misses = await cache.read(db)
         ts2 = time.perf_counter()
         if misses:
-            client_params.id = misses
+            query_params.client_ids = misses
             trades_db = await client_utils.query_trades(
                 *eager,
                 user=user,
-                client_params=client_params,
+                query_params=query_params,
                 trade_id=trade_id,
                 db=db
             )
@@ -409,11 +410,10 @@ def create_trade_endpoint(path: str,
                     trades
                 )
 
-        res = []
-        for trades in hits:
-            for trade in trades.data:
-                if all(f.check(trade) for f in filter_params):
-                    res.append(jsonable_encoder(trade))
+        res = [
+            jsonable_encoder(trade) for trades in hits for trade in trades.data
+            if all(f.check(trade) for f in filter_params)
+        ]
         ts4 = time.perf_counter()
         print(ts2 - ts1)
         print(ts4 - ts2)
@@ -448,16 +448,16 @@ create_trade_endpoint(
 
 
 @router.get('/client/trade-detailled/pnl-data')
-async def get_detailled_trades(trade_id: list[int] = Query(..., alias='trade-id'),
-                               user: User = Depends(CurrentUser),
-                               db: AsyncSession = Depends(get_db)):
+async def get_pnl_data(trade_id: list[int] = Query(..., alias='trade-id'),
+                       user: User = Depends(CurrentUser),
+                       db: AsyncSession = Depends(get_db)):
     data: List[PnlData] = await db_all(
         add_client_filters(
             select(PnlData)
-                .filter(PnlData.trade_id.in_(trade_id))
-                .join(PnlData.trade)
-                .join(TradeDB.client)
-                .order_by(asc(PnlData.time)),
+            .filter(PnlData.trade_id.in_(trade_id))
+            .join(PnlData.trade)
+            .join(TradeDB.client)
+            .order_by(asc(PnlData.time)),
             user=user
         ),
         session=db
@@ -477,13 +477,14 @@ class PnlStat(BaseOrmModel):
 
 
 class PnlStats(BaseOrmModel):
+    date: date
     gross: PnlStat
     net: Decimal
     commissions: Decimal
 
 
-@router.get('/client/performance')
-async def get_client_performance(client_params: ClientQueryParams = Depends(),
+@router.get('/client/performance', response_model=list[PnlStats])
+async def get_client_performance(query_params: QueryParams = Depends(get_query_params),
                                  trade_id: list[int] = Query(default=None),
                                  user: User = Depends(CurrentUser),
                                  db: AsyncSession = Depends(get_db)):
@@ -504,40 +505,43 @@ async def get_client_performance(client_params: ClientQueryParams = Depends(),
             ).label('gross_loss'),
             func.sum(TradeDB.total_commissions).label('total_commissions'),
         ).filter(
-            TradeDB.open_time > client_params.since if client_params.since else True,
-            TradeDB.open_time < client_params.to if client_params.to else True,
+            TradeDB.open_time > query_params.since if query_params.since else True,
+            TradeDB.open_time < query_params.to if query_params.to else True,
             TradeDB.id.in_(trade_id) if trade_id else True
         ).group_by(
             TradeDB.open_time.cast(Date)
         ),
         user=user,
-        client_ids=client_params.id
+        client_ids=query_params.client_ids
     )
-    test = await db_exec(stmt, session=db)
-    all = test.all()
-    res = all[0]
+    results = (await db.execute(stmt)).all()
+    response = [
+        PnlStats.construct(
+            gross=PnlStat.construct(
+                win=result.gross_win,
+                loss=abs(result.gross_loss),
+                total=result.gross_win + result.gross_loss
+            ),
+            commissions=result.total_commissions,
+            net=result.gross_win + result.gross_loss - result.total_commissions,
+            date=result.date
+        )
+        for result in results
+    ]
 
-    result = PnlStats.construct(
-        gross=PnlStat(
-            win=res.gross_win,
-            loss=abs(res.gross_loss),
-            total=res.gross_win + res.gross_loss
-        ),
-        commissions=res.total_commissions,
-        net=res.gross_win + res.gross_loss - res.total_commissions
-    )
-
-    return result
+    return CustomJSONResponse(jsonable_encoder(response))
 
 
 @router.get('/client/balance')
-async def get_client_balance(client_params: ClientQueryParams = Depends(),
-                             balance_id: list[int] = Query(None, alias='balance-id'),
+async def get_client_balance(balance_id: list[int] = Query(None, alias='balance-id'),
+                             query_params: QueryParams = Depends(get_query_params),
                              user: User = Depends(CurrentUser),
                              db: AsyncSession = Depends(get_db)):
-    data: List[BalanceDB] = await client_utils.query_balance(
+    balance = await BalanceDB.query(
+        time_col=BalanceDB.time,
         user=user,
-        balance_id=balance_id,
-        client_params=client_params,
+        ids=balance_id,
+        params=query_params,
         db=db
     )
+    return FullBalance.from_orm(balance)

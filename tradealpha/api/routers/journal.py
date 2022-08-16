@@ -11,7 +11,7 @@ from tradealpha.api.routers.template import query_templates
 from tradealpha.api.dependencies import CurrentUser, get_messenger, CurrentUserDep, get_db
 from tradealpha.api.models.completejournal import (
     JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
-    ChapterInfo, ChapterCreate, ChapterUpdate, JournalDetailledInfo
+    ChapterInfo, ChapterCreate, ChapterUpdate, JournalDetailedInfo
 )
 from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
 from tradealpha.common.dbasync import db_unique, db_all
@@ -122,7 +122,7 @@ async def get_journals(user: User = Depends(CurrentUserDep(User.journals))):
     )
 
 
-@router.get('/{journal_id}', response_model=JournalDetailledInfo)
+@router.get('/{journal_id}', response_model=JournalDetailedInfo)
 async def get_journal(journal_id: int,
                       user: User = Depends(CurrentUser),
                       db: AsyncSession = Depends(get_db)):
@@ -134,10 +134,12 @@ async def get_journal(journal_id: int,
         session=db
     )
 
-    return JournalDetailledInfo.from_orm(journal)
+    await journal.update(db)
+
+    return JournalDetailedInfo.from_orm(journal)
 
 
-@router.patch('/{journal_id}')
+@router.patch('/{journal_id}', response_model=JournalDetailedInfo)
 async def update_journal(journal_id: int,
                          body: JournalUpdate,
                          user: User = Depends(CurrentUser),
@@ -157,13 +159,13 @@ async def update_journal(journal_id: int,
         if body.client_ids != set(journal.client_ids):
             clients = await query_clients(body.client_ids, user, db)
             journal.clients = clients
-            await journal.re_init(db)
+            await journal.update(db)
 
     if body.default_template_id:
         journal.default_template_id = body.default_template_id
 
     await db.commit()
-    return OK('Success')
+    return JournalDetailedInfo.from_orm(journal)
 
 
 @router.delete('/{journal_id}')
@@ -188,6 +190,24 @@ async def get_chapter(journal_id: int, chapter_id: int, user: User = Depends(Cur
     )
 
     return DetailedChapter.from_orm(chapter)
+
+
+@router.get('/{journal_id}/chapter/{chapter_id}/data')
+async def get_chapter_data(journal_id: int, chapter_id: int, user: User = Depends(CurrentUser),
+                      db: AsyncSession = Depends(get_db)):
+    chapter = await query_chapter(
+        journal_id,
+        user,
+        # DbChapter.trades,
+        DbChapter.balances,
+        session=db,
+        id=chapter_id
+    )
+
+    await DbChapter.all_childs(chapter.id, db)
+
+    return DetailedChapter.from_orm(chapter)
+
 
 
 @router.patch('/{journal_id}/chapter/{chapter_id}')

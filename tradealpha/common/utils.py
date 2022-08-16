@@ -38,7 +38,6 @@ from tradealpha.common.errors import UserInputError, InternalError
 from tradealpha.common.models.daily import Daily, Interval
 from tradealpha.common.models.gain import ClientGain
 from tradealpha.common import dbutils
-from tradealpha.common.dbmodels.discorduser import DiscordUser
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.models.selectionoption import SelectionOption
 import tradealpha.common.config as config

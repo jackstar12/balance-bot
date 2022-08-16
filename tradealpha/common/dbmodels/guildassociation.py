@@ -1,7 +1,7 @@
 from tradealpha.common.dbsync import Base
 from sqlalchemy import Column, ForeignKey, BigInteger
 
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 
 
 class GuildAssociation(Base, Serializer):

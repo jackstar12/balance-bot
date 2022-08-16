@@ -1,7 +1,7 @@
 import sqlalchemy as sa
 from sqlalchemy import orm
 
-from tradealpha.common.dbmodels.editsmixin import EditsMixin
+from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
 from tradealpha.common.dbmodels.types import Document, Data, DocumentModel
 
 from tradealpha.common.dbsync import Base

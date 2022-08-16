@@ -63,3 +63,7 @@ async def test_invalid_client(register_client):
 )
 async def test_valid_client(redis_messages, confirm_client, register_client):
     await redis_messages.wait(0.5)
+
+async def test_overview(confirm_client, api_client):
+    resp = api_client.get('/api/v1/client')
+    assert resp.status_code == 200

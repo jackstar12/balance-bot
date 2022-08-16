@@ -16,7 +16,7 @@ import tradealpha.common.dbmodels.guildassociation
 import tradealpha.common.dbmodels.journal
 import tradealpha.common.dbmodels.label
 import tradealpha.common.dbmodels.pnldata
-import tradealpha.common.dbmodels.serializer
+import tradealpha.common.dbmodels.mixins.serializer
 import tradealpha.common.dbmodels.trade
 import tradealpha.common.dbmodels.transfer
 import tradealpha.common.dbmodels.user
@@ -62,8 +62,8 @@ chapter.Chapter.trades = relationship('Trade',
                                       lazy='noload',
                                       primaryjoin=and_(
                                           and_(
-                                              TradeDB.open_time.cast(Date) >= Chapter.start_date,
-                                              TradeDB.open_time.cast(Date) <= Chapter.end_date
+                                              TradeDB.open_time.cast(Date) >= Chapter.data['start_date'],
+                                              TradeDB.open_time.cast(Date) <= Chapter.data['end_date']
                                           ),
                                           or_(
                                               TradeDB.client_id.in_(sub),

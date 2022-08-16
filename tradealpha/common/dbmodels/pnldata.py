@@ -6,10 +6,9 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
 from tradealpha.common.dbsync import Base
-from tradealpha.common.dbmodels.amountmixin import AmountMixin
 from enum import Enum as PyEnum
 from tradealpha.common.models.compactpnldata import CompactPnlData
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 
 
 class PNLType(PyEnum):

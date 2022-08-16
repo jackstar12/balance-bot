@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from tradealpha.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Enum, Numeric
 
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.enums import Side
 
 

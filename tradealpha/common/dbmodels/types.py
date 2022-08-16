@@ -39,6 +39,29 @@ class DocumentModel(BaseModel):
     def __len__(self):
         return self.content.__len__()
 
+    @property
+    def all_data(self):
+        results = []
+
+        def recursive(current: DocumentModel):
+            if current.attrs and current.attrs['data']:
+                results.append(current.attrs['data'])
+
+            if current.content:
+                for node in current.content:
+                    recursive(node)
+
+        recursive(self)
+
+        return results
+
+    @property
+    def all_trades(self):
+        return [
+            result['tradeIds']
+            for result in self.all_data
+        ]
+
 
 DocumentModel.update_forward_refs()
 

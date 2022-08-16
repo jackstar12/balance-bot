@@ -10,7 +10,7 @@ from tradealpha.api.models.template import TemplateUpdate, TemplateInfo, Templat
 from tradealpha.api.dependencies import CurrentUser, get_messenger, CurrentUserDep, get_db
 from tradealpha.api.models.completejournal import (
     JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
-    ChapterInfo, ChapterCreate, ChapterUpdate, JournalDetailledInfo
+    ChapterInfo, ChapterCreate, ChapterUpdate, JournalDetailedInfo
 )
 from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
 from tradealpha.common.dbasync import async_session, db_unique, db_all, db_del_filter

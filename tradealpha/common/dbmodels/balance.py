@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 from decimal import Decimal
 
@@ -6,17 +5,16 @@ import pytz
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
-from typing_extensions import Self
 
+from tradealpha.common.dbmodels.mixins.querymixin import QueryMixin
 from tradealpha.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime, orm
 
 import tradealpha.common.config as config
-from tradealpha.common.dbmodels.amountmixin import AmountMixin
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 
 
-class Balance(Base, Serializer):
+class Balance(Base, Serializer, QueryMixin):
     __tablename__ = 'balance'
     __serializer_forbidden__ = ['id', 'error', 'client_id', 'client', 'transfer', 'transfer_id']
 

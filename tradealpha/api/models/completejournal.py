@@ -45,7 +45,7 @@ class JournalInfo(BaseModel):
         orm_mode = True
 
 
-class JournalDetailledInfo(JournalInfo):
+class JournalDetailedInfo(JournalInfo):
     overview: Optional[dict]
     default_template: Optional[TemplateInfo]
     chapters: list[ChapterInfo]

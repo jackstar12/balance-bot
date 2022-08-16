@@ -6,7 +6,8 @@ from fastapi import Query
 from pydantic import UUID4
 from starlette.requests import Request
 
-from api.models.amount import FullBalance
+from tradealpha.api.models.amount import FullBalance
+from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbmodels import Client
 from tradealpha.api.models import BaseModel, OutputID, InputID
@@ -14,20 +15,18 @@ from tradealpha.api.models.transfer import Transfer
 from tradealpha.common.dbmodels.base import OrmBaseModel
 
 
-class ClientQueryParams:
-    def __init__(self,
-                 request: Request,
-                 id: List[InputID] = Query(default=[]),
-                 currency: str = Query(default='$'),
-                 since: datetime = Query(default=None),
-                 to: datetime = Query(default=None),
-                 limit: int = Query(default=None)):
-        self.id = id
-        self.currency = currency
-        self.since = since
-        self.to = to
-        self.limit = limit
-        self.other = request.query_params
+def get_query_params(id: set[InputID] = Query(default=[]),
+                     currency: str = Query(default='$'),
+                     since: datetime = Query(default=None),
+                     to: datetime = Query(default=None),
+                     limit: int = Query(default=None)):
+    return QueryParams(
+        client_ids=id,
+        currency=currency,
+        since=since,
+        to=to,
+        limit=limit
+    )
 
 
 class ClientCreate(BaseModel):

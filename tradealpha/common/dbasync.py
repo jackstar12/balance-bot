@@ -1,16 +1,19 @@
 import asyncio
+from dataclasses import dataclass
 from enum import Enum
-from typing import List, Tuple, Union, Any, OrderedDict, TypeVar, Type
+from typing import List, Tuple, Union, Any, OrderedDict, TypeVar, Type, Optional
 
 import dotenv
 import os
 import aioredis
+from pydantic import ValidationError
 from sqlalchemy import delete, select, Column
 
 from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedAttribute
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession, create_async_engine
 from sqlalchemy.sql import Select
 
+from tradealpha.common.models import BaseModel
 from tradealpha.common import customjson
 
 dotenv.load_dotenv()
@@ -97,35 +100,54 @@ def db_eager(stmt: Select, *eager: Union[Column, Tuple[Column, Union[Tuple, Inst
     return stmt
 
 
-async def redis_bulk_keys(hash: str, redis_instance=None, *keys):
-    if len(keys):
-        return await (redis_instance or redis).hget(hash, keys[0])
-    async with (redis_instance or redis).pipeline(transaction=True) as pipe:
-        for key in keys:
-            pipe.hget(hash, key)
-        return await pipe.execute()
+@dataclass
+class RedisKey:
+    key: str
+    model: Optional[Type[BaseModel]]
+
+    def __init__(self, *keys, model: Optional[Type[BaseModel]] = None, denominator=':'):
+        self.key = denominator.join(
+            [str(key.value if isinstance(key, Enum) else key) for key in keys if key]
+        )
+
+        self.model = model
+
+    def __hash__(self):
+        return self.key.__hash__()
 
 
-async def redis_bulk_hashes(key: str, *hashes, redis_instance=None):
-    if len(hashes):
-        return await (redis_instance or redis).hget(hashes[0], key)
-    async with (redis_instance or redis).pipeline(transaction=True) as pipe:
-        for hash in hashes:
-            pipe.hget(hash, key)
-        return await pipe.execute()
+async def redis_bulk_keys(h: str, redis_instance=None, *keys: list[RedisKey]):
+    # if len(keys):
+    #    return await (redis_instance or redis).hget(h, keys[0])
+    result = await redis_bulk({h: keys}, redis_instance=redis_instance)
+    return result[h]
 
 
-async def redis_bulk(hash_keys: OrderedDict, redis_instance=None):
-    async with (redis_instance or redis).pipeline(transaction=True) as pipe:
-        for hash, keys in hash_keys.items():
+async def redis_bulk_hashes(key: RedisKey, *hashes, redis_instance=None):
+    # if len(hashes):
+    #     return await (redis_instance or redis).hget(hashes[0], key)
+    result = await redis_bulk({h: key for h in hashes}, redis_instance=redis_instance)
+    return result.values()
+
+
+async def redis_bulk(hash_keys: dict[str, list[RedisKey]], redis_instance=None):
+    async with redis.pipeline(transaction=True) as pipe:
+        for h, keys in hash_keys.items():
             for key in keys:
-                pipe.hget(hash, key.value if isinstance(key, Enum) else key)
+                pipe.hget(h, key.key)
         results = await pipe.execute()
         result = {}
-        for hash, keys in hash_keys.items():
-            result[hash] = []
-            for _ in keys:
-                result[hash].append(results.pop())
+        for h, keys in hash_keys.items():
+            result[h] = []
+            for key in keys:
+                value = results.pop(0)
+                if key.model and value:
+                    try:
+                        res = customjson.bytes_loads(value)
+                        value = key.model(**customjson.bytes_loads(res))
+                    except ValidationError:
+                        value = None
+                result[h].append(value)
         return result
 
 

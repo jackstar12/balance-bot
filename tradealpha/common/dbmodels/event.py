@@ -7,13 +7,13 @@ from tradealpha.common import utils
 import numpy
 from tradealpha.common.models.gain import ClientGain
 from tradealpha.common.dbmodels.archive import Archive
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property
 import tradealpha.common.config as config
 import discord
 
-from tradealpha.common.dbsync import Base, session as session
+from tradealpha.common.dbsync import Base
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table, inspect
 

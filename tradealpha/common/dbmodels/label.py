@@ -2,7 +2,7 @@ from fastapi_users_db_sqlalchemy import GUID
 
 from tradealpha.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, String
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 
 
 class Label(Base, Serializer):

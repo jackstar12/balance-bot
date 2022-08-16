@@ -2,18 +2,15 @@ from __future__ import annotations
 import abc
 import asyncio
 import itertools
-import json
 import logging
 import time
 import urllib.parse
-import math
 from asyncio import Future, Task
 from collections import deque
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from queue import Queue
-from typing import List, Callable, Dict, Tuple, Optional, Union, Set, Type, Iterator, Any, Awaitable
+from typing import List, Callable, Dict, Tuple, Optional, Union, Set
 import aiohttp.client
 import pytz
 from aiohttp import ClientResponse, ClientResponseError
@@ -29,13 +26,11 @@ import tradealpha.common.utils as utils
 from tradealpha.common.models.miscincome import MiscIncome
 from tradealpha.common.redis.client import ClientSpace
 from tradealpha.common import customjson
-from tradealpha.common.dbasync import async_session, db_unique, db_all, db_first, async_maker, db_select
-from tradealpha.common.dbmodels.amountmixin import AmountMixin
+from tradealpha.common.dbasync import db_unique, db_all
 from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.trade import Trade, trade_from_execution
 
-import tradealpha.common.dbmodels.balance as db_balance
 from tradealpha.common.dbmodels.transfer import Transfer, RawTransfer, TransferType
 from tradealpha.common.config import PRIORITY_INTERVALS
 from tradealpha.common.enums import Priority, ExecType, Side
@@ -173,7 +168,7 @@ class ExchangeWorker:
         self.exchange = client.exchange
         self.messenger = messenger
         self.rekt_threshold = rekt_threshold
-        self.client = client
+        self.client: Client = client
         self.db_lock = asyncio.Lock()
         self.db_maker = db_maker
 
@@ -257,12 +252,13 @@ class ExchangeWorker:
             return []
 
     async def get_executions(self,
-                             since: datetime) -> tuple[List[Transfer], Dict[str, List[Execution]], List[Execution], List[MiscIncome]]:
-        #transfers, (execs, misc) = await asyncio.gather(
+                             since: datetime) -> tuple[
+        List[Transfer], Dict[str, List[Execution]], List[Execution], List[MiscIncome]]:
+        # transfers, (execs, misc) = await asyncio.gather(
         #    self._get_transfers(since),
         #    # TODO: change init param
         #    self._get_executions(since, init=self.client.last_execution_sync is None)
-        #)
+        # )
         transfers = await self.get_transfers(since)
         execs, misc = await self._get_executions(since, init=self.client.last_execution_sync is None)
         for transfer in transfers:
@@ -358,7 +354,7 @@ class ExchangeWorker:
     async def synchronize_positions(self):
         async with self.db_maker() as db:
 
-            client = await db.get(Client, self.client_id, options=(selectinload(Client.trades),))
+            client: Client = await db.get(Client, self.client_id, options=(selectinload(Client.trades),))
             self.client = client
 
             since = client.last_execution_sync
@@ -562,6 +558,12 @@ class ExchangeWorker:
 
                 await self._add_transfers(transfers, db)
 
+            await db.commit()
+
+            if all_executions:
+                await self.client.as_redis().set_last_exec(all_executions[-1].time)
+                await self.pub_trade(Category.NEW, all_executions[-1].trade)
+
     async def _add_transfers(self, transfers: list[Transfer], db: AsyncSession):
         if transfers:
             to_update: list['Balance'] = await db_all(
@@ -639,14 +641,7 @@ class ExchangeWorker:
             if realtime:
                 # Updating LAST_EXEC is siginificant for caching
                 asyncio.create_task(
-                    Client.redis_set(
-                        self.client.user_id,
-                        self.client.id,
-                        keys={
-                            ClientSpace.LAST_EXEC.value: executions[-1].time.timestamp()
-                        },
-                        space='normal'
-                    )
+                    self.client.as_redis().set_last_exec(executions[-1].time)
                 )
                 await self._update_realized_balance(db)
 
@@ -746,7 +741,6 @@ class ExchangeWorker:
                 for args in publish:
                     self.pub_trade(*args)
             return active_trade
-
 
     def pub_trade(self, category: Category, trade: Trade):
         return self.messenger.pub_channel(NameSpace.TRADE, category, trade.serialize(), trade.id)

@@ -3,7 +3,7 @@ from typing import Optional, List
 
 from fastapi_users import schemas
 
-from api.models import InputID
+from tradealpha.api.models import InputID
 from tradealpha.api.models.alert import Alert
 from tradealpha.api.models.client import ClientInfo
 from tradealpha.api.models.discord_user import DiscordUserInfo

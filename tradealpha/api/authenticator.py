@@ -21,7 +21,7 @@ class Authenticator:
         session_id = request.cookies.get(self.session_cookie_name)
         if session_id is None:
             raise HTTPException(
-                status_code=HTTPStatus.BAD_REQUEST,
+                status_code=HTTPStatus.UNAUTHORIZED,
                 detail='Missing session cookie'
             )
         return session_id

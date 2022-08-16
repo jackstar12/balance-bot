@@ -1,4 +1,4 @@
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 
 from tradealpha.common.dbsync import Base
 from sqlalchemy.orm import relationship

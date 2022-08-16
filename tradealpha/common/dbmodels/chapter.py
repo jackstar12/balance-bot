@@ -1,18 +1,18 @@
 from __future__ import annotations
-from abc import ABC
-from typing import Optional
 
-import pytz
-import sqlalchemy as sa
-from pydantic import BaseModel, Extra
-from sqlalchemy import orm, TypeDecorator, select, Date
 from datetime import datetime
+from typing import TypedDict
 
+import sqlalchemy as sa
+from sqlalchemy import orm, Date, select, case, func, literal
 from sqlalchemy.dialects.postgresql import JSONB
+
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import aliased
 
 import tradealpha.common.utils as utils
-from tradealpha.common.dbmodels.editsmixin import EditsMixin
+from tradealpha.common.dbasync import db_all
+from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
 from tradealpha.common.dbmodels.types import Document, Data, DocumentModel
 from tradealpha.common.dbsync import Base
 from tradealpha.common.models.gain import Gain
@@ -28,6 +28,11 @@ chapter_trade_association = sa.Table(
     sa.Column('trade_id', sa.ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
     sa.Column('chapter_id', sa.ForeignKey('chapter.id', ondelete="CASCADE"), primary_key=True)
 )
+
+
+class ChapterData(TypedDict):
+    start_date: datetime
+    end_date: datetime
 
 
 class Chapter(Base, EditsMixin):
@@ -53,8 +58,8 @@ class Chapter(Base, EditsMixin):
                                lazy='noload')
 
     # Data
-    doc: DocumentModel = sa.Column(Document, nullable=True)
-    data = sa.Column(Data, nullable=True)
+    doc = sa.Column(Document, nullable=True)
+    data: ChapterData = sa.Column(Data, nullable=True)
 
     @hybrid_property
     def title(self):
@@ -66,30 +71,6 @@ class Chapter(Base, EditsMixin):
     @title.expression
     def title(cls):
         return cls.doc['content'][0]['content'][0]['text']
-
-    @hybrid_property
-    def start_date(self):
-        return self.data.get('start_date') if self.data else None
-
-    @start_date.setter
-    def start_date(self, value):
-        self.data['start_date'] = value
-
-    @start_date.expression
-    def start_date(cls):
-        return cls.data['start_date'].as_string().cast(Date)
-
-    @hybrid_property
-    def end_date(self):
-        return self.data.get('end_date') if self.data else None
-
-    @end_date.expression
-    def end_date(cls):
-        return cls.data['end_date'].as_string().cast(Date)
-
-    @end_date.setter
-    def end_date(self, value):
-        self.data['end_date'] = value
 
     @hybrid_property
     def child_ids(self):
@@ -104,3 +85,106 @@ class Chapter(Base, EditsMixin):
                 relative=utils.calc_percentage(start_balance.total, end_balance.total, string=False),
                 absolute=end_balance.realized - start_balance.realized
             )
+
+    @classmethod
+    async def all_childs(cls, root_id: int, db):
+        included = select(
+            Chapter.id,
+        ).filter(
+            Chapter.parent_id == root_id
+        ).cte(name="included", recursive=True)
+
+        included_alias = aliased(included, name="parent")
+        chapter_alias = aliased(Chapter, name="child")
+
+        included = included.union_all(
+            select(
+                chapter_alias.id,
+            ).filter(
+                chapter_alias.parent_id == included_alias.c.id
+            )
+        )
+
+        child_stmt = select(
+            Chapter
+        ).where(
+            Chapter.id.in_(included)
+        )
+
+        child = await db_all(child_stmt, session=db)
+        pass
+
+    @hybrid_property
+    def all_data(self):
+        results = []
+
+        def recursive(current: DocumentModel):
+            if current.attrs and current.attrs['data']:
+                results.append(current.attrs['data'])
+
+            if current.content:
+                for node in current.content:
+                    recursive(node)
+
+        recursive(self.doc)
+
+        return results
+
+    @all_data.expression
+    def all_data(cls):
+        """
+        WITH RECURSIVE _tree (key, value) AS (
+          SELECT
+            NULL   AS key,
+            chapter.doc AS value FROM chapter WHERE chapter.id=272
+          UNION ALL
+          (WITH typed_values AS (SELECT jsonb_typeof(value) as typeof, value FROM _tree)
+           SELECT v.*
+             FROM typed_values, LATERAL jsonb_each(value) v
+             WHERE typeof = 'object' and jsonb_exists(typed_values.value, 'content')
+           UNION ALL
+           SELECT NULL, element
+             FROM typed_values, LATERAL jsonb_array_elements(value) element
+             WHERE typeof = 'array'
+          )
+        )
+        SELECT key, value
+          FROM _tree
+
+
+        """
+
+        # https://stackoverflow.com/questions/30132568/collect-recursive-json-keys-in-postgres
+        # http://tatiyants.com/how-to-navigate-json-trees-in-postgres-using-recursive-ctes/
+
+        cte = select(
+            literal('NULL').label('key'),
+            Chapter.doc.label('doc')
+        ).cte(recursive=True)
+        cte_alias = cte.alias()
+
+        typed_values = select(
+            func.jsonb_typeof(cte_alias.c.doc).label('typeof'),
+            cte_alias.c.doc.label('value')
+        ).cte(name='typed_values')
+
+        each = select(
+            func.jsonb_each(typed_values.c.value).label('v')
+        ).subquery().lateral()
+
+        array_elemenets = select(
+            literal('NULL').label('key'),
+            func.jsonb_array_elements(typed_values.c.value).label('element')
+        ).subquery().lateral()
+
+        result = typed_values.union_all(
+            #select(each.c.v.key, each.c.v.value).where(
+            #    typed_values.c.typeof == 'object'
+            #),
+            select(array_elemenets.c.key, array_elemenets.c.element).select_from(
+            ).where(
+                typed_values.c.typeof == 'array'
+            )
+        )
+
+        return select(result).scalar_subquery()

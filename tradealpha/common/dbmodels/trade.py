@@ -1,4 +1,3 @@
-import operator
 from datetime import datetime
 from decimal import Decimal
 
@@ -9,10 +8,8 @@ from sqlalchemy.orm import relationship, Session
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from tradealpha.common.dbsync import Base
-from tradealpha.common.dbasync import async_session, db_exec
-from tradealpha.common.dbmodels.amountmixin import AmountMixin
 from tradealpha.common.dbmodels.pnldata import PnlData
-from tradealpha.common.dbmodels.serializer import Serializer
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.enums import Side, ExecType, Status
 from tradealpha.common.messenger import NameSpace, Category, Messenger
