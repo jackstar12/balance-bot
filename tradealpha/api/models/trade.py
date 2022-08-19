@@ -7,7 +7,7 @@ from pydantic import Field, Extra
 
 from tradealpha.api.models import OutputID
 from tradealpha.api.models.pnldata import PnlData
-from tradealpha.common.dbmodels.base import OrmBaseModel
+from tradealpha.common.models import OrmBaseModel
 from tradealpha.api.models.execution import Execution
 from tradealpha.common.enums import Side, Status
 from tradealpha.common.models.compactpnldata import CompactPnlData

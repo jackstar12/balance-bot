@@ -2,12 +2,12 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import List, Literal, Optional, NamedTuple, Set, Any
 
+from tradealpha.common.models.balance import Balance
 from tradealpha.api.models import BaseModel, OutputID, InputID
 
 from tradealpha.common.dbmodels.types import DocumentModel
 from tradealpha.common.dbmodels.journal import JournalType
 from tradealpha.api.models.template import TemplateInfo
-from tradealpha.api.models.amount import FullBalance
 
 
 class Gain(NamedTuple):
@@ -20,7 +20,7 @@ class ChapterInfo(BaseModel):
     title: Optional[str]
     start_date: Optional[date]
     end_date: Optional[date]
-    balances: List[FullBalance]
+    balances: List[Balance]
     performance: Optional[Gain]
     child_ids: List[OutputID]
     parent_id: Optional[OutputID]

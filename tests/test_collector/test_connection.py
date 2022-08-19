@@ -29,7 +29,7 @@ size = Decimal('0.01')
     SANDBOX_CLIENTS,
     indirect=True
 )
-async def test_realtime(time, db_client, ccxt_client, messenger, redis):
+async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
     db_client: Client
 
     async with RedisMessages.create(
@@ -39,11 +39,11 @@ async def test_realtime(time, db_client, ccxt_client, messenger, redis):
         ccxt_client.create_market_buy_order(symbol, float(size))
         await listener.wait(5)
 
-    prev_balance = await db_client.get_latest_balance(redis)
+    prev_balance = await db_client.get_latest_balance(redis, db=db)
 
     await asyncio.sleep(3)
 
-    first_balance = await db_client.get_latest_balance(redis)
+    first_balance = await db_client.get_latest_balance(redis, db=db)
 
     assert prev_balance.total != first_balance.total
 
@@ -56,7 +56,7 @@ async def test_realtime(time, db_client, ccxt_client, messenger, redis):
 
     await asyncio.sleep(1)
 
-    second_balance = await db_client.get_latest_balance(redis)
+    second_balance = await db_client.get_latest_balance(redis, db=db)
     assert first_balance.realized != second_balance.realized
 
     async with RedisMessages.create(

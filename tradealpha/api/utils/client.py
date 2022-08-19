@@ -1,5 +1,6 @@
 import asyncio
 import dataclasses
+import time
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
@@ -126,7 +127,7 @@ async def update_client_data_balance(cache: Dict, client: Client, config: Client
     daily_cache = cache.get('daily', [])
     if daily:
         if daily_cache and cached_date.weekday() == now.weekday():
-            daily_cache[len(daily_cache) - 1] = daily[0]
+            daily_cache[-1] = daily[0]
             daily_cache += daily[1:]
         else:
             daily_cache += daily
@@ -200,13 +201,18 @@ async def create_client_data_serialized(client: Client, config: ClientConfig):
 T = TypeVar('T', bound=BaseModel)
 
 
+def _parse_date(val: bytes) -> datetime:
+    ts = float(val)
+    return datetime.fromtimestamp(ts, pytz.utc)
+
+
 @dataclasses.dataclass
 class ClientCache:
     cache_data_key: ClientCacheKeys
     data_model: Type[T]
     query_params: QueryParams
     user_id: UUID
-    client_last_exec: dict = dataclasses.field(default_factory=lambda: {})
+    client_last_exec: dict[int, datetime] = dataclasses.field(default_factory=lambda: {})
 
     async def read(self, db: AsyncSession) -> tuple[list[T], list[int]]:
         pairs = OrderedDict()
@@ -222,10 +228,10 @@ class ClientCache:
         for client_id in self.query_params.client_ids:
             client = ClientRedis(self.user_id, client_id)
             pairs[client.normal_hash] = [
-                RedisKey(ClientSpace.LAST_EXEC)
+                RedisKey(ClientSpace.LAST_EXEC, parse=_parse_date)
             ]
             pairs[client.cache_hash] = [
-                RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC),
+                RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC, parse=_parse_date),
                 RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS, model=QueryParams)
             ]
 
@@ -237,28 +243,25 @@ class ClientCache:
         for client_id in self.query_params.client_ids:
             client = ClientRedis(self.user_id, client_id)
 
-            last_exec_raw = data[client.normal_hash][0]
+            last_exec = data[client.normal_hash][0]
             cached_last_exec = data[client.cache_hash][0]
             cached_query_params: QueryParams = data[client.cache_hash][1]
 
-            if last_exec_raw:
-                last_exec_ts = float(last_exec_raw)
-                last_exec = datetime.fromtimestamp(last_exec_ts, pytz.utc)
-                self.client_last_exec[client_id] = last_exec_ts
+            if last_exec:
+                self.client_last_exec[client_id] = last_exec
 
                 if (
                         cached_last_exec and cached_last_exec > last_exec
                         and self.query_params.within(cached_query_params)
                 ):
-                    raw_overview = await client.read_cache(
+                    ts1 = time.perf_counter()
+                    raw_overview, = await client.read_cache(
                         RedisKey(self.cache_data_key, model=self.data_model),
                     )
+                    ts2 = time.perf_counter()
+                    print('Reading Cache', ts2 - ts1)
                     if raw_overview:
-                        hits.append(
-                            self.data_model.construct(
-                                **customjson.loads(raw_overview)
-                            )
-                        )
+                        hits.append(raw_overview)
                     else:
                         misses.append(client_id)
                 else:
@@ -269,11 +272,11 @@ class ClientCache:
         return hits, misses
 
     async def write(self, client_id: int, data: T):
-        last_exec = self.client_last_exec.get(client_id, 0)
+        last_exec = self.client_last_exec.get(client_id)
         return await ClientRedis(self.user_id, client_id).redis_set(
             keys={
                 RedisKey(self.cache_data_key): data,
-                RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC): last_exec,
+                RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC): last_exec.timestamp() if last_exec else None,
                 RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS): self.query_params
             },
             space='cache'

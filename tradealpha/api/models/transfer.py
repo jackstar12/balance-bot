@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 
 from tradealpha.api.models import OutputID
-from tradealpha.common.dbmodels.base import OrmBaseModel
+from tradealpha.common.models import OrmBaseModel
 from tradealpha.common.dbmodels.transfer import TransferType
 
 

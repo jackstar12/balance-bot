@@ -27,7 +27,7 @@ from discord_slash import SlashCommand, ComponentContext, SlashContext
 from datetime import datetime, timedelta, date
 from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Sequence, Iterable
 
-from sqlalchemy import asc, select, func, desc
+from sqlalchemy import asc, select, func, desc, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import tradealpha.common.dbmodels.event as db_event
@@ -35,11 +35,10 @@ import tradealpha.common.dbmodels.client as db_client
 from tradealpha.common.dbasync import async_session, db_all
 from tradealpha.common.dbmodels.guildassociation import GuildAssociation
 from tradealpha.common.errors import UserInputError, InternalError
-from tradealpha.common.models.daily import Daily, Interval
+from tradealpha.common.models.interval import Interval
 from tradealpha.common.models.gain import ClientGain
 from tradealpha.common import dbutils
 from tradealpha.common.dbmodels.balance import Balance
-from tradealpha.common.models.selectionoption import SelectionOption
 import tradealpha.common.config as config
 from typing import TYPE_CHECKING
 
@@ -47,7 +46,7 @@ if TYPE_CHECKING:
     from tradealpha.common.dbmodels.client import Client
 
 
-def now():
+def utc_now():
     return datetime.now(pytz.utc)
 
 
@@ -117,60 +116,33 @@ def setup_logger(debug: bool = False):
     return logger
 
 
-
-
-
 async def calc_daily(client: Client,
                      amount: int = None,
-                     guild_id: int = None,
                      currency: str = None,
                      string=False,
-                     forEach: Callable[[Balance], Any] = None,
                      throw_exceptions=True,
                      since: datetime = None,
                      to: datetime = None,
-                     now: datetime = None) -> Union[List[Daily], str]:
+                     db: AsyncSession = None) -> Union[List[Interval], str]:
     """
     Calculates daily balance changes for a given client.
     :param since:
     :param to:
     :param throw_exceptions:
-    :param forEach: function to be performed for each balance
     :param client: Client to calculate changes
     :param amount: Amount of days to calculate
-    :param guild_id:
     :param currency: Currency that will be used
     :param string: Whether the created table should be stored as a string using prettytable or as a list of
     :return:
     """
+    now = utc_now()
 
-    if currency is None:
-        currency = '$'
-
-    if now is None:
-        now = datetime.now(tz=pytz.UTC)
-
-    if since is None:
-        since = datetime.fromtimestamp(0)
-
-    if to is None:
-        to = now
+    currency = currency or '$'
+    since = since or datetime.fromtimestamp(0, pytz.utc)
+    to = to or now
 
     since_date = since.replace(tzinfo=pytz.UTC).replace(hour=0, minute=0, second=0)
-
     daily_end = min(now, to)
-
-    history = await db_all(client.history.statement.filter(
-        Balance.time > since_date, Balance.time < now
-    ).order_by(
-        asc(Balance.time)
-    ))
-
-    if len(history) == 0:
-        if throw_exceptions:
-            raise UserInputError(reason='Got no data for this user')
-        else:
-            return "" if string else []
 
     if amount:
         try:
@@ -178,21 +150,34 @@ async def calc_daily(client: Client,
         except OverflowError:
             raise UserInputError('Invalid daily amount given')
     else:
-        daily_start = history[0].time
+        daily_start = since_date
 
-    daily_start = daily_start.replace(tzinfo=pytz.UTC)
-    daily_start = max(since_date, daily_start).replace(hour=0, minute=0, second=0)
+    subq = select(
+        func.row_number().over(
+            order_by=desc(Balance.time),
+            partition_by=Balance.time.cast(Date)
+        ).label('row_number'),
+        Balance.id.label('id')
+    ).filter(
+        Balance.client_id == client.id,
+        Balance.time > daily_start
+    ).subquery()
 
-    if guild_id:
-        event = await dbutils.get_event(guild_id)
-        if event and event.start > daily_start:
-            daily_start = event.start
+    stmt = select(
+        Balance,
+        subq
+    ).filter(
+        subq.c.row_number == 1,
+        Balance.id == subq.c.id
+    )
 
-    current_day = daily_start
-    current_search = daily_start + timedelta(days=1)
-    prev_balance = db_match_balance_currency(history[0], currency)
-    prev_daily = history[0]
-    prev_daily.time = prev_daily.time.replace(hour=0, minute=0, second=0)
+    history = await db_all(stmt, session=db)
+
+    if len(history) == 0:
+        if throw_exceptions:
+            raise UserInputError(reason='Got no data for this user')
+        else:
+            return "" if string else []
 
     if string:
         results = PrettyTable(
@@ -200,38 +185,9 @@ async def calc_daily(client: Client,
         )
     else:
         results = []
-    for balance in history:
-        if since <= balance.time <= to:
-            if balance.time >= current_search:
 
-                daily = db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
-                daily.time = daily.time.replace(minute=0, second=0)
-                prev_daily = prev_daily or daily
-                values = Daily(
-                    day=date_string(current_day) if string else current_day.timestamp(),
-                    amount=daily.unrealized,
-                    diff_absolute=round(daily.unrealized - prev_daily.unrealized, ndigits=config.CURRENCY_PRECISION.get(currency, 2)),
-                    diff_relative=calc_percentage(prev_daily.unrealized, daily.unrealized, string=False)
-                )
-                if string:
-                    results.add_row([*values])
-                else:
-                    results.append(values)
-                prev_daily = daily
-                current_day = current_search
-                current_search = current_search + timedelta(days=1)
-            prev_balance = balance
-        if balance.time > since_date:
-            await call_unknown_function(forEach, balance)
-
-    if prev_balance.time < current_search:
-        values = Daily(
-            day=date_string(current_day) if string else current_day.timestamp(),
-            amount=prev_balance.unrealized,
-            diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized,
-                                ndigits=config.CURRENCY_PRECISION.get(currency, 2)),
-            diff_relative=calc_percentage(prev_daily.unrealized, prev_balance.unrealized, string=False)
-        )
+    for prev, current in itertools.pairwise(history):
+        values = Interval.create(prev, current)
         if string:
             results.add_row([*values])
         else:
@@ -240,17 +196,11 @@ async def calc_daily(client: Client,
     return results
 
 
-def create_interval(prev: Balance, current: Balance, as_string: bool) -> Interval:
-    return Interval(
-        current.time.strftime('%Y-%m-%d') if as_string else current.time.date(),
-        amount=current.total,
-        # diff_absolute=round(current.unrealized - prev.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-        diff_absolute=current.total_transfers_corrected - prev.total_transfers_corrected,
-        diff_relative=calc_percentage(
-            prev.total, current.total - (current.total_transfered - prev.total_transfered), string=False),
-        start_balance=prev,
-        end_balance=current
-    )
+async def create_leaderboard(mode: str,
+                             event: db_event.Event = None,
+                             time: datetime = None,
+                             archived=False):
+    pass
 
 
 async def calc_intervals(client: Client,
@@ -315,7 +265,7 @@ async def calc_intervals(client: Client,
     start = max(since, start)
 
     if guild_id:
-        event = await dbutils.get_event(guild_id)
+        event = await dbutils.get_discord_event(guild_id)
         if event and event.start > start:
             start = event.start
 
@@ -333,7 +283,7 @@ async def calc_intervals(client: Client,
         if current_search <= now <= to:
             # current = get_best_time_fit(current_search, prev_balance, balance)
             prev = prev or prev_balance
-            values = create_interval(prev, prev_balance, as_string)
+            values = Interval.create(prev, prev_balance, as_string)
             if as_string:
                 results.add_row(list(values)[4:])
             else:
@@ -365,132 +315,16 @@ def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], str
     return result if string else num_cls(result)
 
 
-async def create_leaderboard(dc_client: discord.Client,
-                             guild_id: int,
-                             mode: str,
-                             event: db_event.Event = None,
-                             time: datetime = None,
-                             archived=False) -> discord.Embed:
-
-    client_scores: List[Tuple[Client, float]] = []
-    value_strings: Dict[Client, str] = {}
-    clients_rekt: List[Client] = []
-    clients_missing: List[Client] = []
-
-    footer = ''
-    description = ''
-
-    guild = dc_client.get_guild(guild_id)
-    if not guild:
-        raise InternalError(f'Provided guild_id is not valid!')
-
-    if not event:
-        event = await dbutils.get_event(guild_id, throw_exceptions=False, eager_loads=[db_event.Event.registrations])
-
-    if event:
-        clients = event.registrations
+def calc_percentage_diff(then: Union[float, Decimal], diff: Union[float, Decimal],
+                         string=True) -> float | str | Decimal:
+    num_cls = type(then)
+    if diff == 0.0:
+        result = '0'
+    elif then > 0:
+        result = f'{round(100 * (diff / then), ndigits=3)}'
     else:
-        # All global clients
-        clients = await db_all(
-            select(db_client.Client).
-                filter(
-                db_client.Client.id.in_(
-                    select(GuildAssociation.client_id).
-                        filter_by(guild_id=guild.id)
-                )
-            )
-        )
-
-    # if not archived:
-    #     user_manager = UserManager()
-    #     await user_manager.fetch_data(clients=clients)
-
-    if mode == 'balance':
-        for client in clients:
-            if client.rekt_on:
-                clients_rekt.append(client)
-                continue
-            balance = await client.latest()
-            if balance and not (event and balance.time < event.start):
-                if balance.unrealized > config.REKT_THRESHOLD:
-                    client_scores.append((client, balance.unrealized))
-                    value_strings[client] = balance.to_string(display_extras=False)
-                else:
-                    clients_rekt.append(client)
-            else:
-                clients_missing.append(client)
-
-    elif mode == 'gain':
-
-        description += f'Gain {readable_time(time)}\n\n'
-
-        client_gains = await calc_gains(clients, event, time)
-
-        for gain in client_gains:
-            if gain.relative is not None:
-                if gain.client.rekt_on:
-                    clients_rekt.append(gain.client)
-                else:
-                    client_scores.append((gain.client, gain.relative))
-                    value_strings[gain.client] = f'{gain.relative}% ({gain.absolute}$)'
-            else:
-                clients_missing.append(gain.client)
-    else:
-        raise InternalError(f'Unknown mode {mode} was passed in')
-
-    client_scores.sort(key=lambda x: x[1], reverse=True)
-    rank = 1
-    rank_true = 1
-
-    if len(client_scores) > 0:
-        if mode == 'gain' and not archived:
-            dc_client.loop.create_task(
-                dc_client.change_presence(
-                    activity=discord.Activity(
-                        type=discord.ActivityType.watching,
-                        name=f'Best Trader: {client_scores[0][0].discord_user.get_display_name(dc_client, guild_id)}'
-                    )
-                )
-            )
-
-        prev_score = None
-        for client, score in client_scores:
-            member = guild.get_member(client.discord_user.id)
-            if member:
-                if prev_score is not None and score < prev_score:
-                    rank = rank_true
-                if client in value_strings:
-                    value = value_strings[client]
-                    description += f'{rank}. **{member.display_name}** {value}\n'
-                    rank_true += 1
-                else:
-                    logging.error(f'Missing value string for {client=} even though hes in user_scores')
-                prev_score = score
-
-    if len(clients_rekt) > 0:
-        description += f'\n**Rekt**\n'
-        for user_rekt in clients_rekt:
-            member = guild.get_member(user_rekt.discord_user.id)
-            if member:
-                description += f'{member.display_name}'
-                if user_rekt.rekt_on:
-                    description += f' since {user_rekt.rekt_on.replace(microsecond=0)}'
-                description += '\n'
-
-    if len(clients_missing) > 0:
-        description += f'\n**Missing**\n'
-        for client_missing in clients_missing:
-            member = guild.get_member(client_missing.discord_user.id)
-            if member:
-                description += f'{member.display_name}\n'
-
-    description += f'\n{footer}'
-
-    logging.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
-    return discord.Embed(
-        title='Leaderboard :medal:',
-        description=description
-    )
+        result = '0'
+    return result if string else num_cls(result)
 
 
 async def calc_gains(clients: List[Client],
@@ -516,40 +350,9 @@ async def calc_gains(clients: List[Client],
             logging.info('calc_gains: A none client was passed in?')
             continue
 
-        # search, _ = dbutils.get_guild_start_end_times(guild_id, search, None, archived=archived)
-        #
-        # balance_then = user_manager.db_match_balance_currency(
-        #    Balance.query.filter(
-        #        Balance.client_id == client.id,
-        #        Balance.tz_time >= search
-        #    ).first(),
-        #    currency
-        # )
-
         search, _ = await dbutils.get_guild_start_end_times(event, search, None)
         balance_then = await client.get_balance_at_time(search, currency=currency)
-        # balance_then = db_match_balance_currency(
-        #    await db_first(
-        #        client.history.statement.filter(
-        #            Balance.time > search
-        #        ).order_by(asc(Balance.time))
-        #    ),
-        #    currency
-        # )
-
         balance_now = await client.latest()
-
-        # history = await user_manager.get_client_history(client, event, since=search, currency=currency)
-        # balance_now = db_match_balance_currency(
-        #     await db_first(
-        #         client.statement.filter(
-        #             Balance.time < search
-        #         ).order_by(None).order_by(
-        #             desc(Balance.time)
-        #         )
-        #     ),
-        #     currency
-        # )
 
         if balance_then and balance_now:
             # balance_then = history.data[0]
@@ -561,7 +364,8 @@ async def calc_gains(clients: List[Client],
                 results.append(
                     ClientGain(
                         client=client,
-                        relative=round(100 * (diff / balance_then.unrealized), ndigits=config.CURRENCY_PRECISION.get('%', 2)),
+                        relative=round(100 * (diff / balance_then.unrealized),
+                                       ndigits=config.CURRENCY_PRECISION.get('%', 2)),
                         absolute=diff
                     )
                 )
@@ -589,7 +393,6 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     :return:
       Calculated timedelta or None if None was passed in
     """
-
     if not time_str:
         return None
 
@@ -702,34 +505,8 @@ def readable_time(time: datetime) -> str:
 
 
 def list_last(l: list, default: Any = None):
-    return l[len(l) - 1] if l else default
+    return l[-1] if l else default
 
-
-def db_match_balance_currency(balance: Balance, currency: str):
-    return balance
-
-    result = None
-
-    if balance is None:
-        return None
-
-    result = None
-
-    if balance.currency != currency:
-        if balance.extra_currencies:
-            result_currency = balance.extra_currencies.get(currency)
-            if not result_currency:
-                result_currency = balance.extra_currencies.get(config.CURRENCY_ALIASES.get(currency))
-            if result_currency:
-                result = Balance(
-                    amount=result_currency,
-                    currency=currency,
-                    time=balance.time
-                )
-    else:
-        result = balance
-
-    return result
 
 
 def combine_time_series(*time_series: typing.Iterable):
@@ -759,7 +536,7 @@ def join_args(*args, denominator=':'):
 T = typing.TypeVar('T')
 
 
-def groupby(items: list[T], key: str | Callable[[T], Any]):
+def groupby(items: list[T], key: str | Callable[[T], Any]) -> dict[str, list[T]]:
     res = {}
     if isinstance(key, str):
         key = lambda x: getattr(x, key)

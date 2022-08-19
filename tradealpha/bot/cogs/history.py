@@ -164,7 +164,7 @@ class HistoryCog(CogBase):
 
         await utils.create_history(
             to_graph=registrations,
-            event=await dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False),
+            event=await dbutils.get_discord_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False),
             start=since,
             end=to,
             currency_display=currency_raw,

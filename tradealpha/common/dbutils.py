@@ -52,7 +52,7 @@ async def get_client_history(client: db_client.Client,
         elif event and event.start <= balance.time and not initial:
             initial = balance
 
-    #if results:
+    # if results:
     #    results.insert(0, Balance(
     #        time=since,
     #        unrealized=results[0].unrealized,
@@ -91,15 +91,15 @@ async def get_client(user_id: int,
     if user:
         if guild_id:
             if registration:
-                event = await get_event(guild_id, state='registration', throw_exceptions=False,
-                                        eager_loads=[db_event.Event.registrations])
+                event = await get_discord_event(guild_id, state='registration', throw_exceptions=False,
+                                                eager_loads=[db_event.Event.registrations])
                 if event:
                     for client in event.registrations:
                         if client.discord_user_id == user_id:
                             return client
 
-            event = await get_event(guild_id, state='active', throw_exceptions=False,
-                                    eager_loads=[db_event.Event.registrations])
+            event = await get_discord_event(guild_id, state='active', throw_exceptions=False,
+                                            eager_loads=[db_event.Event.registrations])
             if event:
                 for client in event.registrations:
                     if client.discord_user_id == user_id:
@@ -117,21 +117,16 @@ async def get_client(user_id: int,
         raise UserInputError("User {name} is not registered", user_id)
 
 
-async def get_event(guild_id: int, channel_id: int = None, state: str = 'active',
+async def get_event(location: dict, state: str = 'active',
                     throw_exceptions=True,
                     eager_loads=None) -> Optional[db_event.Event]:
-
     if not state:
         state = 'active'
 
-    if not guild_id:
-        return None
-
     eager_loads = eager_loads or []
-
     now = datetime.now(pytz.utc)
 
-    stmt = select(db_event.Event).filter(db_event.Event.guild_id == guild_id)
+    stmt = select(db_event.Event).filter(db_event.Event.location == location)
 
     if state == 'archived':
         stmt = stmt.filter(db_event.Event.end < now)
@@ -153,8 +148,24 @@ async def get_event(guild_id: int, channel_id: int = None, state: str = 'active'
         event = await db_first(stmt, *eager_loads)
 
     if not event and throw_exceptions:
-        raise UserInputError(f'There is no {"event you can register for" if state == "registration" else "active event"}')
+        raise UserInputError(
+            f'There is no {"event you can register for" if state == "registration" else "active event"}')
     return event
+
+
+def get_discord_event(guild_id: int, channel_id: int = None,
+                      state: str = 'active',
+                      throw_exceptions=True,
+                      eager_loads=None):
+    return get_event(
+        {
+            'discord': {
+                'guild_id': guild_id,
+                'channel_id': channel_id
+            }
+        },
+        state=state, throw_exceptions=throw_exceptions, eager_loads=eager_loads
+    )
 
 
 async def register_client(client: db_client.Client, messenger: Messenger, db: AsyncSession):
@@ -169,7 +180,8 @@ async def delete_client(client: db_client.Client, messenger: Messenger, db: Asyn
     messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj={'id': client.id})
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: list[int] = None) -> Union[Select, Delete, Update]:
+def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: list[int] = None) -> Union[
+    Select, Delete, Update]:
     """
     Commonly used utility to add filters that ensure authorized client access
     :param stmt: stmt to add filters to
@@ -177,8 +189,8 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
     :param client_ids: possible client ids. If None, all clients will be used
     :return:
     """
-    #user_checks = [Client.user_id == user.id]
-    #if user.discord_user_id:
+    # user_checks = [Client.user_id == user.id]
+    # if user.discord_user_id:
     #    user_checks.append(Client.discord_user_id == user.discord_user_id)
     return stmt.filter(
         db_client.Client.id.in_(client_ids) if client_ids else True,
@@ -189,12 +201,12 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
     )
 
 
-
 def get_all_events(guild_id: int, channel_id):
     pass
 
 
-async def get_discord_user(user_id: int, throw_exceptions=True, require_registrations=True, eager_loads=None) -> Optional[DiscordUser]:
+async def get_discord_user(user_id: int, throw_exceptions=True, require_registrations=True, eager_loads=None) -> \
+Optional[DiscordUser]:
     """
     Tries to find a matching entry for the user and guild id.
     :param user_id: id of user to get

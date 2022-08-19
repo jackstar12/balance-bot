@@ -6,13 +6,14 @@ from fastapi import Query
 from pydantic import UUID4
 from starlette.requests import Request
 
-from tradealpha.api.models.amount import FullBalance
+from tradealpha.common.models.balance import Balance
+from tradealpha.common.models.interval import Interval
 from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbmodels import Client
 from tradealpha.api.models import BaseModel, OutputID, InputID
 from tradealpha.api.models.transfer import Transfer
-from tradealpha.common.dbmodels.base import OrmBaseModel
+from tradealpha.common.models import OrmBaseModel
 
 
 def get_query_params(id: set[InputID] = Query(default=[]),
@@ -68,7 +69,7 @@ class ClientCreateBody(ClientCreate):
 
 class ClientCreateResponse(OrmBaseModel):
     token: str
-    balance: FullBalance
+    balance: Balance
 
 
 class ClientConfirm(BaseModel):
@@ -99,27 +100,15 @@ class ClientInfo(BaseModel):
     archived: bool
     invalid: bool
 
+    created_at: datetime
+    last_edited: datetime
+
     class Config:
         orm_mode = True
-
-
-class Balance(OrmBaseModel):
-    time: Optional[datetime]
-    realized: Decimal
-    unrealized: Decimal
-    total_transfered: Decimal
-
-    def __add__(self, other):
-        return Balance.construct(
-            realized=self.realized + other.realized,
-            unrealized=self.unrealized + other.unrealized,
-            total_transfered=self.total_transfered + other.total_transfered,
-            time=min(self.time, other.time) if self.time else None
-        )
 
 
 class ClientOverview(BaseModel):
     initial_balance: Balance
     current_balance: Balance
     transfers: dict[str, Transfer]
-    daily: dict[date, Balance]
+    daily: dict[date, Interval]

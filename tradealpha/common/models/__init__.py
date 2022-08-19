@@ -48,6 +48,11 @@ class BaseModel(PydanticBaseModel):
         return m
 
 
-class BaseOrmModel(BaseModel):
+class OrmBaseModel(BaseModel):
     class Config:
         orm_mode = True
+
+__all__ = [
+    "OrmBaseModel",
+    "BaseModel"
+]

@@ -88,7 +88,7 @@ class VolumeFetcher(Singleton):
     async def _update_volume_history(self, coin: Coin):
 
         if coin.spot_data:
-            start_time = coin.spot_data[len(coin.spot_data) - 1]
+            start_time = coin.spot_data[-1]
         else:
             start_time = datetime(2022, 3, 22) - self._max_time_range
 

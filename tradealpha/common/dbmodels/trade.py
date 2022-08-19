@@ -245,8 +245,16 @@ class Trade(Base, Serializer, CurrencyMixin):
 
     async def reverse_to(self,
                          date: datetime,
-                         db_session: AsyncSession,
-                         commit=True):
+                         db_session: AsyncSession):
+        """
+        Method used for setting a trade back to a specific point in time.
+        Used when an invalid series of executions is detected (e.g. websocket shut down
+        without notice)
+
+        :param date: the date to reverse
+        :param db_session: database session
+        :return:
+        """
 
         if date < self.initial.time:
             # if we reverse to beyond existense of the trade, straight up
@@ -273,9 +281,6 @@ class Trade(Base, Serializer, CurrencyMixin):
                         PnlData.time > date
                     )
                 )
-
-        if commit:
-            await db_session.commit()
 
     def _replace_pnl(self, old: PnlData, new: PnlData, cmp_func):
         if not old or cmp_func(new.total, old.total):

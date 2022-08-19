@@ -101,11 +101,11 @@ class RegisterCog(CogBase):
             if issubclass(exchange_cls, ExchangeWorker):
                 if common.utils.validate_kwargs(kwargs, exchange_cls.required_extra_args):
 
-                    event = await dbutils.get_event(ctx.guild_id,
-                                                    ctx.channel_id,
-                                                    state='registration',
-                                                    throw_exceptions=False,
-                                                    eager_loads=[Event.registrations])
+                    event = await dbutils.get_discord_event(ctx.guild_id,
+                                                            ctx.channel_id,
+                                                            state='registration',
+                                                            throw_exceptions=False,
+                                                            eager_loads=[Event.registrations])
 
                     discord_user = await dbutils.get_discord_user(
                         ctx.author_id, throw_exceptions=False,
@@ -294,7 +294,7 @@ class RegisterCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def register_existing(self, ctx: SlashContext):
-        event = await dbutils.get_event(guild_id=ctx.guild_id, state='registration', eager_loads=[Event.registrations])
+        event = await dbutils.get_discord_event(guild_id=ctx.guild_id, state='registration', eager_loads=[Event.registrations])
 
         if event.is_free_for_registration():
             for client in event.registrations:
@@ -364,13 +364,13 @@ class RegisterCog(CogBase):
 
         async def start_unregistration(ctx, selections: List[Client]):
 
-            event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False,
-                                            eager_loads=[Event.registrations])
+            event = await dbutils.get_discord_event(ctx.guild_id, ctx.channel_id, state='registration', throw_exceptions=False,
+                                                    eager_loads=[Event.registrations])
 
             client = selections[0]
 
             if not event or client not in event.registrations:
-                event = await dbutils.get_event(
+                event = await dbutils.get_discord_event(
                     ctx.guild_id,
                     ctx.channel_id,
                     state='active',

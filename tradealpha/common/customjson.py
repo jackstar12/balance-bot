@@ -9,6 +9,8 @@ def default(obj: Any):
         return str(round(obj, ndigits=3))
     if isinstance(obj, tuple):
         return list(obj)
+    if isinstance(obj, set):
+        return list(obj)
     raise TypeError
 
 

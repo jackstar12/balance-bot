@@ -62,10 +62,11 @@ class ClientRedis:
             asyncio.ensure_future(self.redis.expire(client_hash, 5 * 60))
         keys[RedisKey(client_hash, self.user_id)] = str(self.user_id)
         from pydantic import BaseModel as PydanticBaseModel
-        return await self.redis.hset(client_hash, mapping={
-            k.key: customjson.dumps(v.json()) if isinstance(v, PydanticBaseModel) else v
+        mapping = {
+            k.key: customjson.dumps(v.dict()) if isinstance(v, PydanticBaseModel) else v
             for k, v in keys.items()
-        })
+        }
+        return await self.redis.hset(client_hash, mapping=mapping)
 
     async def read_cache(self, *keys: RedisKey):
         """
@@ -73,7 +74,7 @@ class ClientRedis:
         (useful when reading cache)
         """
         return await redis_bulk_keys(
-            self.cache_hash, redis_instance=self.redis, *keys
+            self.cache_hash, *keys, redis_instance=self.redis
         )
 
     async def set_last_exec(self, dt: datetime):
@@ -155,9 +156,9 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     last_execution_sync = Column(DateTime(timezone=True), nullable=True)
 
     def as_redis(self, redis_instance=None) -> ClientRedis:
-        return ClientRedis(self.user_id, self.client_id, redis_instance=redis_instance)
+        return ClientRedis(self.user_id, self.id, redis_instance=redis_instance)
 
-    async def get_latest_balance(self, redis: Redis, currency=None):
+    async def get_latest_balance(self, redis: Redis, db: AsyncSession, currency=None):
         raw = await redis.hget(utils.join_args(NameSpace.CLIENT, self.id), key=NameSpace.BALANCE.value)
         if raw:
             as_json = customjson.loads(raw)
@@ -167,7 +168,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                 total_transfered=Decimal(as_json['total_transfered'])
             )
         else:
-            return await self.latest()
+            return await self.latest(db)
 
     def evaluate_balance(self):
         if not self.currently_realized:
@@ -215,33 +216,14 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
         await db_session.commit()
 
-    async def init_journal(self, new_journal: Journal, db_session: AsyncSession):
-        new_journal.client = self
-        intervals = await utils.calc_intervals(
-            self,
-            timedelta(days=1)
-        )
-        db_session.add_all([
-            Chapter(
-                start_date=interval.day,
-                end_date=interval.day + new_journal.chapter_interval,
-                client=self,
-                journal=new_journal,
-                start_balance=interval.start_balance,
-                end_balance=interval.end_balance,
-            )
-            for interval in intervals
-        ])
-        db_session.add(new_journal)
-        await db_session.commit()
-
     async def full_history(self):
         return await db_all(self.history.statement)
 
-    async def latest(self):
+    async def latest(self, db: AsyncSession):
         try:
             return await db_first(
-                self.history.statement.order_by(None).order_by(desc(db_balance.Balance.time))
+                self.history.statement.order_by(None).order_by(desc(db_balance.Balance.time)),
+                session=db
             )
         except ValueError:
             return None
@@ -264,7 +246,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             amount_cls.time < time if time else True
         ).order_by(desc(amount_cls.time))
 
-        balance = await db_first(stmt)
+        balance = await db_first(stmt, session=db)
 
         if self.is_premium and time:
             # Probably the most beautiful query I've ever written

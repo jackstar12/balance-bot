@@ -119,7 +119,7 @@ class BalanceCog(CogBase):
 
         user_gains = await calc_gains(
             clients,
-            event=await dbutils.get_event(ctx.guild_id, throw_exceptions=False),
+            event=await dbutils.get_discord_event(ctx.guild_id, throw_exceptions=False),
             search=time,
             currency=currency
         )

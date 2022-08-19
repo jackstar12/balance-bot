@@ -129,7 +129,7 @@ class Journal(Base):
     async def update(self, db: AsyncSession, template: Template = None):
         template = template or self.default_template
         if self.type == JournalType.INTERVAL:
-            now = utils.now()
+            now = utils.utc_now()
             while now > self.current_chapter.data['end_date']:
                 chapter = self.create_chapter(template=template)
                 db.add(chapter)

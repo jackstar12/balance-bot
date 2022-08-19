@@ -36,8 +36,7 @@ import tradealpha.common.dbmodels.client as db_client
 from tradealpha.common.dbasync import async_session, db_all
 from tradealpha.common.dbmodels.guildassociation import GuildAssociation
 from tradealpha.common.errors import UserInputError, InternalError
-from tradealpha.common.models.daily import Daily
-from tradealpha.common.models.gain import ClientGain
+from tradealpha.common.models.interval import Interval
 from tradealpha.common import dbutils
 from tradealpha.common.dbmodels.discorduser import DiscordUser
 from tradealpha.common.dbmodels.balance import Balance
@@ -49,7 +48,6 @@ import matplotlib.colors as mcolors
 
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.trade import Trade
-from tradealpha.common.utils import calc_gains, combine_time_series
 from tradealpha.common import utils
 
 if TYPE_CHECKING:
@@ -239,7 +237,7 @@ def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
         ax = plt.gca()
 
     green = '#3eb86d'
-    #green = 'green'
+    # green = 'green'
     red = '#FF6384FF'
 
     current_cut = 0
@@ -272,7 +270,7 @@ def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
         z[:, :, :3] = rgb
         z[:, :, -1] = np.linspace(alpha if inverse else 0, 0 if inverse else alpha, 100)[:, None]
 
-        alpha_root = np.power(alpha, 1/1.2)
+        alpha_root = np.power(alpha, 1 / 1.2)
         alpha_values = np.arange(0, alpha_root, alpha_root / 100)
         z[:, :, -1] = np.array([
             np.power(x, 1.2) for x in
@@ -361,7 +359,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
             xs, ys = calc_xs_ys(history.data, pnl_data, percentage, relative_to=history.initial, mode=mode)
 
-            total_gain = calc_percentage(history.initial.unrealized, ys[len(ys) - 1])
+            total_gain = calc_percentage(history.initial.unrealized, ys[-1])
 
             if first:
                 title = f'History for {name} (Total: {ys[-1] if percentage else total_gain}%)'
@@ -408,7 +406,7 @@ async def calc_daily(client: Client,
                      throw_exceptions=True,
                      since: datetime = None,
                      to: datetime = None,
-                     now: datetime = None) -> Union[List[Daily], str]:
+                     now: datetime = None) -> Union[List[Interval], str]:
     """
     Calculates daily balance changes for a given client.
     :param since:
@@ -463,7 +461,7 @@ async def calc_daily(client: Client,
     daily_start = max(since_date, daily_start).replace(hour=0, minute=0, second=0)
 
     if guild_id:
-        event = await dbutils.get_event(guild_id)
+        event = await dbutils.get_discord_event(guild_id)
         if event and event.start > daily_start:
             daily_start = event.start
 
@@ -486,7 +484,7 @@ async def calc_daily(client: Client,
                 daily = db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
                 daily.time = daily.time.replace(minute=0, second=0)
                 prev_daily = prev_daily or daily
-                values = Daily(
+                values = Interval(
                     current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
                     daily.unrealized,
                     round(daily.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
@@ -504,7 +502,7 @@ async def calc_daily(client: Client,
             await call_unknown_function(forEach, balance)
 
     if prev_balance.time < current_search:
-        values = Daily(
+        values = Interval(
             day=current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
             amount=prev_balance.unrealized,
             diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized,
@@ -550,7 +548,7 @@ async def create_leaderboard(dc_client: discord.Client,
         raise InternalError(f'Provided guild_id is not valid!')
 
     if not event:
-        event = await dbutils.get_event(guild_id, throw_exceptions=False, eager_loads=[db_event.Event.registrations])
+        event = await dbutils.get_discord_event(guild_id, throw_exceptions=False, eager_loads=[db_event.Event.registrations])
 
     if event:
         clients = event.registrations
@@ -587,7 +585,7 @@ async def create_leaderboard(dc_client: discord.Client,
 
         description += f'Gain {readable_time(time)}\n\n'
 
-        client_gains = await calc_gains(clients, event, time)
+        client_gains = await utils.calc_gains(clients, event, time)
 
         for gain in client_gains:
             if gain.relative is not None:
@@ -742,7 +740,6 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     return date
 
 
-
 def calc_xs_ys(data: List[Balance],
                pnl_data: List[PnlData],
                percentage=False,
@@ -757,7 +754,7 @@ def calc_xs_ys(data: List[Balance],
         relative_to = relative_to.realized
         upnl_by_trade = {}
         amount = None
-        for prev_item, item, next_item in utils.prev_now_next(combine_time_series(data, pnl_data)):
+        for prev_item, item, next_item in utils.prev_now_next(utils.combine_time_series(data, pnl_data)):
             if isinstance(item, PnlData):
                 upnl_by_trade[item.trade_id] = item.unrealized
             if isinstance(item, Balance):
@@ -773,10 +770,11 @@ def calc_xs_ys(data: List[Balance],
                         amount = 0.0
                 else:
                     amount = current
-            if amount is not None and (True or not prev_item or not next_item or prev_item.time != item.time != next_item.time):
+            if amount is not None and (
+                    True or not prev_item or not next_item or prev_item.time != item.time != next_item.time):
                 xs.append(item.time)
                 ys.append(amount)
-                #ys.append(amount + sum(upnl_by_trade.values()))
+                # ys.append(amount + sum(upnl_by_trade.values()))
         return xs, ys
 
 

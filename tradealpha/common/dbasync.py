@@ -1,7 +1,8 @@
 import asyncio
+import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Tuple, Union, Any, OrderedDict, TypeVar, Type, Optional
+from typing import List, Tuple, Union, Any, OrderedDict, TypeVar, Type, Optional, Callable
 
 import dotenv
 import os
@@ -36,7 +37,7 @@ redis = aioredis.from_url(REDIS_URI)
 
 
 async def db_exec(stmt: Any, session: AsyncSession = None) -> Any:
-    return await (session or async_session).execute(stmt)
+    return await session.execute(stmt)
 
 
 def db_select(cls, eager=None, session=None, **filters):
@@ -52,13 +53,13 @@ def db_select_all(cls, eager=None, session=None, **filters):
 async def db_all(stmt: Select, *eager, session=None) -> list[Any]:
     if eager:
         stmt = db_eager(stmt, *eager)
-    return (await (session or async_session).scalars(stmt)).unique().all()
+    return (await session.scalars(stmt)).unique().all()
 
 
 async def db_unique(stmt: Select, *eager, session=None):
     if eager:
         stmt = db_eager(stmt, *eager)
-    return (await (session or async_session).scalars(stmt.limit(1))).unique().first()
+    return (await session.scalars(stmt.limit(1))).unique().first()
 
 
 db_first = db_unique
@@ -104,19 +105,20 @@ def db_eager(stmt: Select, *eager: Union[Column, Tuple[Column, Union[Tuple, Inst
 class RedisKey:
     key: str
     model: Optional[Type[BaseModel]]
+    parse: Optional[Callable[[bytes], Any]]
 
-    def __init__(self, *keys, model: Optional[Type[BaseModel]] = None, denominator=':'):
+    def __init__(self, *keys, model: Optional[Type[BaseModel]] = None, parse: Optional[Callable] = None, denominator=':'):
         self.key = denominator.join(
             [str(key.value if isinstance(key, Enum) else key) for key in keys if key]
         )
-
+        self.parse = parse
         self.model = model
 
     def __hash__(self):
         return self.key.__hash__()
 
 
-async def redis_bulk_keys(h: str, redis_instance=None, *keys: list[RedisKey]):
+async def redis_bulk_keys(h: str, *keys: list[RedisKey], redis_instance=None):
     # if len(keys):
     #    return await (redis_instance or redis).hget(h, keys[0])
     result = await redis_bulk({h: keys}, redis_instance=redis_instance)
@@ -144,8 +146,13 @@ async def redis_bulk(hash_keys: dict[str, list[RedisKey]], redis_instance=None):
                 if key.model and value:
                     try:
                         res = customjson.bytes_loads(value)
-                        value = key.model(**customjson.bytes_loads(res))
-                    except ValidationError:
+                        value = key.model(**res)
+                    except:
+                        value = None
+                if key.parse and value:
+                    try:
+                        value = key.parse(value)
+                    except Exception:
                         value = None
                 result[h].append(value)
         return result

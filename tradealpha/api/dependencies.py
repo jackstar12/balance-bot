@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from http import HTTPStatus
 from typing import Type
 from uuid import UUID
@@ -62,7 +63,10 @@ class CurrentUserDep:
                        authenticator = Depends(get_authenticator),
                        db: AsyncSession = Depends(get_db)):
         uuid = await authenticator.verify_id(request)
+        ts1 = time.perf_counter()
         user = await db_unique(self.base_stmt.filter_by(id=uuid), session=db) if uuid else None
+        ts2 = time.perf_counter()
+        print(ts2 - ts1)
         if not user:
             raise HTTPException(
                 status_code=HTTPStatus.BAD_REQUEST,

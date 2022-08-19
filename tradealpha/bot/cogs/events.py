@@ -88,7 +88,7 @@ class EventsCog(CogBase):
         if registration_start > start:
             raise UserInputError("Registration start should be before event start.")
 
-        active_event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
+        active_event = await dbutils.get_discord_event(ctx.guild_id, ctx.channel_id, throw_exceptions=False)
 
         if active_event:
             if start < active_event.end:
@@ -97,8 +97,8 @@ class EventsCog(CogBase):
                 raise UserInputError(
                     f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
-        active_registration = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='registration',
-                                                      throw_exceptions=False)
+        active_registration = await dbutils.get_discord_event(ctx.guild_id, ctx.channel_id, state='registration',
+                                                              throw_exceptions=False)
 
         if active_registration:
             if registration_start < active_registration.registration_end:
@@ -203,7 +203,7 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def summary(self, ctx: SlashContext):
-        event = await dbutils.get_event(ctx.guild_id, ctx.channel_id, state='active')
+        event = await dbutils.get_discord_event(ctx.guild_id, ctx.channel_id, state='active')
         await ctx.defer()
         history = await event.create_complete_history(dc_client=self.bot)
         await ctx.send(

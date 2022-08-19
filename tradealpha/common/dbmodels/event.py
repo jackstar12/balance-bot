@@ -1,9 +1,10 @@
 import asyncio
 
 import pytz
+from sqlalchemy.dialects.postgresql import JSONB
 
 from tradealpha.common.dbasync import async_session
-from tradealpha.common import utils
+from tradealpha.bot import utils
 import numpy
 from tradealpha.common.models.gain import ClientGain
 from tradealpha.common.dbmodels.archive import Archive
@@ -15,7 +16,7 @@ import discord
 
 from tradealpha.common.dbsync import Base
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table, inspect
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, BigInteger, Table, inspect, Boolean
 
 event_association = Table('association', Base.metadata,
                           Column('event_id', Integer, ForeignKey('event.id', ondelete="CASCADE"), primary_key=True),
@@ -36,6 +37,8 @@ class Event(Base, Serializer):
     end = Column(DateTime(timezone=True), nullable=False)
     name = Column(String, nullable=False)
     description = Column(String, nullable=False)
+    # public = Column(Boolean, default=False, nullable=False)
+    # location = Column(JSONB, nullable=False)
 
     registrations = relationship('Client', lazy='noload', secondary=event_association, backref=backref('events', lazy='noload'))
     archive = relationship('Archive', backref=backref('event', lazy='noload'), uselist=False, cascade="all, delete")
@@ -95,7 +98,7 @@ class Event(Base, Serializer):
                        f'{gains[0].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         description += f'\n**Worst Trader :disappointed_relieved:**\n' \
-                       f'{gains[len(gains) - 1].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{gains[-1].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         gains.sort(key=lambda x: x.absolute, reverse=True)
 
@@ -125,7 +128,7 @@ class Event(Base, Serializer):
                        f'{volatility[0].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         description += f'\n**Still HODLing :sleeping:**\n' \
-                       f'{volatility[len(volatility) - 1].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
+                       f'{volatility[-1].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
 
         cum_percent = 0.0
         cum_dollar = 0.0
