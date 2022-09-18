@@ -12,7 +12,7 @@ import tradealpha.common.utils as utils
 
 from tradealpha.common import dbutils
 from tradealpha.common.models.gain import ClientGain
-from tradealpha.common.dbasync import async_session, db_all
+from tradealpha.common.dbasync import async_session, db_all, redis
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.errors import UserInputError
 from tradealpha.common.models.interval import Interval
@@ -216,12 +216,12 @@ async def calc_gain(client: Client,
         since = max(since, event.start)
 
     balance_then = await client.get_exact_balance_at_time(since, db=db, currency=currency)
-    balance_now = await client.latest(db=db)
+    balance_now = await client.get_latest_balance(redis=redis, db=db)
 
     if balance_then and balance_now:
         diff = round(balance_now.unrealized - balance_then.unrealized,
                      ndigits=utils.config.CURRENCY_PRECISION.get(currency, 3))
-
+        absolute, relative = balance_then.get_currency(currency).gain_since(balance_now.get_currency())
         if balance_then.unrealized > 0:
             return ClientGain(
                 client=client,

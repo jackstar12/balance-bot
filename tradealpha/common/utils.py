@@ -87,16 +87,15 @@ def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], str
     return result if string else num_cls(result)
 
 
-def calc_percentage_diff(then: Union[float, Decimal], diff: Union[float, Decimal],
-                         string=True) -> float | str | Decimal:
+def calc_percentage_diff(then: Union[float, Decimal], diff: Union[float, Decimal]) -> float | str | Decimal:
     num_cls = type(then)
-    if diff == 0.0:
+    if diff == 0:
         result = '0'
     elif then > 0:
-        result = f'{round(100 * (diff / then), ndigits=3)}'
+        result = round(100 * (diff / then), ndigits=3)
     else:
-        result = '0'
-    return result if string else num_cls(result)
+        result = 0
+    return num_cls(result)
 
 
 TIn = typing.TypeVar('TIn')

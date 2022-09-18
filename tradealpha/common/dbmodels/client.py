@@ -357,7 +357,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             )
 
         else:
-            return balance
+            return balance.get_currency(currency)
 
     @hybrid_property
     def is_active(self):

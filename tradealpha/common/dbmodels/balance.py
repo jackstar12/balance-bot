@@ -14,6 +14,7 @@ from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime, orm
 import tradealpha.common.config as config
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
 import sqlalchemy as sa
+from tradealpha.common.models.balance import Amount as AmountModel
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels import Client
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 class _Common:
     realized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
     unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
+    total_transfered: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
 
 
 class Amount(Base, Serializer, _Common):
@@ -29,7 +31,6 @@ class Amount(Base, Serializer, _Common):
 
     balance_id = Column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
     balance = relationship('Balance', lazy='raise')
-
     currency: str = Column(sa.String(length=3), primary_key=True)
 
 
@@ -50,11 +51,7 @@ class Balance(Base, _Common, Serializer, QueryMixin):
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
     client: 'Client' = relationship('Client', lazy='raise', foreign_keys=client_id)
     time = Column(DateTime(timezone=True), nullable=False, index=True)
-
-    total_transfered: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
-
     extra_currencies: list[Amount] = relationship('Amount', lazy='noload', back_populates='balance')
-
     transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='SET NULL'), nullable=True)
     transfer = relationship('Transfer')
 
@@ -71,10 +68,17 @@ class Balance(Base, _Common, Serializer, QueryMixin):
     def amount(self):
         return self.unrealized
 
-    def get_currency(self, currency: str) -> Amount:
+    def get_currency(self, currency: str) -> AmountModel:
         for amount in self.extra_currencies:
             if amount.currency == currency:
-                return amount.realized
+                return AmountModel.from_orm(amount)
+        return AmountModel(
+            realized=self.realized,
+            unrealized=self.unrealized,
+            currency=self.client.currency,
+            total_transfered=self.total_transfered,
+            time=self.time
+        )
 
     def get_realized(self, currency: str) -> Decimal:
         amount = self.get_currency(currency)
@@ -95,18 +99,6 @@ class Balance(Base, _Common, Serializer, QueryMixin):
     def reconstructor(self):
         self.error = None
 
-    def to_json(self, currency=False):
-        json = {
-            'amount': self.amount,
-        }
-        if self.error:
-            json['error'] = self.error
-        if currency or self.currency != '$':
-            json['currency'] = self.currency
-        if self.extra_currencies:
-            json['extra_currencies'] = self.extra_currencies
-        return json
-
     def to_string(self, display_extras=False):
         string = f'{round(self.amount, ndigits=config.CURRENCY_PRECISION.get("$", 3))}USD'
 
@@ -125,9 +117,4 @@ class Balance(Base, _Common, Serializer, QueryMixin):
     @classmethod
     def is_data(cls):
         return True
-
-    @hybrid_property
-    def tz_time(self, tz=pytz.UTC):
-        return self.time.replace(tzinfo=tz)
-
 

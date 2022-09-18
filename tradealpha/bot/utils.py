@@ -328,8 +328,8 @@ async def get_summary_embed(event: db_event.Event, dc_client: discord.Client):
         return DiscordUser.get_display_name(dc_client, int(user.discord_user.account_id), event.guild_id)
 
     for name, user_id in [
-        ('Best Trader :crown:', summary.gain.best),
-        ('Worst Trader :disappointed_relieved:', summary.gain.worst),
+        ('Best Trader :crown:', summary.gain_since.best),
+        ('Worst Trader :disappointed_relieved:', summary.gain_since.worst),
         ('Highest Stakes :moneybag:', summary.stakes.best),
         ('Lowest Stakes :moneybag:', summary.stakes.worst),
         ('Most Degen Trader :grimacing:', summary.volatility.best),
@@ -467,12 +467,6 @@ async def create_history(to_graph: List[Tuple[Client, str]],
         plt.savefig(path)
         plt.close()
 
-
-def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
-    if abs((prev.tz_time - search).total_seconds()) < abs((after.tz_time - search).total_seconds()):
-        return prev
-    else:
-        return after
 
 
 async def get_leaderboard(dc_client: discord.Client,
