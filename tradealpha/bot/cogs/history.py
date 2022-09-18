@@ -9,6 +9,7 @@ from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 from sqlalchemy import delete
 
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.bot import utils
 from tradealpha.common import dbutils
 from tradealpha.bot import config
@@ -30,12 +31,6 @@ class HistoryCog(CogBase):
                 description="User to graph",
                 required=False,
                 option_type=SlashCommandOptionType.USER
-            ),
-            create_option(
-                name="compare",
-                description="Users to compare with",
-                required=False,
-                option_type=SlashCommandOptionType.STRING
             ),
             create_option(
                 name="since",
@@ -106,22 +101,24 @@ class HistoryCog(CogBase):
     async def pnl_history(self, ctx, **kwargs):
         await self.history(ctx, **kwargs, mode='pnl')
 
-    @classmethod
-    async def history(cls,
+    async def history(self,
                       ctx: SlashContext,
                       user: discord.Member = None,
                       compare: str = None,
                       since: datetime = None,
                       to: datetime = None,
                       currency: str = None,
+                      upnl=False,
                       mode: Literal['balance', 'pnl'] = 'balance'):
         if ctx.guild:
-            registered_client = await dbutils.get_client(user.id, ctx.guild.id)
+            registered_client = await dbutils.get_discord_client(user.id, ctx.guild.id)
             registrations = [(registered_client, user.display_name)]
         else:
-            registered_user = await dbutils.get_discord_user(user.id)
+            registered_user = await dbutils.get_discord_user(
+                user.id, eager_loads=[DiscordUser.clients, DiscordUser.global_associations]
+            )
             registrations = [
-                (client, await client.get_events_and_guilds_string()) for client in registered_user.clients
+                (client, registered_user.get_events_and_guilds_string(self.bot, client)) for client in registered_user.clients
             ]
 
         if compare:
@@ -141,14 +138,14 @@ class HistoryCog(CogBase):
                             # Could not cast to integer
                             continue
                         if member:
-                            registered_client = await dbutils.get_client(member.id, ctx.guild.id)
+                            registered_client = await dbutils.get_discord_client(member.channel_id, ctx.guild.id)
                             registrations.append((registered_client, member.display_name))
 
         if currency is None:
             if len(registrations) > 1:
                 currency = '%'
             else:
-                currency = '$'
+                currency = 'USD'
         currency = currency.upper()
         currency_raw = currency
         if '%' in currency:
@@ -156,7 +153,7 @@ class HistoryCog(CogBase):
             currency = currency.rstrip('%')
             currency = currency.rstrip()
             if not currency:
-                currency = '$'
+                currency = 'USD'
         else:
             percentage = False
 
@@ -218,7 +215,7 @@ class HistoryCog(CogBase):
     async def clear(self, ctx: SlashContext, since: datetime = None, to: datetime = None):
         user = await dbutils.get_discord_user(ctx.author_id)
 
-        ctx, clients = await utils.select_client(ctx, self.slash_cmd_handler, user)
+        ctx, clients = await utils.select_client(ctx, self.bot, self.slash_cmd_handler, user)
 
         from_to = ''
         if since:

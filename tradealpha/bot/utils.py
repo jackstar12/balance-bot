@@ -1,19 +1,19 @@
 from __future__ import annotations
 import asyncio
-import functools
 import itertools
 import math
 import re
 import logging
 import traceback
-import typing
 from asyncio import Future
 from decimal import Decimal
 from functools import wraps
+from uuid import UUID
 
 import discord
 import inspect
 import matplotlib.pyplot as plt
+import numpy
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Polygon
 import matplotlib.dates as mdates
@@ -27,25 +27,26 @@ import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
 from datetime import datetime, timedelta
-from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal, NamedTuple, Generic
+from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal
 
 from sqlalchemy import asc, select
 
 import tradealpha.common.dbmodels.event as db_event
 import tradealpha.common.dbmodels.client as db_client
-from tradealpha.common.dbasync import async_session, db_all
-from tradealpha.common.dbmodels.guildassociation import GuildAssociation
+from tradealpha.common.dbmodels.user import User
+from tradealpha.common.calc import calc_gains
+from tradealpha.common.utils import calc_percentage, call_unknown_function
+from tradealpha.common.dbasync import async_session, db_all, async_maker
+from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
 from tradealpha.common.errors import UserInputError, InternalError
-from tradealpha.common.models.interval import Interval
 from tradealpha.common import dbutils
-from tradealpha.common.dbmodels.discorduser import DiscordUser
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
 from tradealpha.common.models.selectionoption import SelectionOption
 import tradealpha.common.config as config
 from typing import TYPE_CHECKING
 import matplotlib.colors as mcolors
-
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common import utils
@@ -58,6 +59,16 @@ MINUTE = 60
 HOUR = MINUTE * 60
 DAY = HOUR * 24
 WEEK = DAY * 7
+
+
+def with_db(coro):
+    @wraps(coro)
+    async def wrapper(*args, **kwargs):
+        async with async_maker() as session:
+            kwargs['db'] = session
+            await coro(*args, **kwargs)
+
+    return wrapper
 
 
 def admin_only(coro, cog=True):
@@ -78,8 +89,8 @@ def server_only(coro, cog=True):
         ctx = args[1] if cog else args[0]
         if not ctx.guild:
             await ctx.send('This command can only be used in a server.')
-            return
-        return await coro(*args, **kwargs)
+        else:
+            return await coro(*args, **kwargs)
 
     return wrapper
 
@@ -303,6 +314,63 @@ def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
     return lines, im
 
 
+async def get_summary_embed(event: db_event.Event, dc_client: discord.Client):
+    embed = discord.Embed(title=f'Summary')
+    description = ''
+
+    if len(event.registrations) == 0:
+        return embed
+
+    summary = await event.get_summary()
+
+    async def get_user_name(user_id: UUID):
+        user: User = await async_session.get(User, user_id)
+        return DiscordUser.get_display_name(dc_client, int(user.discord_user.account_id), event.guild_id)
+
+    for name, user_id in [
+        ('Best Trader :crown:', summary.gain.best),
+        ('Worst Trader :disappointed_relieved:', summary.gain.worst),
+        ('Highest Stakes :moneybag:', summary.stakes.best),
+        ('Lowest Stakes :moneybag:', summary.stakes.worst),
+        ('Most Degen Trader :grimacing:', summary.volatility.best),
+        ('Still HODLing :sleeping:', summary.volatility.worst),
+    ]:
+        embed.add_field(name=name, value=await get_user_name(user_id), inline=False)
+
+    description += f'\nLast but not least... ' \
+                   f'\nIn total you {"made" if summary.total >= 0.0 else "lost"} {round(summary.total, ndigits=2)}$' \
+                   f'\nCumulative % performance: {round(summary.avg_percent, ndigits=2)}%'
+
+    description += '\n'
+    embed.description = description
+
+    return embed
+
+
+async def create_complete_history(dc_client: discord.Client, event: db_event.Event):
+
+    path = f'HISTORY_{event.guild_id}_{event.channel_id}_{int(event.start.timestamp())}.png'
+    await create_history(
+        custom_title=f'Complete history for {event.name}',
+        to_graph=[
+            (client, client.discord_user.get_display_name(dc_client, event.guild_id))
+            for client in event.registrations
+        ],
+        event=event,
+        start=event.start,
+        end=event.end,
+        currency_display='%',
+        currency='USD',
+        percentage=True,
+        path=config.DATA_PATH + path
+    )
+
+    file = discord.File(config.DATA_PATH + path, path)
+    await async_session.commit()
+
+    return file
+
+
 async def create_history(to_graph: List[Tuple[Client, str]],
                          event: db_event.Event,
                          start: datetime,
@@ -313,6 +381,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                          path: str,
                          custom_title: str = None,
                          throw_exceptions=True,
+                         include_upnl=True,
                          mode: Literal['pnl', 'balance'] = 'balance'
                          ):
     """
@@ -338,17 +407,20 @@ async def create_history(to_graph: List[Tuple[Client, str]],
         for registered_client, name in to_graph:
 
             history = await dbutils.get_client_history(registered_client,
-                                                       event=event,
-                                                       since=start,
-                                                       to=end,
+                                                       init_time=event.start,
+                                                       since=max(start, event.start),
+                                                       to=min(end, event.end),
                                                        currency=currency)
 
             pnl_data = await db_all(
-                select(PnlData).filter(
+                select(PnlData).where(
                     PnlData.time > start if start else True,
                     PnlData.time < end if end else True,
                     Trade.client_id == registered_client.id
-                ).join(PnlData.trade).order_by(asc(PnlData.time))
+                ).join(
+                    PnlData.trade
+                ).order_by(asc(PnlData.time)),
+                PnlData.trade
             )
 
             if len(history.data) == 0:
@@ -357,7 +429,13 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                 else:
                     continue
 
-            xs, ys = calc_xs_ys(history.data, pnl_data, percentage, relative_to=history.initial, mode=mode)
+            xs, ys = calc_xs_ys(history.data,
+                                pnl_data,
+                                currency,
+                                percentage,
+                                include_upnl=include_upnl,
+                                relative_to=history.initial,
+                                mode=mode)
 
             total_gain = calc_percentage(history.initial.unrealized, ys[-1])
 
@@ -368,10 +446,10 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                 title += f' vs. {name} (Total: {ys[-1] if percentage else total_gain}%)'
 
             xs = np.array([mdates.date2num(d) for d in xs])
-            if len(xs) < 200:
-                new_x = np.linspace(min(xs), max(xs), num=500)
-                ys = interpolate.pchip_interpolate(xs, ys, new_x)
-                xs = new_x
+
+            new_x = np.linspace(min(xs), max(xs), num=500)
+            ys = interpolate.pchip_interpolate(xs, ys, new_x)
+            xs = new_x
 
             if mode == "balance" or len(to_graph) > 1:
                 plt.plot(xs, ys, label=f"{name}'s {currency_display} Balance")
@@ -397,136 +475,41 @@ def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
         return after
 
 
-async def calc_daily(client: Client,
-                     amount: int = None,
-                     guild_id: int = None,
-                     currency: str = None,
-                     string=False,
-                     forEach: Callable[[Balance], Any] = None,
-                     throw_exceptions=True,
-                     since: datetime = None,
-                     to: datetime = None,
-                     now: datetime = None) -> Union[List[Interval], str]:
-    """
-    Calculates daily balance changes for a given client.
-    :param since:
-    :param to:
-    :param throw_exceptions:
-    :param forEach: function to be performed for each balance
-    :param client: Client to calculate changes
-    :param amount: Amount of days to calculate
-    :param guild_id:
-    :param currency: Currency that will be used
-    :param string: Whether the created table should be stored as a string using prettytable or as a list of
-    :return:
-    """
+async def get_leaderboard(dc_client: discord.Client,
+                          guild_id: int,
+                          channel_id: int) -> discord.Embed:
+    footer = ''
+    description = ''
 
-    if currency is None:
-        currency = '$'
+    guild = dc_client.get_guild(guild_id)
+    if not guild:
+        raise InternalError(f'Provided guild_id is not valid!')
 
-    if now is None:
-        now = datetime.now(tz=pytz.UTC)
+    event = await dbutils.get_discord_event(guild_id, channel_id,
+                                            throw_exceptions=True,
+                                            eager_loads=[
+                                                db_event.Event.registrations,
+                                                (db_event.Event.leaderboard, (
+                                                    db_event.EventScore.client, db_client.Client.user
+                                                ))
+                                            ])
 
-    if since is None:
-        since = datetime.fromtimestamp(0)
+    for score in event.leaderboard:
+        # display_name = DiscordUser.get_display_name(dc_client, score.client.user.discord_user.account_id, guild_id)
+        member = guild.get_member(int(score.client.user.discord_user.account_id))
+        if member:
+            value = f'{round(score.rel_value * 100, ndigits=3)}% ({round(score.abs_value, ndigits=3)}$)'
+            description += f'{score.current_rank.value}. **{member.display_name}** {value}\n'
 
-    if to is None:
-        to = now
+    description += f'\n{footer}'
 
-    since_date = since.replace(tzinfo=pytz.UTC).replace(hour=0, minute=0, second=0)
+    logging.info(f"Done creating leaderboard. Description:\n"
+                 f"{de_emojify(description)}")
 
-    daily_end = min(now, to)
-
-    history = await db_all(client.history.statement.filter(
-        Balance.time > since_date, Balance.time < now
-    ).order_by(
-        asc(Balance.time)
-    ))
-
-    if len(history) == 0:
-        if throw_exceptions:
-            raise UserInputError(reason='Got no data for this user')
-        else:
-            return "" if string else []
-
-    if amount:
-        try:
-            daily_start = daily_end - timedelta(days=amount - 1)
-        except OverflowError:
-            raise UserInputError('Invalid daily amount given')
-    else:
-        daily_start = history[0].time
-
-    daily_start = daily_start.replace(tzinfo=pytz.UTC)
-    daily_start = max(since_date, daily_start).replace(hour=0, minute=0, second=0)
-
-    if guild_id:
-        event = await dbutils.get_discord_event(guild_id)
-        if event and event.start > daily_start:
-            daily_start = event.start
-
-    current_day = daily_start
-    current_search = daily_start + timedelta(days=1)
-    prev_balance = db_match_balance_currency(history[0], currency)
-    prev_daily = history[0]
-    prev_daily.time = prev_daily.time.replace(hour=0, minute=0, second=0)
-
-    if string:
-        results = PrettyTable(
-            field_names=["Date", "Amount", "Diff", "Diff %"]
-        )
-    else:
-        results = []
-    for balance in history:
-        if since <= balance.time <= to:
-            if balance.time >= current_search:
-
-                daily = db_match_balance_currency(get_best_time_fit(current_search, prev_balance, balance), currency)
-                daily.time = daily.time.replace(minute=0, second=0)
-                prev_daily = prev_daily or daily
-                values = Interval(
-                    current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
-                    daily.unrealized,
-                    round(daily.unrealized - prev_daily.unrealized, ndigits=CURRENCY_PRECISION.get(currency, 2)),
-                    calc_percentage(prev_daily.unrealized, daily.unrealized, string=False)
-                )
-                if string:
-                    results.add_row([*values])
-                else:
-                    results.append(values)
-                prev_daily = daily
-                current_day = current_search
-                current_search = current_search + timedelta(days=1)
-            prev_balance = balance
-        if balance.time > since_date:
-            await call_unknown_function(forEach, balance)
-
-    if prev_balance.time < current_search:
-        values = Interval(
-            day=current_day.strftime('%Y-%m-%d') if string else current_day.timestamp(),
-            amount=prev_balance.unrealized,
-            diff_absolute=round(prev_balance.unrealized - prev_daily.unrealized,
-                                ndigits=CURRENCY_PRECISION.get(currency, 2)),
-            diff_relative=calc_percentage(prev_daily.unrealized, prev_balance.unrealized, string=False)
-        )
-        if string:
-            results.add_row([*values])
-        else:
-            results.append(values)
-
-    return results
-
-
-def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], string=True) -> float | str | Decimal:
-    diff = now - then
-    num_cls = type(then)
-    if diff == 0.0:
-        result = '0'
-    elif then > 0:
-        result = f'{round(100 * (diff / then), ndigits=3)}'
-    else:
-        result = 'NaN'
-    return result if string else num_cls(result)
+    return discord.Embed(
+        title='Leaderboard :medal:',
+        description=description
+    )
 
 
 async def create_leaderboard(dc_client: discord.Client,
@@ -548,7 +531,8 @@ async def create_leaderboard(dc_client: discord.Client,
         raise InternalError(f'Provided guild_id is not valid!')
 
     if not event:
-        event = await dbutils.get_discord_event(guild_id, throw_exceptions=False, eager_loads=[db_event.Event.registrations])
+        event = await dbutils.get_discord_event(guild_id, throw_exceptions=False,
+                                                eager_loads=[db_event.Event.registrations])
 
     if event:
         clients = event.registrations
@@ -561,10 +545,6 @@ async def create_leaderboard(dc_client: discord.Client,
                 )
             )
         )
-
-    # if not archived:
-    #     user_manager = UserManager()
-    #     await user_manager.fetch_data(clients=clients)
 
     if mode == 'balance':
         for client in clients:
@@ -585,7 +565,7 @@ async def create_leaderboard(dc_client: discord.Client,
 
         description += f'Gain {readable_time(time)}\n\n'
 
-        client_gains = await utils.calc_gains(clients, event, time)
+        client_gains = await calc_gains(clients, event, time, db=async_session, currency=c)
 
         for gain in client_gains:
             if gain.relative is not None:
@@ -742,56 +722,46 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
 
 def calc_xs_ys(data: List[Balance],
                pnl_data: List[PnlData],
+               currency: str,
                percentage=False,
                relative_to: Balance = None,
+               include_upnl=False,
                mode: Literal['balance', 'pnl'] = 'balance') -> Tuple[List[datetime], List[float]]:
     xs = []
     ys = []
 
+    def get_amount(balance: Balance):
+        return balance.get_unrealized(currency) if include_upnl and not pnl_data else balance.get_realized(currency)
+
     if data:
-        relative_to = relative_to or data[0]
-        rel = relative_to
-        relative_to = relative_to.realized
+        init = relative_to or data[0]
+        relative_to_amount = get_amount(init)
         upnl_by_trade = {}
         amount = None
         for prev_item, item, next_item in utils.prev_now_next(utils.combine_time_series(data, pnl_data)):
             if isinstance(item, PnlData):
-                upnl_by_trade[item.trade_id] = item.unrealized
+                upnl_by_trade[item.trade_id] = item.unrealized_ccy(currency)
             if isinstance(item, Balance):
                 if mode == 'balance':
-                    current = item.realized
+                    current = get_amount(item)
                 else:
-                    current = item.realized - (item.total_transfered - rel.total_transfered) - relative_to
+                    current = get_amount(item) - (item.total_transfered - init.total_transfered) - relative_to_amount
 
                 if percentage:
-                    if relative_to > 0:
-                        amount = 100 * (current - relative_to) / relative_to
+                    if relative_to_amount:
+                        amount = calc_percentage(relative_to_amount, current, string=False)
                     else:
-                        amount = 0.0
+                        amount = 0
                 else:
                     amount = current
-            if amount is not None and (
-                    True or not prev_item or not next_item or prev_item.time != item.time != next_item.time):
+            if amount is not None and (not next_item or next_item.time != item.time):
                 xs.append(item.time)
-                ys.append(amount)
-                # ys.append(amount + sum(upnl_by_trade.values()))
+                if include_upnl:
+                    ys.append(amount + sum(upnl_by_trade.values()))
+                else:
+                    ys.append(amount)
+
         return xs, ys
-
-
-async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
-    if callable(fn):
-        try:
-            if inspect.iscoroutinefunction(fn):
-                return await fn(*args, **kwargs)
-            else:
-                res = fn(*args, **kwargs)
-                if inspect.isawaitable(res):
-                    return await res
-                return res
-        except Exception:
-            logging.exception(
-                f'Exception occured while execution {fn} {args=} {kwargs=}'
-            )
 
 
 async def ask_for_consent(ctx: Union[ComponentContext, SlashContext],
@@ -889,7 +859,7 @@ async def new_create_selection(ctx: SlashContext,
                                msg_content: str = None,
                                msg_embeds: List[discord.Embed] = None,
                                timeout_seconds: float = 60,
-                               **kwargs) -> Future[Tuple[ComponentContext, List]]:
+                               **kwargs) -> Tuple[ComponentContext, List]:
     future = asyncio.get_running_loop().create_future()
 
     component_row = create_selection(
@@ -980,48 +950,21 @@ def readable_time(time: datetime) -> str:
     return time_str
 
 
-def db_match_balance_currency(balance: Balance, currency: str):
-    return balance
-
-    result = None
-
-    if balance is None:
-        return None
-
-    result = None
-
-    if balance.currency != currency:
-        if balance.extra_currencies:
-            result_currency = balance.extra_currencies.get(currency)
-            if not result_currency:
-                result_currency = balance.extra_currencies.get(config.CURRENCY_ALIASES.get(currency))
-            if result_currency:
-                result = Balance(
-                    amount=result_currency,
-                    currency=currency,
-                    time=balance.time
-                )
-    else:
-        result = balance
-
-    return result
-
-
-async def select_client(ctx, slash: SlashCommand, user: DiscordUser):
-    return await new_create_selection(
+def select_client(ctx, dc: discord.Client, slash: SlashCommand, user: DiscordUser, max_values=None):
+    return new_create_selection(
         ctx,
         slash,
         options=[
             SelectionOption(
                 name=client.name if client.name else client.exchange,
                 value=str(client.id),
-                description=f'From {await client.get_events_and_guilds_string()}',
+                description=f'From {user.get_events_and_guilds_string(dc, client)}',
                 object=client
             )
             for client in user.clients
         ],
         msg_content="Select a client",
-        max_values=len(user.clients)
+        max_values=max_values or len(user.clients),
     )
 
 

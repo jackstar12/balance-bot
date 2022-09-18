@@ -1,62 +1,46 @@
-import asyncio
 import functools
 import itertools
-import json
 import logging
 import operator
 import time
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from decimal import Decimal
-from http import HTTPStatus
-from typing import Optional, Dict, List, Tuple, Type
+from typing import Optional, List, Type
+
 import aiohttp
-import ccxt
 import jwt
 import pytz
-from fastapi import APIRouter, Depends, Request, Response, WebSocket, Query, Body
+from fastapi import APIRouter, Depends, Request, Query
 from fastapi.encoders import jsonable_encoder
-from pydantic import ValidationError
-from sqlalchemy import or_, delete, select, update, asc, func, desc, Date, false, case
+from sqlalchemy import delete, select, asc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
-from starlette.responses import JSONResponse
-from starlette.websockets import WebSocketDisconnect
 
-from tradealpha.common.models.balance import Balance
-from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
-from tradealpha.common.dbmodels.execution import Execution
-from tradealpha.common.models import BaseModel, OrmBaseModel
-from tradealpha.common.dbmodels.pnldata import PnlData
-from tradealpha.api.utils.analytics import create_cilent_analytics
+import tradealpha.api.utils.client as client_utils
 from tradealpha.api.authenticator import Authenticator
-from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance
-from tradealpha.common.dbasync import db_exec, db_first, db_all, db_select, redis, redis_bulk_keys, \
-    redis_bulk_hashes, redis_bulk, async_maker
-from tradealpha.common.dbmodels.guildassociation import GuildAssociation
-from tradealpha.common.dbmodels.guild import Guild
+from tradealpha.api.dependencies import get_authenticator, get_messenger, get_db, \
+    FilterQueryParamsDep
 from tradealpha.api.models.client import ClientConfirm, ClientEdit, \
     ClientOverview, Transfer, ClientCreateBody, ClientInfo, ClientCreateResponse, get_query_params
-from tradealpha.api.models.websocket import WebsocketMessage, ClientConfig
-from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
-from tradealpha.common import utils, customjson
-from tradealpha.api.dependencies import CurrentUser, CurrentUserDep, get_authenticator, get_messenger, get_db, \
-    FilterQueryParamsDep
-from tradealpha.common.dbsync import session
-from tradealpha.common.dbmodels.client import Client, add_client_filters
-from tradealpha.common.dbmodels.user import User
-from tradealpha.api.settings import settings
-from tradealpha.api.utils.client import create_client_data_serialized, get_user_client
-import tradealpha.api.utils.client as client_utils
-from tradealpha.common.dbutils import register_client, delete_client
-from tradealpha.common.messenger import Messenger, NameSpace, Category, Word
-import tradealpha.common.dbmodels.event as db_event
-
-from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
-from tradealpha.common.exchanges import EXCHANGES
-from tradealpha.common.utils import validate_kwargs
-from tradealpha.common.dbmodels import TradeDB, BalanceDB
 from tradealpha.api.models.trade import Trade, BasicTrade, DetailledTrade
-from tradealpha.common.redis.client import ClientSpace, ClientCacheKeys
+from tradealpha.api.settings import settings
+from tradealpha.api.users import CurrentUser
+from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound, ResponseModel
+from tradealpha.common import utils
+from tradealpha.common.calc import calc_daily
+from tradealpha.common.dbasync import db_first, db_all, redis, async_maker
+from tradealpha.common.dbmodels import TradeDB, BalanceDB
+from tradealpha.common.dbmodels.client import Client, add_client_filters
+from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
+from tradealpha.common.dbmodels.pnldata import PnlData
+from tradealpha.common.dbmodels.user import User
+from tradealpha.common.enums import IntervalType
+from tradealpha.common.exchanges import EXCHANGES
+from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
+from tradealpha.common.models import BaseModel, OrmBaseModel
+from tradealpha.common.models.balance import Balance
+from tradealpha.common.redis.client import ClientCacheKeys
+from tradealpha.common.utils import validate_kwargs
 
 router = APIRouter(
     tags=["client"],
@@ -77,7 +61,7 @@ async def new_client(request: Request, body: ClientCreateBody,
         if issubclass(exchange_cls, ExchangeWorker):
             # Check if required keyword args are given
             if validate_kwargs(body.extra_kwargs or {}, exchange_cls.required_extra_args):
-                client = body.create_client()
+                client = body.create()
                 async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session, db_maker=async_maker)
                     init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
@@ -89,7 +73,7 @@ async def new_client(request: Request, body: ClientCreateBody,
                             f'You do not have any balance in your account. Please fund your account before registering.'
                         )
                     else:
-                        payload = body.dict()
+                        payload = jsonable_encoder(body)
                         # TODO: CHANGE THIS
                         payload['api_secret'] = client.api_secret
 
@@ -119,14 +103,14 @@ async def new_client(request: Request, body: ClientCreateBody,
 @router.post('/client/confirm', response_model=ClientInfo)
 async def confirm_client(body: ClientConfirm,
                          user: User = Depends(CurrentUser),
-                         messenger: Messenger = Depends(get_messenger),
                          db: AsyncSession = Depends(get_db)):
     client_data = ClientCreateBody(
         **jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
     )
     try:
-        client = client_data.create_client(user)
-        await register_client(client, messenger, db)
+        client = client_data.create(user)
+        db.add(client)
+        await db.commit()
         return ClientInfo.from_orm(client)
     except TypeError:
         return BadRequest(detail='Invalid token')
@@ -140,7 +124,7 @@ OverviewCache = client_utils.ClientCacheDependency(
 
 @router.get('/client', response_model=ClientOverview)
 async def get_client_overview(background_tasks: BackgroundTasks,
-                              cache: client_utils.ClientCache = Depends(OverviewCache),
+                              cache: client_utils.ClientCache[ClientOverview] = Depends(OverviewCache),
                               query_params: QueryParams = Depends(get_query_params),
                               user: User = Depends(CurrentUser),
                               db: AsyncSession = Depends(get_db)):
@@ -164,15 +148,17 @@ async def get_client_overview(background_tasks: BackgroundTasks,
             # so we need to partition by the current date and order by
             # time in descending order so that we can pick out the first (last) one
 
-            daily = await utils.calc_daily(
+            daily = await calc_daily(
                 client,
+                since=query_params.since,
+                to=query_params.to,
                 db=db
             )
 
             overview: ClientOverview = ClientOverview.construct(
                 initial_balance=(
                     Balance.from_orm(
-                        await client.get_balance_at_time(query_params.since, db=db)
+                        await client.get_exact_balance_at_time(query_params.since, db=db)
                         if query_params.since else
                         await db_first(
                             client.history.statement.order_by(asc(BalanceDB.time)),
@@ -182,7 +168,7 @@ async def get_client_overview(background_tasks: BackgroundTasks,
                 ),
                 current_balance=(
                     Balance.from_orm(
-                        await client.get_balance_at_time(query_params.to, db=db)
+                        await client.get_exact_balance_at_time(query_params.to, db=db)
                         if query_params.to else
                         await client.get_latest_balance(redis=redis, db=db)
                         # await client.latest()
@@ -197,12 +183,11 @@ async def get_client_overview(background_tasks: BackgroundTasks,
                     for transfer in client.transfers
                 }
             )
-            background_tasks.add_task(
-                cache.write,
-                client.id,
-                overview,
-
-            )
+            # background_tasks.add_task(
+            #    cache.write,
+            #    client.id,
+            #    overview,
+            # )
             overviews.append(overview)
 
     ts1 = time.perf_counter()
@@ -238,114 +223,34 @@ async def get_client_overview(background_tasks: BackgroundTasks,
 
 
 @router.delete('/client/{id}')
-async def delete_client_endpoint(id: int,
-                                 user: User = Depends(CurrentUser),
-                                 messenger: Messenger = Depends(get_messenger),
-                                 db: AsyncSession = Depends(get_db)):
+async def delete_client(id: int,
+                        user: User = Depends(CurrentUser),
+                        db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        add_client_filters(delete(Client), user, [id]),
+        add_client_filters(delete(Client), user, {id}),
     )
     await db.commit()
     if result.rowcount == 1:
-        messenger.pub_channel(NameSpace.CLIENT, Category.DELETE, obj={'id': id})
         return OK(detail='Success')
     else:
         return NotFound(detail='Invalid ID')
 
 
-@router.patch('/client/{id}', response_model=ClientInfo)
-async def update_client(id: int, body: ClientEdit,
-                        user: User = Depends(CurrentUserDep(User.discord_user)),
+@router.patch('/client/{client_id}', response_model=ClientInfo)
+async def update_client(client_id: int, body: ClientEdit,
+                        user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):
-    client: Client = await db_first(
-        add_client_filters(select(Client), user, [id]),
-        session=db
+    client = await client_utils.get_user_client(
+        user, client_id, db=db
     )
 
-    if body.name is not None:
-        client.name = body.name
+    if client:
+        for k, v in body.dict(exclude_none=True).items():
+            setattr(client, k, v)
 
-    if body.archived is not None:
-        client.archived = body.archived
-
-    # Check explicitly for False and True because we don't want to do anything on None
-    if body.discord is False:
-        client.discord_user_id = None
-        client.user_id = user.id
-        await db_exec(
-            update(GuildAssociation).where(
-                GuildAssociation.client_id == client.id
-            ).values(client_id=None),
-            session=db
-        )
-
-    elif body.discord is True:
-        if user.discord_user_id:
-            client.discord_user_id = user.discord_user_id
-            client.user_id = None
-            if body.servers is not None:
-
-                if body.servers:
-                    await db_exec(
-                        update(GuildAssociation).where(
-                            GuildAssociation.discord_user_id == user.discord_user_id,
-                            GuildAssociation.guild_id.in_(body.servers)
-                        ).values(client_id=client.id),
-                        session=db
-                    )
-
-                await db_exec(
-                    update(GuildAssociation).where(
-                        GuildAssociation.discord_user_id == user.discord_user_id,
-                        GuildAssociation.client_id == client.id,
-                        GuildAssociation.guild_id.not_in(body.servers)
-                    ).values(client_id=None),
-                    session=db
-                )
-
-                # guilds: List[Guild] = await db_all(
-                #    select(Guild).filter(
-                #        or_(*[Guild.id == guild_id for guild_id in body.servers]),
-                #    ),
-                #    Guild.users
-                # )
-                # for guild in guilds:
-                #    if user.discord_user in guild.users:
-                #        guild.global_clients.append(
-                #            GuildAssociation(
-                #                discord_user_id=user.discord_user_id,
-                #                client_id=client.id
-                #            )
-                #        )
-                #    else:
-                #        return BadRequest(f'You are not eligible to register in guild {guild.name}')
-                await db.commit()
-            if body.events is not None:
-                now = datetime.now(tz=pytz.UTC)
-                if body.events:
-                    events = await db_all(
-                        select(db_event.Event).filter(
-                            db_event.Event.id.in_(body.events)
-                        ),
-                        session=db
-                    )
-                else:
-                    events = []
-                valid_events = []
-                for event in events:
-                    if event.is_free_for_registration(now):
-                        if event.guild in user.discord_user.guilds:
-                            valid_events.append(event)
-                        else:
-                            return BadRequest(f'You are not eligible to join {event.name} (Not in server)')
-                    else:
-                        return BadRequest(f'Event {event.name} is not free for registration')
-                client.events = valid_events
-
-            if body.servers is None and body.events is None:
-                return BadRequest('Either servers or events have to be provided')
-        else:
-            return BadRequest('No discord account found')
+        client.validate()
+    else:
+        return BadRequest('Invalid client id')
 
     await db.commit()
     return ClientInfo.from_orm(client)
@@ -365,19 +270,21 @@ def create_trade_endpoint(path: str,
 
     FilterQueryParams = FilterQueryParamsDep(model)
 
-    @router.get(f'/client/{path}', response_model=model, **kwargs)
+    @router.get(f'/client/{path}', response_model=ResponseModel[list[model]], **kwargs)
     async def get_trades(background_tasks: BackgroundTasks,
                          trade_id: list[int] = Query(None, alias='trade-id'),
                          cache: client_utils.ClientCache = Depends(TradeCache),
                          query_params: QueryParams = Depends(get_query_params),
-                         filter_params: FilterQueryParams = Depends(),
+                         filter_params: FilterQueryParams = Depends(FilterQueryParams),
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
         ts1 = time.perf_counter()
         hits, misses = await cache.read(db)
+        print('missed: ', misses)
         ts2 = time.perf_counter()
         if misses:
             query_params.client_ids = misses
+
             trades_db = await client_utils.query_trades(
                 *eager,
                 user=user,
@@ -386,6 +293,7 @@ def create_trade_endpoint(path: str,
                 db=db
             )
             trades_by_client = {}
+
             for trade_db in trades_db:
                 if trade_db.client_id not in trades_by_client:
                     trades_by_client[trade_db.client_id] = Trades(data=[])
@@ -401,16 +309,14 @@ def create_trade_endpoint(path: str,
                 )
 
         res = [
-            jsonable_encoder(trade) for trades in hits for trade in trades.data
+            trade for trades in hits for trade in trades.data
             if all(f.check(trade) for f in filter_params)
         ]
         ts4 = time.perf_counter()
-        print(ts2 - ts1)
-        print(ts4 - ts2)
-        return CustomJSONResponse(
-            content={
-                'data': res
-            }
+        print('Cache Reading: ', ts2 - ts1)
+        print('Query: ', ts4 - ts2)
+        return OK(
+            result=res
         )
 
 
@@ -444,7 +350,7 @@ async def get_pnl_data(trade_id: list[int] = Query(..., alias='trade-id'),
     data: List[PnlData] = await db_all(
         add_client_filters(
             select(PnlData)
-            .filter(PnlData.trade_id.in_(trade_id))
+            .where(PnlData.trade_id.in_(trade_id))
             .join(PnlData.trade)
             .join(TradeDB.client)
             .order_by(asc(PnlData.time)),
@@ -476,55 +382,43 @@ class PnlStats(OrmBaseModel):
 
 # Cache query
 performance_base_select = select(
-    func.count().label('count'),
-    func.sum(
-        case(
-            {TradeDB.realized_pnl > 0: TradeDB.realized_pnl},
-            else_=0
-        )
-    ).label('gross_win'),
-    func.sum(
-        case(
-            {TradeDB.realized_pnl < 0: TradeDB.realized_pnl},
-            else_=0
-        )
-    ).label('gross_loss'),
-    func.sum(TradeDB.total_commissions).label('total_commissions'),
+    TradeDB.count,
+    TradeDB.gross_win,
+    TradeDB.gross_loss,
+    TradeDB.total_commissions_stmt.label('total_commissions')
 )
 
 
-@router.get('/client/performance', response_model=list[PnlStats])
-async def get_client_performance(daily: bool = Query(default=False),
+@router.get('/client/performance', response_model=ResponseModel[list[PnlStats]])
+async def get_client_performance(interval: IntervalType = Query(default=None),
                                  trade_id: list[int] = Query(default=None),
                                  query_params: QueryParams = Depends(get_query_params),
                                  user: User = Depends(CurrentUser),
                                  db: AsyncSession = Depends(get_db)):
     ts1 = time.perf_counter()
 
-    # subq = select(
-    #     func.row_number().over(
-    #         order_by=desc(BalanceDB.time),
-    #         partition_by=BalanceDB.time.cast(Date)
-    #     ).label('row_number'),
-    #     BalanceDB.id.label('id')
-    # ).filter(
-    #     BalanceDB.client_id == client.id,
-    # ).subquery()
+    test = (await db.execute(text("""
+SELECT count(*) AS count, date_trunc('day', trade.open_time) AS date 
+FROM trade GROUP BY date_trunc('day', trade.open_time)
+    """))).all()
 
-    if daily:
+    if interval:
         stmt = performance_base_select.add_columns(
-            TradeDB.open_time.cast(Date).label('date'),
+            func.date_trunc('day', TradeDB.open_time).label('date')
         ).group_by(
-            TradeDB.open_time.cast(Date)
+            #func.date_trunc('day', TradeDB.open_time).label('date')
+            TradeDB.open_time
         )
     else:
         stmt = performance_base_select
 
     stmt = add_client_filters(
-        stmt.filter(
+        stmt.where(
             TradeDB.open_time > query_params.since if query_params.since else True,
             TradeDB.open_time < query_params.to if query_params.to else True,
             TradeDB.id.in_(trade_id) if trade_id else True
+        ).join(
+            TradeDB.client
         ),
         user=user,
         client_ids=query_params.client_ids
@@ -545,7 +439,7 @@ async def get_client_performance(daily: bool = Query(default=False),
             ),
             commissions=commissions,
             net=gross_win + gross_loss - commissions,
-            date=result.date if daily else None,
+            date=result.date if interval else None,
             count=result.count
         ))
 
@@ -553,7 +447,9 @@ async def get_client_performance(daily: bool = Query(default=False),
     print('Performance')
     print(ts2 - ts1)
     print(ts3 - ts2)
-    return CustomJSONResponse(jsonable_encoder(response))
+    return OK(
+        result=jsonable_encoder(response)
+    )
 
 
 @router.get('/client/balance')

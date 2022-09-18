@@ -1,16 +1,10 @@
-from typing import List, Optional
+from typing import List
 
-from tradealpha.api.models import BaseModel, OutputID
+from tradealpha.common.dbmodels.user import OAuthData
+from tradealpha.common.models import OrmBaseModel
+from tradealpha.common.models.discord.guild import Guild
 
-from tradealpha.api.models.guild import Guild, GuildAssociation
 
-
-class DiscordUserInfo(BaseModel):
-    id: OutputID
-    name: str
-    avatar: Optional[str]
+class DiscordUserInfo(OrmBaseModel):
+    data: OAuthData
     guilds: List[Guild]
-    global_associations: List[GuildAssociation]
-
-    class Config:
-        orm_mode = True

@@ -11,13 +11,14 @@ from sqlalchemy import select, Table, Column
 
 import msgpack
 from datetime import datetime
-from typing import Optional, Dict, List, Mapping, Any, Type, TypeVar, Coroutine
+from typing import Optional, Dict, List, Mapping, Any, Type, TypeVar, Coroutine, Generic, Awaitable
 from collections import OrderedDict
 
 import pytz
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import tradealpha.common.utils as utils
+from tradealpha.common.calc import calc_daily
 from tradealpha.api.models.client import get_query_params
 from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
 from tradealpha.api.dependencies import get_user_id, get_db
@@ -26,7 +27,7 @@ from tradealpha.common.redis.client import ClientSpace, ClientCacheKeys
 from tradealpha.common.dbmodels import TradeDB
 from tradealpha.common import customjson
 from tradealpha.common.dbsync import Base
-from tradealpha.common.dbasync import redis, db_all, redis_bulk, redis_bulk_hashes, RedisKey
+from tradealpha.common.dbasync import redis, db_all, redis_bulk, redis_bulk_hashes, RedisKey, db_first
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.client import Client, add_client_filters, ClientRedis
 from tradealpha.common.dbmodels.user import User
@@ -104,7 +105,7 @@ async def update_client_data_balance(cache: Dict, client: Client, config: Client
     async def append(balance: Balance):
         new_history.append(balance.serialize(full=True, data=True, currency=config.currency))
 
-    daily = await utils.calc_daily(
+    daily = await calc_daily(
         client=client,
         throw_exceptions=False,
         since=since_date,
@@ -207,7 +208,7 @@ def _parse_date(val: bytes) -> datetime:
 
 
 @dataclasses.dataclass
-class ClientCache:
+class ClientCache(Generic[T]):
     cache_data_key: ClientCacheKeys
     data_model: Type[T]
     query_params: QueryParams
@@ -247,11 +248,11 @@ class ClientCache:
             cached_last_exec = data[client.cache_hash][0]
             cached_query_params: QueryParams = data[client.cache_hash][1]
 
-            if last_exec:
+            if last_exec and False:
                 self.client_last_exec[client_id] = last_exec
 
                 if (
-                        cached_last_exec and cached_last_exec > last_exec
+                        cached_last_exec and cached_last_exec >= last_exec
                         and self.query_params.within(cached_query_params)
                 ):
                     ts1 = time.perf_counter()
@@ -272,11 +273,11 @@ class ClientCache:
         return hits, misses
 
     async def write(self, client_id: int, data: T):
-        last_exec = self.client_last_exec.get(client_id)
+        last_exec = self.client_last_exec.get(client_id) or 0
         return await ClientRedis(self.user_id, client_id).redis_set(
             keys={
                 RedisKey(self.cache_data_key): data,
-                RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC): last_exec.timestamp() if last_exec else None,
+                RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC): last_exec.timestamp() if last_exec else 0,
                 RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS): self.query_params
             },
             space='cache'
@@ -391,9 +392,15 @@ def query_balance(*eager,
     # )
 
 
-async def get_user_client(user: User, id: int = None, *eager, db: AsyncSession = None):
-    return utils.list_last(await get_user_clients(user, [id] if id else None, *eager, db=db), None)
+def get_user_client(user: User, client_id: int, *eager, db: AsyncSession = None) -> Awaitable[Optional[Client]]:
+    return db_first(
+        add_client_filters(select(Client), user, {client_id}),
+        *eager,
+        session=db
+    )
 
 
-async def get_user_clients(user: User, ids: List[int] = None, *eager, db: AsyncSession = None) -> list[Client]:
-    return await db_all(add_client_filters(select(Client), user, ids), *eager, session=db)
+def get_user_clients(user: User, ids: List[int] = None, *eager, db: AsyncSession = None) -> Awaitable[list[Client]]:
+    return db_all(
+        add_client_filters(select(Client), user, ids), *eager, session=db
+    )

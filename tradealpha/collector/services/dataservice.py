@@ -7,7 +7,7 @@ from tradealpha.common.exchanges.exchangeticker import ExchangeTicker
 from tradealpha.collector.services.baseservice import BaseService
 from tradealpha.common import utils
 from tradealpha.common.exchanges import EXCHANGE_TICKERS
-from tradealpha.common.messenger import NameSpace
+from tradealpha.common.messenger import TableNames
 from tradealpha.common.models.observer import Observer
 from tradealpha.common.models.ticker import Ticker
 
@@ -75,17 +75,20 @@ class DataService(BaseService, Observer):
         #ticker: Ticker = new_state[0]
         self._tickers[(ticker.exchange, ticker.symbol)] = ticker
 
-    def get_ticker(self, symbol, exchange):
+    async def get_ticker(self, symbol, exchange):
         ticker = self._tickers.get((exchange, symbol))
         if not ticker:
-            asyncio.create_task(self.subscribe(exchange, Channel.TICKER, self, symbol=symbol))
+            try:
+                await (self.subscribe(exchange, Channel.TICKER, self, symbol=symbol))
+            except asyncio.exceptions.TimeoutError:
+                pass
         return self._tickers.get((exchange, symbol))
 
     async def _update_redis(self):
         while True:
             for ticker in self._tickers.values():
                 await self._redis.set(
-                    utils.join_args(NameSpace.TICKER, ticker.exchange, ticker.symbol),
+                    utils.join_args(TableNames.TICKER, ticker.exchange, ticker.symbol),
                     str(ticker.price)
                 )
             await asyncio.sleep(1)

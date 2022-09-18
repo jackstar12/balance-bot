@@ -1,4 +1,14 @@
+from typing import Type, Union
+
 from pydantic import BaseModel as PydanticBaseModel
+from sqlalchemy import TypeDecorator
+from sqlalchemy.dialects.postgresql import JSONB
+
+from tradealpha.common import customjson
+
+
+InputID = Union[int, str]
+OutputID = str
 
 
 class BaseModel(PydanticBaseModel):
@@ -47,6 +57,28 @@ class BaseModel(PydanticBaseModel):
         m._init_private_attributes()
         return m
 
+    @classmethod
+    def get_sa_type(cls, validate=False, **dict_options) -> Type[TypeDecorator]:
+
+
+        class SAType(TypeDecorator):
+            impl = JSONB
+
+            def process_bind_param(self, value, dialect):
+                if isinstance(value, cls):
+                    return value.dict(**dict_options)
+                return value
+
+            def process_result_value(self, value, dialect):
+                if value:
+                    if validate:
+                        return cls(**value)
+                    return cls.construct(**value)
+                return value
+
+        return SAType
+
+
 
 class OrmBaseModel(BaseModel):
     class Config:
@@ -54,5 +86,7 @@ class OrmBaseModel(BaseModel):
 
 __all__ = [
     "OrmBaseModel",
-    "BaseModel"
+    "BaseModel",
+    "InputID",
+    "OutputID"
 ]

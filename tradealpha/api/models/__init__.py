@@ -1,5 +1,3 @@
 from tradealpha.common.models import BaseModel, OrmBaseModel
 from typing import Union
-
-InputID = Union[int, str]
-OutputID = str
+from tradealpha.common.models import InputID, OutputID

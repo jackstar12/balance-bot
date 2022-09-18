@@ -1,24 +1,16 @@
-from datetime import timedelta
-from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, update, insert
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tradealpha.api.dependencies import get_messenger, get_db
 from tradealpha.api.models.template import TemplateUpdate, TemplateInfo, TemplateCreate
-from tradealpha.api.dependencies import CurrentUser, get_messenger, CurrentUserDep, get_db
-from tradealpha.api.models.completejournal import (
-    JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
-    ChapterInfo, ChapterCreate, ChapterUpdate, JournalDetailedInfo
-)
-from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
-from tradealpha.common.dbasync import async_session, db_unique, db_all, db_del_filter
-from tradealpha.common.dbmodels.chapter import Chapter as DbChapter
-from tradealpha.common.dbmodels.client import add_client_filters, Client
-from tradealpha.common.dbmodels.journal import Journal, JournalType
-from tradealpha.common.dbmodels.user import User
+from tradealpha.api.users import CurrentUser
+from tradealpha.api.utils.responses import OK, CustomJSONResponse, NotFound
+from tradealpha.common.dbasync import db_unique, db_all, db_del_filter
+from tradealpha.common.dbmodels.journal import Journal
 from tradealpha.common.dbmodels.template import Template as DbTemplate
+from tradealpha.common.dbmodels.user import User
 
 router = APIRouter(
     tags=["template"],
@@ -57,7 +49,6 @@ async def create_template(body: TemplateCreate,
                           user: User = Depends(CurrentUser),
                           db: AsyncSession = Depends(get_db)):
     template = DbTemplate(
-        title=body.title,
         user=user
     )
 

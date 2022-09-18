@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import pytz
 from sqlalchemy.dialects.postgresql import JSONB
@@ -12,21 +13,47 @@ from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime, orm
 
 import tradealpha.common.config as config
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
+import sqlalchemy as sa
+
+if TYPE_CHECKING:
+    from tradealpha.common.dbmodels import Client
 
 
-class Balance(Base, Serializer, QueryMixin):
+class _Common:
+    realized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
+    unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
+
+
+class Amount(Base, Serializer, _Common):
+    __tablename__ = 'amount'
+
+    balance_id = Column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
+    balance = relationship('Balance', lazy='raise')
+
+    currency: str = Column(sa.String(length=3), primary_key=True)
+
+
+class Balance(Base, _Common, Serializer, QueryMixin):
+    """
+    Represents the balance of a client at a given time.
+
+    It is divided into mulitple Amount objects.
+    The 'realized' field contains the total currently realized equity
+    The 'unrealized' field contains the total current equity including unrealized pnl
+
+    If the balance consists of multiple currencies, these are stored in detail in the Amount table (
+    """
     __tablename__ = 'balance'
-    __serializer_forbidden__ = ['id', 'error', 'client_id', 'client', 'transfer', 'transfer_id']
+    __serializer_forbidden__ = ['id', 'error', 'client', 'transfer', 'transfer_id']
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
-    client = relationship('Client', foreign_keys=client_id)
+    client: 'Client' = relationship('Client', lazy='raise', foreign_keys=client_id)
     time = Column(DateTime(timezone=True), nullable=False, index=True)
 
-    realized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
-    unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
     total_transfered: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
-    extra_currencies = Column(JSONB, nullable=True)
+
+    extra_currencies: list[Amount] = relationship('Amount', lazy='noload', back_populates='balance')
 
     transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='SET NULL'), nullable=True)
     transfer = relationship('Transfer')
@@ -43,6 +70,19 @@ class Balance(Base, Serializer, QueryMixin):
     @hybrid_property
     def amount(self):
         return self.unrealized
+
+    def get_currency(self, currency: str) -> Amount:
+        for amount in self.extra_currencies:
+            if amount.currency == currency:
+                return amount.realized
+
+    def get_realized(self, currency: str) -> Decimal:
+        amount = self.get_currency(currency)
+        return amount.realized if amount else self.realized
+
+    def get_unrealized(self, currency: str) -> Decimal:
+        amount = self.get_currency(currency)
+        return amount.unrealized if amount else self.unrealized
 
     def __eq__(self, other):
         return self.realized == other.realized and self.unrealized == other.unrealized
@@ -67,50 +107,27 @@ class Balance(Base, Serializer, QueryMixin):
             json['extra_currencies'] = self.extra_currencies
         return json
 
-    def to_string(self, display_extras=True):
-        string = f'{round(self.amount, ndigits=config.CURRENCY_PRECISION.get("$", 3))}"$"'
+    def to_string(self, display_extras=False):
+        string = f'{round(self.amount, ndigits=config.CURRENCY_PRECISION.get("$", 3))}USD'
 
         if self.extra_currencies and display_extras:
-            first = True
-            for currency in self.extra_currencies:
-                string += f'{" (" if first else "/"}{self.extra_currencies[currency]}{currency}'
-                first = False
-            if not first:
-                string += ')'
+            currencies = " / ".join(
+                f'{amount.unrealized}{amount.currency}'
+                for amount in self.extra_currencies
+            )
+            string += f'({currencies})'
 
         return string
+
+    def __repr__(self):
+        return self.to_string(display_extras=False)
 
     @classmethod
     def is_data(cls):
         return True
-
-    def serialize(self, data=True, full=True, *args, **kwargs):
-        currency = kwargs.get('currency', '$')
-        if data:
-            if currency == '$':
-                amount = self.amount
-            elif self.extra_currencies:
-                amount = self.extra_currencies.get(currency)
-            else:
-                amount = None
-            if amount:
-                return (
-                    round(amount, ndigits=config.CURRENCY_PRECISION.get(currency, 3)),
-                    round(self.time.timestamp() * 1000)
-                )
-        else:
-            return super().serialize(full=False, data=True)
 
     @hybrid_property
     def tz_time(self, tz=pytz.UTC):
         return self.time.replace(tzinfo=tz)
 
 
-def balance_from_json(data: dict, time: datetime):
-    currency = data.get('currency', '$')
-    return Balance(
-        amount=round(data.get('amount', 0), ndigits=config.CURRENCY_PRECISION.get(currency, 3)),
-        currency=currency,
-        extra_currencies=data.get('extra_currencies', None),
-        time=time
-    )

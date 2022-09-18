@@ -1,10 +1,12 @@
 from typing import Optional
 
+from pydantic import Field
+
 from tradealpha.api.models import BaseModel, InputID, OutputID
 
 
 class TemplateCreate(BaseModel):
-    title: str
+    title: Optional[str]
     journal_id: Optional[InputID]
 
 

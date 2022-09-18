@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Tuple, Union, Any, OrderedDict, TypeVar, Type, Optional, Callable
@@ -8,12 +9,13 @@ import dotenv
 import os
 import aioredis
 from pydantic import ValidationError
-from sqlalchemy import delete, select, Column
+from sqlalchemy import delete, select, Column, update
 
 from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedAttribute
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession, create_async_engine
 from sqlalchemy.sql import Select
 
+from tradealpha.common.dbsync import Base
 from tradealpha.common.models import BaseModel
 from tradealpha.common import customjson
 
@@ -37,29 +39,46 @@ redis = aioredis.from_url(REDIS_URI)
 
 
 async def db_exec(stmt: Any, session: AsyncSession = None) -> Any:
-    return await session.execute(stmt)
+    return await (session or async_session).execute(stmt)
 
 
-def db_select(cls, eager=None, session=None, **filters):
+
+
+
+
+
+
+Table = TypeVar('Table', bound=Base)
+
+
+async def db_select(cls: Type[Table],
+                    *where,
+                    eager=None,
+                    session: AsyncSession = None,
+                    **filters) -> Optional[Table]:
     stmt = db_eager(select(cls), *eager) if eager else select(cls)
-    return db_first(stmt.filter_by(**filters), session=session)
+    return await db_first(stmt.where(*where).filter_by(**filters), session=session)
 
 
-def db_select_all(cls, eager=None, session=None, **filters):
+async def db_select_all(cls: Type[Table],
+                        *where,
+                        eager=None,
+                        session: AsyncSession = None,
+                        **filters) -> list[Table]:
     stmt = db_eager(select(cls), *eager) if eager else select(cls)
-    return db_all(stmt.filter_by(**filters), session=session)
+    return await db_all(stmt.where(*where).filter_by(**filters), session=session)
 
 
 async def db_all(stmt: Select, *eager, session=None) -> list[Any]:
     if eager:
         stmt = db_eager(stmt, *eager)
-    return (await session.scalars(stmt)).unique().all()
+    return (await (session or async_session).scalars(stmt)).unique().all()
 
 
-async def db_unique(stmt: Select, *eager, session=None):
+async def db_unique(stmt: Select, *eager, session: AsyncSession = None):
     if eager:
         stmt = db_eager(stmt, *eager)
-    return (await session.scalars(stmt.limit(1))).unique().first()
+    return (await (session or async_session).scalars(stmt.limit(1))).unique().first()
 
 
 db_first = db_unique
@@ -87,13 +106,13 @@ def db_eager(stmt: Select, *eager: Union[Column, Tuple[Column, Union[Tuple, Inst
     for col in eager:
         if isinstance(col, Tuple):
             if root is None:
-                path = joinedload(col[0])
+                path = selectinload(col[0])
             else:
-                path = root.joinedload(col[0])
+                path = root.selectinload(col[0])
             if isinstance(col[1], list):
-                stmt = db_eager(stmt, *col[1], root=path)
+                stmt = db_eager(stmt, *col[1], root=path, joined=joined)
             elif isinstance(col[1], InstrumentedAttribute) or isinstance(col[1], Tuple):
-                stmt = db_eager(stmt, col[1], root=path)
+                stmt = db_eager(stmt, col[1], root=path, joined=joined)
             elif col[1] == '*':
                 stmt = apply_option(stmt, '*', root=path, joined=joined)
         else:
@@ -145,14 +164,16 @@ async def redis_bulk(hash_keys: dict[str, list[RedisKey]], redis_instance=None):
                 value = results.pop(0)
                 if key.model and value:
                     try:
-                        res = customjson.bytes_loads(value)
+                        res = customjson.loads_bytes(value)
                         value = key.model(**res)
-                    except:
+                    except ValidationError as e:
+                        logging.error(e)
                         value = None
                 if key.parse and value:
                     try:
                         value = key.parse(value)
-                    except Exception:
+                    except Exception as e:
+                        logging.error(e)
                         value = None
                 result[h].append(value)
         return result

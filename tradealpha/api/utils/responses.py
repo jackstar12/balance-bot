@@ -1,32 +1,43 @@
 from http import HTTPStatus
-from typing import Dict, Any
+from typing import Dict, Any, TypeVar, Optional, Generic
 
 import orjson
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import UJSONResponse
 from starlette.responses import JSONResponse
 
+from tradealpha.common.models import BaseModel
 from tradealpha.common import customjson
 
 
-def BadRequest(detail: str, code: int = None, **kwargs):
-    return Response(detail, code, HTTPStatus.BAD_REQUEST, **kwargs)
+ResultT = TypeVar('ResultT', bound=BaseModel)
 
 
-def NotFound(detail: str, code: int = None, **kwargs):
-    return Response(detail, code, HTTPStatus.NOT_FOUND, **kwargs)
+class ResponseModel(BaseModel, Generic[ResultT]):
+    detail: str
+    code: Optional[int]
+    result: Optional[ResultT]
 
 
-def InternalError(detail: str, code: int = None, **kwargs):
-    return Response(detail, code, HTTPStatus.INTERNAL_SERVER_ERROR, **kwargs)
+def BadRequest(detail: str = None, code: int = None, **kwargs):
+    return Response(detail or 'Bad Request', code, HTTPStatus.BAD_REQUEST, **kwargs)
 
 
-def OK(detail: str, code: int = None, **kwargs):
-    return Response(detail, code, HTTPStatus.OK, **kwargs)
+def NotFound(detail: str = None, code: int = None, **kwargs):
+    return Response(detail or 'Not Found', code, HTTPStatus.NOT_FOUND, **kwargs)
 
 
-def Response(detail: str, code: int, status: int, **kwargs):
+def InternalError(detail: str = None, code: int = None, **kwargs):
+    return Response(detail or 'Internal Error', code, HTTPStatus.INTERNAL_SERVER_ERROR, **kwargs)
+
+
+def OK(detail: str = None, code: int = None, **kwargs):
+    return Response(detail or 'OK', code, HTTPStatus.OK, **kwargs)
+
+
+def Response(detail: str, code: int, status: int, result: Any = None, **kwargs):
     return CustomJSONResponse(
-        {'detail': detail, 'code': code, **kwargs},
+        {'detail': detail, 'code': code, 'result': jsonable_encoder(result), **kwargs},
         status_code=status
     )
 

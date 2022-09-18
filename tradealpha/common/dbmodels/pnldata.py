@@ -21,25 +21,30 @@ class PnlData(Base, Serializer):
 
     id = Column(BigInteger, primary_key=True)
     trade_id = Column(Integer, ForeignKey('trade.id', ondelete="CASCADE"), nullable=False)
-    trade = relationship('Trade', foreign_keys=trade_id)
+    trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
 
-    realized = Column(Numeric, nullable=False)
-    unrealized = Column(Numeric, nullable=False)
+    realized: Decimal = Column(Numeric, nullable=False)
+    unrealized: Decimal = Column(Numeric, nullable=False)
 
     time = Column(DateTime(timezone=True), nullable=False, index=True)
     extra_currencies = Column(JSONB, nullable=True)
 
     @hybrid_property
     def total(self) -> Decimal:
-        return round(self.realized + self.unrealized, ndigits=3)
-
-    @hybrid_property
-    def amount(self) -> Decimal:
-        return round(self.realized + self.unrealized, ndigits=3)
+        return self.realized + self.unrealized
 
     @classmethod
     def is_data(cls):
         return True
+
+    def _rate(self, ccy: str):
+        return self.extra_currencies.get(ccy, 0) if ccy != self.trade.settle else 1
+
+    def realized_ccy(self, currency: str):
+        return self.realized * self._rate(currency)
+
+    def unrealized_ccy(self, currency: str):
+        return self.unrealized * self._rate(currency)
 
     def compact(self) -> CompactPnlData:
         return CompactPnlData(
@@ -47,7 +52,5 @@ class PnlData(Base, Serializer):
             realized=self.realized,
             unrealized=self.unrealized
         )
-
-
 
     # type = Column(Enum(PNLType), nullable=False)

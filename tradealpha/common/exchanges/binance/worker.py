@@ -63,7 +63,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
                                       to: datetime = None) -> List[RawTransfer]:
         if self.client.sandbox:
             return []
-        response = await self._get(
+        response = await self.get(
             '/sapi/v1/futures/transfer',
             params={
                 'startTime': self._parse_datetime(since)
@@ -107,7 +107,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
                         amount = -Decimal(row['amount'])
                     else:
                         continue
-                    date = self._parse_ms(row['timestamp'])
+                    date = self.parse_ms(row['timestamp'])
                     results.append(
                         RawTransfer(amount, date, row["asset"], fee=None)
                     )
@@ -183,7 +183,7 @@ class BinanceFutures(_BinanceBaseClient):
             'limit': limit
         }
 
-        data = await self._get(
+        data = await self.get(
             '/fapi/v1/markPriceKlines',
             params={
                 'symbol': market,
@@ -194,7 +194,7 @@ class BinanceFutures(_BinanceBaseClient):
         )
         return [
             OHLC(
-                time=self._parse_ms(data[0]),
+                time=self.parse_ms(data[0]),
                 open=Decimal(data[1]),
                 high=Decimal(data[2]),
                 low=Decimal(data[3]),
@@ -204,8 +204,10 @@ class BinanceFutures(_BinanceBaseClient):
             for data in data
         ]
 
-    async def _fetch_execs(self, symbol: str, fromId: int):
-        trades = await self._get('/fapi/v1/userTrades', params={
+    async def _fetch_execs(self, symbol: str, fromId: int, minTS: int):
+        # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
+
+        trades = await self.get('/fapi/v1/userTrades', params={
             'symbol': symbol,
             'fromId': fromId
         })
@@ -229,27 +231,25 @@ class BinanceFutures(_BinanceBaseClient):
           }
         ]
         """
-        # -1790.6910700000062
-        # -1695.67399983
-        #all = sum(Decimal(trade['realizedPnl']) - Decimal(trade["commission"]) for trade in trades)
         return (
             Execution(
                 symbol=symbol,
                 qty=Decimal(trade['qty']),
                 price=Decimal(trade['price']),
                 side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
-                time=self._parse_ms(trade['time']),
+                time=self.parse_ms(trade['time']),
+                realized_pnl=Decimal(trade['realizedPnl']),
                 commission=Decimal(trade['commission']),
                 type=ExecType.TRADE
             )
-            for trade in trades
+            for trade in trades if trade['time'] >= minTS
         )
 
     async def _get_executions(self, since: datetime, init=False) -> tuple[Iterator[Execution], Iterator[MiscIncome]]:
 
         since_ts = self._parse_datetime(since or datetime.now(pytz.utc) - timedelta(days=180))
         # https://binance-docs.github.io/apidocs/futures/en/#get-income-history-user_data
-        incomes = await self._get(
+        incomes = await self.get(
             '/fapi/v1/income',
             params={
                 'startTime': since_ts,
@@ -257,7 +257,12 @@ class BinanceFutures(_BinanceBaseClient):
             }
         )
         symbols_done = set()
-        current_commision_trade_id = {}
+        current_commission = {}
+
+        def get_safe(symbol: str, attr: str):
+
+            income = current_commission.get(symbol)
+            return income.get(attr) if income else None
 
         results = []
         misc = []
@@ -269,33 +274,45 @@ class BinanceFutures(_BinanceBaseClient):
             if symbol not in symbols_done:
 
                 if income_type == "COMMISSION":
-                    if (current_commision_trade_id.get(symbol)) or since:
-                        # https://binance-docs.github.io/apidocs/futures/en/#account-trade-list-user_data
+
+                    if current_commission.get(symbol) or since:
                         symbols_done.add(symbol)
+
                         results.extend(
                             await self._fetch_execs(
                                 symbol,
-                                trade_id if since is not None else current_commision_trade_id[symbol]
+                                trade_id if since is not None else get_safe(symbol, 'tradeId'),
+                                get_safe(symbol, 'time')
                             )
                         )
-                    current_commision_trade_id[symbol] = trade_id
+                    current_commission[symbol] = income
                 elif income_type == "REALIZED_PNL":
-                    if current_commision_trade_id.get(symbol) == trade_id:
-                        current_commision_trade_id[symbol] = None
+                    if get_safe(symbol, 'tradeId') == trade_id:
+                        current_commission[symbol] = None
             if income_type == "INSURANCE_CLEAR" or income_type == "FUNDING_FEE":
+                results.append(
+                    Execution(
+                        symbol=symbol,
+                        realized_pnl=Decimal(income['income']),
+                        time=self.parse_ms(income['time']),
+                        type=ExecType.FUNDING if income_type == "FUNDING_FEE" else ExecType.LIQUIDATION
+                    )
+                )
+            elif income_type not in ('COMMISSION', 'TRANSFER', 'REALIZED_PNL'):
                 misc.append(
                     MiscIncome(
                         amount=Decimal(income['income']),
-                        time=self._parse_ms(income['time'])
+                        time=self.parse_ms(income['time'])
                     )
                 )
 
-        for symbol, trade_id in current_commision_trade_id.items():
+        for symbol, income in current_commission.items():
             if symbol not in symbols_done:
                 results.extend(
                     await self._fetch_execs(
                         symbol,
-                        trade_id
+                        income['tradeId'],
+                        income['time']
                     )
                 )
 
@@ -303,7 +320,7 @@ class BinanceFutures(_BinanceBaseClient):
 
     # https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
     async def _get_balance(self, time: datetime, upnl=True):
-        response = await self._get('/fapi/v2/account')
+        response = await self.get('/fapi/v2/account')
 
         usd_assets = [
             asset for asset in response["assets"] if asset["asset"] in ("USDT", "BUSD")
@@ -328,19 +345,80 @@ class BinanceFutures(_BinanceBaseClient):
         await self._ws.stop()
 
     async def _on_message(self, ws, message):
-        message = json.loads(message)
         event = message['e']
         data = message.get('o')
         json.dump(message, fp=sys.stdout, indent=3)
+
+        """
+        {
+          "e":"ORDER_TRADE_UPDATE",     // Event Type
+          "E":1568879465651,            // Event Time
+          "T":1568879465650,            // Transaction Time
+          "o":{                             
+            "s":"BTCUSDT",              // Symbol
+            "c":"TEST",                 // Client Order Id
+              // special client order id:
+              // starts with "autoclose-": liquidation order
+              // "adl_autoclose": ADL auto close order
+              // "settlement_autoclose-": settlement order for delisting or delivery
+            "S":"SELL",                 // Side
+            "o":"TRAILING_STOP_MARKET", // Order Type
+            "f":"GTC",                  // Time in Force
+            "q":"0.001",                // Original Quantity
+            "p":"0",                    // Original Price
+            "ap":"0",                   // Average Price
+            "sp":"7103.04",             // Stop Price. Please ignore with TRAILING_STOP_MARKET order
+            "x":"NEW",                  // Execution Type
+            "X":"NEW",                  // Order Status
+            "i":8886774,                // Order Id
+            "l":"0",                    // Order Last Filled Quantity
+            "z":"0",                    // Order Filled Accumulated Quantity
+            "L":"0",                    // Last Filled Price
+            "N":"USDT",             // Commission Asset, will not push if no commission
+            "n":"0",                // Commission, will not push if no commission
+            "T":1568879465650,          // Order Trade Time
+            "t":0,                      // Trade Id
+            "b":"0",                    // Bids Notional
+            "a":"9.91",                 // Ask Notional
+            "m":false,                  // Is this trade the maker side?
+            "R":false,                  // Is this reduce only
+            "wt":"CONTRACT_PRICE",      // Stop Price Working Type
+            "ot":"TRAILING_STOP_MARKET",    // Original Order Type
+            "ps":"LONG",                        // Position Side
+            "cp":false,                     // If Close-All, pushed with conditional order
+            "AP":"7476.89",             // Activation Price, only puhed with TRAILING_STOP_MARKET order
+            "cr":"5.0",                 // Callback Rate, only puhed with TRAILING_STOP_MARKET order
+            "pP": false,              // ignore
+            "si": 0,                  // ignore
+            "ss": 0,                  // ignore
+            "rp":"0"                            // Realized Profit of the trade
+          }
+        }        
+        """
         if event == 'ORDER_TRADE_UPDATE':
             if data['X'] == 'FILLED':
+                x = data['x']
+                o = data['o']
+
+                if o in ('MARKET', 'LIMIT'):
+                    execType = ExecType.TRADE
+                elif x == 'LIQUIDATION':
+                    execType = ExecType.LIQUIDATION
+                elif o == 'STOP':
+                    execType = ExecType.STOP
+                elif o == 'TAKE_PROFIT':
+                    execType = ExecType.TP
+                else:
+                    return
+
                 trade = Execution(
                     symbol=data['s'],
                     price=Decimal(data['ap']) or Decimal(data['p']),
                     qty=Decimal(data['q']),
                     side=data['S'],
-                    time=self._parse_ms(message['E']),
-                    type=ExecType.TRADE
+                    time=self.parse_ms(message['E']),
+                    type=execType,
+                    realized_pnl=Decimal(data['rp'])
                 )
                 await utils.call_unknown_function(self._on_execution, trade)
 
@@ -364,8 +442,8 @@ class BinanceSpot(_BinanceBaseClient):
     async def _get_balance(self, time: datetime, upnl=True):
 
         results = await asyncio.gather(
-            self._get('/api/v3/account'),
-            self._get('/api/v3/ticker/price', sign=False, cache=True)
+            self.get('/api/v3/account'),
+            self.get('/api/v3/ticker/price', sign=False, cache=True)
         )
 
         if isinstance(results[0], dict):
@@ -376,7 +454,7 @@ class BinanceSpot(_BinanceBaseClient):
             tickers = results[0]
 
         total_balance = 0
-        extra_currencies: Dict[str, float] = {}
+        extra_currencies: list[balance.Amount] = []
 
         ticker_prices = {
             ticker['symbol']: ticker['price'] for ticker in tickers
@@ -389,6 +467,9 @@ class BinanceSpot(_BinanceBaseClient):
             if currency == 'USDT':
                 price = 1
             elif amount > 0 and currency != 'LDUSDT' and currency != 'LDSRM':
+                extra_currencies.append(
+                    balance.Amount(currency=currency, realized=amount, unrealized=amount)
+                )
                 price = Decimal(ticker_prices.get(f'{currency}USDT', 0.0))
             total_balance += amount * price
 

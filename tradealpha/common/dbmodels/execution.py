@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
@@ -17,14 +18,18 @@ class Execution(Base, Serializer, CurrencyMixin):
     trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
 
     symbol = Column(String, nullable=False)
-    price = Column(Numeric, nullable=False)
-    qty = Column(Numeric, nullable=False)
-    side = Column(Enum(Side), nullable=False)
     time: datetime = Column(DateTime(timezone=True), nullable=False)
-    type = Column(Enum(ExecType), nullable=True)
-    commission = Column(Numeric, nullable=True)
-    realized_pnl = Column(Numeric, nullable=True)
+    type = Column(Enum(ExecType), nullable=False, default=ExecType.TRADE)
+
+    realized_pnl: Decimal = Column(Numeric, nullable=True)
+    price: Decimal = Column(Numeric, nullable=True)
+    qty: Decimal = Column(Numeric, nullable=True)
+    side = Column(Enum(Side), nullable=True)
+    commission: Decimal = Column(Numeric, nullable=True)
 
     @hybrid_property
     def effective_qty(self):
-        return self.qty * self.side.value
+        return self.qty * self.side.value if self.side else 0
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} {self.side} {self.symbol}@{self.price} {self.qty}'

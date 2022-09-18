@@ -8,11 +8,11 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse, JSONResponse
 
-from tradealpha.common.dbsync import session
-from tradealpha.common.dbasync import async_session, db_select, db_exec
-from tradealpha.common.dbmodels.discorduser import DiscordUser
+from tradealpha.common.dbasync import async_session, db_exec
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.common.dbmodels.user import User
-from tradealpha.api.dependencies import CurrentUser, get_db
+from tradealpha.api.dependencies import get_db
+from tradealpha.api.users import CurrentUser
 
 from fastapi import APIRouter, Depends, Request
 
@@ -66,7 +66,7 @@ def register_discord(request: Request, user: User = Depends(CurrentUser)):
     if user.discord_user:
         return {'msg': 'Discord is already connected'}, HTTPStatus.BAD_REQUEST
     else:
-        discord = make_session(scope=['identify'], request=request)
+        discord = make_session(scope=['identify', 'guilds', 'email'], request=request)
         authorization_url, state = discord.authorization_url(AUTHORIZATION_BASE_URL)
         request.session['oauth2_state'] = state
         return JSONResponse(
@@ -100,8 +100,9 @@ async def callback(request: Request,
         authorization_response=str(request.url)
     )
     request.session['oauth2_token'] = token
-
+#
     user_json = discord.get(API_BASE_URL + '/users/@me').json()
+    guilds_json = discord.get(API_BASE_URL + '/guilds')
 
     await db_exec(
         update(DiscordUser).where(

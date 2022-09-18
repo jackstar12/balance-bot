@@ -20,8 +20,9 @@ class LeaderboardCog(CogBase):
     async def leaderboard_balance(self, ctx: SlashContext):
         await ctx.defer()
         await ctx.send(content='',
-                       embed=await utils.create_leaderboard(dc_client=self.bot, guild_id=ctx.guild_id, mode='balance',
-                                                            time=None))
+                       embed=await utils.create_leaderboard(dc_client=self.bot,
+                                                            guild_id=ctx.guild_id,
+                                                            mode='balance'))
 
     @cog_ext.cog_subcommand(
         base="leaderboard",
@@ -41,6 +42,6 @@ class LeaderboardCog(CogBase):
     @utils.server_only
     async def leaderboard_gain(self, ctx: SlashContext, time: datetime = None):
         await ctx.defer()
-        await ctx.send(content='',
-                       embed=await utils.create_leaderboard(dc_client=self.bot, guild_id=ctx.guild_id, mode='gain',
-                                                            time=time))
+        await ctx.send(
+            embed=await utils.get_leaderboard(self.bot, ctx.guild_id, ctx.channel_id)
+        )

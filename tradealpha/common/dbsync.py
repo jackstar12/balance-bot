@@ -3,8 +3,7 @@ from sqlalchemy import create_engine, MetaData
 import dotenv
 import os
 import aioredis
-from sqlalchemy.orm import sessionmaker, scoped_session, Session
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, scoped_session, Session, declarative_base
 
 dotenv.load_dotenv()
 

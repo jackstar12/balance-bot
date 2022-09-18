@@ -35,7 +35,9 @@ class BaseService:
         pass
 
     async def run_forever(self):
-        pass
+        # Do nothing, required because otherwise service would finish and the db session would close
+        fut = asyncio.get_running_loop().create_future()
+        await fut
 
     async def teardown(self):
         pass
@@ -43,6 +45,7 @@ class BaseService:
     async def __aenter__(self):
         self._logger.info('Initialising')
         self._db = self._db_maker()
+        return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         self._logger.info('Exiting')

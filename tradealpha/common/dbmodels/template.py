@@ -1,11 +1,14 @@
 import sqlalchemy as sa
 from sqlalchemy import orm
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
-from tradealpha.common.dbmodels.types import Document, Data, DocumentModel
+from tradealpha.common.dbmodels.types import Document, Data
+from tradealpha.common.models.document import DocumentModel
 
 from tradealpha.common.dbsync import Base
 from typing import TYPE_CHECKING
+
 
 class Template(Base, EditsMixin):
     __tablename__ = 'template'
@@ -13,7 +16,6 @@ class Template(Base, EditsMixin):
     id = sa.Column(sa.Integer, primary_key=True)
     user_id = sa.Column(sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
     user = orm.relationship('User', lazy='noload')
-    title = sa.Column(sa.Text, nullable=False)
 
     if TYPE_CHECKING:
         doc: DocumentModel
@@ -25,4 +27,12 @@ class Template(Base, EditsMixin):
                                 foreign_keys='Journal.default_template_id',
                                 back_populates='default_template',
                                 lazy='noload')
+
+    @hybrid_property
+    def title(self):
+        return self.doc.title if self.doc else None
+
+    @title.expression
+    def title(self):
+        return self.doc.content[0].content[0].text
 

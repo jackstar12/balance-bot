@@ -60,7 +60,7 @@ class KuCoinFuturesWorker(_KuCoinClient):
     _response_result = 'data'
 
     async def _get_url(self):
-        resp = await self._post('/api/v1/bullet-private')
+        resp = await self.post('/api/v1/bullet-private')
         server = resp["instanceServers"][0]
         return server["endpoint"] + f'?token={resp["token"]}'
 
@@ -73,8 +73,8 @@ class KuCoinFuturesWorker(_KuCoinClient):
     # https://docs.kucoin.com/futures/#get-real-time-ticker
     async def _get_ticker(self,
                           symbol: str):
-        resp = await self._get('/api/v1/ticker',
-                        params={
+        resp = await self.get('/api/v1/ticker',
+                              params={
                             'symbol': symbol
                         })
         return Ticker(
@@ -95,15 +95,15 @@ class KuCoinFuturesWorker(_KuCoinClient):
                                          ] = None):
         params = {}
         if since:
-            params['startAt'] = self._date_as_ms(since)
+            params['startAt'] = self.date_as_ms(since)
         if to:
-            params['endAt'] = self._date_as_ms(to)
+            params['endAt'] = self.date_as_ms(to)
         if transaction_type:
             params['type'] = transaction_type
 
         # https://docs.kucoin.com/futures/#get-transaction-history
-        return await self._get('/api/v1/transaction-history',
-                               params=params)
+        return await self.get('/api/v1/transaction-history',
+                              params=params)
 
     async def _get_transfers(self,
                              since: datetime,
@@ -166,16 +166,16 @@ class KuCoinFuturesWorker(_KuCoinClient):
             'granularity': res
         }
         if since:
-            params['from'] = self._date_as_ms(since)
+            params['from'] = self.date_as_ms(since)
         if to:
-            params['to'] = self._date_as_ms(to)
+            params['to'] = self.date_as_ms(to)
 
-        ohlc_data = await self._get('/api/v1/kline/query',
-                                    params=params)
+        ohlc_data = await self.get('/api/v1/kline/query',
+                                   params=params)
 
         return [
             OHLC(
-               self._parse_ts(ohlc[0]),
+               self.parse_ts(ohlc[0]),
                *ohlc[1:]
             )
             for ohlc in ohlc_data
@@ -187,7 +187,7 @@ class KuCoinFuturesWorker(_KuCoinClient):
         transactions = await self._fetch_transaction_history(since, transaction_type='RealizedPNL')
 
         # https://docs.kucoin.com/futures/#get-fills
-        fills = await self._get('/api/v1/fills')
+        fills = await self.get('/api/v1/fills')
 
         [
             Execution(

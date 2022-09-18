@@ -49,7 +49,7 @@ class FtxWebsocketClient(WebsocketManager):
         self._logged_in = True
 
     async def _subscribe(self, subscription: Dict) -> None:
-        res = await self.send_json({'op': 'subscribe', **subscription})
+        await self.send_json({'op': 'subscribe', **subscription})
         self._subscriptions.append(subscription)
 
     async def _unsubscribe(self, subscription: Dict) -> None:
@@ -100,7 +100,7 @@ class FtxWebsocketClient(WebsocketManager):
         data = message['data']
         self._orders.update({data['id']: data})
 
-    async def _on_message(self, ws, message: str) -> None:
+    async def _on_message(self, ws, message: dict) -> None:
         message_type = message['type']
         if message_type in {'subscribed', 'unsubscribed', 'pong'}:
             return

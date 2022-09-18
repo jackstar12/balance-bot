@@ -8,7 +8,7 @@ from sqlalchemy import select
 from tradealpha.common.dbmodels import Client, Execution
 from tradealpha.common.dbasync import db_select_all, db_all
 from tradealpha.common.dbmodels.trade import Trade
-from tradealpha.common.messenger import NameSpace, Category
+from tradealpha.common.messenger import TableNames, Category
 from tests.conftest import Channel, RedisMessages
 from tradealpha.common.exchanges import SANDBOX_CLIENTS
 
@@ -29,12 +29,13 @@ size = Decimal('0.01')
     SANDBOX_CLIENTS,
     indirect=True
 )
-async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
+async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger, redis):
     db_client: Client
 
     async with RedisMessages.create(
-            Channel.create(NameSpace.TRADE, Category.NEW, '*', pattern=True),
-            messenger=messenger
+            Channel(TableNames.TRADE, Category.NEW),
+            messenger=messenger,
+
     ) as listener:
         ccxt_client.create_market_buy_order(symbol, float(size))
         await listener.wait(5)
@@ -48,7 +49,7 @@ async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
     assert prev_balance.total != first_balance.total
 
     async with RedisMessages.create(
-            Channel.create(NameSpace.TRADE, Category.UPDATE, '*', pattern=True),
+            Channel(TableNames.TRADE, Category.UPDATE),
             messenger=messenger
     ) as listener:
         ccxt_client.create_market_sell_order(symbol, float(size / 2))
@@ -60,7 +61,7 @@ async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
     assert first_balance.realized != second_balance.realized
 
     async with RedisMessages.create(
-            Channel.create(NameSpace.TRADE, Category.FINISHED, '*', pattern=True),
+            Channel(TableNames.TRADE, Category.FINISHED),
             messenger=messenger
     ) as listener:
         ccxt_client.create_market_sell_order(symbol, float(size / 2))
@@ -82,7 +83,7 @@ async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
     SANDBOX_CLIENTS,
     indirect=True
 )
-async def test_imports(time, db_client):
+async def test_imports(pnl_service, time, db_client):
     trades = await db_select_all(
         Trade,
         eager=[Trade.max_pnl, Trade.min_pnl],

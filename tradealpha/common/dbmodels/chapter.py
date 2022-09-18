@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import TypedDict
+from datetime import datetime, date, timedelta
+from typing import TypedDict, Optional
 
 import sqlalchemy as sa
 from sqlalchemy import orm, Date, select, case, func, literal
@@ -11,9 +11,11 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import aliased
 
 import tradealpha.common.utils as utils
+from tradealpha.common.models import BaseModel
 from tradealpha.common.dbasync import db_all
 from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
-from tradealpha.common.dbmodels.types import Document, Data, DocumentModel
+from tradealpha.common.dbmodels.types import Document, Data
+from tradealpha.common.models.document import DocumentModel
 from tradealpha.common.dbsync import Base
 from tradealpha.common.models.gain import Gain
 
@@ -30,9 +32,12 @@ chapter_trade_association = sa.Table(
 )
 
 
-class ChapterData(TypedDict):
-    start_date: datetime
-    end_date: datetime
+class ChapterData(BaseModel):
+    start_date: date
+    end_date: date
+
+    # def get_end_date(self, interval: timedelta):
+    #     return self.start_date + interval
 
 
 class Chapter(Base, EditsMixin):
@@ -50,16 +55,13 @@ class Chapter(Base, EditsMixin):
                                 backref=orm.backref('parent', remote_side=[id]),
                                 lazy='noload',
                                 cascade="all, delete")
-    balances = orm.relationship('Balance',
-                                lazy='noload',
-                                secondary=balance_association,
-                                order_by='Balance.time')
+
     journal = orm.relationship('Journal',
                                lazy='noload')
 
     # Data
     doc = sa.Column(Document, nullable=True)
-    data: ChapterData = sa.Column(Data, nullable=True)
+    data: Optional[ChapterData] = sa.Column(ChapterData.get_sa_type(validate=True), nullable=True)
 
     @hybrid_property
     def title(self):
@@ -113,6 +115,14 @@ class Chapter(Base, EditsMixin):
 
         child = await db_all(child_stmt, session=db)
         pass
+
+    @hybrid_property
+    def start_date(self):
+        return self.data.start_date
+
+    @hybrid_property
+    def end_date(self):
+        return self.data.end_date
 
     @hybrid_property
     def all_data(self):

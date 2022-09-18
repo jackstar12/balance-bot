@@ -13,13 +13,11 @@ class LabelInfo(BaseModel):
 
 
 class SetLabels(BaseModel):
-    client_id: InputID
     trade_id: InputID
-    label_ids: List[InputID]
+    label_ids: list[InputID]
 
 
 class RemoveLabel(BaseModel):
-    client_id: InputID
     trade_id: InputID
     label_id: InputID
 

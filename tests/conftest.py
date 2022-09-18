@@ -1,15 +1,17 @@
 import os
 from asyncio import Future
 from dataclasses import dataclass
+from typing import Any
 
 import pytest
 from aioredis import Redis
 
+from tradealpha.common.dbmodels import Event, Client, EventScore
 from tradealpha.common import utils
 from tradealpha.api.app import app
 from tradealpha.common.dbsync import Base
 from tradealpha.common.dbasync import REDIS_URI
-from tradealpha.common.messenger import Messenger
+from tradealpha.common.messenger import Messenger, NameSpaceInput
 
 import asyncio
 
@@ -39,6 +41,7 @@ def engine():
 @pytest.fixture(scope='session')
 async def tables(engine):
     async with engine.begin() as conn:
+        #await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
 
@@ -48,7 +51,7 @@ def session_maker(tables, engine):
 
 
 @pytest.fixture(scope='function')
-async def db(engine, session_maker) -> AsyncSession:
+async def db(tables, engine, session_maker) -> AsyncSession:
     async with session_maker() as db:
         yield db
 
@@ -60,17 +63,17 @@ def redis() -> Redis:
 
 @pytest.fixture(scope='session')
 def messenger(redis) -> Messenger:
-    return Messenger(redis=redis)
+    messenger = Messenger(redis=redis)
+    messenger.listen_class(Event)
+    messenger.listen_class(Client)
+    messenger.listen_class(EventScore)
+    return messenger
 
 
 @dataclass
 class Channel:
-    name: str
-    pattern: bool
-
-    @classmethod
-    def create(cls, *names, pattern=False):
-        return cls(utils.join_args(*names), pattern)
+    ns: NameSpaceInput
+    topic: Any
 
 
 @dataclass
@@ -99,7 +102,7 @@ class RedisMessages:
         return cls(
             channels=channels,
             results={
-                c.name: loop.create_future()
+                c.ns.name: loop.create_future()
                 for c in channels
             },
             messenger=messenger
@@ -107,15 +110,16 @@ class RedisMessages:
 
     async def __aenter__(self):
         for channel in self.channels:
-            await self.messenger.sub(
-                pattern=True,
-                **{channel.name: self.results[channel.name].set_result}
+            await self.messenger.v2_sub_channel(
+                channel.ns,
+                channel.topic,
+                self.results[channel.ns.name].set_result
             )
         return self
 
     async def __aexit__(self, *args):
         for channel in self.channels:
-            await self.messenger.unsub(channel.name, channel.pattern)
+            await self.messenger.v2_unsub_channel(channel.ns.name, channel.topic)
 
 
 @pytest.fixture(scope='function')
