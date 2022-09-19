@@ -9,5 +9,6 @@ RUN pip install --no-cache-dir --upgrade -r ./tradealpha/common/requirements.txt
 COPY /tradealpha/common /code/tradealpha/common
 COPY ./alembic.ini /code/alembic.ini
 COPY ./alembic /code/alembic
+COPY ./.env /code/.env
 
 RUN echo "Trade Alpha"

@@ -1,19 +1,17 @@
 from decimal import Decimal
-from typing import List, Dict
+from typing import Dict
 
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option, create_choice
-from sqlalchemy import delete
 
-from tradealpha.common.dbasync import db_exec, async_session, db_del_filter
-from tradealpha.common.dbmodels.discorduser import DiscordUser
+from tradealpha.common.dbasync import async_session
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.bot import utils
 from tradealpha.common import dbutils
-from tradealpha.common.dbsync import session
 from tradealpha.common.dbmodels.alert import Alert
 from tradealpha.bot.cogs.cogbase import CogBase
 from tradealpha.common.exchanges import EXCHANGES
-from tradealpha.common.messenger import NameSpace, Category
+from tradealpha.common.messenger import TableNames, Category
 from tradealpha.common.models.selectionoption import SelectionOption
 
 
@@ -32,7 +30,7 @@ class AlertCog(CogBase):
             )
 
     async def on_ready(self):
-        await self.messenger.sub_channel(NameSpace.ALERT, sub=Category.FINISHED, callback=self.on_alert_trigger)
+        await self.messenger.sub_channel(TableNames.ALERT, sub=Category.FINISHED, callback=self.on_alert_trigger)
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -76,7 +74,7 @@ class AlertCog(CogBase):
 
         symbol = symbol.upper()
 
-        discord_user = await dbutils.get_discord_user(ctx.author_id, require_registrations=False, eager_loads=[
+        discord_user = await dbutils.get_discord_user(ctx.author_id, require_clients=False, eager_loads=[
             DiscordUser.alerts,
         ])
 
@@ -93,7 +91,7 @@ class AlertCog(CogBase):
 
         await ctx.send('Alert created', embed=alert.get_discord_embed())
 
-        self.messenger.pub_channel(NameSpace.ALERT, Category.NEW, obj=alert.serialize(data=True, full=False))
+        self.messenger.pub_channel(TableNames.ALERT, Category.NEW, obj=alert.serialize(data=True, full=False))
 
     @cog_ext.cog_subcommand(
         base="alert",
@@ -111,7 +109,7 @@ class AlertCog(CogBase):
     @utils.log_and_catch_errors()
     async def delete_alert(self, ctx: SlashContext, symbol: str = None):
 
-        user = await dbutils.get_discord_user(ctx.author_id, require_registrations=False, eager_loads=[DiscordUser.alerts])
+        user = await dbutils.get_discord_user(ctx.author_id, require_clients=False, eager_loads=[DiscordUser.alerts])
 
         if user.alerts:
             ctx, selections = await utils.new_create_selection(
@@ -120,7 +118,7 @@ class AlertCog(CogBase):
                 options=[
                     SelectionOption(
                         name=f'{alert.symbol}@{alert.price}',
-                        value=str(alert.id),
+                        value=str(alert.channel_id),
                         description=alert.note,
                         object=alert
                     )
@@ -155,7 +153,7 @@ class AlertCog(CogBase):
         if symbol:
             symbol = symbol.upper()
 
-        user = await dbutils.get_discord_user(ctx.author_id, require_registrations=False, eager_loads=[DiscordUser.alerts])
+        user = await dbutils.get_discord_user(ctx.author_id, require_clients=False, eager_loads=[DiscordUser.alerts])
 
         embeds = [
             alert.get_discord_embed() for alert in user.alerts if alert.symbol == symbol or not symbol

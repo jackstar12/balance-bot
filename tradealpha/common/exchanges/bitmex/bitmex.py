@@ -17,6 +17,7 @@ class BitmexWorker(ExchangeWorker):
     _response_error = None
     _response_result = None
 
+    @classmethod
     def _adjust_amount(self, amount: Decimal, symbol: str):
         if 'XBT' in symbol:
             # XBT amount is given in Sats (100 Million Sats = 1BTC)
@@ -39,22 +40,22 @@ class BitmexWorker(ExchangeWorker):
         #     }
         # )
         # res = self._request(request)
-        response = await self._get(
+        response = await self.get(
             '/api/v1/user/margin',
             params={'currency': 'all'}
         )
         total_realized = total_unrealized = Decimal(0)
-        extra_currencies = {}
+        extra_currencies = []
 
         for currency in response:
             symbol = currency['currency'].upper()
-            unrealized_amount = currency['marginBalance']
-            realized_amount = currency['walletBalance']
+            unrealized_raw = currency['marginBalance']
+            realized_raw = currency['walletBalance']
             price = 0
             if self._usd_like(symbol):
                 price = 1
-            elif unrealized_amount > 0:
-                response_price = await self._get(
+            elif unrealized_raw > 0:
+                response_price = await self.get(
                     '/api/v1/trade',
                     params={
                         'symbol': symbol.upper(),
@@ -65,16 +66,18 @@ class BitmexWorker(ExchangeWorker):
                 if len(response_price) > 0:
                     price = response_price[0]['price']
 
-            unrealized_amount = self._adjust_amount(unrealized_amount, symbol)
-            realized_amount = self._adjust_amount(realized_amount, symbol)
-            extra_currencies[symbol] = unrealized_amount
+            unrealized = self._adjust_amount(unrealized_raw, symbol)
+            realized_amount = self._adjust_amount(realized_raw, symbol)
+
+            extra_currencies.append(
+                db_balance.Amount(currency=symbol, realized=realized_amount, unrealized=unrealized)
+            )
 
             total_realized += realized_amount * price
-            total_unrealized += unrealized_amount * price
+            total_unrealized += unrealized * price
 
         return db_balance.Balance(realized=total_realized,
-                                  total_unrealized=total_unrealized,
-                                  currency='$',
+                                  unrealized=total_unrealized,
                                   extra_currencies=extra_currencies)
 
     # https://www.bitmex.com/app/apiKeysUsage

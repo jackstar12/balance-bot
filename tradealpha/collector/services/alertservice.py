@@ -8,8 +8,9 @@ from tradealpha.common.dbasync import async_session, db_del_filter, db_all
 from tradealpha.common.dbmodels.alert import Alert
 from tradealpha.collector.services.baseservice import BaseService
 from tradealpha.collector.services.dataservice import Channel, DataService
+from tradealpha.collector.services.syncedservice import SyncedService
 from tradealpha.common.enums import Side
-from tradealpha.common.messenger import NameSpace as MsgChannel, Category
+from tradealpha.common.messenger import TableNames as MsgChannel, Category, ALERT
 from tradealpha.common.models.observer import Observer
 from tradealpha.common.models.ticker import Ticker
 
@@ -31,11 +32,6 @@ class AlertService(BaseService, Observer):
 
         await self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.NEW, callback=self._update)
         await self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.DELETE, callback=self._delete)
-
-    async def run_forever(self):
-        # Do nothing, required because otherwise service would finish and the db session would close
-        fut = asyncio.get_running_loop().create_future()
-        await fut
 
     def add_alert(self, alert: Alert):
         symbol = (alert.symbol, alert.exchange)

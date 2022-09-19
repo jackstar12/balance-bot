@@ -36,14 +36,14 @@ class KrakenRestClient(ExchangeWorker):
     ]
 
     async def _get_balance(self, time: datetime, upnl=True):
-        response = await self._get('/0/private/TradeBalance')
+        response = await self.get('/0/private/TradeBalance')
         return balance.BalanceDB(
             amount=response["e"] if upnl else response["tb"],
             time=time
         )
 
     async def _get_websocket_token(self):
-        response = await self._get('/0/private/GetWebSocketsToken')
+        response = await self.get('/0/private/GetWebSocketsToken')
         return response["token"]
 
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):

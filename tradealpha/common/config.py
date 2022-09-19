@@ -4,7 +4,7 @@ from tradealpha.common.enums import Priority
 
 dotenv.load_dotenv()
 
-TESTING = os.environ.get('TESTING').lower() == 'true'
+TESTING = os.environ.get('TESTING', 'false').lower() == 'true'
 
 REKT_THRESHOLD = 1
 

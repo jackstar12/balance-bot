@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from http import HTTPStatus
-from typing import Type
+from typing import Type, AsyncGenerator, TypeVar
 from uuid import UUID
 
 from fastapi import Request, HTTPException
@@ -10,7 +10,9 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload, joinedload
 
+from tradealpha.common.redis import rpc
 from tradealpha.api.models.FilterParam import FilterParam
 from tradealpha.common.models import BaseModel
 from tradealpha.api.authenticator import Authenticator
@@ -31,6 +33,10 @@ messenger = Messenger(redis)
 
 def get_authenticator() -> Authenticator:
     return default_authenticator
+
+
+def get_dc_rpc_client():
+    return rpc.Client('discord', redis, timeout=10)
 
 
 async def get_db() -> AsyncSession:
@@ -56,7 +62,8 @@ def get_messenger():
 
 class CurrentUserDep:
     def __init__(self, *eager_loads):
-        self.base_stmt = db_eager(select(User), *eager_loads)
+        self.base_stmt = db_eager(select(User).options(joinedload(User.events)), *eager_loads)
+        self._eager_loads = eager_loads
 
     async def __call__(self,
                        request: Request,
@@ -64,7 +71,7 @@ class CurrentUserDep:
                        db: AsyncSession = Depends(get_db)):
         uuid = await authenticator.verify_id(request)
         ts1 = time.perf_counter()
-        user = await db_unique(self.base_stmt.filter_by(id=uuid), session=db) if uuid else None
+        user = await db_unique(self.base_stmt, session=db) if uuid else None
         ts2 = time.perf_counter()
         print(ts2 - ts1)
         if not user:
@@ -91,9 +98,3 @@ class FilterQueryParamsDep:
             except ValueError:
                 continue
         return filters
-
-
-
-
-
-

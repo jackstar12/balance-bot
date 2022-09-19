@@ -9,6 +9,7 @@ services:
     environment:
       - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
       - REDIS_URI=redis://redis-server:6379
+      - TESTING
   api:
     depends_on:
       - migrate

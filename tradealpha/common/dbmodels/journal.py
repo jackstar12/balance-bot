@@ -1,5 +1,3 @@
-import asyncio
-import itertools
 from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Iterator, TypedDict, Optional
@@ -14,9 +12,11 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from .template import Template
 from tradealpha.common import utils
 from tradealpha.common.dbsync import Base
-from tradealpha.common.dbmodels.types import Document, DocumentModel, Data
-import tradealpha.common.dbmodels.chapter as db_chapter
+from tradealpha.common.dbmodels.types import Document
+from tradealpha.common.models.document import DocumentModel
 
+import tradealpha.common.dbmodels.chapter as db_chapter
+from dateutil.relativedelta import relativedelta
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels.chapter import Chapter
 
@@ -35,6 +35,10 @@ class JournalType(Enum):
 class JournalData(TypedDict):
     chapter_interval: Optional[timedelta]
 
+class IntervalType(Enum):
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
 
 class Journal(Base):
     __tablename__ = 'journal'
@@ -44,7 +48,7 @@ class Journal(Base):
     user = orm.relationship('User', lazy='noload', foreign_keys=user_id)
 
     title = sa.Column(sa.Text, nullable=False)
-    chapter_interval = sa.Column(sa.Interval, nullable=True)
+    chapter_interval = sa.Column(sa.Enum(IntervalType), nullable=True)
     type = sa.Column(sa.Enum(JournalType), default=JournalType.MANUAL)
 
     #data: JournalData = sa.Column(Data, nullable=True)
@@ -56,7 +60,7 @@ class Journal(Base):
         backref=orm.backref('journals', lazy='noload')
     )
 
-    chapters = orm.relationship(
+    chapters: 'list[Chapter]' = orm.relationship(
         'Chapter',
         lazy='noload',
         cascade="all, delete",
@@ -85,55 +89,72 @@ class Journal(Base):
     def create_chapter(self, parent_id: int = None, template: Template = None):
         new_chapter = db_chapter.Chapter(
             journal=self,
-            parent_id=parent_id
+            parent_id=parent_id,
+            data=None
         )
 
         if self.type == JournalType.INTERVAL:
-            start = self.current_chapter.data['end_date'] if self.current_chapter else date.today()
-            new_chapter.data['start_date'] = start
-            new_chapter.data['end_date'] = new_chapter.data['start_date'] + self.chapter_interval
+            if self.current_chapter:
+                start = self.current_chapter.data.end_date + timedelta(days=1)
+            else:
+                today = date.today()
+                if self.chapter_interval == IntervalType.MONTH:
+                    start = date(year=today.year, month=today.month, day=1)
+                elif self.chapter_interval == IntervalType.WEEK:
+                    start = today - timedelta(days=today.weekday())
+                else:
+                    start = today
+
+            if self.chapter_interval == IntervalType.WEEK:
+                end_date = start + timedelta(days=6)
+            elif self.chapter_interval == IntervalType.MONTH:
+                end_date = start + relativedelta(months=+1, days=-1)
+            else:
+                end_date = start
+
+            new_chapter.data = db_chapter.ChapterData(
+                start_date=start,
+                end_date=end_date
+            )
 
         if template:
             new_chapter.doc = template.doc
-            new_chapter.doc.content = template.doc.content[1:]
-            new_chapter.data = template.data
+            new_chapter.doc.content = template.doc.content[0:]
 
-            template_title_node = new_chapter.doc[0]
-            if template_title_node.type == 'templateTitle':
-                if template_title_node.attrs['type'] == 'constant':
-                    new_chapter.doc[0] = DocumentModel(
-                        type="title",
-                        attrs={'level': 1},
-                        content=[
-                            DocumentModel(
-                                type="text",
-                                text=template_title_node.attrs['content']
-                            )
-                        ]
+            new_chapter.doc[0] = DocumentModel(
+                type="title",
+                attrs={
+                    'level': 1,
+                    'data': {
+                        'dates': {
+                            'since': new_chapter.data.start_date,
+                            'to': new_chapter.data.end_date,
+                        },
+                        'clientIds': [str(id) for id in self.client_ids]
+                    }
+                },
+                content=[
+                    DocumentModel(
+                        type="text",
+                        text=utils.date_string(date.today())
                     )
-                if template_title_node.attrs['type'] == 'date':
-                    new_chapter.doc[0] = DocumentModel(
-                        type="title",
-                        attrs={'level': 1},
-                        content=[
-                            DocumentModel(
-                                type="text",
-                                text=utils.date_string(date.today())
-                            )
-                        ]
-                    )
-
-        self.current_chapter = new_chapter
+                ]
+            )
+        self.chapters.append(new_chapter)
         return new_chapter
 
     async def update(self, db: AsyncSession, template: Template = None):
-        template = template or self.default_template
         if self.type == JournalType.INTERVAL:
-            now = utils.utc_now()
-            while now > self.current_chapter.data['end_date']:
+            template = template or self.default_template
+            today = date.today()
+            while not self.latest_chapter or today > self.latest_chapter.data.end_date:
                 chapter = self.create_chapter(template=template)
                 db.add(chapter)
         await db.commit()
+
+    @hybrid_property
+    def latest_chapter(self):
+        return self.chapters[-1] if self.chapters else None
 
     @hybrid_property
     def client_ids(self):

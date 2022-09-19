@@ -1,10 +1,11 @@
 import json
 from datetime import datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Any
 
 import pytz
 
+from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
 from tradealpha.common.models.trade import Trade
 from tradealpha.common.exchanges.exchangeticker import ExchangeTicker, Channel
 from tradealpha.common.config import TESTING
@@ -24,7 +25,7 @@ def _ticker_stream(symbol: str):
 
 # https://binance-docs.github.io/apidocs/futures/en/#websocket-market-streams
 class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
-    #_ENDPOINT = 'wss://stream.binancefuture.com' if TESTING else 'wss://fstream.binance.com'
+    # _ENDPOINT = 'wss://stream.binancefuture.com' if TESTING else 'wss://fstream.binance.com'
     _ENDPOINT = 'wss://fstream.binance.com'
 
     def __init__(self, *args, **kwargs):
@@ -32,7 +33,10 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
         ExchangeTicker.__init__(self, *args, **kwargs)
 
     def _get_url(self):
-        return self._ENDPOINT + f'/ws'
+        return self._ENDPOINT + f'/ws/'
+
+    # def _get_message_id(self, message: dict) -> Any:
+    #     return message['id']
 
     async def disconnect(self):
         await self.close()
@@ -49,12 +53,16 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
         if channel.value == Channel.TRADES.value:
             await self.send_message("UNSUBSCRIBE", _trade_stream(kwargs.get("symbol")))
 
-    async def send_message(self, method: str, *params: str, id: int = 1):
-        await self.send_json({
-            "method": method,
-            "params": params,
-            "id": id
-        })
+    async def send_message(self, method: str, *params: str):
+        id = self._generate_id()
+        await self.send_json(
+            {
+                "method": method,
+                "params": params,
+                "id": id
+            },
+            msg_id=id
+        )
 
     async def _on_message(self, ws, msg):
         event = msg.get('e')
@@ -66,7 +74,7 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
                     size=msg['q'],
                     price=Decimal(msg['p']),
                     exchange='binance-futures',
-                    time=datetime.fromtimestamp(float(msg['E']), pytz.utc),
+                    time=ExchangeWorker.parse_ms(float(msg['E'])),
                     perp=True
                 )
             )

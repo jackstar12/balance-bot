@@ -13,13 +13,14 @@ import aiohttp
 if TYPE_CHECKING:
     from tradealpha.common.exchanges.binance.worker import BinanceFutures
 
+
 # https://binance-docs.github.io/apidocs/futures/en/#user-data-streams
 class FuturesWebsocketClient(WebsocketManager):
     _ENDPOINT = 'wss://fstream.binance.com'
     _SANDBOX_ENDPOINT = 'wss://stream.binancefuture.com'
 
     def __init__(self, binance: BinanceFutures, session: aiohttp.ClientSession, on_message: Callable = None):
-        super().__init__(session=session, get_url=self._get_url)
+        super().__init__(session=session, get_url=self._get_url, ping_forever_seconds=50*60)
         self._binance = binance
         self._listenKey = None
         self._on_message = on_message
@@ -37,14 +38,13 @@ class FuturesWebsocketClient(WebsocketManager):
 
     async def start(self):
         await self._renew_listen_key()
-        asyncio.create_task(self._keep_alive())
 
     async def stop(self):
         self._listenKey = None
         await self.close()
 
     async def _start_user_stream(self):
-        response = await self._binance._post('/fapi/v1/listenKey')
+        response = await self._binance.post('/fapi/v1/listenKey')
         if response.get('msg') is None:
             return response['listenKey']
         else:
@@ -54,12 +54,6 @@ class FuturesWebsocketClient(WebsocketManager):
         self._listenKey = await self._start_user_stream()
         await self.reconnect()
 
-    async def _keep_alive(self):
-        while self._ws and not self._ws.closed:
-            # Ping binance every 50 minutes
-            if self._listenKey:
-                logging.info('Keep alive binance websocket')
-                await self._binance._put('/fapi/v1/listenKey')
-                await asyncio.sleep(50 * 60)
-            else:
-                await self.reconnect()
+    async def ping(self):
+        logging.info('Keep alive binance websocket')
+        await self._binance.put('/fapi/v1/listenKey')

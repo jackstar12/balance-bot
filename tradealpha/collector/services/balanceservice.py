@@ -16,15 +16,15 @@ from tradealpha.common.exchanges import EXCHANGES
 from tradealpha.collector.services.baseservice import BaseService
 from tradealpha.collector.services.dataservice import DataService, Channel
 from tradealpha.common import utils, customjson
-from tradealpha.common.dbasync import db_all, db_unique, db_eager
+from tradealpha.common.dbasync import db_all, db_unique, db_eager, redis_bulk_hashes, RedisKey
 from tradealpha.common.dbmodels.chapter import Chapter
 from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.dbmodels.journal import Journal
 from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.errors import InvalidClientError, ResponseError, ClientDeletedError
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
-from tradealpha.common.messenger import ClientUpdate
-from tradealpha.common.messenger import NameSpace, Category
+from tradealpha.common.messenger import ClientUpdate, CLIENT, TRADE
+from tradealpha.common.messenger import TableNames, Category
 
 
 class ExchangeJob(NamedTuple):
@@ -58,17 +58,16 @@ class _BalanceServiceBase(BaseService):
         self._exchanges = EXCHANGES
         self._workers_by_id: Dict[int, ExchangeWorker] = {}
         self._worker_lock = asyncio.Lock()
-        #self._worker_lock = Lock()
+        # self._worker_lock = Lock()
 
         self._all_client_stmt = db_eager(
-            select(Client).filter(
+            select(Client).where(
                 Client.archived == False,
                 Client.invalid == False
             ),
-            Client.discord_user,
             Client.currently_realized,
             (Client.open_trades, [Trade.max_pnl, Trade.min_pnl]),
-            (Client.journals, (Journal.current_chapter, Chapter.balances))
+            (Client.journals, Journal.current_chapter)
         )
         self._active_client_stmt = self._all_client_stmt.join(
             Trade,
@@ -86,50 +85,44 @@ class _BalanceServiceBase(BaseService):
             return not (worker.client.is_premium and worker.supports_extended_data)
 
     async def _sub_client(self):
-        await self._messenger.sub_channel(NameSpace.CLIENT,
-                                          sub=Category.NEW,
-                                          callback=self._on_client_add,
-                                          pattern=True)
-
-        await self._messenger.sub_channel(NameSpace.CLIENT,
-                                          sub=Category.DELETE,
-                                          callback=self._on_client_delete,
-                                          pattern=True)
-
-        await self._messenger.sub_channel(NameSpace.CLIENT,
-                                          sub=Category.UPDATE,
-                                          callback=self._on_client_update,
-                                          pattern=True)
+        await self._messenger.v2_bulk_sub(
+            TableNames.CLIENT,
+            {
+                Category.NEW: self._on_client_add,
+                Category.UPDATE: self._on_client_update,
+                Category.DELETE: self._on_client_delete,
+            }
+        )
 
     async def _on_client_delete(self, data: Dict):
         await self._remove_worker_by_id(data['id'])
-        await self._messenger.pub_channel(NameSpace.CLIENT, Category.REMOVED, data)
+        await self._messenger.v2_pub_channel(CLIENT,
+                                             Category.REMOVED,
+                                             data,
+                                             client_id=data['id'], user_id=data['user_id'])
 
     async def _on_client_add(self, data: Dict):
         await self.add_client_by_id(data['id'])
-        self._messenger.pub_channel(NameSpace.CLIENT, Category.ADDED, data)
 
     async def _refresh_worker(self, worker: ExchangeWorker):
         async with self._db_lock:
-            await db_unique(
+            return await db_unique(
                 self._all_client_stmt
-                    .filter_by(id=worker.client_id)
-                    .execution_options(populate_existing=True),
+                .filter_by(id=worker.client_id)
+                .execution_options(populate_existing=True),
                 session=self._db
             )
 
-    async def _on_client_update(self, data: Dict):
-        edit = ClientUpdate(**data)
-        worker = self._get_existing_worker(edit.id)
+    async def _on_client_update(self, data: dict):
+        worker = self._get_existing_worker(data['id'])
         if worker:
             await self._refresh_worker(worker)
-        if edit.archived or edit.invalid:
+        if data['archived'] or data['invalid'] and worker:
             await self._remove_worker(worker)
-        elif edit.archived is False or edit.invalid is False:
-            await self.add_client_by_id(edit.id)
-        if edit.premium is not None:
-            await self._remove_worker(worker)
-            await self.add_client_by_id(edit.id)
+        elif not data['archived'] and not data['invalid'] and not worker:
+            await self.add_client_by_id(data['id'])
+        if data['user_id'] and not worker:
+            await self.add_client_by_id(data['id'])
 
     async def _remove_worker_by_id(self, client_id: int):
         worker = self._get_existing_worker(client_id)
@@ -160,6 +153,7 @@ class _BalanceServiceBase(BaseService):
                                       messenger=self._messenger,
                                       rekt_threshold=self.rekt_threshold)
                 await self._add_worker(worker)
+                await self._messenger.v2_pub_instance(client, Category.ADDED)
                 return worker
             else:
                 self._logger.error(f'Exchange class {exchange_cls} does NOT subclass ExchangeWorker')
@@ -191,7 +185,7 @@ class BasicBalanceService(_BalanceServiceBase):
 
     @staticmethod
     def reschedule(exchange_job: ExchangeJob):
-        trigger = IntervalTrigger(seconds=15 // (len(exchange_job.deque) or 1))
+        trigger = IntervalTrigger(seconds=15 // (len(exchange_job.deque) or 1), jitter=2)
         exchange_job.job.reschedule(trigger)
 
     async def _add_worker(self, worker: ExchangeWorker):
@@ -263,10 +257,6 @@ class BasicBalanceService(_BalanceServiceBase):
             self._db.add_all(balances)
             await self._db.commit()
 
-            for balance in balances:
-                self._messenger.pub_channel(NameSpace.BALANCE, Category.NEW, channel_id=balance.client_id.id,
-                                            obj={'id': balance.id})
-
 
 class ExtendedBalanceService(_BalanceServiceBase):
     client_sub_category = Category.ADVANCED
@@ -274,26 +264,30 @@ class ExtendedBalanceService(_BalanceServiceBase):
     async def init(self):
         await self._sub_client()
 
-        await self._messenger.sub_channel(NameSpace.TRADE, sub=Category.UPDATE, callback=self._on_trade_update,
-                                          pattern=True)
+        await self._messenger.v2_bulk_sub(
+            TRADE,
+            {
+                Category.UPDATE: self._on_trade_update,
+                Category.NEW: self._on_trade_new,
+                TRADE.FINISHED: self._on_trade_finished,
+            }
+        )
 
-        await self._messenger.sub_channel(NameSpace.TRADE, sub=Category.NEW, callback=self._on_trade_new,
-                                          pattern=True)
+        clients = await db_all(
+            self._all_client_stmt.filter(
+                Client.is_premium,
+                Client.exchange.in_([
+                    ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
+                    if ExchangeCls.supports_extended_data
+                ])
+            ),
+            session=self._db
+        )
 
-        await self._messenger.sub_channel(NameSpace.TRADE, sub=Category.FINISHED, callback=self._on_trade_finished,
-                                          pattern=True)
-
-        for client in await db_all(
-                self._all_client_stmt.filter(
-                    Client.is_premium == True,
-                    Client.exchange.in_([
-                        ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
-                        if ExchangeCls.supports_extended_data
-                    ])
-                ),
-                session=self._db
-        ):
-            await self.add_client(client)
+        await asyncio.gather(*[
+            self.add_client(client)
+            for client in clients
+        ], return_exceptions=True)
 
     async def _on_trade_new(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=True)
@@ -307,7 +301,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
         worker = await self.get_worker(client_id, create_if_missing=True)
         if worker:
             await self._refresh_worker(worker)
-            #async with self._db_lock:
+            # async with self._db_lock:
             #    trade = await self._db.get(Trade, trade_id)
             #    await self._db.refresh(trade)
 
@@ -339,15 +333,11 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 await worker.synchronize_positions()
                 await worker.startup()
             except InvalidClientError:
-                print(f'Error while adding {worker.client_id=}')
-                return None
-            except ResponseError:
                 self._logger.exception(f'Error while adding {worker.client_id=}')
-                print(f'Error while adding {worker.client_id=}')
-                raise
+
+                return None
             except Exception:
                 self._logger.exception(f'Error while adding {worker.client_id=}')
-                print(f'Error while adding {worker.client_id=}')
                 raise
 
         async with self._worker_lock:
@@ -370,34 +360,35 @@ class ExtendedBalanceService(_BalanceServiceBase):
         while True:
             balances = []
 
-            async with self._db_lock, self._worker_lock:
-
+            async with self._worker_lock:
                 for worker in self._workers_by_id.values():
                     try:
-                        client = await worker.get_client(self._db)
+                        client = await self._refresh_worker(worker)
                     except ClientDeletedError:
                         continue
-                    if client:
-                        for trade in client.open_trades:
-                            ticker = self.data_service.get_ticker(trade.symbol, client.exchange)
-                            if ticker:
-                                trade.update_pnl(
-                                    trade.calc_upnl(ticker.price),
-                                    realtime=True, extra_currencies={'USD': ticker.price}
-                                )
-                        balance = client.evaluate_balance()
-                        if balance:
-                            balances.append(balance)
-                await self._db.commit()
+
+                    async with self._db_lock:
+                        if client:
+                            significant = False
+                            for trade in client.open_trades:
+                                ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
+                                if ticker:
+                                    if trade.update_pnl(
+                                            trade.calc_upnl(ticker.price),
+                                            realtime=True, extra_currencies={'USD': ticker.price},
+                                            db=self._db
+                                    ):
+                                        significant = True
+                            balance = client.evaluate_balance()
+                            if balance:
+                                balances.append(balance)
+                async with self._db_lock:
+                    await self._db.commit()
+            self._logger.debug(balances)
             if balances:
                 async with self._redis.pipeline(transaction=True) as pipe:
-                    pipe: Pipeline = pipe
                     for balance in balances:
-                        await pipe.hset(
-                            name=utils.join_args(NameSpace.CLIENT, balance.client_id),
-                            key=NameSpace.BALANCE.value,
-                            value=customjson.dumps(balance.serialize(data=False, full=False))
-                        )
+                        await balance.client.as_redis(pipe).set_balance(balance)
                     await pipe.execute()
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(2)

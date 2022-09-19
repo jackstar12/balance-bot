@@ -1,7 +1,7 @@
 matplotlib~=3.5.0
 discord-py-slash-command~=3.0.1
-discord.py>=1.6.0
-SQLAlchemy[asyncio]~=1.4.25
+discord.py~=1.7.1
+SQLAlchemy[asyncio]~=1.4.40
 prettytable~=3.1.0
 bcrypt~=3.2.0
 DateTime~=4.4

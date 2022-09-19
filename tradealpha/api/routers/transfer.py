@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, Body
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tradealpha.api.dependencies import CurrentUser, get_messenger, get_db
+from tradealpha.api.dependencies import get_messenger, get_db
+from tradealpha.api.users import CurrentUser
 from tradealpha.api.models.transfer import Transfer
 from tradealpha.api.utils.responses import OK, NotFound
 from tradealpha.common.dbasync import db_exec, db_first

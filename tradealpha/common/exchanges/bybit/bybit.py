@@ -22,7 +22,7 @@ from tradealpha.common.enums import ExecType, Side
 from tradealpha.common.errors import ResponseError, InvalidClientError
 from tradealpha.common.exchanges.bybit.websocket import BybitWebsocketClient
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker, create_limit
-from tradealpha.common.dbmodels.balance import Balance
+from tradealpha.common.dbmodels.balance import Balance, Amount
 from typing import Dict, List, Union, Tuple, Optional, Type
 
 from tradealpha.common.models.async_websocket_manager import WebsocketManager
@@ -113,7 +113,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 price=price,
                 qty=qty,
                 commission=commission,
-                time=cls._parse_ts(raw_exec["trade_time_ms"] / 1000),
+                time=cls.parse_ts(raw_exec["trade_time_ms"] / 1000),
                 side=Side.BUY if raw_exec["side"] == "Buy" else Side.SELL,
                 type=ExecType.TRADE,
                 inverse=contract_type == ContractType.INVERSE,
@@ -167,8 +167,8 @@ class _BybitBaseClient(ExchangeWorker, ABC):
     async def _get_internal_transfers(self, since: datetime, wallet: Wallet) -> List[RawTransfer]:
         transfers = []
 
-        res = await self._get('/asset/v1/private/transfer/list',
-                              params={
+        res = await self.get('/asset/v1/private/transfer/list',
+                             params={
                                   'start_time': self._parse_date(since),
                                   'status': Transfer.SUCCESS.value
                               })
@@ -213,7 +213,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 amount *= -1
             results.append(RawTransfer(
                 amount=amount,
-                time=self._parse_ts(transfer["timestamp"]),
+                time=self.parse_ts(transfer["timestamp"]),
                 coin=transfer["coin"],
                 fee=None
             ))
@@ -268,7 +268,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             # https://bybit-exchange.github.io/docs/inverse/#t-usertraderecords
             if page_init and page != page_init:
                 params[page_param] = page
-            response = await self._get(path, params=params, **kwargs)
+            response = await self.get(path, params=params, **kwargs)
             page = response.get(page_response, page + 1 if page_init == 1 else page)
             result = response.get(result_path)
             if result:
@@ -286,8 +286,8 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             for transfer in self._internal_transfers[1]:
                 coins_to_fetch.add(transfer.coin)
 
-        asset_records = await self._get('/v2/private/exchange-order/list',
-                                        params={
+        asset_records = await self.get('/v2/private/exchange-order/list',
+                                       params={
                                             'limit': 50
                                         })
         # {
@@ -380,12 +380,12 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
     async def _internal_get_balance(self, contract_type: ContractType, time: datetime, upnl=True):
 
         balances, tickers = await asyncio.gather(
-            self._get('/v2/private/wallet/balance'),
-            self._get('/v2/public/tickers', sign=False, cache=True)
+            self.get('/v2/private/wallet/balance'),
+            self.get('/v2/public/tickers', sign=False, cache=True)
         )
 
         total_realized = total_unrealized = Decimal(0)
-        extra_currencies: Dict[str, Decimal] = {}
+        extra_currencies: list[Amount] = []
 
         ticker_prices = {
             ticker['symbol']: ticker['last_price'] for ticker in tickers
@@ -400,6 +400,9 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                     price = Decimal(1)
             elif unrealized > 0 and contract_type == ContractType.INVERSE:
                 price = ticker_prices.get(f'{currency}USD')
+                extra_currencies.append(
+                    Amount(currency=currency, realized=realized, unrealized=unrealized)
+                )
                 extra_currencies[currency] = realized
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {currency}:\n{ticker_prices}')
@@ -451,7 +454,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
         else:
             raise
 
-        data = await self._get(url, params=params)
+        data = await self.get(url, params=params)
 
         # "result": [{
         #     "id": 3866948,
@@ -472,7 +475,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                     low=ohlc["low"],
                     close=ohlc["close"],
                     volume=Decimal(0),
-                    time=self._parse_ts(ohlc["start_at"])
+                    time=self.parse_ts(ohlc["start_at"])
                 )
                 for ohlc in data
             ]
@@ -530,8 +533,8 @@ class BybitLinearWorker(_BybitDerivativesBaseClient):
 
     async def _get_executions(self,
                               since: datetime,
-                              init=False) -> List[Execution]:
-        return await self._get_internal_executions(ContractType.LINEAR, since, init)
+                              init=False):
+        return await self._get_internal_executions(ContractType.LINEAR, since, init), []
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):

@@ -54,7 +54,7 @@ async def create_cilent_analytics(client: Client,
             elif cur_filter == Filter.LABEL:
                 # TODO: What if trade has no labels?
                 all_filter_values.append(
-                    ((cur_filter, label.id) for label in trade.labels)
+                    ((cur_filter, label.channel_id) for label in trade.labels)
                 )
             elif cur_filter == Filter.SESSION:
                 filter_values = None  # TODO

@@ -1,8 +1,5 @@
 from enum import Enum
 
-from tradealpha.common import utils
-from tradealpha.common.messenger import Word
-
 
 class ClientSpace(Enum):
     LAST_EXEC = "last-exec"

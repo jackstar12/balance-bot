@@ -2,6 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+import sqlalchemy.exc
 from fastapi.encoders import jsonable_encoder
 from pydantic.main import BaseModel
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from tradealpha.common.dbasync import db_all
 
 
 class Serializer:
+    __tablename__: str
     __serializer_anti_recursion__ = False
     __serializer_forbidden__ = []
     __serializer_data_forbidden__ = []
@@ -36,18 +38,17 @@ class Serializer:
                     for k in inspect(self).attrs.keys():
                         forbidden = self.__serializer_data_forbidden__ if data else self.__serializer_forbidden__
                         if k not in forbidden:
-                            v = getattr(self, k)
+                            try:
+                                v = getattr(self, k)
+                            except sqlalchemy.exc.InvalidRequestError:
+                                continue
                             if v is None:
                                 continue
                             if issubclass(type(v), list):
-                                v = Serializer.serialize_list(v, data=data, full=full, *args, **kwargs)
-                            elif isinstance(v, AppenderQuery):
-                                if data and None:
-                                    v = []
-                                    #v = await db_all(v.statement)
-                                    #v = v.all()
+                                if full:
+                                    v = Serializer.serialize_list(v, data=data, full=full, *args, **kwargs)
                                 else:
-                                    v = []
+                                    continue
                             elif isinstance(v, datetime):
                                 v = v.timestamp()
                             elif issubclass(type(v), Enum):
@@ -57,6 +58,8 @@ class Serializer:
                                     v = v.serialize(full=full, data=data, include_none=include_none, *args, **kwargs)
                                 else:
                                     continue
+                            elif issubclass(type(v), AppenderQuery):
+                                continue
                             s[k] = v
                 self.__class__.__serializer_anti_recursion__ = False
                 return s

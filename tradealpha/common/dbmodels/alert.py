@@ -14,8 +14,8 @@ class Alert(Base, Serializer):
     __serializer_data_forbidden__ = ["user", "discord_user"]
 
     id: int = Column(Integer, primary_key=True)
-    user_id: UUID = Column(GUID, ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
-    discord_user_id: int = Column(BigInteger, ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
+    user_id: UUID = Column(ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    discord_user_id: int = Column(ForeignKey('oauth_account.account_id', ondelete='SET NULL'), nullable=True)
 
     symbol: str = Column(String, nullable=False)
     price: float = Column(Numeric, nullable=False)

@@ -21,12 +21,12 @@ class Interval(BaseModel):
 
     @classmethod
     def create(cls, prev: Balance, current: Balance, as_string=False) -> Interval:
-        current_date = current.time + timedelta(days=1)
-        gain = current.realized - (current.total_transfered - prev.total_transfered) - prev.realized
+        current_date = current.time
+        abs, rel = current.gain_since(prev)
         return cls(
             day=current_date.strftime('%Y-%m-%d') if as_string else current_date,
-            diff_absolute=gain,
-            diff_relative=100 * (gain / prev.realized),
+            diff_absolute=abs,
+            diff_relative=rel,
             start_balance=prev,
             end_balance=current
         )

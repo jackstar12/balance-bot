@@ -4,7 +4,7 @@ from tradealpha.common.dbasync import db_del_filter, async_session
 from tradealpha.common.dbmodels.client import Client
 from tradealpha.common import dbutils
 from tradealpha.bot import utils
-from tradealpha.common.dbmodels.discorduser import DiscordUser
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.bot.cogs.cogbase import CogBase
 
 
@@ -21,7 +21,7 @@ class UserCog(CogBase):
 
         async def confirm_delete(ctx):
             for client in user.clients:
-                await dbutils.delete_client(client, self.messenger, async_session)
+                await async_session.delete(client)
             await db_del_filter(DiscordUser, id=user.id)
             await async_session.commit()
 
@@ -48,7 +48,7 @@ class UserCog(CogBase):
             ctx.author_id,
             eager_loads=[(DiscordUser.clients, Client.events)]
         )
-        embeds = await user.get_discord_embed()
+        embeds = await user.get_discord_embed(self.bot)
         await ctx.send(content='', embeds=embeds, hidden=True)
 
 

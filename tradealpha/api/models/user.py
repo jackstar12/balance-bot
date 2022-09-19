@@ -1,31 +1,33 @@
 import uuid
-from typing import Optional, List
+from typing import Optional, List, TypedDict
 
 from fastapi_users import schemas
+from fastapi_users.models import ID
+from fastapi_users.schemas import BaseOAuthAccount
 
-from tradealpha.api.models import InputID
+from tradealpha.common.dbmodels.user import OAuthData
 from tradealpha.api.models.alert import Alert
 from tradealpha.api.models.client import ClientInfo
-from tradealpha.api.models.discord_user import DiscordUserInfo
-from tradealpha.api.models.event import Event
 from tradealpha.api.models.labelinfo import LabelInfo
 
 
+class OAuthInfo(schemas.BaseOAuthAccount):
+    data: Optional[OAuthData]
+
+
 class UserRead(schemas.BaseUser[uuid.UUID]):
-    discord_user_id: Optional[InputID]
+    oauth_accounts: list[OAuthInfo]
 
 
 class UserCreate(schemas.BaseUserCreate):
-    discord_user_id: Optional[InputID]
+    pass
 
 
 class UserUpdate(schemas.BaseUserUpdate):
-    discord_user_id: Optional[InputID]
+    pass
 
 
 class UserInfo(UserRead):
-
-    discord_user: Optional[DiscordUserInfo]
     all_clients: List[ClientInfo]
     labels: List[LabelInfo]
     alerts: List[Alert]

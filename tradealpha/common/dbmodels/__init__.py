@@ -1,18 +1,16 @@
 from operator import and_
 
-from sqlalchemy import desc, select, func, Date, join, or_
-from sqlalchemy.orm import relationship, aliased
+from sqlalchemy import desc, select, func, Date, join, or_, asc
+from sqlalchemy.orm import relationship, aliased, foreign
 
 import tradealpha.common.dbmodels.alert
 import tradealpha.common.dbmodels.archive
 import tradealpha.common.dbmodels.balance
 import tradealpha.common.dbmodels.client
 import tradealpha.common.dbmodels.coin
-import tradealpha.common.dbmodels.discorduser
+import tradealpha.common.dbmodels.discord.discorduser
 import tradealpha.common.dbmodels.event
 import tradealpha.common.dbmodels.execution
-import tradealpha.common.dbmodels.guild
-import tradealpha.common.dbmodels.guildassociation
 import tradealpha.common.dbmodels.journal
 import tradealpha.common.dbmodels.label
 import tradealpha.common.dbmodels.pnldata
@@ -22,13 +20,20 @@ import tradealpha.common.dbmodels.transfer
 import tradealpha.common.dbmodels.user
 import tradealpha.common.dbmodels.chapter
 import tradealpha.common.dbmodels.template
+import tradealpha.common.dbmodels.score
+import tradealpha.common.dbmodels.discord.guildassociation as ga
+import tradealpha.common.dbmodels.action
 
 Client = client.Client
 BalanceDB = balance.Balance
+Balance = balance.Balance
 Chapter = chapter.Chapter
 Execution = execution.Execution
 TradeDB = trade.Trade
-
+EventScore = score.EventScore
+EventRank = score.EventRank
+Event = event.Event
+GuildAssociation = ga.GuildAssociation
 
 partioned_balance = select(
     BalanceDB,
@@ -77,6 +82,7 @@ chapter.Chapter.trades = relationship('Trade',
                                       )
 
 
+
 #ChildChapter = aliased(Chapter)
 #child_ids = select(ChildChapter.id)
 #
@@ -91,6 +97,34 @@ chapter.Chapter.trades = relationship('Trade',
 #)
 
 
+equ = and_(
+    EventScore.client_id == foreign(EventRank.client_id),
+    EventScore.event_id == foreign(EventRank.event_id)
+)
+
+current = select(
+    EventRank
+).order_by(
+    desc(EventRank.time)
+).limit(1).alias()
+
+latest = aliased(EventRank, current)
+
+
+#EventScore.current_rank = relationship(EventRank,
+#                                       lazy='joined',
+#                                       uselist=False
+#                                       )
+#EventScore.current_rank = relationship(latest, lazy='noload', uselist=False)
+
+
+EventScore.rank_history = relationship(EventRank,
+                                       lazy='noload',
+                                       primaryjoin=equ,
+                                       order_by=asc(EventRank.time))
+
+
+
 __all__ = [
     "balance",
     "client",
@@ -98,5 +132,6 @@ __all__ = [
     "user",
     "Client",
     "Execution",
-    "TradeDB"
+    "TradeDB",
+    "GuildAssociation"
 ]

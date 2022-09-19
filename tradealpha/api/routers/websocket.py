@@ -5,12 +5,12 @@ from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
 from tradealpha.api.models.websocket import WebsocketMessage, ClientConfig
-from tradealpha.api.dependencies import CurrentUser
+from tradealpha.api.users import CurrentUser
 from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.dbmodels.user import User
 from tradealpha.api.utils.client import create_client_data_serialized, get_user_client
 import tradealpha.api.utils.client as client_utils
-from tradealpha.common.messenger import Messenger, NameSpace, Category
+from tradealpha.common.messenger import Messenger, TableNames, Category
 
 
 router = APIRouter(

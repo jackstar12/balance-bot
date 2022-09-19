@@ -1,49 +1,25 @@
 from __future__ import annotations
 
-import asyncio
+import inspect
 import itertools
+import logging
 import os
 import re
-import logging
 import sys
-import traceback
 import typing
-from asyncio import Future
+from datetime import datetime, timedelta, date
 from decimal import Decimal
 from enum import Enum
-from functools import wraps
-
-import discord
-import inspect
-import matplotlib.pyplot as plt
-import pytz
-
-from prettytable import PrettyTable
-
-from discord_slash.utils.manage_components import create_button, create_actionrow, create_select_option
-import discord_slash.utils.manage_components as discord_components
-from discord_slash.model import ButtonStyle
-from discord_slash import SlashCommand, ComponentContext, SlashContext
-from datetime import datetime, timedelta, date
-from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Sequence, Iterable
-
-from sqlalchemy import asc, select, func, desc, Date
-from sqlalchemy.ext.asyncio import AsyncSession
-
-import tradealpha.common.dbmodels.event as db_event
-import tradealpha.common.dbmodels.client as db_client
-from tradealpha.common.dbasync import async_session, db_all
-from tradealpha.common.dbmodels.guildassociation import GuildAssociation
-from tradealpha.common.errors import UserInputError, InternalError
-from tradealpha.common.models.interval import Interval
-from tradealpha.common.models.gain import ClientGain
-from tradealpha.common import dbutils
-from tradealpha.common.dbmodels.balance import Balance
-import tradealpha.common.config as config
+from typing import Callable, Optional, Union, Dict, Any
 from typing import TYPE_CHECKING
 
+import pytz
+
+import tradealpha.common.config as config
+from tradealpha.common.errors import UserInputError
+
 if TYPE_CHECKING:
-    from tradealpha.common.dbmodels.client import Client
+    pass
 
 
 def utc_now():
@@ -82,23 +58,6 @@ _regrex_pattern = re.compile("["
                              "]+", re.UNICODE)
 
 
-# Thanks Stackoverflow
-def de_emojify(text):
-    return _regrex_pattern.sub(r'', text)
-
-
-def get_best_time_fit(search: datetime, prev: Balance, after: Balance):
-    if abs((prev.tz_time - search).total_seconds()) < abs((after.tz_time - search).total_seconds()):
-        return prev
-    else:
-        return after
-
-
-def embed_add_value_safe(embed: discord.Embed, name, value, **kwargs):
-    if value:
-        embed.add_field(name=name, value=value, **kwargs)
-
-
 def setup_logger(debug: bool = False):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
@@ -116,193 +75,6 @@ def setup_logger(debug: bool = False):
     return logger
 
 
-async def calc_daily(client: Client,
-                     amount: int = None,
-                     currency: str = None,
-                     string=False,
-                     throw_exceptions=True,
-                     since: datetime = None,
-                     to: datetime = None,
-                     db: AsyncSession = None) -> Union[List[Interval], str]:
-    """
-    Calculates daily balance changes for a given client.
-    :param since:
-    :param to:
-    :param throw_exceptions:
-    :param client: Client to calculate changes
-    :param amount: Amount of days to calculate
-    :param currency: Currency that will be used
-    :param string: Whether the created table should be stored as a string using prettytable or as a list of
-    :return:
-    """
-    now = utc_now()
-
-    currency = currency or '$'
-    since = since or datetime.fromtimestamp(0, pytz.utc)
-    to = to or now
-
-    since_date = since.replace(tzinfo=pytz.UTC).replace(hour=0, minute=0, second=0)
-    daily_end = min(now, to)
-
-    if amount:
-        try:
-            daily_start = daily_end - timedelta(days=amount - 1)
-        except OverflowError:
-            raise UserInputError('Invalid daily amount given')
-    else:
-        daily_start = since_date
-
-    subq = select(
-        func.row_number().over(
-            order_by=desc(Balance.time),
-            partition_by=Balance.time.cast(Date)
-        ).label('row_number'),
-        Balance.id.label('id')
-    ).filter(
-        Balance.client_id == client.id,
-        Balance.time > daily_start
-    ).subquery()
-
-    stmt = select(
-        Balance,
-        subq
-    ).filter(
-        subq.c.row_number == 1,
-        Balance.id == subq.c.id
-    )
-
-    history = await db_all(stmt, session=db)
-
-    if len(history) == 0:
-        if throw_exceptions:
-            raise UserInputError(reason='Got no data for this user')
-        else:
-            return "" if string else []
-
-    if string:
-        results = PrettyTable(
-            field_names=["Date", "Amount", "Diff", "Diff %"]
-        )
-    else:
-        results = []
-
-    for prev, current in itertools.pairwise(history):
-        values = Interval.create(prev, current)
-        if string:
-            results.add_row([*values])
-        else:
-            results.append(values)
-
-    return results
-
-
-async def create_leaderboard(mode: str,
-                             event: db_event.Event = None,
-                             time: datetime = None,
-                             archived=False):
-    pass
-
-
-async def calc_intervals(client: Client,
-                         interval: timedelta,
-                         limit: int = None,
-                         guild_id: int = None,
-                         currency: str = None,
-                         since: date = None,
-                         to: date = None,
-                         as_string=False,
-                         forEach: Callable[[Balance], Any] = None,
-                         throw_exceptions=True,
-                         today: date = None,
-                         db_session: AsyncSession = None) -> Union[List[Interval], str]:
-    """
-    Calculates daily balance changes for a given client.
-    :param interval:
-    :param today:
-    :param limit:
-    :param since:
-    :param to:
-    :param throw_exceptions:
-    :param forEach: function to be performed for each balance
-    :param client: Client to calculate changes
-    :param amount: Amount of days to calculate
-    :param guild_id:
-    :param currency: Currency that will be used
-    :param as_string: Whether the created table should be stored as a string using prettytable or as a list of
-    :return:
-    """
-    db_session = db_session or async_session
-    currency = currency or '$'
-    today = today or date.today()
-    since = since or date.fromtimestamp(0)
-    to = to or today
-
-    end = min(today, to)
-
-    history = await db_all(
-        client.history.statement.filter(
-            Balance.time > since, Balance.time < today
-        ).order_by(
-            asc(Balance.time)
-        ),
-        session=db_session
-    )
-
-    if len(history) == 0:
-        if throw_exceptions:
-            raise UserInputError(reason='Got no data for this user')
-        else:
-            return "" if as_string else []
-
-    if limit:
-        try:
-            start = end - interval * limit
-        except OverflowError:
-            raise UserInputError('Invalid daily amount given')
-    else:
-        start = history[0].time.date()
-
-    start = max(since, start)
-
-    if guild_id:
-        event = await dbutils.get_discord_event(guild_id)
-        if event and event.start > start:
-            start = event.start
-
-    current_search = start + interval
-    prev = prev_balance = history[0]
-
-    if as_string:
-        results = PrettyTable(
-            field_names=["Date", "Amount", "Diff", "Diff %"]
-        )
-    else:
-        results = []
-    for balance in history:
-        now = balance.time.date()
-        if current_search <= now <= to:
-            # current = get_best_time_fit(current_search, prev_balance, balance)
-            prev = prev or prev_balance
-            values = Interval.create(prev, prev_balance, as_string)
-            if as_string:
-                results.add_row(list(values)[4:])
-            else:
-                results.append(values)
-            prev = prev_balance
-            current_search = now + interval
-        prev_balance = balance
-        await call_unknown_function(forEach, balance)
-
-    # if prev_balance.time.date() < current_search:
-    #    values = _create_interval(prev, history[len(history) - 1], as_string)
-    #    if as_string:
-    #        results.add_row([*values])
-    #    else:
-    #        results.append(values)
-    #
-    return results
-
-
 def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], string=True) -> float | str | Decimal:
     diff = now - then
     num_cls = type(then)
@@ -315,152 +87,25 @@ def calc_percentage(then: Union[float, Decimal], now: Union[float, Decimal], str
     return result if string else num_cls(result)
 
 
-def calc_percentage_diff(then: Union[float, Decimal], diff: Union[float, Decimal],
-                         string=True) -> float | str | Decimal:
+def calc_percentage_diff(then: Union[float, Decimal], diff: Union[float, Decimal]) -> float | str | Decimal:
     num_cls = type(then)
-    if diff == 0.0:
+    if diff == 0:
         result = '0'
     elif then > 0:
-        result = f'{round(100 * (diff / then), ndigits=3)}'
+        result = round(100 * (diff / then), ndigits=3)
     else:
-        result = '0'
-    return result if string else num_cls(result)
+        result = 0
+    return num_cls(result)
 
 
-async def calc_gains(clients: List[Client],
-                     event: db_event.Event,
-                     search: datetime,
-                     currency: str = None) -> List[ClientGain]:
-    """
-    :param event:
-    :param clients: users to calculate gain for
-    :param search: date since when gain should be calculated
-    :param currency:
-    :return:
-    Gain for each user is stored in a list of tuples following this structure: (User, (user gain rel, user gain abs)) success
-                                                                               (User, None) missing
-    """
-
-    if currency is None:
-        currency = '$'
-
-    results = []
-    for client in clients:
-        if not client:
-            logging.info('calc_gains: A none client was passed in?')
-            continue
-
-        search, _ = await dbutils.get_guild_start_end_times(event, search, None)
-        balance_then = await client.get_balance_at_time(search, currency=currency)
-        balance_now = await client.latest()
-
-        if balance_then and balance_now:
-            # balance_then = history.data[0]
-            # balance_now = db_match_balance_currency(history.data[len(history.data) - 1], currency)
-            diff = round(balance_now.unrealized - balance_then.unrealized,
-                         ndigits=config.CURRENCY_PRECISION.get(currency, 3))
-
-            if balance_then.unrealized > 0:
-                results.append(
-                    ClientGain(
-                        client=client,
-                        relative=round(100 * (diff / balance_then.unrealized),
-                                       ndigits=config.CURRENCY_PRECISION.get('%', 2)),
-                        absolute=diff
-                    )
-                )
-            else:
-                results.append(
-                    ClientGain(client, Decimal(0), diff)
-                )
-        else:
-            results.append(ClientGain(client, None, None))
-
-    return results
+TIn = typing.TypeVar('TIn')
+TOut = typing.TypeVar('TOut')
+CoroOrCallable = Union[Callable[[TIn], TOut], Callable[[TIn], typing.Awaitable[TOut]]]
 
 
-def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[datetime]:
-    """
-    Calculates time from given time args.
-    Arg Format:
-      <n><f>
-      where <f> can be m (minutes), h (hours), d (days) or w (weeks)
-
-      or valid time string
-
-    :raise:
-      ValueError if invalid arg is given
-    :return:
-      Calculated timedelta or None if None was passed in
-    """
-    if not time_str:
-        return None
-
-    time_str = time_str.lower()
-
-    # Different time formats: True or False indicates whether the date is included.
-    formats = [
-        (False, "%H:%M:%S"),
-        (False, "%H:%M"),
-        (False, "%H"),
-        (True, "%d.%m.%Y %H:%M:%S"),
-        (True, "%d.%m.%Y %H:%M"),
-        (True, "%d.%m.%Y %H"),
-        (True, "%d.%m.%Y"),
-        (True, "%d.%m. %H:%M:%S"),
-        (True, "%d.%m. %H:%M"),
-        (True, "%d.%m. %H"),
-        (True, "%d.%m.")
-    ]
-
-    date = None
-    now = datetime.now(pytz.utc)
-    for includes_date, time_format in formats:
-        try:
-            date = datetime.strptime(time_str, time_format)
-            if not includes_date:
-                date = date.replace(year=now.year, month=now.month, day=now.day, microsecond=0)
-            elif date.year == 1900:  # %d.%m. not setting year to 1970 but to 1900?
-                date = date.replace(year=now.year)
-            break
-        except ValueError:
-            continue
-
-    if not date:
-        minute = 0
-        hour = 0
-        day = 0
-        week = 0
-        second = 0
-        args = time_str.split(' ')
-        if len(args) > 0:
-            for arg in args:
-                try:
-                    if 'h' in arg:
-                        hour += int(arg.rstrip('h'))
-                    elif 'm' in arg:
-                        minute += int(arg.rstrip('m'))
-                    elif 's' in arg:
-                        second += int(arg.rstrip('s'))
-                    elif 'w' in arg:
-                        week += int(arg.rstrip('w'))
-                    elif 'd' in arg:
-                        day += int(arg.rstrip('d'))
-                    else:
-                        raise UserInputError(f'Invalid time argument: {arg}')
-                except ValueError:  # Make sure both cases are treated the same
-                    raise UserInputError(f'Invalid time argument: {arg}')
-        date = now - timedelta(hours=hour, minutes=minute, days=day, weeks=week, seconds=second)
-
-    if not date:
-        raise UserInputError(f'Invalid time argument: {time_str}')
-    elif date > now and not allow_future:
-        raise UserInputError(f'Future dates are not allowed. {time_str}')
-
-    return date
 
 
-async def call_unknown_function(fn: Callable, *args, **kwargs) -> Any:
+async def call_unknown_function(fn: CoroOrCallable, *args, **kwargs) -> Any:
     if callable(fn):
         try:
             if inspect.iscoroutinefunction(fn):
@@ -508,7 +153,6 @@ def list_last(l: list, default: Any = None):
     return l[-1] if l else default
 
 
-
 def combine_time_series(*time_series: typing.Iterable):
     return sorted(
         itertools.chain.from_iterable(time_series),
@@ -545,6 +189,18 @@ def groupby(items: list[T], key: str | Callable[[T], Any]) -> dict[str, list[T]]
         if val not in res:
             res[val] = []
         res[val].append(item)
+    return res
+
+
+def groupby_unique(items: list[T], key: str | Callable[[T], Any]) -> dict[Any, T]:
+    res = {}
+    if isinstance(key, str):
+        key_func = lambda x: getattr(x, key)
+    else:
+        key_func = key
+    for item in items:
+        val = key_func(item)
+        res[val] = item
     return res
 
 

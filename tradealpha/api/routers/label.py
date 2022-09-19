@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tradealpha.common.dbmodels import TradeDB
 from tradealpha.api.utils.client import get_user_client
 from tradealpha.common.dbasync import async_session, db_first, db_eager, db_all, db_select, db_exec, db_del_filter
-from tradealpha.api.dependencies import CurrentUser, get_db
+from tradealpha.api.dependencies import get_db
+from tradealpha.api.users import CurrentUser
 from tradealpha.common.dbsync import session
 
 from tradealpha.common.dbmodels.client import Client, add_client_filters
@@ -40,7 +41,7 @@ async def create_label(body: EditLabel,
     return LabelInfo.from_orm(label)
 
 
-@router.delete('/{label_id}')
+@router.delete('/{label_id}/')
 async def delete_label(label_id: int,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
@@ -52,7 +53,7 @@ async def delete_label(label_id: int,
         return NotFound('Invalid label id')
 
 
-@router.patch('/{label_id}', response_model=LabelInfo)
+@router.patch('/{label_id}/', response_model=LabelInfo)
 async def update_label(label_id: int, body: EditLabel,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
@@ -69,13 +70,12 @@ async def update_label(label_id: int, body: EditLabel,
         return NotFound('Invalid id')
 
 
-def add_trade_filters(stmt, user: User, client_id: int, trade_id: int):
+def add_trade_filters(stmt, user: User, trade_id: int):
     return add_client_filters(
         stmt.filter(
             Trade.id == trade_id,
-            Trade.client_id == client_id,
         ).join(Trade.client),
-        user, [client_id]
+        user
     )
 
 
@@ -87,7 +87,6 @@ async def add_label(body: AddLabel,
         add_trade_filters(
             select(TradeDB.id),
             user=user,
-            client_id=body.client_id,
             trade_id=body.trade_id
         ),
         session=db
@@ -119,12 +118,12 @@ async def add_label(body: AddLabel,
 
 
 @router.delete('/trade')
-async def remove_label(body: RemoveLabel, user: User = Depends(CurrentUser)):
+async def remove_label(body: RemoveLabel,
+                       user: User = Depends(CurrentUser),
+                       db: AsyncSession = Depends(get_db)):
     trade = await db_first(
-        db_eager(
-            await add_trade_filters(select(Trade), user, body.client_id, body.trade_id, body.label_id),
-            Trade.labels
-        )
+        add_trade_filters(select(Trade), user, body.trade_id),
+        Trade.labels
     )
     label = await db_first(
         select(LabelDB).filter(
@@ -146,7 +145,7 @@ async def set_labels(body: SetLabels,
                      user: User = Depends(CurrentUser),
                      db: AsyncSession = Depends(get_db)):
     trade = await db_first(
-        add_trade_filters(select(Trade), user, body.client_id, body.trade_id),
+        add_trade_filters(select(Trade), user, body.trade_id),
         Trade.labels,
         session=db
     )

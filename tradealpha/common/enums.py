@@ -1,10 +1,16 @@
 from enum import Enum
 
 
-class EventState(Enum):
-    ARCHIVED = 1
-    REGISTRATION = 2
-    OPEN = 3
+class IntervalType(Enum):
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+
+
+class TradeSession(Enum):
+    ASIA = "asia"
+    LONDON = "london"
+    NEW_YORK = "new_york"
 
 
 class Side(Enum):
@@ -48,7 +54,9 @@ class Filter(Enum):
 
 
 class ExecType(Enum):
-    TRADE = 1
-    STOP = 3
-    TP = 4
-    TRANSFER = 2
+    TRADE = "trade"
+    TRANSFER = "transfer"
+    FUNDING = "funding"
+    LIQUIDATION = "liquidation"
+    STOP = "stop"
+    TP = "tp"

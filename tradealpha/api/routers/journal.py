@@ -6,9 +6,9 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tradealpha.common.dbmodels.types import DocumentModel
 from tradealpha.api.routers.template import query_templates
-from tradealpha.api.dependencies import CurrentUser, get_messenger, CurrentUserDep, get_db
+from tradealpha.api.dependencies import get_messenger, CurrentUserDep, get_db
+from tradealpha.api.users import CurrentUser, get_current_user
 from tradealpha.api.models.completejournal import (
     JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
     ChapterInfo, ChapterCreate, ChapterUpdate, JournalDetailedInfo
@@ -55,13 +55,15 @@ async def query_chapter(journal_id: int,
 
 async def query_journal(journal_id: int, user: User, *eager, session: AsyncSession) -> Journal:
     journal = await db_unique(
-        select(Journal).filter(
+        select(Journal).where(
             Journal.id == journal_id,
             Journal.user_id == user.id
         ),
         session=session,
         *eager
     )
+    # 621d1bb5-5bfd-49ef-8a53-a28cd540552f
+    # 0a4ba32b-89ff-47eb-9d5c-6ddef522e1c2
     if not journal:
         raise HTTPException(404, 'Journal not found')
     return journal
@@ -91,8 +93,7 @@ async def create_journal(body: JournalCreate,
         return BadRequest(detail='Invalid client IDs')
     journal = Journal(
         title=body.title,
-        chapter_interval=body.chapter_interval or (
-                body.chapter_interval_days and timedelta(days=body.chapter_interval_days)),
+        chapter_interval=body.chapter_interval,
         user=user,
         clients=clients,
         type=body.type
@@ -106,12 +107,13 @@ async def create_journal(body: JournalCreate,
     return JournalInfo.from_orm(journal)
 
 
+
 @router.get(
     '/',
     description="Query all the users journals",
     response_model=List[JournalInfo]
 )
-async def get_journals(user: User = Depends(CurrentUserDep(User.journals))):
+async def get_journals(user: User = Depends(get_current_user(User.journals))):
     return CustomJSONResponse(
         content=jsonable_encoder(
             [
@@ -128,7 +130,7 @@ async def get_journal(journal_id: int,
                       db: AsyncSession = Depends(get_db)):
     journal = await query_journal(
         journal_id, user,
-        (Journal.chapters, [DbChapter.balances, DbChapter.children]),
+        (Journal.chapters, [DbChapter.children]),
         Journal.default_template,
         Journal.clients,
         session=db
@@ -184,7 +186,6 @@ async def get_chapter(journal_id: int, chapter_id: int, user: User = Depends(Cur
         journal_id,
         user,
         # DbChapter.trades,
-        DbChapter.balances,
         session=db,
         id=chapter_id
     )
@@ -235,7 +236,7 @@ async def create_chapter(journal_id: int,
                          body: ChapterCreate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
-    journal = await query_journal(journal_id, user, session=db)
+    journal = await query_journal(journal_id, user, Journal.clients, session=db)
 
     template = None
     if body.template_id:

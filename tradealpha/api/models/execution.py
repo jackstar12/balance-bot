@@ -11,9 +11,9 @@ from tradealpha.common.enums import ExecType, Side
 class Execution(BaseModel):
     id: OutputID
     symbol: str
-    price: Decimal
-    qty: Decimal
-    side: Side
+    price: Optional[Decimal]
+    qty: Optional[Decimal]
+    side: Optional[Side]
     time: datetime
     type: Optional[ExecType] = Field(default=ExecType.TRADE)
     commission: Optional[Decimal]

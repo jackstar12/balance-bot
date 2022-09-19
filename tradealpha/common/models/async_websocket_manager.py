@@ -49,8 +49,9 @@ class WebsocketManager:
         await self.connect()
 
         if isinstance(msg, str):
-            msg = msg.encode('utf-8')
-        await self._ws.send_bytes(msg)
+            msg = msg.encode('')
+        self._logger.info(f'SENDING: {msg} {self._ws.closed=}')
+        await self._ws._writer.send(msg, binary=False)
 
         if msg_id:
             fut = asyncio.get_running_loop().create_future()
@@ -61,8 +62,8 @@ class WebsocketManager:
             except asyncio.exceptions.CancelledError:
                 raise MissingMessageError()
 
-    async def send_json(self, data: dict, msg_id: Any = None):
-        await self.send(customjson.dumps(data), msg_id=msg_id)
+    def send_json(self, data: dict, msg_id: Any = None):
+        return self.send(customjson.dumps(data), msg_id=msg_id)
 
     async def close(self):
         if self.connected:
@@ -84,7 +85,7 @@ class WebsocketManager:
                 self._logger.info('Timeout')
                 self._ws = None
                 break
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.25)
 
     @property
     def connected(self):
@@ -94,11 +95,13 @@ class WebsocketManager:
         url = self._get_url()
         self._logger.info(f'Connecting to {url}')
         async with self._session.ws_connect(url, autoping=True) as ws:
+            self._ws = ws
+            self._logger.info(f'Connected to {url}')
             asyncio.create_task(self._ping_forever())
             await utils.call_unknown_function(self._on_connect, self)
-            self._ws = ws
             async for msg in ws:
-                msg: WSMessage = msg  # Pycharm is a bit stupid sometimes.
+                msg: WSMessage
+
                 if msg.type == aiohttp.WSMsgType.PING:
                     await ws.pong()
                     continue
@@ -108,8 +111,9 @@ class WebsocketManager:
                     message = customjson.loads(msg.data)
                     try:
                         msg_id = self._get_message_id(message)
-                        if msg_id in self._waiting:
-                            self._waiting.pop(msg_id).set_result(message)
+                        waiter = self._waiting.get(msg_id)
+                        if waiter:
+                            waiter.set_result(message)
                     except NotImplementedError:
                         pass
                     await self._callback(self._on_message, ws, message)
@@ -132,6 +136,7 @@ class WebsocketManager:
                     await self.ping()
                 except MissingMessageError:
                     await self.reconnect()
+                    break
                 await asyncio.sleep(self._ping_forever_seconds)
 
     async def _callback(self, f, ws, *args, **kwargs):

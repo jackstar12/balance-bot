@@ -2,7 +2,7 @@ from typing import Type
 
 from ccxt import Exchange
 
-from tradealpha.api.models.client import ClientCreate
+from tradealpha.common.models.client import ClientCreate
 from tradealpha.common.exchanges.binance.worker import BinanceFutures, BinanceSpot
 from tradealpha.common.exchanges.binance.ticker import BinanceFuturesTicker
 from tradealpha.common.exchanges.bitmex.bitmex import BitmexWorker
@@ -46,7 +46,7 @@ SANDBOX_CLIENTS = [
         exchange=BybitLinearWorker.exchange,
         api_key="nbEnjpQ3f4dwipubjG",
         api_secret="4wrgmmFoOrWcwREYGa5FJxRPaldzVG1oGMR1",
-        sandbox=True
+        sandbox=True,
     ),
     #ClientCreate(
     #    exchange=BinanceSpot.exchange,

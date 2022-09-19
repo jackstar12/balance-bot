@@ -69,13 +69,17 @@ class FtxWorker(ExchangeWorker):
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime, upnl=True):
-        response = await self._get('/api/wallet/balances')
+        response = await self.get('/api/wallet/balances')
         return balance.Balance(
             realized=sum(coin['usdValue'] for coin in response),
             unrealized=sum(coin['usdValue'] for coin in response),
-            time=time
+            time=time,
+            extra_currencies=[
+                balance.Amount(currency=coin['coin'], realized=coin['total'], unrealized=coin['total'])
+                for coin in response
+            ]
         )
-        response = await self._get('/api/account')
+        response = await self.get('/api/account')
 
         return balance.Balance(
             realized=response['collateral'],
@@ -86,7 +90,7 @@ class FtxWorker(ExchangeWorker):
     async def _get_executions(self, since: datetime, init=False):
         since = since or datetime.now(pytz.utc) - timedelta(days=365)
         # Offset by 1 millisecond because otherwise the same executions are refetched (ftx probably compares with >=)
-        trades = await self._get('/api/fills', params={
+        trades = await self.get('/api/fills', params={
             'start_time': self._parse_date(since),
             'end_time': str(time.time()),
             'order': 'asc'
@@ -131,7 +135,7 @@ class FtxWorker(ExchangeWorker):
             if not since:
                 params['start_time'] = params['end_time'] - resolution_s * limit
 
-        res = await self._get(f'/api/markets/{market}/candles', params=params)
+        res = await self.get(f'/api/markets/{market}/candles', params=params)
 
         return [
             OHLC(
@@ -160,8 +164,8 @@ class FtxWorker(ExchangeWorker):
     async def _get_transfers(self,
                              since: datetime,
                              to: datetime = None) -> Optional[List[RawTransfer]]:
-        withdrawals = await self._get('/api/wallet/withdrawals', params={'start_time': self._parse_date(since)})
-        deposits = await self._get('/api/wallet/deposits', params={'start_time': self._parse_date(since)})
+        withdrawals = await self.get('/api/wallet/withdrawals', params={'start_time': self._parse_date(since)})
+        deposits = await self.get('/api/wallet/deposits', params={'start_time': self._parse_date(since)})
 
         withdrawals_data = self._generate_transfers(withdrawals, withdrawal=True)
         deposits_data = self._generate_transfers(deposits, withdrawal=False)

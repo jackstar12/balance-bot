@@ -8,9 +8,8 @@ import pytz
 from sqlalchemy.orm import make_transient
 
 import tradealpha.common.dbsync as db
-from tradealpha.common.dbmodels.balance import balance_from_json
 from tradealpha.common.dbmodels.client import Client
-from tradealpha.common.dbmodels.discorduser import add_user_from_json, DiscordUser
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.common.dbmodels.event import Event
 from sqlalchemy_utils.types.encrypted.encrypted_type import FernetEngine
 import dotenv
@@ -68,7 +67,7 @@ if args.discordids:
     for discord_user in discord_users:
         db.session.add(discord_user)
         make_transient(discord_user)
-        discord_user.id = discord_user.USER_ID
+        discord_user.channel_id = discord_user.USER_ID
         db.session.add(discord_user)
 
     db.session.commit()
@@ -102,56 +101,6 @@ if args.keys:
     db.session.commit()
     print('Encrypted API Keys')
 
-
-if args.users:
-    try:
-        with open(DATA_PATH + 'users.json', 'r') as f:
-            users_json = json.load(fp=f)
-            for user_json in users_json:
-                try:
-                    add_user_from_json(user_json)
-                except KeyError as e:
-                    logging.error(f'{e} occurred while parsing user data {user_json} from users.json')
-    except FileNotFoundError:
-        logging.info(f'No user information found')
-    except json.decoder.JSONDecodeError:
-        pass
-    db.session.commit()
-
-    print('Done migrating users. Do not run this again to avoid duplication')
-if args.data:
-
-    try:
-        with open(DATA_PATH + "user_data.json", "r") as f:
-            raw_json = json.load(fp=f)
-            if raw_json:
-                for ts, data in raw_json:
-                    time = datetime.fromtimestamp(ts)
-                    for user_id in data:
-                        user = db.session.query(DiscordUser).filter_by(user_id=user_id).first()
-                        if not user:
-                            print(f'Got no discorduser with id {user_id}, creating dummy')
-                            user = add_user_from_json({
-                                'id': user_id,
-                                'api_key': 'api_key',
-                                'api_secret': 'api_secret',
-                                'exchange': 'binance-futures',
-                                'subaccount': '',
-                                'extra': {}
-                            })
-                        for key in data[user_id].keys():
-                            balance = balance_from_json(data[user_id][key], time)
-                            user.global_client.history.append(balance)
-                            db.session.add(balance)
-                            break
-    except FileNotFoundError:
-        logging.info('No user data found')
-    except json.JSONDecodeError as e:
-        logging.error(f'{e}: Error while parsing user data.')
-
-    db.session.commit()
-
-    print('Done migrating. Do not run this again to avoid duplication')
 
 
 if args.event:
