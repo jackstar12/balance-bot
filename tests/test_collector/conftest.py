@@ -86,8 +86,8 @@ async def test_user(db):
 async def db_client(request, time, db, test_user, messenger) -> Client:
 
     client: Client = request.param.create_client(test_user)
-    client.last_execution_sync = time
-    client.last_transfer_sync = time
+    client.last_execution_sync = client.last_transfer_sync = time
+
     await db.commit()
 
     async with RedisMessages.create(
