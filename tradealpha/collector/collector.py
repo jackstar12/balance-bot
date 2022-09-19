@@ -31,10 +31,10 @@ async def run(session: aiohttp.ClientSession):
 
     messenger = Messenger(redis)
 
-    messenger.listen_class(BALANCE.table, namespace=BALANCE)
+    #messenger.listen_class(BALANCE.table, namespace=BALANCE)
     messenger.listen_class(CLIENT.table, namespace=CLIENT)
     messenger.listen_class(EVENT.table, namespace=EVENT)
-    messenger.listen_class(TRADE.table, namespace=TRADE)
+    #messenger.listen_class(TRADE.table, namespace=TRADE)
 
     scheduler = AsyncIOScheduler(
         executors={

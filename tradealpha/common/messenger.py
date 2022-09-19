@@ -187,9 +187,9 @@ class Messenger:
         return wrapper
 
     async def listen(self):
-        logging.info('Started Listening.')
+        self._logger.info('Started Listening.')
         async for msg in self._pubsub.listen():
-            pass
+            self._logger.debug(msg)
 
     async def sub(self, pattern=False, **kwargs):
         if pattern:

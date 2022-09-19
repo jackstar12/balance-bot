@@ -1,7 +1,7 @@
 import os
 from asyncio import Future
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import pytest
 from aioredis import Redis
@@ -74,6 +74,7 @@ def messenger(redis) -> Messenger:
 class Channel:
     ns: NameSpaceInput
     topic: Any
+    validate: Callable[[dict], bool] | None
 
 
 @dataclass
@@ -110,10 +111,14 @@ class RedisMessages:
 
     async def __aenter__(self):
         for channel in self.channels:
+            def callback(data):
+                if not channel.validate or channel.validate(data):
+                    self.results[channel.ns.name].set_result(data)
+
             await self.messenger.v2_sub_channel(
                 channel.ns,
                 channel.topic,
-                self.results[channel.ns.name].set_result
+                callback
             )
         return self
 

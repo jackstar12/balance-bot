@@ -69,6 +69,15 @@ class FtxWorker(ExchangeWorker):
 
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime, upnl=True):
+
+        response = await self.get('/api/account')
+
+        return balance.Balance(
+            realized=response['collateral'],
+            unrealized=response['totalAccountValue'],
+            time=time
+        )
+
         response = await self.get('/api/wallet/balances')
         return balance.Balance(
             realized=sum(coin['usdValue'] for coin in response),
@@ -76,15 +85,8 @@ class FtxWorker(ExchangeWorker):
             time=time,
             extra_currencies=[
                 balance.Amount(currency=coin['coin'], realized=coin['total'], unrealized=coin['total'])
-                for coin in response
+                for coin in response if coin['total']
             ]
-        )
-        response = await self.get('/api/account')
-
-        return balance.Balance(
-            realized=response['collateral'],
-            unrealized=response['totalAccountValue'],
-            time=time
         )
 
     async def _get_executions(self, since: datetime, init=False):
@@ -164,8 +166,10 @@ class FtxWorker(ExchangeWorker):
     async def _get_transfers(self,
                              since: datetime,
                              to: datetime = None) -> Optional[List[RawTransfer]]:
-        withdrawals = await self.get('/api/wallet/withdrawals', params={'start_time': self._parse_date(since)})
-        deposits = await self.get('/api/wallet/deposits', params={'start_time': self._parse_date(since)})
+        params = {'start_time': self._parse_date(since)} if since else None
+
+        withdrawals = await self.get('/api/wallet/withdrawals', params=params)
+        deposits = await self.get('/api/wallet/deposits', params=params)
 
         withdrawals_data = self._generate_transfers(withdrawals, withdrawal=True)
         deposits_data = self._generate_transfers(deposits, withdrawal=False)

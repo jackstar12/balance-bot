@@ -128,6 +128,7 @@ class ClientType(Enum):
 
 class ClientState(Enum):
     OK = "ok"
+    SYNCHRONIZING = "synchronizing"
     ARCHIVED = "archived"
     INVALID = "invalid"
 

@@ -253,8 +253,8 @@ class Trade(Base, Serializer, CurrencyMixin):
     def realized_qty(self):
         return self.qty - self.open_qty - self.transferred_qty
 
-    def calc_rpnl(self, qty):
-        diff = self.exit - self.entry
+    def calc_rpnl(self, qty: Decimal, exit: Decimal):
+        diff = exit - self.entry
         raw = diff / qty if self.inverse else diff * qty
         return raw * self.initial.side.value
 
@@ -403,7 +403,7 @@ class Trade(Base, Serializer, CurrencyMixin):
             entry=execution.price,
             qty=execution.qty,
             open_time=execution.time,
-            open_qty=execution.qty if execution.type == ExecType.TRADE else Decimal(0),
+            open_qty=execution.qty,
             transferred_qty=execution.qty if execution.type == ExecType.TRANSFER else Decimal(0),
             initial=execution,
             total_commissions=execution.commission,
