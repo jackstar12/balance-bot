@@ -84,7 +84,7 @@ class EventService(BaseService):
                     )
 
                 score.update(balance)
-            await Event.save_leaderboard(event.id, self._db)
+                await Event.save_leaderboard(event.id, self._db)
             await self._db.commit()
 
     async def _on_event_end(self, data: dict):

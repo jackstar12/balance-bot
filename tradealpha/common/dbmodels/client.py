@@ -273,7 +273,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         if not self.currently_realized:
             return
         realized = self.currently_realized.realized
-        upnl = sum(trade.live_pnl for trade in self.open_trades)
+        upnl = sum(trade.live_pnl.unrealized for trade in self.open_trades if trade.live_pnl)
         new = db_balance.Balance(
             realized=realized,
             unrealized=realized + upnl,

@@ -6,6 +6,7 @@ from typing import Any, Callable, Optional
 import pytest
 from aioredis import Redis
 
+from api.models.trade import Trade
 from tradealpha.common.dbmodels import Event, Client, EventScore
 from tradealpha.common import utils
 from tradealpha.api.app import app
@@ -67,6 +68,7 @@ def messenger(redis) -> Messenger:
     messenger.listen_class(Event)
     messenger.listen_class(Client)
     messenger.listen_class(EventScore)
+#    messenger.listen_class(Trade)
     return messenger
 
 

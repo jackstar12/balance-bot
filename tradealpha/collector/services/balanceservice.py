@@ -282,7 +282,9 @@ class ExtendedBalanceService(_BalanceServiceBase):
             ),
             session=self._db
         )
-
+        for client in clients:
+            await self.add_client(client)
+        return
         await asyncio.gather(
             *[
                 self.add_client(client)
@@ -290,6 +292,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
             ],
             return_exceptions=True
         )
+        pass
 
     async def _on_trade_new(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=True)
@@ -327,7 +330,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
     async def _add_worker(self, worker: ExchangeWorker):
         async with self._worker_lock:
             workers = self._workers_by_id
-            if worker.client.id in workers:
+            if worker.client_id in workers:
                 return
 
         if self.is_valid(worker, Category.ADVANCED):
@@ -360,30 +363,43 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
     async def run_forever(self):
         while True:
+
+            clients = await db_all(
+                self._all_client_stmt.filter(
+                    Client.is_premium,
+                    Client.exchange.in_([
+                        ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
+                        if ExchangeCls.supports_extended_data
+                    ])
+                ),
+                session=self._db
+            )
+
             balances = []
 
             async with self._worker_lock, self._db_lock:
                 for worker in self._workers_by_id.values():
                     try:
-                        client = await self._db.get(Client, worker.client_id)
+                        client = self._db.identity_map.get(
+                            self._db.identity_key(Client, worker.client_id)
+                        )
                     except ClientDeletedError:
                         continue
 
-                    async with self._db_lock:
-                        if client and client.open_trades:
-                            significant = False
-                            for trade in client.open_trades:
-                                ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
-                                if ticker:
-                                    if trade.update_pnl(
-                                            trade.calc_upnl(ticker.price),
-                                            realtime=True, extra_currencies={'USD': ticker.price},
-                                            db=self._db
-                                    ):
-                                        significant = True
-                            balance = client.evaluate_balance()
-                            if balance and balance != client.live_balance:
-                                balances.append(balance)
+                    if client and client.open_trades:
+                        significant = False
+                        for trade in client.open_trades:
+                            ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
+                            if ticker:
+                                if trade.update_pnl(
+                                        trade.calc_upnl(ticker.price),
+                                        realtime=True, extra_currencies={'USD': ticker.price},
+                                        db=self._db
+                                ):
+                                    significant = True
+                        balance = client.evaluate_balance()
+                        if balance and balance != client.live_balance:
+                            balances.append(balance)
                 await self._db.commit()
             self._logger.debug(balances)
             if balances:

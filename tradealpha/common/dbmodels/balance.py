@@ -84,7 +84,9 @@ class Balance(Base, _Common, Serializer, QueryMixin):
         return amount.unrealized if amount else self.unrealized
 
     def __eq__(self, other):
-        return self.realized == other.realized and self.unrealized == other.unrealized
+        if isinstance(other, Balance):
+            return self.realized == other.realized and self.unrealized == other.unrealized
+        return False
 
     def __init__(self, error=None, *args, **kwargs):
         self.error = error

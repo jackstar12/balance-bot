@@ -167,7 +167,7 @@ class ExchangeWorker:
         self.exchange = client.exchange
         self.messenger = messenger
         self.rekt_threshold = rekt_threshold
-        self.client: Client = client
+        self.client: Optional[Client] = client
         self.db_lock = asyncio.Lock()
         self.db_maker = db_maker
 
