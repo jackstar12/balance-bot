@@ -33,7 +33,7 @@ async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
     db_client: Client
 
     async with Messages.create(
-            Channel.create(TableNames.TRADE, Category.NEW, '*', pattern=True),
+            Channel(TableNames.TRADE, Category.NEW),
             messenger=messenger
     ) as listener:
         ccxt_client.create_market_buy_order(symbol, float(size))
@@ -48,7 +48,7 @@ async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
     assert prev_balance.total != first_balance.total
 
     async with Messages.create(
-            Channel.create(TableNames.TRADE, Category.UPDATE, '*', pattern=True),
+            Channel(TableNames.TRADE, Category.UPDATE),
             messenger=messenger
     ) as listener:
         ccxt_client.create_market_sell_order(symbol, float(size / 2))
@@ -60,7 +60,7 @@ async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
     assert first_balance.realized != second_balance.realized
 
     async with Messages.create(
-            Channel.create(TableNames.TRADE, Category.FINISHED, '*', pattern=True),
+            Channel(TableNames.TRADE, Category.FINISHED),
             messenger=messenger
     ) as listener:
         ccxt_client.create_market_sell_order(symbol, float(size / 2))
