@@ -1,9 +1,13 @@
 import asyncio
+from typing import Optional
+
 from sqlalchemy import create_engine, MetaData
 import dotenv
 import os
 import aioredis
 from sqlalchemy.orm import sessionmaker, scoped_session, Session, declarative_base
+
+from tradealpha.common.models import BaseModel
 
 dotenv.load_dotenv()
 
@@ -16,5 +20,11 @@ engine = create_engine(
 maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 session: Session = scoped_session(maker)
 
-Base = declarative_base()
+_Base = declarative_base()
 Meta = MetaData()
+
+
+class Base(_Base):
+    __tablename__: str
+    __model__: Optional[BaseModel]
+    __realtime__: bool

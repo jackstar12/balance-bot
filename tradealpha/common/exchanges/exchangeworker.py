@@ -221,9 +221,6 @@ class ExchangeWorker:
             if not balance.time:
                 balance.time = date
             balance.client_id = self.client_id
-            balance.total_transfered = getattr(
-                self.client.currently_realized, 'total_transfered', Decimal(0)
-            )
             # TODO
             # await self.client.update_journals(balance, date.date(), self.db)
             return balance
@@ -288,7 +285,7 @@ class ExchangeWorker:
                 if result.error:
                     logger.error(f'Error while fetching {client.id=} balance: {result.error}')
                 else:
-                    if result.amount <= self.rekt_threshold and not client.rekt_on:
+                    if result.realized <= self.rekt_threshold and not client.rekt_on:
                         client.rekt_on = time
                         self.messenger.pub_channel(TableNames.CLIENT, Category.REKT, channel_id=client.id,
                                                    obj={'id': client.id})
@@ -457,14 +454,16 @@ class ExchangeWorker:
 
             balances = []
 
-            for prev_exec, execution, next_exec in utils.prev_now_next(reversed(all_executions)):
+            for prev_exec, execution, next_exec in utils.prev_now_next(
+                    reversed(all_executions), skip=lambda e: e.type == ExecType.TRANSFER
+            ):
                 new_balance = db_balance.Balance(
                     realized=current_balance.realized,
                     unrealized=current_balance.unrealized,
-                    total_transfered=current_balance.total_transfered,
                     time=execution.time,
                     client=self.client
                 )
+                new_balance.__realtime__ = False
                 pnl_by_trade = {}
 
                 while current_transfer and execution.time <= current_transfer.time:
@@ -507,53 +506,19 @@ class ExchangeWorker:
                     db_balance.Balance(
                         realized=current_balance.realized + (first_execution.commission or 0),
                         unrealized=current_balance.unrealized + (first_execution.commission or 0),
-                        total_transfered=current_balance.total_transfered,
                         time=first_execution.time - timedelta(seconds=1),
                         client=self.client
                     )
                 )
             db.add_all(balances)
-
+            db.add_all(transfers)
             await db.flush()
-            await self._add_transfers(transfers, db)
 
             client.last_execution_sync = client.last_transfer_sync = utils.utc_now()
             await db.commit()
 
             if all_executions:
                 await self.client.as_redis().set_last_exec(all_executions[-1].time)
-
-    async def _add_transfers(self, transfers: list[Transfer], db: AsyncSession):
-        if transfers:
-            to_update: list['Balance'] = await db_all(
-                self.client.history.statement.where(
-                    db_balance.Balance.time > transfers[0].time
-                ),
-                session=db
-            )
-
-            # to_update | transfers
-            # 1.1. 100  |
-            #           | 2.1. -100
-            # 3.1. 300  |
-            #           | 4.1.  200
-            # 5.1. 500  |
-            # ---------------------
-            # After Update:
-            # 1.1 100
-            # 3.1. 200 (300 - 100)
-            # 5.1. 600 (500 - 100 + 200 = 500 + 100)
-
-            transfer_iter = iter(transfers)
-            next_transfer = next(transfer_iter, None)
-            cur_offset = 0
-
-            for balance in to_update:
-                while next_transfer and balance.time > next_transfer.time:
-                    cur_offset += next_transfer.amount
-                    next_transfer = next(transfer_iter, None)
-                balance.total_transfered += cur_offset
-            db.add_all(transfers)
 
     async def get_client(self, db: AsyncSession) -> Client:
         client = await db.get(Client, self.client_id)
@@ -635,6 +600,7 @@ class ExchangeWorker:
                     # Update existing trade
 
                     execution.trade = active_trade
+                    execution.__realtime__ = realtime
                     db.add(execution)
                     if execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
                         active_trade.realized_pnl += execution.realized_pnl
@@ -691,11 +657,10 @@ class ExchangeWorker:
 
                                 if active_trade.open_qty.is_zero():
                                     active_trade.update_pnl(0, force=True, now=execution.time, db=db)
-                                    # if realtime:
-                                    #     await
 
                 elif execution.type == ExecType.TRADE:
                     active_trade = Trade.from_execution(execution, self.client_id)
+                    active_trade.__realtime__ = realtime
                     if realtime:
                         client = await self.get_client(db)
                         active_trade.init_balance = client.currently_realized

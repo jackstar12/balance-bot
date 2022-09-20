@@ -77,13 +77,7 @@ class Channel:
 
 
 @dataclass
-class RedisTest:
-    inputs: list[Channel]
-    outputs: list[Channel]
-
-
-@dataclass
-class RedisMessages:
+class Messages:
     channels: list[Channel]
     results: dict[str, Future]
     messenger: Messenger
@@ -124,7 +118,7 @@ class RedisMessages:
 
 @pytest.fixture(scope='function')
 async def redis_messages(request, messenger):
-    async with RedisMessages.create(*request.param, messenger=messenger) as messages:
+    async with Messages.create(*request.param, messenger=messenger) as messages:
         yield messages
 
 

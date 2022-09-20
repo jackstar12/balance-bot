@@ -8,6 +8,7 @@ class TableNames(Enum):
     BALANCE = "balance"
     TRADE = "trade"
     EVENT = "event"
+    TRANSFER = "transfer"
     COIN_STATS = "coinstats"
     TICKER = "ticker"
     PNL = "pnl"

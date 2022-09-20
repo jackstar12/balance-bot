@@ -284,10 +284,13 @@ class ExtendedBalanceService(_BalanceServiceBase):
             session=self._db
         )
 
-        await asyncio.gather(*[
-            self.add_client(client)
-            for client in clients
-        ], return_exceptions=True)
+        await asyncio.gather(
+            *[
+                self.add_client(client)
+                for client in clients
+            ],
+            return_exceptions=True
+        )
 
     async def _on_trade_new(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=True)
@@ -360,15 +363,15 @@ class ExtendedBalanceService(_BalanceServiceBase):
         while True:
             balances = []
 
-            async with self._worker_lock:
+            async with self._worker_lock, self._db_lock:
                 for worker in self._workers_by_id.values():
                     try:
-                        client = await self._refresh_worker(worker)
+                        client = await self._db.get(worker.client_id)
                     except ClientDeletedError:
                         continue
 
                     async with self._db_lock:
-                        if client:
+                        if client and client.open_trades:
                             significant = False
                             for trade in client.open_trades:
                                 ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
@@ -380,10 +383,9 @@ class ExtendedBalanceService(_BalanceServiceBase):
                                     ):
                                         significant = True
                             balance = client.evaluate_balance()
-                            if balance:
+                            if balance and balance != client.live_balance:
                                 balances.append(balance)
-                async with self._db_lock:
-                    await self._db.commit()
+                await self._db.commit()
             self._logger.debug(balances)
             if balances:
                 async with self._redis.pipeline(transaction=True) as pipe:

@@ -1,7 +1,8 @@
 from __future__ import annotations
 import itertools
 from datetime import datetime, timedelta, date
-from typing import List, Callable, Union, Any
+from decimal import Decimal
+from typing import List, Callable, Union, Any, Generator
 from typing import TYPE_CHECKING
 
 import pytz
@@ -11,8 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import tradealpha.common.utils as utils
 
 from tradealpha.common import dbutils
+from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.models.gain import ClientGain
-from tradealpha.common.dbasync import async_session, db_all, redis
+from tradealpha.common.dbasync import async_session, db_all, redis, db_select, db_select_all
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.errors import UserInputError
 from tradealpha.common.models.interval import Interval
@@ -79,7 +81,7 @@ async def calc_daily(client: Client,
         asc(Balance.time)
     )
 
-    history = await db_all(stmt, session=db)
+    history: list[Balance] = await db_all(stmt, session=db)
 
     if len(history) == 0:
         if throw_exceptions:
@@ -94,8 +96,19 @@ async def calc_daily(client: Client,
     else:
         results = []
 
+    offset_gen = transfer_gen(client,
+                              since,
+                              to,
+                              db=db,
+                              reset=True)
+
     for prev, current in itertools.pairwise(history):
-        values = Interval.create(prev, current)
+        offsets = offset_gen.send(current.time)
+        values = Interval.create(
+            prev.get_currency(),
+            current.get_currency(),
+            offsets.get(client.currency)
+        )
         if string:
             results.add_row([*values])
         else:
@@ -112,7 +125,6 @@ async def calc_intervals(client: Client,
                          since: date = None,
                          to: date = None,
                          as_string=False,
-                         forEach: Callable[[Balance], Any] = None,
                          throw_exceptions=True,
                          today: date = None,
                          db_session: AsyncSession = None) -> Union[List[Interval], str]:
@@ -179,6 +191,8 @@ async def calc_intervals(client: Client,
         )
     else:
         results = []
+
+
     for balance in history:
         now = balance.time.date()
         if current_search <= now <= to:
@@ -186,13 +200,14 @@ async def calc_intervals(client: Client,
             prev = prev or prev_balance
             values = Interval.create(prev, prev_balance, as_string)
             if as_string:
-                results.add_row(list(values)[4:])
+                results.add_row([
+                    values.day, values.start_balance.unrealized, values.diff_absolute, values.diff_relative
+                ])
             else:
                 results.append(values)
             prev = prev_balance
             current_search = now + interval
         prev_balance = balance
-        await utils.call_unknown_function(forEach, balance)
 
     # if prev_balance.time.date() < current_search:
     #    values = _create_interval(prev, history[len(history) - 1], as_string)
@@ -209,30 +224,61 @@ async def calc_gain(client: Client,
                     since: datetime,
                     db: AsyncSession,
                     currency: str = None):
-    if currency is None:
-        currency = 'USD'
-
     if event:
         since = max(since, event.start)
 
-    balance_then = await client.get_exact_balance_at_time(since, db=db, currency=currency)
+    balance_then = await client.get_exact_balance_at_time(since, db=db)
     balance_now = await client.get_latest_balance(redis=redis, db=db)
 
+    offsets = transfer_gen(client, since, datetime.now(), db)
+
+    offset = offsets.send(balance_now.time)
+
     if balance_then and balance_now:
-        diff = round(balance_now.unrealized - balance_then.unrealized,
-                     ndigits=utils.config.CURRENCY_PRECISION.get(currency, 3))
-        absolute, relative = balance_then.get_currency(currency).gain_since(balance_now.get_currency())
-        if balance_then.unrealized > 0:
-            return ClientGain(
-                client=client,
-                relative=round(100 * (diff / balance_then.unrealized),
-                               ndigits=utils.config.CURRENCY_PRECISION.get('%', 2)),
-                absolute=diff
-            )
-        else:
-            return ClientGain(client, utils.Decimal(0), diff)
+        absolute, relative = balance_now.get_currency(currency).gain_since(
+            balance_then.get_currency(currency),
+            offset
+        )
+        return ClientGain(
+            client=client,
+            relative=relative,
+            absolute=absolute
+        )
     else:
         return ClientGain(client, None, None)
+
+
+def _add_safe(dict, key, val):
+    dict[key] = dict.get(key, 0) + val
+
+
+
+TOffset = dict[str, Decimal]
+
+def transfer_gen(client: Client,
+                 transfers: list[Transfer],
+                 reset=False) -> Generator[TOffset, datetime, None]:
+    # transfers = await db_select_all(
+    #     Transfer,
+    #     Transfer.client_id == client.id,
+    #     Transfer.time > since,
+    #     Transfer.time < to,
+    #     session=db
+    # )
+    offsets: TOffset = {}
+
+    next_time: datetime = yield offsets
+    for transfer in transfers:
+        while next_time < transfer.time:
+            next_time = yield offsets
+            if reset:
+                offsets = {}
+        _add_safe(offsets, client.currency, transfer.amount)
+        for ccy, amount in transfer.extra_currencies.items():
+            _add_safe(offsets, ccy, amount)
+
+
+
 
 
 async def calc_gains(clients: List[Client],

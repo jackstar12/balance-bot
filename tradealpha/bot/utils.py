@@ -33,8 +33,9 @@ from sqlalchemy import asc, select
 
 import tradealpha.common.dbmodels.event as db_event
 import tradealpha.common.dbmodels.client as db_client
+from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.dbmodels.user import User
-from tradealpha.common.calc import calc_gains
+from tradealpha.common.calc import calc_gains, transfer_gen
 from tradealpha.common.utils import calc_percentage, call_unknown_function
 from tradealpha.common.dbasync import async_session, db_all, async_maker
 from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
@@ -716,6 +717,7 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
 
 def calc_xs_ys(data: List[Balance],
                pnl_data: List[PnlData],
+               transfers: List[Transfer],
                currency: str,
                percentage=False,
                relative_to: Balance = None,
@@ -730,16 +732,18 @@ def calc_xs_ys(data: List[Balance],
     if data:
         init = relative_to or data[0]
         relative_to_amount = get_amount(init)
+        offset_gen = transfer_gen(data[0].client, transfers, reset=False)
         upnl_by_trade = {}
         amount = None
         for prev_item, item, next_item in utils.prev_now_next(utils.combine_time_series(data, pnl_data)):
             if isinstance(item, PnlData):
                 upnl_by_trade[item.trade_id] = item.unrealized_ccy(currency)
             if isinstance(item, Balance):
+                offsets = offset_gen.send(item.time)
                 if mode == 'balance':
                     current = get_amount(item)
                 else:
-                    current = get_amount(item) - (item.total_transfered - init.total_transfered) - relative_to_amount
+                    current = get_amount(item) - offsets.get(currency) - relative_to_amount
 
                 if percentage:
                     if relative_to_amount:

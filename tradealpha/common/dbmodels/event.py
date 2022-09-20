@@ -81,7 +81,7 @@ class Event(Base, Serializer):
     start = Column(DateTime(timezone=True), nullable=False)
     end = Column(DateTime(timezone=True), nullable=False)
     max_registrations = Column(Integer, nullable=False, default=100)
-    # allow_transfers = Column(Boolean, server_default=False)
+    allow_transfers = Column(Boolean, server_default=False)
 
     name = Column(String, nullable=False)
     description = Column(Document, nullable=False)

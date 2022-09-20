@@ -287,19 +287,20 @@ class Messenger:
         return asyncio.create_task(self._redis.publish(ch, customjson.dumps(obj)))
 
     def _listen(self,
-                target_cls: Type[Serializer],
+                target_cls: Type[Serializer, Base],
                 identifier: str,
                 namespace: MessengerNameSpace[Type[Serializer]],
                 sub: Category):
         @event.listens_for(target_cls, identifier)
         def on_insert(mapper, connection, target: target_cls):
-            asyncio.create_task(
-                self.v2_pub_channel(namespace, sub,
-                                    obj=jsonable_encoder(target.serialize(include_none=False)),
-                                    **namespace.get_ids(target))
-            )
+            if target.__realtime__ is not False:
+                asyncio.create_task(
+                    self.v2_pub_channel(namespace, sub,
+                                        obj=jsonable_encoder(target.serialize(include_none=False)),
+                                        **namespace.get_ids(target))
+                )
 
-    def listen_class(self, target_cls: Type[Serializer], namespace: MessengerNameSpace = None):
+    def listen_class(self, target_cls: Type[Serializer, Base], namespace: MessengerNameSpace = None):
         if not namespace:
             namespace = self.get_namespace(target_cls.__tablename__)
         self._listen(target_cls, "after_insert", namespace, Category.NEW)

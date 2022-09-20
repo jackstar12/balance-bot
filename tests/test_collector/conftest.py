@@ -16,7 +16,7 @@ from tradealpha.collector.services.dataservice import DataService
 from tradealpha.common import utils
 from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.messenger import TableNames, Category
-from tests.conftest import RedisMessages, Channel
+from tests.conftest import Messages, Channel
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.exchanges import CCXT_CLIENTS
 
@@ -93,7 +93,7 @@ async def test_user(db):
 @pytest.fixture
 async def db_client(request, time, db, test_user, messenger) -> Client:
 
-    async with RedisMessages.create(
+    async with Messages.create(
         Channel(TableNames.CLIENT, Category.ADDED),
         messenger=messenger
     ) as listener:
@@ -107,7 +107,7 @@ async def db_client(request, time, db, test_user, messenger) -> Client:
     try:
         yield client
     finally:
-        async with RedisMessages.create(
+        async with Messages.create(
             Channel(TableNames.CLIENT, Category.REMOVED),
             messenger=messenger
         ) as listener:

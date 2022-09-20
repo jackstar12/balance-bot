@@ -45,13 +45,24 @@ class EventService(BaseService):
 
         #await self.event_sync.sub()
 
+        await self._messenger.v2_sub_channel(TableNames.TRANSFER, Category.NEW, self._on_transfer)
         await self._messenger.v2_sub_channel(TableNames.EVENT, Category.END, self._on_event_end)
         await self._messenger.v2_sub_channel(TableNames.BALANCE, Category.NEW, self._on_balance)
+
+    async def _on_transfer(self, data: dict):
+        async with self._db_lock:
+            event_entries = await db_all(
+                select(EventScore).where(
+                    EventScore.client_id == data['client_id'],
+                    ~Event.allow_transfers
+                ).join(EventScore.event)
+            )
+
 
     async def _on_balance(self, data: dict):
         async with self._db_lock:
             scores: list[EventScore] = await db_all(
-                select(EventScore).filter(
+                select(EventScore).where(
                     EventScore.client_id == data['client_id']
                 ).join(Event, and_(
                     Event.id == EventScore.event_id,
@@ -73,7 +84,7 @@ class EventService(BaseService):
                     )
 
                 score.update(balance)
-                await Event.save_leaderboard(event.id, self._db)
+            await Event.save_leaderboard(event.id, self._db)
             await self._db.commit()
 
     async def _on_event_end(self, data: dict):
@@ -95,9 +106,9 @@ class EventService(BaseService):
                     event.start,
                     db=self._db
                 )
-            score.update(
-                await Client.get_balance_at_time(score.client_id, event.end, db=self._db)
-            )
+            balance = await Client.get_balance_at_time(score.client_id, event.end, db=self._db)
+
+            score.update(balance.get_currency())
         await Event.save_leaderboard(event.id, self._db)
         await self._db.commit()
 

@@ -126,7 +126,11 @@ class RedisKey:
     model: Optional[Type[BaseModel]]
     parse: Optional[Callable[[bytes], Any]]
 
-    def __init__(self, *keys, model: Optional[Type[BaseModel]] = None, parse: Optional[Callable] = None, denominator=':'):
+    def __init__(self,
+                 *keys,
+                 model: Optional[Type[BaseModel]] = None,
+                 parse: Optional[Callable] = None,
+                 denominator=':'):
         self.key = denominator.join(
             [str(key.value if isinstance(key, Enum) else key) for key in keys if key]
         )

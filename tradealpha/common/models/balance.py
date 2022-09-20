@@ -10,21 +10,25 @@ class AmountBase(OrmBaseModel):
     currency: Optional[str]
     realized: Decimal
     unrealized: Decimal
-    total_transfered: Decimal
 
-    def gain_since(self, other: 'Amount'):
-        gain = (self.realized - other.realized) - (self.total_transfered - other.total_transfered)
+
+    def _assert_equal(self, other: 'Amount'):
+        assert self.currency == other.currency
+
+    def gain_since(self, other: 'Amount', offset: Decimal):
+        self._assert_equal(other)
+        gain = (self.realized - other.realized) - offset
         return gain, calc_percentage_diff(self.realized, gain)
 
     @property
     def total_transfers_corrected(self):
-        return self.unrealized - self.total_transfered
+        return self.unrealized
 
     def __add__(self, other: 'Amount'):
+        self._assert_equal(other)
         return Amount.construct(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
-            total_transfered=self.total_transfered + other.total_transfered,
         )
 
 
@@ -39,7 +43,6 @@ class Balance(OrmBaseModel, Amount):
         return Balance.construct(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
-            total_transfered=self.total_transfered + other.total_transfered,
             time=min(self.time, other.time) if self.time else None,
             extra_currencies=[self.extra_currencies + other.extra_currencies]
         )

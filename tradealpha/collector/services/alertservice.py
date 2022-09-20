@@ -3,14 +3,12 @@ from typing import List, Dict
 
 from sqlalchemy import select
 
-from tradealpha.common.dbsync import session
-from tradealpha.common.dbasync import async_session, db_del_filter, db_all
+from tradealpha.common.dbasync import db_all
 from tradealpha.common.dbmodels.alert import Alert
 from tradealpha.collector.services.baseservice import BaseService
 from tradealpha.collector.services.dataservice import Channel, DataService
-from tradealpha.collector.services.syncedservice import SyncedService
 from tradealpha.common.enums import Side
-from tradealpha.common.messenger import TableNames as MsgChannel, Category, ALERT
+from tradealpha.common.messenger import TableNames as MsgChannel, Category
 from tradealpha.common.models.observer import Observer
 from tradealpha.common.models.ticker import Ticker
 
@@ -39,7 +37,7 @@ class AlertService(BaseService, Observer):
             self.alerts_by_symbol[symbol] = []
         self.alerts_by_symbol[symbol].append(alert)
 
-    def remove_alert(self, alert: Alert):
+    def _remove_alert(self, alert: Alert):
         alerts = self.alerts_by_symbol.get((alert.symbol, alert.exchange))
         if alerts and alert in alerts:
             alerts.remove(alert)
@@ -60,11 +58,9 @@ class AlertService(BaseService, Observer):
         await self._db.commit()
         self.add_alert(new)
 
-    def _delete(self, data: Dict):
-        alerts = self.alerts_by_symbol.get((data.get("symbol"), data.get("exchange")))
-        for alert in alerts:
-            if alert.id == data.get('id'):
-                alerts.remove(alert)
+    async def _delete(self, data: Dict):
+        alert = await self._db.get(Alert, data['id'])
+        self._remove_alert(alert)
 
     async def update(self, *new_state):
         ticker: Ticker = new_state[0]
@@ -86,6 +82,6 @@ class AlertService(BaseService, Observer):
 
     async def _finish_alert(self, finished: Alert):
         self._messenger.pub_channel(MsgChannel.ALERT, Category.FINISHED, obj=finished.serialize())
-        self.remove_alert(finished)
-        await db_del_filter(Alert, id=finished.id)
+        self._remove_alert(finished)
+        await self._db.delete(finished)
 

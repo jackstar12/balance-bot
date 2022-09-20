@@ -251,6 +251,8 @@ class Trade(Base, Serializer, CurrencyMixin):
 
     @hybrid_property
     def realized_qty(self):
+        # Subtracting the transferred qty is important because
+        # "trades" which were initiated by a transfer should not provide any pnl.
         return self.qty - self.open_qty - self.transferred_qty
 
     def calc_rpnl(self, qty):

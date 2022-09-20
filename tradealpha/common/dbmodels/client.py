@@ -38,6 +38,7 @@ from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.dbmodels.user import User
+from tradealpha.common.models.balance import Balance as BalanceModel
 from tradealpha.common.dbsync import Base
 from tradealpha.common.redis import TableNames
 from tradealpha.common.dbmodels.trade import Trade
@@ -82,16 +83,11 @@ class ClientRedis:
             space='normal'
         )
 
-    async def get_balance(self):
+    async def get_balance(self) -> BalanceModel:
         raw = await self.redis.hget(self.normal_hash, key=str(TableNames.BALANCE.value))
         if raw:
             as_json = customjson.loads(raw)
-            return Balance(
-                realized=Decimal(as_json['realized']),
-                unrealized=Decimal(as_json['unrealized']),
-                total_transfered=Decimal(as_json['total_transfered']),
-                time=datetime.fromtimestamp(float(as_json['time']), pytz.utc)
-            )
+            return BalanceModel(as_json)
 
     async def read_cache(self, *keys: RedisKey):
         """
@@ -107,6 +103,12 @@ class ClientRedis:
             keys={RedisKey(ClientSpace.LAST_EXEC): dt.timestamp()},
             space='normal'
         )
+
+    #async def set_last_transfer(self, dt: datetime):
+    #    await self.redis_set(
+    #        keys={RedisKey(ClientSpace.LAST_EXEC): dt.timestamp()},
+    #        space='normal'
+    #    )
 
     @property
     def normal_hash(self):
@@ -196,6 +198,11 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     last_transfer_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
 
+
+    @reconstructor
+    def reconstructor(self):
+        self.live_balance: Optional[Balance] = None
+
     @hybrid_property
     def invalid(self):
         return self.state == ClientState.INVALID
@@ -214,12 +221,13 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     def validate(self):
         pass
 
-    async def get_total_transfers(self, db: AsyncSession):
+    @classmethod
+    async def get_total_transfered(cls, client_id: int, db: AsyncSession):
         stmt = select(
             Transfer.time,
             func.sum(Transfer.amount).over(order_by=Transfer.id).label('total_transfered')
         ).where(
-            Transfer.client_id == self.id,
+            Transfer.client_id == client_id,
         )
         return await db_all(stmt, session=db)
 
@@ -228,20 +236,16 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         if live:
             return live
         else:
-            return await self.latest(db)
+            return BalanceModel.from_orm(await self.latest(db))
 
     def evaluate_balance(self):
         if not self.currently_realized:
             return
-        realized = getattr(self.currently_realized, 'realized', Decimal(0))
-        unrealized = Decimal(0)
-        for trade in self.open_trades:
-            if trade.live_pnl:
-                unrealized += trade.live_pnl.total
+        realized = self.currently_realized.realized
+        upnl = sum(trade.live_pnl for trade in self.open_trades)
         new = db_balance.Balance(
             realized=realized,
-            unrealized=realized + unrealized,
-            total_transfered=getattr(self.currently_realized, 'total_transfered', Decimal(0)),
+            unrealized=realized + upnl,
             time=datetime.now(pytz.utc),
             client=self
         )
@@ -353,7 +357,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                 realized=balance.realized,
                 unrealized=balance.realized + sum(pnl.total for pnl in pnl_data),
                 time=balance.time,
-                total_transfered=balance.total_transfered
             )
 
         else:
