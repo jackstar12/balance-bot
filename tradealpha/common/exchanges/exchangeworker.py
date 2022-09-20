@@ -627,6 +627,9 @@ class ExchangeWorker:
                     joinedload(Trade.initial),
                 )
 
+                # The distiunguashion here is pretty important because Liquidation Execs can happen
+                # after a trade has been closed on paper (e.g. insurance fund on binance). These still have to be
+                # attributed to the corresponding trade.
                 if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
                     stmt = stmt.where(
                         Trade.open_qty > 0.0
@@ -637,7 +640,6 @@ class ExchangeWorker:
                     )
 
                 active_trade: Trade = await db_unique(stmt, session=db)
-
 
                 if active_trade:
                     # Update existing trade
