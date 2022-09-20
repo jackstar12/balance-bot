@@ -14,6 +14,8 @@ from sqlalchemy import event
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import object_session
 from sqlalchemy.orm.util import identity_key
+
+from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.redis import TableNames
 import tradealpha.common.utils as utils
 from tradealpha.common.dbmodels import Client, Balance, Chapter, Event
@@ -22,11 +24,11 @@ from tradealpha.common.dbmodels.journal import Journal
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.dbmodels.user import User
-from tradealpha.common.dbsync import Base
+from tradealpha.common.dbsync import Base, BaseMixin
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common import customjson
 
-TTable = TypeVar('TTable', bound=Base)
+TTable = TypeVar('TTable', bound=BaseMixin)
 
 
 @dataclass
@@ -113,18 +115,24 @@ class EventSpace(MessengerNameSpace[Event]):
 
 
 USER = MessengerNameSpace.from_table(User)
+
 CLIENT = MessengerNameSpace.from_table(Client, parent=USER)
+
 BALANCE = MessengerNameSpace.from_table(Balance, parent=CLIENT)
 TRADE = TradeSpace.from_table(Trade, parent=CLIENT)
+TRANSFER = MessengerNameSpace.from_table(Transfer, parent=CLIENT)
+
 PNL_DATA = MessengerNameSpace.from_table(PnlData, parent=TRADE)
+
 ALERT = MessengerNameSpace.from_table(Alert, parent=USER)
 EVENT = EventSpace.from_table(Event, parent=USER)
+
 JOURNAL = MessengerNameSpace.from_table(Journal, parent=USER)
 CHAPTER = MessengerNameSpace.from_table(Chapter, parent=JOURNAL)
 
 
 by_names = utils.groupby_unique(
-    [USER, CLIENT, BALANCE, TRADE, PNL_DATA, ALERT, EVENT, JOURNAL, CHAPTER],
+    [USER, CLIENT, BALANCE, TRADE, PNL_DATA, ALERT, EVENT, JOURNAL, CHAPTER, TRANSFER],
     lambda space: space.name
 )
 
@@ -287,20 +295,20 @@ class Messenger:
         return asyncio.create_task(self._redis.publish(ch, customjson.dumps(obj)))
 
     def _listen(self,
-                target_cls: Type[Serializer, Base],
+                target_cls: Type[Serializer],
                 identifier: str,
                 namespace: MessengerNameSpace[Type[Serializer]],
                 sub: Category):
         @event.listens_for(target_cls, identifier)
         def on_insert(mapper, connection, target: target_cls):
-            if target.__realtime__ is not False:
+            if getattr(target, '__realtime__', None) is not False:
                 asyncio.create_task(
                     self.v2_pub_channel(namespace, sub,
                                         obj=jsonable_encoder(target.serialize(include_none=False)),
                                         **namespace.get_ids(target))
                 )
 
-    def listen_class(self, target_cls: Type[Serializer, Base], namespace: MessengerNameSpace = None):
+    def listen_class(self, target_cls: Type[Serializer], namespace: MessengerNameSpace = None):
         if not namespace:
             namespace = self.get_namespace(target_cls.__tablename__)
         self._listen(target_cls, "after_insert", namespace, Category.NEW)

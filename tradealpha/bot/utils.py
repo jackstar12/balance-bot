@@ -562,15 +562,15 @@ async def create_leaderboard(dc_client: discord.Client,
 
         client_gains = await calc_gains(clients, event, time, db=async_session, currency=c)
 
-        for gain in client_gains:
-            if gain.relative is not None:
-                if gain.client.rekt_on:
-                    clients_rekt.append(gain.client)
+        for client, gain in client_gains.items():
+            if gain:
+                if client.rekt_on:
+                    clients_rekt.append(client)
                 else:
-                    client_scores.append((gain.client, gain.relative))
-                    value_strings[gain.client] = f'{gain.relative}% ({gain.absolute}$)'
+                    client_scores.append((client, gain.relative))
+                    value_strings[client] = f'{gain.relative}% ({gain.absolute}$)'
             else:
-                clients_missing.append(gain.client)
+                clients_missing.append(client)
     else:
         raise InternalError(f'Unknown mode {mode} was passed in')
 
@@ -733,6 +733,7 @@ def calc_xs_ys(data: List[Balance],
         init = relative_to or data[0]
         relative_to_amount = get_amount(init)
         offset_gen = transfer_gen(data[0].client, transfers, reset=False)
+        offset_gen.send(None)
         upnl_by_trade = {}
         amount = None
         for prev_item, item, next_item in utils.prev_now_next(utils.combine_time_series(data, pnl_data)):
@@ -740,6 +741,7 @@ def calc_xs_ys(data: List[Balance],
                 upnl_by_trade[item.trade_id] = item.unrealized_ccy(currency)
             if isinstance(item, Balance):
                 offsets = offset_gen.send(item.time)
+                # offsets = next(offset_gen)
                 if mode == 'balance':
                     current = get_amount(item)
                 else:

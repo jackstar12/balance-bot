@@ -609,14 +609,15 @@ class ExchangeWorker:
                     execution.trade = active_trade
                     execution.__realtime__ = realtime
                     db.add(execution)
+
                     if execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
                         active_trade.realized_pnl += execution.realized_pnl
 
-                    if execution.type == ExecType.TRANSFER:
-                        active_trade.transferred_qty += execution.qty
-                        active_trade.qty += execution.qty
+                    # if execution.type == ExecType.TRANSFER:
+                    #     active_trade.transferred_qty += execution.qty
+                    #     active_trade.qty += execution.qty
 
-                    if execution.type == ExecType.TRADE:
+                    if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
                         if execution.side == active_trade.initial.side:
                             active_trade.entry = weighted_avg(
                                 (active_trade.entry, execution.price),
@@ -637,8 +638,9 @@ class ExchangeWorker:
                                 )
                                 # Because the execution is "split" we also have to assign
                                 # the commissions accordingly
-                                new_exec.commission = execution.commission * new_exec.qty / execution.qty
-                                execution.commission -= new_exec.commission
+                                if execution.commission:
+                                    new_exec.commission = execution.commission * new_exec.qty / execution.qty
+                                    execution.commission -= new_exec.commission
                                 execution.qty = active_trade.open_qty
 
                                 new_trade = Trade.from_execution(new_exec, self.client_id)

@@ -11,10 +11,10 @@ from sqlalchemy.orm import InstrumentedAttribute, selectinload, RelationshipProp
 from sqlalchemy.orm.dynamic import AppenderQuery
 from sqlalchemy.sql import Select
 
-from tradealpha.common.dbasync import db_all
+from tradealpha.common.dbsync import BaseMixin
 
 
-class Serializer:
+class Serializer(BaseMixin):
     __tablename__: str
     __serializer_anti_recursion__ = False
     __serializer_forbidden__ = []

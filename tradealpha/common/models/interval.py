@@ -14,7 +14,7 @@ class Interval(BaseModel):
     diff_relative: Decimal
     start_balance: Amount
     end_balance: Amount
-    offset = Decimal
+    offset: Decimal
 
     class Config:
         orm_mode = True

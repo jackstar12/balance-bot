@@ -10,10 +10,10 @@ from sqlalchemy.orm import relationship, declared_attr, foreign, aliased
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels.balance import Balance as BalanceDB
     from tradealpha.common.models.balance import Amount as AmountModel
-from tradealpha.common.dbsync import Base
+from tradealpha.common.dbsync import Base, BaseMixin
 
 
-class EventRank(Base):
+class EventRank(Base, BaseMixin):
     __tablename__ = 'eventrank'
     client_id = Column(ForeignKey('client.id', ondelete='CASCADE'), primary_key=True)
     event_id = Column(ForeignKey('event.id', ondelete='CASCADE'), primary_key=True)
@@ -21,7 +21,7 @@ class EventRank(Base):
     value = Column(Integer, nullable=False)
 
 
-class EventScore(Base):
+class EventScore(Base, BaseMixin):
     __tablename__ = 'eventscore'
 
     client_id = Column(ForeignKey('client.id', ondelete='CASCADE'), primary_key=True)

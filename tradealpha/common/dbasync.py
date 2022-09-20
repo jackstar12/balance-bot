@@ -2,7 +2,9 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from operator import and_
 from typing import List, Tuple, Union, Any, OrderedDict, TypeVar, Type, Optional, Callable
 
 import dotenv
@@ -86,6 +88,13 @@ db_first = db_unique
 
 async def db_del_filter(cls, session=None, **kwargs):
     return await db_exec(delete(cls).filter_by(**kwargs), session)
+
+
+def where_time(col: Column, since: datetime = None, to: datetime = None):
+    return and_(
+        col > since if since else True,
+        col < to if to else True
+    )
 
 
 def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False):

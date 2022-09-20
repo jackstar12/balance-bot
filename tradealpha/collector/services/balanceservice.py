@@ -365,7 +365,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
             async with self._worker_lock, self._db_lock:
                 for worker in self._workers_by_id.values():
                     try:
-                        client = await self._db.get(worker.client_id)
+                        client = await self._db.get(Client, worker.client_id)
                     except ClientDeletedError:
                         continue
 

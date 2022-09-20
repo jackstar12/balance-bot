@@ -1,7 +1,7 @@
 import os
 from asyncio import Future
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import pytest
 from aioredis import Redis
@@ -74,7 +74,7 @@ def messenger(redis) -> Messenger:
 class Channel:
     ns: NameSpaceInput
     topic: Any
-    validate: Callable[[dict], bool] | None
+    validate: Callable[[dict], bool] = None
 
 
 @dataclass

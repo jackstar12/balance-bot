@@ -11,7 +11,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 
 from .template import Template
 from tradealpha.common import utils
-from tradealpha.common.dbsync import Base
+from tradealpha.common.dbsync import Base, BaseMixin
 from tradealpha.common.dbmodels.types import Document
 from tradealpha.common.models.document import DocumentModel
 
@@ -40,7 +40,8 @@ class IntervalType(Enum):
     WEEK = "week"
     MONTH = "month"
 
-class Journal(Base):
+
+class Journal(Base, BaseMixin):
     __tablename__ = 'journal'
 
     id = sa.Column(sa.Integer, primary_key=True)

@@ -14,7 +14,7 @@ from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, asc, \
     Boolean, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, reconstructor
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -26,12 +26,14 @@ import dotenv
 
 import tradealpha.common.dbmodels.balance as db_balance
 import tradealpha.common.utils as utils
+from tradealpha.common.models.gain import Gain
 from tradealpha.common.dbmodels.transfer import Transfer
 
 from tradealpha.common.dbmodels.mixins.querymixin import QueryMixin
 from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
 from tradealpha.common import customjson
-from tradealpha.common.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey
+from tradealpha.common.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey, db_unique, \
+    where_time
 from tradealpha.common.dbmodels.chapter import Chapter
 from tradealpha.common.dbmodels.discord.guild import Guild
 from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
@@ -46,7 +48,7 @@ from tradealpha.common.redis.client import ClientSpace
 from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 
 if TYPE_CHECKING:
-    from tradealpha.common.dbmodels import BalanceDB as Balance
+    from tradealpha.common.dbmodels import BalanceDB as Balance, Event
 
 dotenv.load_dotenv()
 
@@ -87,7 +89,7 @@ class ClientRedis:
         raw = await self.redis.hget(self.normal_hash, key=str(TableNames.BALANCE.value))
         if raw:
             as_json = customjson.loads(raw)
-            return BalanceModel(as_json)
+            return BalanceModel(**as_json)
 
     async def read_cache(self, *keys: RedisKey):
         """
@@ -186,7 +188,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     #                        cascade="all, delete",
     #                        lazy='raise')
 
-    transfers = relationship('Transfer', back_populates='client',
+    transfers: list = relationship('Transfer', back_populates='client',
                              cascade='all, delete', lazy='raise')
 
     currently_realized_id = Column(ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
@@ -198,7 +200,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
     last_transfer_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
-
 
     @reconstructor
     def reconstructor(self):
@@ -222,15 +223,44 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     def validate(self):
         pass
 
-    @classmethod
-    async def get_total_transfered(cls, client_id: int, db: AsyncSession):
+    #nc def get_transfers
+
+    async def calc_gain(self,
+                        event: Event,
+                        since: datetime,
+                        db: AsyncSession,
+                        currency: str = None):
+        if event:
+            since = max(since, event.start)
+
+        balance_then = await self.get_exact_balance_at_time(since, db=db)
+        balance_now = await self.get_latest_balance(redis=redis, db=db)
+        transfered = await self.get_total_transfered(self.id, db=db, since=since)
+
+        if balance_then and balance_now:
+            absolute, relative = balance_now.get_currency(currency).gain_since(
+                balance_then.get_currency(currency),
+                transfered
+            )
+            return Gain(
+                relative=relative,
+                absolute=absolute
+            )
+    async def get_total_transfered(self,
+                                   client_id: int,
+                                   db: AsyncSession,
+                                   ccy = None,
+                                   since: datetime = None,
+                                   to: datetime = None):
         stmt = select(
-            Transfer.time,
-            func.sum(Transfer.amount).over(order_by=Transfer.id).label('total_transfered')
+            func.sum(
+                Transfer.amount if not ccy or ccy == self.currency else Transfer.extra_currencies[ccy]
+            ).over(order_by=Transfer.id).label('total_transfered')
         ).where(
             Transfer.client_id == client_id,
+            where_time(Transfer.time, since, to)
         )
-        return await db_all(stmt, session=db)
+        return await db_unique(stmt, session=db)
 
     async def get_latest_balance(self, redis: Redis, db: AsyncSession, currency=None):
         live = await self.as_redis(redis).get_balance()
@@ -407,6 +437,9 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             embed.add_field(name='Initial Balance', value=initial.to_string())
 
         return embed
+
+    def __hash__(self):
+        return self.id.__hash__()
 
 
 def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: set[int] | list[int] = None) -> \

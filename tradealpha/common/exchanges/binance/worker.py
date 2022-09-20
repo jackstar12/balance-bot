@@ -20,6 +20,7 @@ from typing import Dict
 import pytz
 from aiohttp import ClientResponse
 
+from tradealpha.common.utils import utc_now
 from tradealpha.common.models.miscincome import MiscIncome
 from tradealpha.common.config import TESTING
 from tradealpha.common.dbmodels.transfer import RawTransfer
@@ -61,6 +62,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
                                       type: Type,
                                       since: datetime,
                                       to: datetime = None) -> List[RawTransfer]:
+        since = since or utc_now() - timedelta(days=180)
         if self.client.sandbox:
             return []
         response = await self.get(
@@ -115,7 +117,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
 
     def _parse_datetime(self, date: datetime):
         # Offset by 1 in order to not include old entries on some endpoints
-        return str(int(date.timestamp()) * 1000 + 1)
+        return str(int(date.timestamp()) * 1000 + 1) if date else 0
 
 
 def tf_helper(tf: str, factor_seconds: int, ns: List[int]):
@@ -260,7 +262,6 @@ class BinanceFutures(_BinanceBaseClient):
         current_commission = {}
 
         def get_safe(symbol: str, attr: str):
-
             income = current_commission.get(symbol)
             return income.get(attr) if income else None
 
@@ -281,8 +282,8 @@ class BinanceFutures(_BinanceBaseClient):
                         results.extend(
                             await self._fetch_execs(
                                 symbol,
-                                trade_id if since is not None else get_safe(symbol, 'tradeId'),
-                                get_safe(symbol, 'time')
+                                trade_id if since else get_safe(symbol, 'tradeId'),
+                                income['time'] if since else get_safe(symbol, 'time')
                             )
                         )
                     current_commission[symbol] = income

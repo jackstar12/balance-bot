@@ -130,24 +130,24 @@ class BalanceCog(CogBase):
             db=async_session
         )
 
-        for user_gain in user_gains:
+        for client, gain in user_gains.items():
             guild = self.bot.get_guild(ctx.guild_id)
             if ctx.guild:
                 gain_message = f'{user.display_name}\'s gain {"" if since_start else time_str}: '
             else:
-                events_n_guild = discord_user.get_events_and_guilds_string(self.bot, user_gain.client)
+                events_n_guild = discord_user.get_events_and_guilds_string(self.bot, client)
                 gain_message = f"Your gain ({events_n_guild}): " if not guild else f"Your gain on {guild}: "
-            if user_gain.relative is None:
+            if gain is None:
                 logging.info(
                     f'Not enough data for calculating {utils.de_emojify(user.display_name)}\'s {time_str} gain on guild {guild}')
                 if ctx.guild:
                     await ctx.send(f'Not enough data for calculating {user.display_name}\'s {time_str} gain')
                 else:
-                    s = discord_user.get_events_and_guilds_string(self.bot, user_gain.client)
+                    s = discord_user.get_events_and_guilds_string(self.bot, client)
                     await ctx.send(f'Not enough data for calculating your gain ({s})')
             else:
                 await ctx.send(
-                    f'{gain_message}{round(user_gain.relative, ndigits=3)}% ({round(user_gain.absolute, ndigits=config.CURRENCY_PRECISION.get(currency, 3))}{currency})')
+                    f'{gain_message}{round(gain.relative, ndigits=3)}% ({round(gain.absolute, ndigits=config.CURRENCY_PRECISION.get(currency, 3))}{currency})')
 
     @cog_ext.cog_slash(
         name="daily",

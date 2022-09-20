@@ -20,11 +20,11 @@ engine = create_engine(
 maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 session: Session = scoped_session(maker)
 
-_Base = declarative_base()
+Base = declarative_base()
 Meta = MetaData()
 
 
-class Base(_Base):
+class BaseMixin:
     __tablename__: str
     __model__: Optional[BaseModel]
-    __realtime__: bool
+    __realtime__: Optional[bool]
