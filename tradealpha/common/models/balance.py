@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from common.utils import calc_percentage, calc_percentage_diff
+from tradealpha.common.utils import calc_percentage, calc_percentage_diff
 from tradealpha.common.models import OrmBaseModel
 
 
@@ -36,7 +36,7 @@ class Amount(AmountBase):
     time: datetime
 
 
-class Balance(OrmBaseModel, Amount):
+class Balance(Amount):
     extra_currencies: Optional[list[AmountBase]]
 
     def __add__(self, other: 'Balance'):

@@ -115,10 +115,6 @@ async def on_start():
     messenger.listen_class(EventScore)
 
 
-@app.get('/api/v1/connectivity')
-async def connectivity(*_):
-    return OK('OK')
-
 
 def run():
     uvicorn.run(app, host='localhost', port=5000)

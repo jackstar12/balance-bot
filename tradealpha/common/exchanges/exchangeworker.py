@@ -38,7 +38,7 @@ from tradealpha.common.errors import RateLimitExceeded, ExchangeUnavailable, Exc
     InvalidClientError, ClientDeletedError
 from tradealpha.common.messenger import TableNames, Category, Messenger
 
-from tradealpha.common.dbmodels.client import Client
+from tradealpha.common.dbmodels.client import Client, ClientState
 from typing import TYPE_CHECKING
 
 from tradealpha.common.models.ohlc import OHLC
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 def weighted_avg(values: Tuple[Decimal, Decimal], weights: Tuple[Decimal, Decimal]):
     total = weights[0] + weights[1]
-    return round(values[0] * (weights[0] / total) + values[1] * (weights[1] / total), ndigits=3)
+    return values[0] * (weights[0] / total) + values[1] * (weights[1] / total)
 
 
 class Cached(NamedTuple):
@@ -245,9 +245,10 @@ class ExchangeWorker:
                     symbol=self._symbol(transfer.coin),
                     qty=abs(raw_amount),
                     price=transfer.amount / raw_amount,
-                    side=Side.BUY if transfer.type == TransferType.DEPOSIT else Side.SELL,
+                    side=Side.BUY if transfer.amount > 0 else Side.SELL,
                     time=transfer.time,
-                    type=ExecType.TRANSFER
+                    type=ExecType.TRANSFER,
+                    commission=transfer.commission
                 )
                 execs.append(transfer.execution)
         execs.sort(key=lambda e: e.time)
@@ -292,8 +293,8 @@ class ExchangeWorker:
                 return result
 
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
-        if not since:
-            since = self.client.last_transfer_sync or datetime.now(pytz.utc) - timedelta(days=180)
+        # if not since:
+        #     since = self.client.last_transfer_sync or datetime.now(pytz.utc) - timedelta(days=180)
         raw_transfers = await self._get_transfers(since)
         if raw_transfers:
             raw_transfers.sort(key=lambda transfer: transfer.time)
@@ -319,7 +320,7 @@ class ExchangeWorker:
         Fetches executions, transfers and additional incomes (kickback fees, etc.)
         """
         async with self.db_maker() as db:
-            client = await db_select(
+            client: Client = await db_select(
                 Client, Client.id == self.client_id,
                 eager=[
                     (Client.trades, Trade.executions),
@@ -327,6 +328,8 @@ class ExchangeWorker:
                 ],
                 session=db
             )
+            client.state = ClientState.SYNCHRONIZING
+            await db.commit()
             self.client = client
 
             since = client.last_execution_sync
@@ -515,6 +518,8 @@ class ExchangeWorker:
             await db.flush()
 
             client.last_execution_sync = client.last_transfer_sync = utils.utc_now()
+            client.state = ClientState.OK
+
             await db.commit()
 
             if all_executions:
@@ -584,7 +589,10 @@ class ExchangeWorker:
                     joinedload(Trade.initial),
                 )
 
-                if execution.type == ExecType.TRADE:
+                # The distiunguashion here is pretty important because Liquidation Execs can happen
+                # after a trade has been closed on paper (e.g. insurance fund on binance). These still have to be
+                # attributed to the corresponding trade.
+                if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
                     stmt = stmt.where(
                         Trade.open_qty > 0.0
                     )
@@ -594,7 +602,6 @@ class ExchangeWorker:
                     )
 
                 active_trade: Trade = await db_unique(stmt, session=db)
-
 
                 if active_trade:
                     # Update existing trade
@@ -639,15 +646,15 @@ class ExchangeWorker:
                                 db.add(new_trade)
                             if execution.qty <= active_trade.open_qty:
 
-                                if execution.realized_pnl is None:
-                                    execution.realized_pnl = active_trade.calc_rpnl(execution.qty)
-
                                 if active_trade.exit is None:
                                     active_trade.exit = execution.price
                                 else:
                                     realized_qty = active_trade.qty - active_trade.open_qty
                                     active_trade.exit = weighted_avg((active_trade.exit, execution.price),
                                                                      (realized_qty, execution.qty))
+
+                                if execution.realized_pnl is None:
+                                    execution.realized_pnl = active_trade.calc_rpnl(execution.qty, execution.price)
 
                                 active_trade.open_qty -= execution.qty
                                 active_trade.realized_pnl += execution.realized_pnl
@@ -657,8 +664,10 @@ class ExchangeWorker:
 
                                 if active_trade.open_qty.is_zero():
                                     active_trade.update_pnl(0, force=True, now=execution.time, db=db)
+                                    # if realtime:
+                                    #     await
 
-                elif execution.type == ExecType.TRADE:
+                else:
                     active_trade = Trade.from_execution(execution, self.client_id)
                     active_trade.__realtime__ = realtime
                     if realtime:

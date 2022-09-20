@@ -94,7 +94,7 @@ async def test_user(db):
 async def db_client(request, time, db, test_user, messenger) -> Client:
 
     async with Messages.create(
-        Channel(TableNames.CLIENT, Category.ADDED),
+        Channel(TableNames.CLIENT, Category.UPDATE, validate=lambda data: data['state'] == 'OK'),
         messenger=messenger
     ) as listener:
         client: Client = request.param.create(test_user)
@@ -107,13 +107,9 @@ async def db_client(request, time, db, test_user, messenger) -> Client:
     try:
         yield client
     finally:
-        async with Messages.create(
-            Channel(TableNames.CLIENT, Category.REMOVED),
-            messenger=messenger
-        ) as listener:
-            await db.delete(client)
-            await db.commit()
-            await listener.wait(.5)
+        await db.delete(client)
+        await db.commit()
+        await listener.wait(.5)
 
 
 @pytest.fixture

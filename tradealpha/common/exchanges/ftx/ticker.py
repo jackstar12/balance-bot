@@ -48,7 +48,6 @@ class FtxTicker(ExchangeTicker):
                 Ticker(
                     symbol=market,
                     price=data['last'],
-                    ts=data['time'],
                     exchange='ftx'
                 )
             )

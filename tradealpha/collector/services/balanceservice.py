@@ -117,11 +117,10 @@ class _BalanceServiceBase(BaseService):
         worker = self._get_existing_worker(data['id'])
         if worker:
             await self._refresh_worker(worker)
-        if data['archived'] or data['invalid'] and worker:
+        state = data['state']
+        if state in ('archived', 'invalid') and worker:
             await self._remove_worker(worker)
-        elif not data['archived'] and not data['invalid'] and not worker:
-            await self.add_client_by_id(data['id'])
-        if data['user_id'] and not worker:
+        elif state != 'synchronizing' and not worker:
             await self.add_client_by_id(data['id'])
 
     async def _remove_worker_by_id(self, client_id: int):
