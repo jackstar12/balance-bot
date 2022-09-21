@@ -1,17 +1,22 @@
 version: '3.9'
 services:
+
   init:
     depends_on:
       - pg-server
     build:
       dockerfile: init.Dockerfile
       context: .
+    env_file:
+      - .env
   migrate:
     depends_on:
       - pg-server
     build:
       dockerfile: migrations.Dockerfile
       context: .
+    env_file:
+      - .env
   api:
     depends_on:
       - migrate
@@ -20,18 +25,24 @@ services:
       context: .
     ports:
       - "5000:5000"
+    env_file:
+      - .env
   collector:
     depends_on:
       - migrate
     build:
       dockerfile: tradealpha/collector/Dockerfile
       context: .
+    env_file:
+      - .env
   bot:
     depends_on:
       - migrate
     build:
       dockerfile: tradealpha/bot/Dockerfile
       context: .
+    env_file:
+      - .env
   redis:
     image: "redis:latest"
     container_name: redis-server
