@@ -1,15 +1,17 @@
 version: '3.9'
 services:
+  init:
+    depends_on:
+      - pg-server
+    build:
+      dockerfile: init.Dockerfile
+      context: .
   migrate:
     depends_on:
       - pg-server
     build:
       dockerfile: migrations.Dockerfile
       context: .
-    environment:
-      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
-      - REDIS_URI=redis://redis-server:6379
-      - TESTING
   api:
     depends_on:
       - migrate
@@ -18,27 +20,18 @@ services:
       context: .
     ports:
       - "5000:5000"
-    environment:
-      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
-      - REDIS_URI=redis://redis-server:6379
   collector:
     depends_on:
       - migrate
     build:
       dockerfile: tradealpha/collector/Dockerfile
       context: .
-    environment:
-      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
-      - REDIS_URI=redis://redis-server:6379
   bot:
     depends_on:
       - migrate
     build:
       dockerfile: tradealpha/bot/Dockerfile
       context: .
-    environment:
-      - DATABASE_URI=postgres:postgres@pg-server:5432/postgres
-      - REDIS_URI=redis://redis-server:6379
   redis:
     image: "redis:latest"
     container_name: redis-server
