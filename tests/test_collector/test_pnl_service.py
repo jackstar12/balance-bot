@@ -55,7 +55,6 @@ async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
         await listener.wait(5)
 
     await asyncio.sleep(1)
-
     second_balance = await db_client.get_latest_balance(redis, db=db)
     assert first_balance.realized != second_balance.realized
 
@@ -90,8 +89,8 @@ async def test_imports(time, db_client):
     )
     execs = await db_all(
         select(Execution).
-            join(Execution.trade).
-            filter(Trade.client_id == db_client.id)
+        join(Execution.trade).
+        where(Trade.client_id == db_client.id)
     )
 
     assert len(execs) >= 3

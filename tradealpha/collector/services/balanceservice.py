@@ -316,7 +316,8 @@ class ExtendedBalanceService(_BalanceServiceBase):
             await self._refresh_worker(worker)
             if len(worker.client.open_trades) == 0:
                 symbol = data['symbol']
-                # If there are no trades on the same exchange matching the deleted symbol, there is no need to keep it subscribed
+                # If there are no trades on the same exchange matching the deleted symbol,
+                # there is no need to keep it subscribed
                 unsubscribe_symbol = all(
                     trade.symbol != symbol
                     for cur_worker in self._workers_by_id.values() if

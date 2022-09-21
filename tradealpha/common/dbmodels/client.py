@@ -235,7 +235,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
         balance_then = await self.get_exact_balance_at_time(since, db=db)
         balance_now = await self.get_latest_balance(redis=redis, db=db)
-        transfered = await self.get_total_transfered(self.id, db=db, since=since)
+        transfered = await self.get_total_transfered(db=db, since=since, ccy=currency)
 
         if balance_then and balance_now:
             absolute, relative = balance_now.get_currency(currency).gain_since(
@@ -246,8 +246,8 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                 relative=relative,
                 absolute=absolute
             )
+
     async def get_total_transfered(self,
-                                   client_id: int,
                                    db: AsyncSession,
                                    ccy = None,
                                    since: datetime = None,
@@ -257,7 +257,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                 Transfer.amount if not ccy or ccy == self.currency else Transfer.extra_currencies[ccy]
             ).over(order_by=Transfer.id).label('total_transfered')
         ).where(
-            Transfer.client_id == client_id,
+            Transfer.client_id == self.id,
             where_time(Transfer.time, since, to)
         )
         return await db_unique(stmt, session=db)

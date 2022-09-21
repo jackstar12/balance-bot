@@ -73,7 +73,6 @@ def balance_service(data_service, service_args):
 
 @pytest.fixture
 async def test_user(db):
-
     user = await db_select(User,
                            eager=[],
                            session=db,
@@ -92,14 +91,13 @@ async def test_user(db):
 
 @pytest.fixture
 async def db_client(request, time, db, test_user, messenger) -> Client:
-
     async with Messages.create(
-        Channel(TableNames.CLIENT, Category.UPDATE, validate=lambda data: data['state'] == 'OK'),
+        Channel(TableNames.CLIENT, Category.UPDATE, validate=lambda data: data['state'] == 'synchronizing'),
+        Channel(TableNames.CLIENT, Category.UPDATE, validate=lambda data: data['state'] == 'ok'),
         messenger=messenger
     ) as listener:
+        request.param.import_since = time
         client: Client = request.param.create(test_user)
-        client.last_execution_sync = time
-        client.last_transfer_sync = time
         db.add(client)
         await db.commit()
         await listener.wait(5)
@@ -109,7 +107,6 @@ async def db_client(request, time, db, test_user, messenger) -> Client:
     finally:
         await db.delete(client)
         await db.commit()
-        await listener.wait(.5)
 
 
 @pytest.fixture
@@ -125,4 +122,3 @@ def ccxt_client(db_client, session):
     ccxt.set_sandbox_mode(db_client.sandbox)
 
     return ccxt
-

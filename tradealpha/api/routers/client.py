@@ -62,6 +62,7 @@ async def new_client(request: Request, body: ClientCreateBody,
             # Check if required keyword args are given
             if validate_kwargs(body.extra_kwargs or {}, exchange_cls.required_extra_args):
                 client = body.create()
+
                 async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session, db_maker=async_maker)
                     init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
@@ -74,7 +75,6 @@ async def new_client(request: Request, body: ClientCreateBody,
                         )
                     else:
                         payload = jsonable_encoder(body)
-                        # TODO: CHANGE THIS
                         payload['api_secret'] = client.api_secret
 
                         return ClientCreateResponse(
@@ -144,9 +144,6 @@ async def get_client_overview(background_tasks: BackgroundTasks,
             db=db
         )
         for client in clients:
-            # We always want to fetch the last balance of the date (first balance of next date),
-            # so we need to partition by the current date and order by
-            # time in descending order so that we can pick out the first (last) one
 
             daily = await calc_daily(
                 client,
@@ -183,19 +180,18 @@ async def get_client_overview(background_tasks: BackgroundTasks,
                     for transfer in client.transfers
                 }
             )
-            # background_tasks.add_task(
-            #    cache.write,
-            #    client.id,
-            #    overview,
-            # )
+            background_tasks.add_task(
+               cache.write,
+               client.id,
+               overview,
+            )
             overviews.append(overview)
 
     ts1 = time.perf_counter()
     if overviews:
         daily = {}
         overview: ClientOverview
-        for interval in itertools.chain.from_iterable((overview.daily.values() for overview in overviews)):
-            day = interval.day
+        for day, interval in itertools.chain.from_iterable((overview.daily.items() for overview in overviews)):
             if day in daily:
                 daily[day] += interval
             else:
@@ -203,14 +199,10 @@ async def get_client_overview(background_tasks: BackgroundTasks,
 
         overview = ClientOverview.construct(
             daily=daily,
-            initial_balance=functools.reduce(
-                operator.add, (overview.initial_balance for overview in overviews)
-            ),
-            current_balance=functools.reduce(
-                operator.add, (overview.current_balance for overview in overviews if overview.current_balance)
-            ),
+            initial_balance=sum(overview.initial_balance for overview in overviews),
+            current_balance=sum(overview.current_balance for overview in overviews if overview.current_balance),
             transfers=functools.reduce(
-                lambda a, b: a | b,
+                operator.or_,
                 (overview.transfers for overview in overviews)
             )
         )

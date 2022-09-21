@@ -18,7 +18,7 @@ from typing import NamedTuple
 from asyncio.queues import PriorityQueue
 from dataclasses import dataclass
 
-from sqlalchemy import select, desc, asc, update
+from sqlalchemy import select, desc, asc, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, sessionmaker, joinedload
 
@@ -293,8 +293,8 @@ class ExchangeWorker:
                 return result
 
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
-        # if not since:
-        #     since = self.client.last_transfer_sync or datetime.now(pytz.utc) - timedelta(days=180)
+        if not since:
+            since = self.client.last_transfer_sync
         raw_transfers = await self._get_transfers(since)
         if raw_transfers:
             raw_transfers.sort(key=lambda transfer: transfer.time)
@@ -339,7 +339,7 @@ class ExchangeWorker:
                     asc(Execution.time)
                 ).join(
                     Execution.trade
-                ).filter(
+                ).where(
                     Trade.client_id == self.client_id,
                     Execution.time > since if since else True
                 ),
@@ -366,6 +366,14 @@ class ExchangeWorker:
                     await trade.reverse_to(valid_until, db_session=db)
                 else:
                     await db.delete(trade)
+
+            if client.currently_realized and valid_until > client.currently_realized.time:
+                await db.execute(
+                    delete(Balance).where(
+                        Balance.client_id == client.id,
+                        Balance.time > valid_until
+                    )
+                )
 
             await db.flush()
 
@@ -427,7 +435,7 @@ class ExchangeWorker:
 
             pnl_data = await db_all(
                 select(PnlData).filter(
-                    PnlData.trade_id.in_(set(execution.trade_id for execution in all_executions))
+                    PnlData.trade_id.in_(execution.trade_id for execution in all_executions)
                 ).order_by(
                     desc(PnlData.time)
                 ),
@@ -457,9 +465,8 @@ class ExchangeWorker:
 
             balances = []
 
-            for prev_exec, execution, next_exec in utils.prev_now_next(
-                    reversed(all_executions), skip=lambda e: e.type == ExecType.TRANSFER
-            ):
+            for prev_exec, execution, next_exec in utils.prev_now_next(all_executions):
+
                 new_balance = db_balance.Balance(
                     realized=current_balance.realized,
                     unrealized=current_balance.unrealized,
@@ -467,7 +474,6 @@ class ExchangeWorker:
                     client=self.client
                 )
                 new_balance.__realtime__ = False
-                pnl_by_trade = {}
 
                 while current_transfer and execution.time <= current_transfer.time:
                     new_balance.realized -= current_transfer.amount
@@ -477,7 +483,10 @@ class ExchangeWorker:
                     new_balance.realized -= current_misc.amount
                     current_misc = next(misc_iter, None)
 
+                pnl_by_trade = {}
+
                 if next_exec:
+                    # The closest pnl from each trade should be taken into account
                     while cur_pnl and cur_pnl.time > next_exec.time:
                         if cur_pnl.time < execution.time and cur_pnl.trade_id not in pnl_by_trade:
                             pnl_by_trade[cur_pnl.trade_id] = cur_pnl
@@ -489,6 +498,8 @@ class ExchangeWorker:
                         new_balance.realized += prev_exec.commission
 
                     new_balance.unrealized = new_balance.realized + sum(
+                        # Note that when upnl of the current execution is included the rpnl that was realized
+                        # can't be included anymore
                         pnl_data.unrealized
                         if tr_id != execution.trade_id
                         else pnl_data.unrealized - (execution.realized_pnl or 0)
@@ -499,6 +510,7 @@ class ExchangeWorker:
                     if execution.id == execution.trade.initial_execution_id:
                         execution.trade.init_balance = new_balance
 
+                # Don't bother adding multiple balances for executions happening as a direct series of events
                 if not prev_exec or prev_exec.time != execution.time:
                     balances.append(new_balance)
                 current_balance = new_balance
@@ -613,10 +625,6 @@ class ExchangeWorker:
                     if execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
                         active_trade.realized_pnl += execution.realized_pnl
 
-                    # if execution.type == ExecType.TRANSFER:
-                    #     active_trade.transferred_qty += execution.qty
-                    #     active_trade.qty += execution.qty
-
                     if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
                         if execution.side == active_trade.initial.side:
                             active_trade.entry = weighted_avg(
@@ -682,9 +690,13 @@ class ExchangeWorker:
     def pub_trade(self, category: Category, trade: Trade):
         return self.messenger.pub_channel(TableNames.TRADE, category, trade.serialize(), trade.id)
 
+    async def _convert(self, amount: Decimal, to: str, from_ccy: str, date: datetime):
+        pass
+
     async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
         if self._usd_like(coin):
             return amount
+        # return await self._convert()
 
     async def _get_ohlc(self, market: str, since: datetime, to: datetime, resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
@@ -711,28 +723,14 @@ class ExchangeWorker:
         :param resolutions_s: Possibilities (have to be sorted!)
         :param since: used to calculate seconds passed
         :param now: [optional] can be passed to replace datetime.now()
-        :return: Fitting resolution or None
+        :return: Fitting resolution or  None
         """
-        # In order to avoid unreasonable amounts (or too little in general)
-        # of data being fetched, look which timeframe suits the given limit best
         to = to or datetime.now(pytz.utc)
         for res in resolutions_s:
             current_n = (to - since).total_seconds() // res
             if current_n <= n:
                 return int(current_n), res
         return None
-
-    def set_balance_callback(self, callback: Callable):
-        if callable(callback):
-            self._on_balance = callback
-
-    def set_trade_callback(self, callback: Callable):
-        if callable(callback):
-            self._on_new_trade = callback
-
-    def set_trade_update_callback(self, callback: Callable):
-        if callable(callback):
-            self._on_update_trade = callback
 
     async def cleanup(self):
         pass
@@ -823,7 +821,7 @@ class ExchangeWorker:
         for this specific Exchange.
 
         All requests have to be put onto the :cls._request_queue:
-        so that the handler can properly execute them according to the current
+        so that the handler can properly Knockkek ist geil execute them according to the current
         rate limit states. If there is enough weight available it will also
         decide to run requests in parallel.
         """

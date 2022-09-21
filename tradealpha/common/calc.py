@@ -1,5 +1,6 @@
 from __future__ import annotations
 import itertools
+import typing
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 from typing import List, Callable, Union, Any, Generator
@@ -60,7 +61,11 @@ async def calc_daily(client: Client,
     else:
         daily_start = since_date
 
-    subq = select(
+    # We always want to fetch the last balance of the date (first balance of next date),
+    # so we need to partition by the current date and order by
+    # time in descending order so that we can pick out the first (last) one
+
+    sub = select(
         func.row_number().over(
             order_by=desc(Balance.time),
             partition_by=Balance.time.cast(Date)
@@ -69,15 +74,14 @@ async def calc_daily(client: Client,
     ).filter(
         Balance.client_id == client.id,
         Balance.time > daily_start
-
     ).subquery()
 
     stmt = select(
         Balance,
-        subq
+        sub
     ).filter(
-        subq.c.row_number == 1,
-        Balance.id == subq.c.id
+        sub.c.row_number == 1,
+        Balance.id == sub.c.id
     ).order_by(
         asc(Balance.time)
     )
@@ -100,6 +104,8 @@ async def calc_daily(client: Client,
     offset_gen = transfer_gen(client,
                               [t for t in client.transfers if since < t.time < to],
                               reset=True)
+
+    # Initialise generator
     offset_gen.send(None)
 
     for prev, current in itertools.pairwise(history):
@@ -120,8 +126,12 @@ async def calc_daily(client: Client,
     return results
 
 
-def _add_safe(dict, key, val):
-    dict[key] = dict.get(key, 0) + val
+_KT = typing.TypeVar('_KT')
+_VT = typing.TypeVar('_VT')
+
+
+def _add_safe(d: dict[_KT, _VT], key: _KT, val: _VT):
+    d[key] = d.get(key, 0) + val
 
 
 TOffset = dict[str, Decimal]
