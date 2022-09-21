@@ -21,6 +21,8 @@ class Interval(BaseModel):
 
     @classmethod
     def create(cls, prev: Amount, current: Amount, offset: Decimal, as_string=False) -> Interval:
+        if not hasattr(current, 'time'):
+            pass
         current_date = current.time
         abs, rel = current.gain_since(prev, offset)
         return cls(

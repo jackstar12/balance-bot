@@ -5,7 +5,7 @@ import operator
 import time
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Optional, List, Type
+from typing import Optional, List, Type, Iterable
 
 import aiohttp
 import jwt
@@ -197,10 +197,13 @@ async def get_client_overview(background_tasks: BackgroundTasks,
             else:
                 daily[day] = interval
 
+        def custom_sum(iterator: Iterable):
+            return functools.reduce(operator.add, iterator)
+
         overview = ClientOverview.construct(
             daily=daily,
-            initial_balance=sum(overview.initial_balance for overview in overviews),
-            current_balance=sum(overview.current_balance for overview in overviews if overview.current_balance),
+            initial_balance=custom_sum(overview.initial_balance for overview in overviews),
+            current_balance=custom_sum(overview.current_balance for overview in overviews if overview.current_balance),
             transfers=functools.reduce(
                 operator.or_,
                 (overview.transfers for overview in overviews)
