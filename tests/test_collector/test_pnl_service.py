@@ -29,7 +29,7 @@ size = Decimal('0.01')
     SANDBOX_CLIENTS,
     indirect=True
 )
-async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
+async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger, redis):
     db_client: Client
 
     async with Messages.create(
@@ -81,7 +81,7 @@ async def test_realtime(time, db_client, db, ccxt_client, messenger, redis):
     SANDBOX_CLIENTS,
     indirect=True
 )
-async def test_imports(time, db_client):
+async def test_imports(pnl_service, time, db_client):
     trades = await db_select_all(
         Trade,
         eager=[Trade.max_pnl, Trade.min_pnl],

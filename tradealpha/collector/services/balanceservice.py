@@ -18,7 +18,7 @@ from tradealpha.collector.services.dataservice import DataService, Channel
 from tradealpha.common import utils, customjson
 from tradealpha.common.dbasync import db_all, db_unique, db_eager, redis_bulk_hashes, RedisKey
 from tradealpha.common.dbmodels.chapter import Chapter
-from tradealpha.common.dbmodels.client import Client
+from tradealpha.common.dbmodels.client import Client, ClientState
 from tradealpha.common.dbmodels.journal import Journal
 from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.errors import InvalidClientError, ResponseError, ClientDeletedError
@@ -283,7 +283,12 @@ class ExtendedBalanceService(_BalanceServiceBase):
             session=self._db
         )
         for client in clients:
-            await self.add_client(client)
+            try:
+                await self.add_client(client)
+            except Exception as e:
+                self._logger.error('Could not add client')
+
+#
         return
         await asyncio.gather(
             *[
@@ -331,8 +336,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
     async def _add_worker(self, worker: ExchangeWorker):
         async with self._worker_lock:
             workers = self._workers_by_id
-            if worker.client_id in workers:
-                return
+            self._workers_by_id[worker.client.id] = worker
 
         if self.is_valid(worker, Category.ADVANCED):
             try:
@@ -346,8 +350,6 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 self._logger.exception(f'Error while adding {worker.client_id=}')
                 raise
 
-        async with self._worker_lock:
-            self._workers_by_id[worker.client.id] = worker
 
     async def _remove_worker(self, worker: ExchangeWorker):
         async with self._worker_lock:
@@ -385,6 +387,9 @@ class ExtendedBalanceService(_BalanceServiceBase):
                             self._db.identity_key(Client, worker.client_id)
                         )
                     except ClientDeletedError:
+                        continue
+
+                    if client.state == ClientState.SYNCHRONIZING:
                         continue
 
                     if client and client.open_trades:

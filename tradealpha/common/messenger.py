@@ -240,7 +240,8 @@ class Messenger:
         channel, pattern = self.get_namespace(namespace).format(topic, **ids)
         logging.info(f'Pub: {channel=} {obj=}')
         # await self._redis.publish(channel, customjson.dumps({'ids': ids, 'obj': obj}))
-        await self._redis.publish(channel, customjson.dumps(obj))
+        ret = await self._redis.publish(channel, customjson.dumps(obj))
+        return ret
 
     # user:*:client:*:transfer:new
     # user:*:client:*:balance:new
