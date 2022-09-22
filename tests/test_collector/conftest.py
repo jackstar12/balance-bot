@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import delete
 
 import tradealpha.collector.collector as collector
+from tests.mockexchange import MockExchange
 from tradealpha.common.dbasync import db_select
 from tradealpha.collector.services.balanceservice import ExtendedBalanceService, BasicBalanceService
 from tradealpha.collector.services.baseservice import BaseService
