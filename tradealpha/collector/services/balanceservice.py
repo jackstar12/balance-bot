@@ -105,13 +105,12 @@ class _BalanceServiceBase(BaseService):
         await self.add_client_by_id(data['id'])
 
     async def _refresh_worker(self, worker: ExchangeWorker):
-        async with self._db_lock:
-            return await db_unique(
-                self._all_client_stmt
-                .filter_by(id=worker.client_id)
-                .execution_options(populate_existing=True),
-                session=self._db
-            )
+        return await db_unique(
+            self._all_client_stmt
+            .filter_by(id=worker.client_id)
+            .execution_options(populate_existing=True),
+            session=self._db
+        )
 
     async def _on_client_update(self, data: dict):
         worker = self._get_existing_worker(data['id'])
@@ -288,7 +287,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
             except Exception as e:
                 self._logger.error('Could not add client')
 
-#
+        #
         return
         await asyncio.gather(
             *[
@@ -350,7 +349,6 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 self._logger.exception(f'Error while adding {worker.client_id=}')
                 raise
 
-
     async def _remove_worker(self, worker: ExchangeWorker):
         async with self._worker_lock:
             self._workers_by_id.pop(worker.client.id, None)
@@ -367,44 +365,36 @@ class ExtendedBalanceService(_BalanceServiceBase):
     async def run_forever(self):
         while True:
 
-            clients = await db_all(
-                self._all_client_stmt.filter(
-                    Client.is_premium,
-                    Client.exchange.in_([
-                        ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
-                        if ExchangeCls.supports_extended_data
-                    ])
-                ),
-                session=self._db
-            )
-
             balances = []
 
             async with self._worker_lock, self._db_lock:
                 for worker in self._workers_by_id.values():
-                    try:
-                        client = self._db.identity_map.get(
-                            self._db.identity_key(Client, worker.client_id)
+                    client = self._db.identity_map.get(
+                        self._db.identity_key(Client, worker.client_id)
+                    )
+                    if not client:
+                        client = await self._refresh_worker(worker)
+
+                    if not client:
+                        await self._messenger.v2_pub_channel(
+                            TableNames.CLIENT, Category.DELETE, obj={'id': worker.client_id}, id=worker.client_id
                         )
-                    except ClientDeletedError:
                         continue
 
                     if client.state == ClientState.SYNCHRONIZING:
                         continue
 
                     if client and client.open_trades:
-                        significant = False
                         for trade in client.open_trades:
                             ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
                             if ticker:
-                                if trade.update_pnl(
-                                        trade.calc_upnl(ticker.price),
-                                        realtime=True, extra_currencies={'USD': ticker.price},
-                                        db=self._db
-                                ):
-                                    significant = True
+                                trade.update_pnl(
+                                    trade.calc_upnl(ticker.price),
+                                    realtime=True, extra_currencies={'USD': ticker.price},
+                                    db=self._db
+                                )
                         balance = client.evaluate_balance()
-                        if balance and balance != client.live_balance:
+                        if client.live_balance and balance != client.live_balance:
                             balances.append(balance)
                 await self._db.commit()
             self._logger.debug(balances)

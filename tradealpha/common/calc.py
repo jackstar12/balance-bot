@@ -102,7 +102,7 @@ async def calc_daily(client: Client,
         results = []
 
     offset_gen = transfer_gen(client,
-                              [t for t in client.transfers if since < t.time < to],
+                              [t for t in client.transfers if history[0].time < t.time < history[-1].time],
                               reset=True)
 
     # Initialise generator
@@ -159,6 +159,9 @@ def transfer_gen(client: Client,
         if transfer.extra_currencies:
             for ccy, amount in transfer.extra_currencies.items():
                 _add_safe(offsets, ccy, Decimal(amount))
+
+    # One last yield in case the next_time was beyond the last transfer
+    yield offsets
 
 
 async def calc_gains(clients: List[Client],

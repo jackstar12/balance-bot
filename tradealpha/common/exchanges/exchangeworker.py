@@ -231,11 +231,6 @@ class ExchangeWorker:
 
     async def get_executions(self,
                              since: datetime) -> tuple[List[Transfer], List[Execution], List[MiscIncome]]:
-        # transfers, (execs, misc) = await asyncio.gather(
-        #    self._get_transfers(since),
-        #    # TODO: change init param
-        #    self._get_executions(since, init=self.client.last_execution_sync is None)
-        # )
         transfers = await self.get_transfers(since)
         execs, misc = await self._get_executions(since, init=self.client.last_execution_sync is None)
         for transfer in transfers:
@@ -367,7 +362,7 @@ class ExchangeWorker:
                 else:
                     await db.delete(trade)
 
-            if client.currently_realized and valid_until and  valid_until < client.currently_realized.time:
+            if client.currently_realized and valid_until and valid_until < client.currently_realized.time:
                 await db.execute(
                     delete(db_balance.Balance).where(
                         db_balance.Balance.client_id == client.id,
@@ -376,6 +371,8 @@ class ExchangeWorker:
                 )
 
             await db.flush()
+
+
 
             if executions_by_symbol:
                 for symbol, executions in executions_by_symbol.items():
@@ -465,7 +462,9 @@ class ExchangeWorker:
 
             balances = []
 
-            for prev_exec, execution, next_exec in utils.prev_now_next(all_executions):
+            # Note that we iterate through the executions reversed because we have to reconstruct
+            # the history from the only known point (which is the present)
+            for prev_exec, execution, next_exec in utils.prev_now_next(reversed(all_executions)):
 
                 new_balance = db_balance.Balance(
                     realized=current_balance.realized,

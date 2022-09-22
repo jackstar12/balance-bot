@@ -56,3 +56,6 @@ class Transfer(Base, AmountMixin):
     @hybrid_property
     def type(self) -> TransferType:
         return TransferType.DEPOSIT if self.amount > 0 else TransferType.WITHDRAW
+
+    def __repr__(self):
+        return f'{self.type.value} {self.amount}USD ({self.coin})'
