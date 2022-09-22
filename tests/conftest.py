@@ -7,6 +7,8 @@ import pytest
 from aioredis import Redis
 
 from api.models.trade import Trade
+
+from tests.mockexchange import MockExchange
 from tradealpha.common.dbmodels import Event, Client, EventScore
 from tradealpha.common import utils
 from tradealpha.api.app import app
@@ -22,12 +24,16 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from tradealpha.common import customjson
+from tradealpha.common.exchanges import EXCHANGES
 
 pytestmark = pytest.mark.anyio
 
 
 SA_DATABASE_TESTING_URI = os.environ.get('DATABASE_TESTING_URI')
 assert SA_DATABASE_TESTING_URI
+
+
+EXCHANGES['mock'] = MockExchange
 
 
 @pytest.fixture(scope='session')
@@ -68,7 +74,7 @@ def messenger(redis) -> Messenger:
     messenger.listen_class(Event)
     messenger.listen_class(Client)
     messenger.listen_class(EventScore)
-#    messenger.listen_class(Trade)
+    messenger.listen_class(Trade)
     return messenger
 
 
@@ -97,7 +103,7 @@ class Messages:
     def create(cls, *channels: Channel, messenger: Messenger):
         loop = asyncio.get_running_loop()
         return cls(
-            channels=channels,
+            channels=list(channels),
             results={
                 c.ns.name: loop.create_future()
                 for c in channels
