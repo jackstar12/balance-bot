@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING
 import pytz
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, object_session, Session
+from sqlalchemy.orm.util import identity_key
 
 from tradealpha.common.dbmodels.mixins.querymixin import QueryMixin
 from tradealpha.common.dbsync import Base
@@ -15,7 +16,7 @@ import tradealpha.common.config as config
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
 import sqlalchemy as sa
 from tradealpha.common.models.balance import Amount as AmountModel, Balance as BalanceModel
-
+import tradealpha.common.dbmodels as dbmodels
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels import Client
@@ -57,6 +58,15 @@ class Balance(Base, _Common, Serializer, QueryMixin):
     transfer = relationship('Transfer')
 
     @hybrid_property
+    def client_save(self):
+        session: Session = object_session(self)
+        if session:
+            return session.identity_map.get(
+                session.identity_key(dbmodels.Client, self.client_id)
+            )
+        return self.client
+
+    @hybrid_property
     def total(self):
         return self.unrealized
 
@@ -64,23 +74,32 @@ class Balance(Base, _Common, Serializer, QueryMixin):
     def total_transfers_corrected(self):
         return self.unrealized
 
-    def get_currency(self, currency: str = None) -> AmountModel:
+    @hybrid_property
+    def currency(self):
+        return self.client_save.currency
+
+    def serialize(self, full=False, data=True, include_none=True, *args, **kwargs):
+        d = BalanceModel.from_orm(self).dict()
+        d['client_id'] = self.client_id
+        return d
+
+    def get_currency(self, ccy: str = None) -> AmountModel:
         for amount in self.extra_currencies:
-            if amount.currency == currency:
+            if amount.currency == ccy:
                 return AmountModel.from_orm(amount)
         return AmountModel(
             realized=self.realized,
             unrealized=self.unrealized,
-            currency=self.client.currency,
+            currency=self.client_save.currency,
             time=self.time
         )
 
-    def get_realized(self, currency: str) -> Decimal:
-        amount = self.get_currency(currency)
+    def get_realized(self, ccy: str) -> Decimal:
+        amount = self.get_currency(ccy)
         return amount.realized if amount else self.realized
 
-    def get_unrealized(self, currency: str) -> Decimal:
-        amount = self.get_currency(currency)
+    def get_unrealized(self, ccy: str) -> Decimal:
+        amount = self.get_currency(ccy)
         return amount.unrealized if amount else self.unrealized
 
     def __eq__(self, other):
@@ -97,7 +116,7 @@ class Balance(Base, _Common, Serializer, QueryMixin):
         self.error = None
 
     def to_string(self, display_extras=False):
-        ccy = self.client.currency
+        ccy = self.client_save.currency
         string = f'{round(self.unrealized, ndigits=config.CURRENCY_PRECISION.get(ccy, 3))}{ccy}'
 
         if self.extra_currencies and display_extras:

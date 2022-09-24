@@ -46,8 +46,13 @@ class EventService(BaseService):
         #await self.event_sync.sub()
 
         await self._messenger.v2_sub_channel(TableNames.TRANSFER, Category.NEW, self._on_transfer)
-        await self._messenger.v2_sub_channel(TableNames.EVENT, Category.END, self._on_event_end)
-        await self._messenger.v2_sub_channel(TableNames.BALANCE, Category.NEW, self._on_balance)
+        await self._messenger.v2_sub_channel(TableNames.EVENT, EVENT.END, self._on_event_end)
+        await self._messenger.v2_bulk_sub(
+            TableNames.BALANCE, {
+                Category.NEW: self._on_balance,
+                Category.LIVE: self._on_balance,
+            }
+        )
 
     async def _on_transfer(self, data: dict):
         async with self._db_lock:
@@ -57,7 +62,6 @@ class EventService(BaseService):
                     ~Event.allow_transfers
                 ).join(EventScore.event)
             )
-
 
     async def _on_balance(self, data: dict):
         async with self._db_lock:
@@ -69,6 +73,7 @@ class EventService(BaseService):
                     Event.is_expr(EventState.ACTIVE)
                 )),
                 EventScore.init_balance,
+                EventScore.client,
                 session=self._db
             )
             balance = Balance(**data)
@@ -83,7 +88,10 @@ class EventService(BaseService):
                         db=self._db
                     )
 
-                score.update(balance)
+                offset = await score.client.get_total_transfered(
+                    db=self._db, since=event.start, to=event.end
+                )
+                score.update(balance, offset)
                 await Event.save_leaderboard(event.id, self._db)
             await self._db.commit()
 
@@ -108,7 +116,10 @@ class EventService(BaseService):
                 )
             balance = await Client.get_balance_at_time(score.client_id, event.end, db=self._db)
 
-            score.update(balance.get_currency())
+            offset = await score.client.get_total_transfered(
+                db=self._db, since=event.start, to=event.end
+            )
+            score.update(balance.get_currency(), offset)
         await Event.save_leaderboard(event.id, self._db)
         await self._db.commit()
 
@@ -121,22 +132,22 @@ class EventService(BaseService):
         self._unregister(data['id'])
 
     def _schedule(self, event: Event):
-        self._schedule_event_job(event, event.start, Category.START)
-        self._schedule_event_job(event, event.end, Category.END)
-        self._schedule_event_job(event, event.registration_start, Category.REGISTRATION_START)
-        self._schedule_event_job(event, event.registration_end, Category.REGISTRATION_END)
+        self._schedule_event_job(event, event.start, EVENT.START)
+        self._schedule_event_job(event, event.end, EVENT.END)
+        self._schedule_event_job(event, event.registration_start, EVENT.REGISTRATION_START)
+        self._schedule_event_job(event, event.registration_end, EVENT.REGISTRATION_END)
 
     def _unregister(self, event_id: int):
-        self._remove_event_job(event_id, Category.START)
-        self._remove_event_job(event_id, Category.END)
-        self._remove_event_job(event_id, Category.REGISTRATION_START)
-        self._remove_event_job(event_id, Category.REGISTRATION_END)
+        self._remove_event_job(event_id, EVENT.START)
+        self._remove_event_job(event_id, EVENT.END)
+        self._remove_event_job(event_id, EVENT.REGISTRATION_START)
+        self._remove_event_job(event_id, EVENT.REGISTRATION_END)
 
     def _remove_event_job(self, event_id: id, category: Category):
         self._scheduler.remove_job(f'{event_id}{category.value}')
 
     def _schedule_event_job(self, event: Event, run_date: datetime, category: Category):
-        event_id = f'{event.id}{category.value}'
+        event_id = f'{event.id}{category}'
         if self._scheduler.get_job(event_id):
             self._scheduler.reschedule_job(
                 event_id,

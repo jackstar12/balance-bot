@@ -25,6 +25,7 @@ import tradealpha.common.dbmodels.discord.guildassociation as ga
 import tradealpha.common.dbmodels.action
 
 Client = client.Client
+User = user.User
 BalanceDB = balance.Balance
 Balance = balance.Balance
 Chapter = chapter.Chapter

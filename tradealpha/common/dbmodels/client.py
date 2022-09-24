@@ -33,14 +33,14 @@ from tradealpha.common.dbmodels.mixins.querymixin import QueryMixin
 from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
 from tradealpha.common import customjson
 from tradealpha.common.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey, db_unique, \
-    where_time
+    time_range
 from tradealpha.common.dbmodels.chapter import Chapter
 from tradealpha.common.dbmodels.discord.guild import Guild
 from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.dbmodels.user import User
-from tradealpha.common.models.balance import Balance as BalanceModel
+from tradealpha.common.models.balance import Balance as BalanceModel, Amount
 from tradealpha.common.dbsync import Base
 from tradealpha.common.redis import TableNames
 from tradealpha.common.dbmodels.trade import Trade
@@ -215,7 +215,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
     @hybrid_property
     def discord_user(self):
-        return self.oauth_account if self.oauth_account.oauth_name == "discord" else None
+        return self.user.discord_user if self.user else None
 
     def as_redis(self, redis_instance=None) -> ClientRedis:
         return ClientRedis(self.user_id, self.id, redis_instance=redis_instance)
@@ -238,13 +238,9 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         transfered = await self.get_total_transfered(db=db, since=since, ccy=currency)
 
         if balance_then and balance_now:
-            absolute, relative = balance_now.get_currency(currency).gain_since(
+            return balance_now.get_currency(currency).gain_since(
                 balance_then.get_currency(currency),
                 transfered
-            )
-            return Gain(
-                relative=relative,
-                absolute=absolute
             )
 
     async def get_total_transfered(self,
@@ -258,11 +254,11 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             ).over(order_by=Transfer.id).label('total_transfered')
         ).where(
             Transfer.client_id == self.id,
-            where_time(Transfer.time, since, to)
+            time_range(Transfer.time, since, to)
         )
         return await db_unique(stmt, session=db)
 
-    async def get_latest_balance(self, redis: Redis, db: AsyncSession, currency=None):
+    async def get_latest_balance(self, redis: Redis, db: AsyncSession, currency=None) -> BalanceModel:
         live = await self.as_redis(redis).get_balance()
         if live:
             return live
@@ -318,7 +314,9 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             return await db_first(
                 select(balance).where(
                     balance.client_id == self.id
-                ).order_by(db_balance.Balance.time),
+                ).order_by(
+                    desc(db_balance.Balance.time)
+                ),
                 session=db
             )
         except ValueError:
@@ -355,7 +353,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             )
         return balance
 
-    async def get_exact_balance_at_time(self, time: datetime, currency: str = None, db: AsyncSession = None):
+    async def get_exact_balance_at_time(self, time: datetime, currency: str = None, db: AsyncSession = None) -> BalanceModel:
         balance = await self.get_balance_at_time(self.id, time, db)
 
         if self.is_premium and balance:
@@ -382,16 +380,26 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                 subq.c.row_number <= 1
             )
 
-            pnl_data = await db_all(full_stmt, session=db)
-
+            pnl_data: list[PnlData] = await db_all(full_stmt, session=db)
             return db_balance.Balance(
+                client_id=self.id,
+                client=self,
+                time=time,
+                extra_currencies=[
+                    Amount(
+                        currency=amount.currency,
+                        realized=amount.realized,
+                        unrealized=amount.realized + sum(pnl.unrealized_ccy(amount.currency) for pnl in pnl_data),
+                        time=time
+                    )
+                    for amount in balance.extra_currencies
+                ],
                 realized=balance.realized,
-                unrealized=balance.realized + sum(pnl.total for pnl in pnl_data),
-                time=balance.time,
+                unrealized=balance.realized + sum(pnl.unrealized for pnl in pnl_data)
             )
 
         else:
-            return balance.get_currency(currency)
+            return balance
 
     @hybrid_property
     def is_active(self):

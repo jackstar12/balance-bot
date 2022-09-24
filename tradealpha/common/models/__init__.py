@@ -60,9 +60,9 @@ class BaseModel(PydanticBaseModel):
     @classmethod
     def get_sa_type(cls, validate=False, **dict_options) -> Type[TypeDecorator]:
 
-
         class SAType(TypeDecorator):
             impl = JSONB
+            cache_ok = True
 
             def process_bind_param(self, value, dialect):
                 if isinstance(value, cls):

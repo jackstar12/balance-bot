@@ -9,20 +9,20 @@ from tradealpha.bot.cogs.cogbase import CogBase
 
 class LeaderboardCog(CogBase):
 
-    @cog_ext.cog_subcommand(
-        base="leaderboard",
-        name="balance",
-        description="Shows you the highest ranked users by $ balance",
-        options=[]
-    )
-    @utils.log_and_catch_errors()
-    @utils.server_only
-    async def leaderboard_balance(self, ctx: SlashContext):
-        await ctx.defer()
-        await ctx.send(content='',
-                       embed=await utils.create_leaderboard(dc_client=self.bot,
-                                                            guild_id=ctx.guild_id,
-                                                            mode='balance'))
+    # @cog_ext.cog_subcommand(
+    #     base="leaderboard",
+    #     name="balance",
+    #     description="Shows you the highest ranked users by $ balance",
+    #     options=[]
+    # )
+    # @utils.log_and_catch_errors()
+    # @utils.server_only
+    # async def leaderboard_balance(self, ctx: SlashContext):
+    #     await ctx.defer()
+    #     await ctx.send(content='',
+    #                    embed=await utils.create_leaderboard(dc_client=self.bot,
+    #                                                         guild_id=ctx.guild_id,
+    #                                                         mode='balance'))
 
     @cog_ext.cog_subcommand(
         base="leaderboard",
@@ -43,5 +43,5 @@ class LeaderboardCog(CogBase):
     async def leaderboard_gain(self, ctx: SlashContext, time: datetime = None):
         await ctx.defer()
         await ctx.send(
-            embed=await utils.get_leaderboard(self.bot, ctx.guild_id, ctx.channel_id)
+            embed=await utils.get_leaderboard(self.bot, ctx.guild_id, ctx.channel_id, since=time)
         )

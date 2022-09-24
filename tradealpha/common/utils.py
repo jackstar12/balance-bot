@@ -180,7 +180,7 @@ def join_args(*args, denominator=':'):
 T = typing.TypeVar('T')
 
 
-def groupby(items: list[T], key: str | Callable[[T], Any]) -> dict[str, list[T]]:
+def groupby(items: list[T], key: str | Callable[[T], Any]) -> dict[Any, list[T]]:
     res = {}
     if isinstance(key, str):
         key = lambda x: getattr(x, key)

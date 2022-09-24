@@ -34,7 +34,7 @@ class EventsCog(CogBase):
 
         events = await db_select_all(
             Event,
-            Event.guild_id == ctx.guild_id,
+            Event.guild_id == str(ctx.guild_id),
             ~Event.is_expr(EventState.ARCHIVED),
             eager=[
                 (Event.leaderboard, [
@@ -182,9 +182,16 @@ class EventsCog(CogBase):
     @utils.log_and_catch_errors()
     @utils.server_only
     async def summary(self, ctx: SlashContext):
-        event = await dbutils.get_discord_event(ctx.guild_id, ctx.channel_id)
+        event = await dbutils.get_discord_event(ctx.guild_id,
+                                                ctx.channel_id,
+                                                eager_loads=[
+                                                    (Event.leaderboard, [
+                                                        (EventScore.client, Client.user),
+                                                        EventScore.init_balance
+                                                    ])
+                                                ])
         await ctx.defer()
-        history = await utils.create_complete_history(dc_client=self.bot, event=event)
+        history = await utils.create_complete_history(dc=self.bot, event=event)
         summary = await utils.get_summary_embed(event=event, dc_client=self.bot)
         await ctx.send(
             embeds=[

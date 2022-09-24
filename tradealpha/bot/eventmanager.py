@@ -10,7 +10,7 @@ import discord
 import pytz
 from sqlalchemy import select
 
-from tradealpha.bot.utils import create_complete_history, create_leaderboard
+from tradealpha.bot.utils import create_complete_history, get_summary_embed, get_leaderboard
 from tradealpha.common.dbmodels.event import Event
 from tradealpha.common.dbasync import db_all
 
@@ -64,11 +64,11 @@ class EventManager:
     async def _event_end(self, event: Event):
         await self._get_event_channel(event).send(
             content=f'Event **{event.name}** just ended! Final standings:',
-            embed=await create_leaderboard(self._dc_client, event.guild_id, mode='gain', event=event)
+            embed=await get_leaderboard(self._dc_client, event.guild_id, event.channel_id, since=event.start)
         )
 
         complete_history = await create_complete_history(self._dc_client, event)
-        summary = await event.get_summary_embed(dc_client=self._dc_client)
+        summary = await get_summary_embed(event, self._dc_client)
         await self._get_event_channel(event).send(
             embed=summary.set_image(url=f'attachment://{complete_history.filename}'),
             file=complete_history

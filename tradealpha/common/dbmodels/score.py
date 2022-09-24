@@ -5,7 +5,10 @@ from typing import Any, TYPE_CHECKING
 
 import pytz
 from sqlalchemy import Column, ForeignKey, Numeric, Integer, DateTime, and_, asc, ForeignKeyConstraint, desc, select
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, declared_attr, foreign, aliased
+
+from tradealpha.common.models.gain import Gain
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels.balance import Balance as BalanceDB
@@ -49,8 +52,26 @@ class EventScore(Base, BaseMixin):
                                            ('eventrank.client_id', 'eventrank.event_id', 'eventrank.time')),
                       {})
 
+    @hybrid_property
+    def user_id(self):
+        return getattr(self.client, 'user_id')
+
+    @hybrid_property
+    def gain(self):
+        return Gain(
+            relative=self.rel_value,
+            absolute=self.abs_value
+        )
+
+    @gain.setter
+    def gain(self, val: Gain):
+        self.rel_value = val.relative
+        self.abs_value = val.absolute
+
     def update(self, amount: 'AmountModel', offset: Decimal):
-        self.abs_value, self.rel_value = self.init_balance.get_currency().gain_since(amount, offset)
+        self.gain = amount.gain_since(
+            self.init_balance.get_currency(ccy=amount.currency), offset
+        )
 
 
 equ = and_(

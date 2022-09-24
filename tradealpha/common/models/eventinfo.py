@@ -1,9 +1,11 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal, TypedDict, Union, Optional
+from uuid import UUID
 
 from pydantic import validator, Field
 
+from tradealpha.common.models.gain import Gain
 from tradealpha.common.dbmodels.event import EventState
 from tradealpha.common.models.document import DocumentModel
 from tradealpha.common.models import OrmBaseModel
@@ -56,16 +58,15 @@ class EventInfo(EventCreate):
 
 class EventRank(OrmBaseModel):
     value: int
-    time: datetime
+    time: Optional[datetime]
 
 
 class EventScore(OrmBaseModel):
+    user_id: UUID
     client_id: OutputID
-    #client: ClientInfo
-    #user_id: OutputID
     current_rank: EventRank
-    abs_value: Optional[Decimal]
-    rel_value: Optional[Decimal]
+    gain: Gain
+    rekt_on: Optional[datetime]
 
 
 class EventDetailed(EventInfo):

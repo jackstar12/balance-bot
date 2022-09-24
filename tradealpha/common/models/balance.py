@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
+from tradealpha.common.models.gain import Gain
 from tradealpha.common.utils import calc_percentage, calc_percentage_diff
 from tradealpha.common.models import OrmBaseModel
 
@@ -14,10 +15,13 @@ class AmountBase(OrmBaseModel):
     def _assert_equal(self, other: 'AmountBase'):
         assert self.currency == other.currency
 
-    def gain_since(self, other: 'AmountBase', offset: Decimal):
+    def gain_since(self, other: 'AmountBase', offset: Decimal) -> Gain:
         self._assert_equal(other)
-        gain = (self.realized - other.realized) - offset
-        return gain, calc_percentage_diff(self.realized, gain)
+        gain = (self.realized - other.realized) - (offset or 0)
+        return Gain(
+            absolute=gain,
+            relative=calc_percentage_diff(other.realized, gain)
+        )
 
     @property
     def total_transfers_corrected(self):
@@ -55,3 +59,10 @@ class Balance(Amount):
             time=min(self.time, other.time) if self.time else None,
             extra_currencies=(self.extra_currencies or []) + (other.extra_currencies or [])
         )
+
+    def get_currency(self, currency: str):
+        if currency == self.currency:
+            return self
+        for amount in self.extra_currencies:
+            if amount.currency == currency:
+                return amount

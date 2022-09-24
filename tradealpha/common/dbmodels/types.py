@@ -11,6 +11,7 @@ Document = DocumentModel.get_sa_type(exclude_none=True)
 
 class Data(TypeDecorator):
     impl = JSONB
+    cache_ok = True
 
     def process_bind_param(self, value, dialect):
         return value

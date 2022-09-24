@@ -1,5 +1,4 @@
 from datetime import datetime
-from datetime import datetime
 from typing import Optional
 
 import pytz
@@ -7,15 +6,15 @@ from fastapi import APIRouter, Depends
 from pydantic import validator
 from sqlalchemy import select, or_, insert, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import object_session, joinedload
+from sqlalchemy.orm import object_session
 
-from tradealpha.api.dependencies import get_messenger, get_db, CurrentUserDep, get_dc_rpc_client
+from tradealpha.api.dependencies import get_messenger, get_db
 from tradealpha.api.users import CurrentUser, get_current_user
-from tradealpha.api.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventScore
+from tradealpha.common.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventScore
 from tradealpha.api.utils.responses import BadRequest, OK, InternalError, ResponseModel, NotFound
 from tradealpha.common import dbutils
-from tradealpha.common.dbasync import db_first, db_del_filter, redis, db_select, db_unique, db_all
-from tradealpha.common.dbmodels import Client, EventRank
+from tradealpha.common.dbasync import db_first, db_del_filter, redis, db_unique
+from tradealpha.common.dbmodels import Client
 from tradealpha.common.dbmodels.event import Event as EventDB, EventState
 from tradealpha.common.dbmodels.score import EventScore as EventScoreDB
 

@@ -18,7 +18,7 @@ from tradealpha.collector.services.dataservice import DataService, Channel
 from tradealpha.common import utils, customjson
 from tradealpha.common.dbasync import db_all, db_unique, db_eager, redis_bulk_hashes, RedisKey
 from tradealpha.common.dbmodels.chapter import Chapter
-from tradealpha.common.dbmodels.client import Client, ClientState
+from tradealpha.common.dbmodels.client import Client, ClientState, ClientType
 from tradealpha.common.dbmodels.journal import Journal
 from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.errors import InvalidClientError, ResponseError, ClientDeletedError
@@ -78,11 +78,11 @@ class _BalanceServiceBase(BaseService):
         )
 
     @classmethod
-    def is_valid(cls, worker: ExchangeWorker, category: Category):
-        if category == Category.ADVANCED:
-            return worker.client.is_premium and worker.supports_extended_data
-        elif category == Category.BASIC:
-            return not (worker.client.is_premium and worker.supports_extended_data)
+    def is_valid(cls, worker: ExchangeWorker, category: ClientType):
+        if category == ClientType.FULL and worker.supports_extended_data:
+            return True
+        elif category == ClientType.BASIC:
+            return True
 
     async def _sub_client(self):
         await self._messenger.v2_bulk_sub(
@@ -115,7 +115,8 @@ class _BalanceServiceBase(BaseService):
     async def _on_client_update(self, data: dict):
         worker = self._get_existing_worker(data['id'])
         if worker:
-            await self._refresh_worker(worker)
+            async with self._db_lock:
+                await self._refresh_worker(worker)
         state = data['state']
         if state in ('archived', 'invalid') and worker:
             await self._remove_worker(worker)
@@ -172,7 +173,7 @@ class _BalanceServiceBase(BaseService):
 
 
 class BasicBalanceService(_BalanceServiceBase):
-    client_sub_category = Category.BASIC
+    client_sub_category = "basic"
 
     def __init__(self,
                  *args,
@@ -188,7 +189,7 @@ class BasicBalanceService(_BalanceServiceBase):
 
     async def _add_worker(self, worker: ExchangeWorker):
         async with self._worker_lock:
-            if worker.client.id not in self._workers_by_id and self.is_valid(worker, Category.BASIC):
+            if worker.client.id not in self._workers_by_id and self.is_valid(worker, ClientType.BASIC):
                 self._workers_by_id[worker.client.id] = worker
 
                 exchange_job = self._exchange_jobs[worker.exchange]
@@ -257,7 +258,7 @@ class BasicBalanceService(_BalanceServiceBase):
 
 
 class ExtendedBalanceService(_BalanceServiceBase):
-    client_sub_category = Category.ADVANCED
+    client_sub_category = "advanced"
 
     async def init(self):
         await self._sub_client()
@@ -334,10 +335,9 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
     async def _add_worker(self, worker: ExchangeWorker):
         async with self._worker_lock:
-            workers = self._workers_by_id
             self._workers_by_id[worker.client.id] = worker
 
-        if self.is_valid(worker, Category.ADVANCED):
+        if self.is_valid(worker, ClientType.FULL):
             try:
                 await worker.synchronize_positions()
                 await worker.startup()
@@ -366,7 +366,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
         while True:
 
             balances = []
-
+    
             async with self._worker_lock, self._db_lock:
                 for worker in self._workers_by_id.values():
                     client = self._db.identity_map.get(
@@ -402,6 +402,10 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 async with self._redis.pipeline(transaction=True) as pipe:
                     for balance in balances:
                         await balance.client.as_redis(pipe).set_balance(balance)
+
                     await pipe.execute()
+
+                    for balance in balances:
+                        await self._messenger.v2_pub_instance(balance, Category.LIVE)
 
             await asyncio.sleep(2)

@@ -10,7 +10,7 @@ import tradealpha.common.dbmodels.client as db_client
 
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbasync import db_first, db_all, \
-    db_select, async_session
+    db_select, async_session, time_range
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 import tradealpha.common.dbmodels.event as db_event
@@ -27,8 +27,6 @@ async def get_client_history(client: db_client.Client,
                              since: datetime = None,
                              to: datetime = None,
                              currency: str = None) -> History:
-    since = since or datetime.fromtimestamp(0, tz=pytz.utc)
-    to = to or datetime.now(pytz.utc)
 
     if currency is None:
         currency = 'USD'
@@ -36,12 +34,11 @@ async def get_client_history(client: db_client.Client,
     initial = None
 
     history = await db_all(client.history.statement.filter(
-        Balance.time > since,
-        Balance.time < to,
+        time_range(Balance.time, since, to),
         Balance.extra_currencies[currency] != JSON.NULL if currency != client.currency else True
     ))
 
-    if init_time:
+    if init_time and init_time != since:
         initial = await client.get_balance_at_time(client.id, init_time, async_session)
 
     if not initial:

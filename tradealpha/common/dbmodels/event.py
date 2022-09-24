@@ -5,12 +5,13 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import pytz
+import sqlalchemy.exc
 from aioredis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tradealpha.common.dbutils import get_client_history
 from tradealpha.common.models import OrmBaseModel
-from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser, get_display_name
 from tradealpha.common.utils import join_args
 from tradealpha.common.dbmodels.score import EventScore, EventRank
 from tradealpha.common.models.discord.guild import GuildRequest
@@ -91,7 +92,7 @@ class Event(Base, Serializer):
     owner: User = relationship('User', lazy='noload')
 
     registrations: list[Client] = relationship('Client',
-                                               lazy='noload',
+                                               lazy='raise',
                                                secondary=event_association,
                                                backref=backref('events', lazy='noload'))
 
@@ -104,6 +105,13 @@ class Event(Base, Serializer):
                            backref=backref('event', lazy='noload'),
                            uselist=False,
                            cascade="all, delete")
+
+    @hybrid_property
+    def all_clients(self):
+        try:
+            return self.registrations
+        except sqlalchemy.exc.InvalidRequestError:
+            return [score.client for score in self.leaderboard]
 
     @hybrid_property
     def state(self):
@@ -252,12 +260,12 @@ class Event(Base, Serializer):
         # embed.add_field(name="Description", value=self.description)
         embed.add_field(name="Start", value=self.start, inline=False)
         embed.add_field(name="End", value=self.end)
-        embed.add_field(name="Registration Start", value=self.registration_start)
+        embed.add_field(name="Registration Start", value=self.registration_start, inline=False)
         embed.add_field(name="Registration End", value=self.registration_end)
 
         if registrations:
             value = '\n'.join(
-                f'{DiscordUser.get_display_name(dc_client, int(score.client.user.discord_user.account_id), self.guild_id)}'
+                f'{get_display_name(dc_client, int(score.client.user.discord_user.account_id), self.guild_id)}'
                 for score in self.leaderboard
             )
 
@@ -267,102 +275,40 @@ class Event(Base, Serializer):
 
         return embed
 
-    async def get_summary(self):
+    async def get_summary(self) -> Summary:
 
         gain = Stat.from_sorted(self.leaderboard)
         stakes = Stat.from_sorted(sorted(self.leaderboard, key=lambda x: x.init_balance.realized, reverse=True))
 
         async def vola(client: Client):
             history = await get_client_history(client, self.start, self.start, self.end)
-            return numpy.array(
-                balance.total_transfers_corrected
-                for balance in history.data if balance.total_transfers_corrected
-            ).std() / client.data[0].total_transfers_corrected
+            return numpy.array([
+                balance.unrealized
+                for balance in history.data if balance.unrealized
+            ]).std() / history.data[0].unrealized
 
-        volatility = [
+        client_vola = [
             (client, await vola(client))
-            for client in self.registrations
+            for client in self.all_clients
         ]
-        volatility.sort(key=lambda x: x[1], reverse=True)
+        client_vola.sort(key=lambda x: x[1], reverse=True)
 
         volatili = Stat(
-            best=volatility[0][0].user_id,
-            worst=volatility[-1][0].user_id,
+            best=client_vola[0][0].user_id,
+            worst=client_vola[-1][0].user_id,
         )
 
         cum_percent = Decimal(0)
         cum_dollar = Decimal(0)
-        for gain in self.leaderboard:
-            cum_percent += gain.rel_value
-            cum_dollar += gain.abs_value
+        for score in self.leaderboard:
+            cum_percent += score.rel_value
+            cum_dollar += score.abs_value
 
         cum_percent /= len(self.leaderboard) or 1  # Avoid division by zero
 
         return Summary(
             gain=gain, stakes=stakes, volatility=volatili, avg_percent=cum_percent, total=cum_dollar
         )
-
-    async def get_summary_embed(self, dc_client: discord.Client):
-        summary = await self.get_summary()
-
-        embed = discord.Embed(title=f'Summary')
-
-        description = ''
-
-        if len(self.registrations) == 0:
-            return embed
-
-        now = datetime.now(pytz.utc)
-
-        # gains = await calc.calc_gains(self.registrations, self.guild_id, self.start)
-
-        description += f'**Best Trader :crown:**\n' \
-                       f'{await DiscordUser.get_user_name(dc_client, summary.gain.best, self.guild_id)}\n'
-
-        description += f'\n**Worst Trader :disappointed_relieved:**\n' \
-                       f'{self.leaderboard[-1].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
-
-        self.leaderboard.sort(key=lambda x: x.init_balance.realized, reverse=True)
-
-        description += f'\n**Highest Stakes :moneybag:**\n' \
-                       f'{self.leaderboard[0].client.discord_user.get_display_name(dc_client, self.guild_id)}\n'
-
-        async def vola(client: Client):
-            history = await get_client_history(client, self.start, self.start, self.end)
-            return numpy.array(
-                balance.total_transfers_corrected
-                for balance in history.data if balance.total_transfers_corrected
-            ).std() / client.data[0].total_transfers_corrected
-
-        volatility = [
-            (client, vola(client))
-            for client in self.registrations
-        ]
-        volatility.sort(key=lambda x: x[1], reverse=True)
-
-        description += f'\n**Most Degen Trader :grimacing:**\n' \
-                       f'{volatility[0][0].discord_user.get_display_name(dc_client, self.guild_id)}\n'
-
-        description += f'\n**Still HODLing :sleeping:**\n' \
-                       f'{volatility[-1][0].discord_user.get_display_name(dc_client, self.guild_id)}\n'
-
-        cum_percent = 0.0
-        cum_dollar = 0.0
-        for gain in self.leaderboard:
-            cum_percent += gain.rel_value
-            cum_dollar += gain.abs_value
-
-        cum_percent /= len(self.leaderboard) or 1  # Avoid division by zero
-
-        description += f'\nLast but not least... ' \
-                       f'\nIn total you {"made" if cum_dollar >= 0.0 else "lost"} {round(cum_dollar, ndigits=2)}$' \
-                       f'\nCumulative % performance: {round(cum_percent, ndigits=2)}%'
-
-        description += '\n'
-        embed.description = description
-
-        return embed
-
 
     @property
     def _archive(self):

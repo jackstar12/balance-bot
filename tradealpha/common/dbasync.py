@@ -13,9 +13,10 @@ import aioredis
 from pydantic import ValidationError
 from sqlalchemy import delete, select, Column, update
 
-from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedAttribute
+from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedAttribute, RelationshipProperty
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession, create_async_engine
 from sqlalchemy.sql import Select
+from sqlalchemy.util import symbol
 
 from tradealpha.common.dbsync import Base
 from tradealpha.common.models import BaseModel
@@ -90,7 +91,7 @@ async def db_del_filter(cls, session=None, **kwargs):
     return await db_exec(delete(cls).filter_by(**kwargs), session)
 
 
-def where_time(col: Column, since: datetime = None, to: datetime = None):
+def time_range(col: Column, since: datetime = None, to: datetime = None):
     return and_(
         col > since if since else True,
         col < to if to else True
@@ -98,6 +99,8 @@ def where_time(col: Column, since: datetime = None, to: datetime = None):
 
 
 def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False):
+    if isinstance(col.prop, RelationshipProperty):
+        joined = col.prop.direction == symbol("ONETOONE")
     if root:
         if joined:
             stmt = stmt.options(root.joinedload(col))

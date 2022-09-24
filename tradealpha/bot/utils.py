@@ -27,21 +27,23 @@ import discord_slash.utils.manage_components as discord_components
 from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
 from datetime import datetime, timedelta
-from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal
+from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal, TypeVar, Iterable
 
 from sqlalchemy import asc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-import tradealpha.common.dbmodels.event as db_event
-import tradealpha.common.dbmodels.client as db_client
+import tradealpha.common.dbmodels as dbmodels
+from common.models.history import History
+from tradealpha.common.models.eventinfo import EventScore, EventRank
 from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.calc import calc_gains, transfer_gen
-from tradealpha.common.utils import calc_percentage, call_unknown_function
-from tradealpha.common.dbasync import async_session, db_all, async_maker
+from tradealpha.common.utils import calc_percentage, call_unknown_function, groupby
+from tradealpha.common.dbasync import async_session, db_all, async_maker, time_range
 from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
 from tradealpha.common.errors import UserInputError, InternalError
 from tradealpha.common import dbutils
-from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser, get_display_name, get_client_display_name
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
 from tradealpha.common.models.selectionoption import SelectionOption
@@ -285,7 +287,7 @@ def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
         alpha_root = np.power(alpha, 1 / 1.2)
         alpha_values = np.arange(0, alpha_root, alpha_root / 100)
         z[:, :, -1] = np.array([
-            np.power(x, 1.2) for x in
+            np.power(x_val, 1.2) for x_val in
             (reversed(alpha_values) if inverse else alpha_values)
         ])[:, None]
         im = ax.imshow(z, aspect='auto', extent=[xmin, xmax, ymin, ymax],
@@ -315,32 +317,29 @@ def gradient_fill(x, y, fill_color=None, ax=None, **kwargs):
     return lines, im
 
 
-async def get_summary_embed(event: db_event.Event, dc_client: discord.Client):
+async def get_summary_embed(event: dbmodels.Event, dc_client: discord.Client):
     embed = discord.Embed(title=f'Summary')
     description = ''
 
-    if len(event.registrations) == 0:
+    if len(event.all_clients) == 0:
         return embed
 
     summary = await event.get_summary()
 
-    async def get_user_name(user_id: UUID):
-        user: User = await async_session.get(User, user_id)
-        return DiscordUser.get_display_name(dc_client, int(user.discord_user.account_id), event.guild_id)
-
     for name, user_id in [
-        ('Best Trader :crown:', summary.gain_since.best),
-        ('Worst Trader :disappointed_relieved:', summary.gain_since.worst),
+        ('Best Trader :crown:', summary.gain.best),
+        ('Worst Trader :disappointed_relieved:', summary.gain.worst),
         ('Highest Stakes :moneybag:', summary.stakes.best),
         ('Lowest Stakes :moneybag:', summary.stakes.worst),
         ('Most Degen Trader :grimacing:', summary.volatility.best),
         ('Still HODLing :sleeping:', summary.volatility.worst),
     ]:
-        embed.add_field(name=name, value=await get_user_name(user_id), inline=False)
+        user: User = await async_session.get(User, user_id)
+        member_id = int(user.discord_user.account_id)
+        embed.add_field(name=name, value=get_display_name(dc_client, member_id, int(event.guild_id)), inline=False)
 
-    description += f'\nLast but not least... ' \
-                   f'\nIn total you {"made" if summary.total >= 0.0 else "lost"} {round(summary.total, ndigits=2)}$' \
-                   f'\nCumulative % performance: {round(summary.avg_percent, ndigits=2)}%'
+    description += f'\nIn total you {"made" if summary.total >= 0.0 else "lost"} {round(summary.total, ndigits=3)}$' \
+                   f'\nCumulative % performance: {round(summary.avg_percent, ndigits=3)}%'
 
     description += '\n'
     embed.description = description
@@ -348,14 +347,13 @@ async def get_summary_embed(event: db_event.Event, dc_client: discord.Client):
     return embed
 
 
-async def create_complete_history(dc_client: discord.Client, event: db_event.Event):
-
+async def create_complete_history(dc: discord.Client, event: dbmodels.Event):
     path = f'HISTORY_{event.guild_id}_{event.channel_id}_{int(event.start.timestamp())}.png'
     await create_history(
         custom_title=f'Complete history for {event.name}',
         to_graph=[
-            (client, client.discord_user.get_display_name(dc_client, event.guild_id))
-            for client in event.registrations
+            (client, get_client_display_name(dc, client, event.guild_id))
+            for client in event.all_clients
         ],
         event=event,
         start=event.start,
@@ -372,8 +370,12 @@ async def create_complete_history(dc_client: discord.Client, event: db_event.Eve
     return file
 
 
+def safe_cmp(fnc: Callable, a: Any, b: Any):
+    return fnc(a, b) if a and b else a or b
+
+
 async def create_history(to_graph: List[Tuple[Client, str]],
-                         event: db_event.Event,
+                         event: dbmodels.Event,
                          start: datetime,
                          end: datetime,
                          currency_display: str,
@@ -383,8 +385,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                          custom_title: str = None,
                          throw_exceptions=True,
                          include_upnl=True,
-                         mode: Literal['pnl', 'balance'] = 'balance'
-                         ):
+                         mode: Literal['pnl', 'balance'] = 'balance'):
     """
     Creates a history image for a given list of clients and stores it in the given path.
 
@@ -408,19 +409,20 @@ async def create_history(to_graph: List[Tuple[Client, str]],
         for registered_client, name in to_graph:
 
             history = await dbutils.get_client_history(registered_client,
-                                                       init_time=event.start,
-                                                       since=max(start, event.start),
-                                                       to=min(end, event.end),
+                                                       init_time=event.start if event else start,
+                                                       since=safe_cmp(max, start, event.start),
+                                                       to=safe_cmp(min, end, event.end),
                                                        currency=currency)
 
             pnl_data = await db_all(
                 select(PnlData).where(
-                    PnlData.time > start if start else True,
-                    PnlData.time < end if end else True,
+                    time_range(PnlData.time, start, end),
                     Trade.client_id == registered_client.id
                 ).join(
                     PnlData.trade
-                ).order_by(asc(PnlData.time)),
+                ).order_by(
+                    asc(PnlData.time)
+                ),
                 PnlData.trade
             )
 
@@ -430,12 +432,12 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                 else:
                     continue
 
-            xs, ys = calc_xs_ys(history.data,
+            xs, ys = calc_xs_ys(history,
                                 pnl_data,
+                                [],
                                 currency,
                                 percentage,
                                 include_upnl=include_upnl,
-                                relative_to=history.initial,
                                 mode=mode)
 
             total_gain = calc_percentage(history.initial.unrealized, ys[-1])
@@ -457,6 +459,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                 plt.gca().xaxis_date()
             else:
                 gradient_fill(xs, np.array([float(y) for y in ys]), fill_color='green', alpha=0.55)
+
         plt.gcf().autofmt_xdate()
         plt.gcf().set_dpi(100)
         plt.gcf().set_size_inches(12 + len(to_graph), 8 + len(to_graph) * (8 / 12))
@@ -469,32 +472,31 @@ async def create_history(to_graph: List[Tuple[Client, str]],
         plt.close()
 
 
-
-async def get_leaderboard(dc_client: discord.Client,
-                          guild_id: int,
-                          channel_id: int) -> discord.Embed:
+async def get_leaderboard_embed(guild: discord.Guild,
+                                scores: list[EventScore],
+                                db: AsyncSession):
     footer = ''
     description = ''
 
-    guild = dc_client.get_guild(guild_id)
-    if not guild:
-        raise InternalError(f'Provided guild_id is not valid!')
+    async def display_name(score: EventScore):
+        user = await db.get(dbmodels.User, score.user_id)
+        member = guild.get_member(int(user.discord_user.account_id))
+        return member.display_name if member else None
 
-    event = await dbutils.get_discord_event(guild_id, channel_id,
-                                            throw_exceptions=True,
-                                            eager_loads=[
-                                                db_event.Event.registrations,
-                                                (db_event.Event.leaderboard, (
-                                                    db_event.EventScore.client, db_client.Client.user
-                                                ))
-                                            ])
+    grouped = groupby(scores, key=lambda score: score.rekt_on is None)
 
-    for score in event.leaderboard:
-        # display_name = DiscordUser.get_display_name(dc_client, score.client.user.discord_user.account_id, guild_id)
-        member = guild.get_member(int(score.client.user.discord_user.account_id))
-        if member:
-            value = f'{round(score.rel_value * 100, ndigits=3)}% ({round(score.abs_value, ndigits=3)}$)'
-            description += f'{score.current_rank.value}. **{member.display_name}** {value}\n'
+    for current in grouped.get(True, []):
+        name = await display_name(current)
+        if name:
+            value = f'{round(current.gain.relative, ndigits=3)}% ({round(current.gain.absolute, ndigits=3)}$)'
+            description += f'{current.current_rank.value}. **{name}** {value}\n'
+
+    if False in grouped:
+        description += f'\n**Rekt**\n'
+        for current in grouped[False]:
+            name = await display_name(current)
+            if name:
+                description += f'{name} since {current.rekt_on.replace(microsecond=0)}'
 
     description += f'\n{footer}'
 
@@ -507,127 +509,46 @@ async def get_leaderboard(dc_client: discord.Client,
     )
 
 
-async def create_leaderboard(dc_client: discord.Client,
-                             guild_id: int,
-                             mode: str,
-                             event: db_event.Event = None,
-                             time: datetime = None,
-                             archived=False) -> discord.Embed:
-    client_scores: List[Tuple[Client, float | Decimal]] = []
-    value_strings: Dict[Client, str] = {}
-    clients_rekt: List[Client] = []
-    clients_missing: List[Client] = []
-
-    footer = ''
-    description = ''
-
+async def get_leaderboard(dc_client: discord.Client,
+                          guild_id: int,
+                          channel_id: int,
+                          since: datetime = None) -> discord.Embed:
     guild = dc_client.get_guild(guild_id)
     if not guild:
         raise InternalError(f'Provided guild_id is not valid!')
 
-    if not event:
-        event = await dbutils.get_discord_event(guild_id, throw_exceptions=False,
-                                                eager_loads=[db_event.Event.registrations])
-
-    if event:
-        clients = event.registrations
-    else:
-        # All global clients
-        clients = await db_all(
-            select(db_client.Client).filter(
-                db_client.Client.id.in_(
-                    select(GuildAssociation.client_id).filter_by(guild_id=guild.id)
-                )
+    event = await dbutils.get_discord_event(guild_id, channel_id,
+                                            throw_exceptions=True,
+                                            eager_loads=[
+                                                dbmodels.Event.registrations
+                                                if since else
+                                                (dbmodels.Event.leaderboard, (
+                                                    dbmodels.EventScore.client, dbmodels.Client.user
+                                                ))
+                                            ])
+    if since:
+        scores = [
+            EventScore(
+                user_id=client.user_id,
+                client_id=client.id,
+                gain=await client.calc_gain(event, since=since, db=async_session, currency='USD'),
+                current_rank=EventRank(value=1)
             )
-        )
-
-    if mode == 'balance':
-        for client in clients:
-            if client.rekt_on:
-                clients_rekt.append(client)
-                continue
-            balance = await client.latest()
-            if balance and not (event and balance.time < event.start):
-                if balance.unrealized > REKT_THRESHOLD:
-                    client_scores.append((client, balance.unrealized))
-                    value_strings[client] = balance.to_string(display_extras=False)
-                else:
-                    clients_rekt.append(client)
-            else:
-                clients_missing.append(client)
-
-    elif mode == 'gain':
-
-        description += f'Gain {readable_time(time)}\n\n'
-
-        client_gains = await calc_gains(clients, event, time, db=async_session, currency=c)
-
-        for client, gain in client_gains.items():
-            if gain:
-                if client.rekt_on:
-                    clients_rekt.append(client)
-                else:
-                    client_scores.append((client, gain.relative))
-                    value_strings[client] = f'{gain.relative}% ({gain.absolute}$)'
-            else:
-                clients_missing.append(client)
-    else:
-        raise InternalError(f'Unknown mode {mode} was passed in')
-
-    client_scores.sort(key=lambda x: x[1], reverse=True)
-    rank = 1
-    rank_true = 1
-
-    if len(client_scores) > 0:
-        if mode == 'gain' and not archived:
-            dc_client.loop.create_task(
-                dc_client.change_presence(
-                    activity=discord.Activity(
-                        type=discord.ActivityType.watching,
-                        name=f'Best Trader: {DiscordUser.get_display_name(dc_client, client_scores[0][0].discord_user_id, guild_id)}'
-                    )
-                )
-            )
+            for client in event.registrations
+        ]
+        scores.sort(key=lambda s: s.gain.relative)
 
         prev_score = None
-        for client, score in client_scores:
-            member = guild.get_member(client.discord_user_id)
-            if member:
-                if prev_score is not None and score < prev_score:
-                    rank = rank_true
-                if client in value_strings:
-                    value = value_strings[client]
-                    description += f'{rank}. **{member.display_name}** {value}\n'
-                    rank_true += 1
-                else:
-                    logging.error(f'Missing value string for {client=} even though hes in user_scores')
-                prev_score = score
+        rank = 1
+        for index, score in enumerate(scores):
+            if prev_score is not None and score < prev_score:
+                rank = index + 1
+            score.current_rank.value = rank
+            prev_score = score
+    else:
+        scores = event.leaderboard
 
-    if len(clients_rekt) > 0:
-        description += f'\n**Rekt**\n'
-        for user_rekt in clients_rekt:
-            member = guild.get_member(user_rekt.discord_user_id)
-            if member:
-                description += f'{member.display_name}'
-                if user_rekt.rekt_on:
-                    description += f' since {user_rekt.rekt_on.replace(microsecond=0)}'
-                description += '\n'
-
-    if len(clients_missing) > 0:
-        description += f'\n**Missing**\n'
-        for client_missing in clients_missing:
-            member = guild.get_member(client_missing.discord_user_id)
-            if member:
-                description += f'{member.display_name}\n'
-
-    description += f'\n{footer}'
-
-    logging.info(f"Done creating leaderboard.\nDescription:\n{de_emojify(description)}")
-
-    return discord.Embed(
-        title='Leaderboard :medal:',
-        description=description
-    )
+    return await get_leaderboard_embed(guild, scores, db=async_session)
 
 
 def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[datetime]:
@@ -715,37 +636,43 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     return date
 
 
-def calc_xs_ys(data: List[Balance],
+def calc_xs_ys(history: History,
                pnl_data: List[PnlData],
                transfers: List[Transfer],
-               currency: str,
+               ccy: str,
                percentage=False,
-               relative_to: Balance = None,
                include_upnl=False,
                mode: Literal['balance', 'pnl'] = 'balance') -> Tuple[List[datetime], List[float]]:
     xs = []
     ys = []
 
     def get_amount(balance: Balance):
-        return balance.get_unrealized(currency) if include_upnl and not pnl_data else balance.get_realized(currency)
+        return balance.get_unrealized(ccy) if include_upnl and not pnl_data else balance.get_realized(ccy)
 
-    if data:
-        init = relative_to or data[0]
+    if history.data:
+        init = history.initial
         relative_to_amount = get_amount(init)
-        offset_gen = transfer_gen(data[0].client, transfers, reset=False)
+
+        offset_gen = transfer_gen(init.client_save, transfers, reset=False)
         offset_gen.send(None)
+
         upnl_by_trade = {}
+        offsets = {}
         amount = None
-        for prev_item, item, next_item in utils.prev_now_next(utils.combine_time_series(data, pnl_data)):
+        for prev_item, item, next_item in utils.prev_now_next(
+                utils.combine_time_series(history.data, pnl_data)
+        ):
             if isinstance(item, PnlData):
-                upnl_by_trade[item.trade_id] = item.unrealized_ccy(currency)
+                upnl_by_trade[item.trade_id] = item.unrealized_ccy(ccy)
             if isinstance(item, Balance):
-                offsets = offset_gen.send(item.time)
-                # offsets = next(offset_gen)
+                try:
+                    offsets = offset_gen.send(item.time)
+                except StopIteration:
+                    pass
                 if mode == 'balance':
                     current = get_amount(item)
                 else:
-                    current = get_amount(item) - offsets.get(currency) - relative_to_amount
+                    current = get_amount(item) - offsets.get(ccy, 0) - relative_to_amount
 
                 if percentage:
                     if relative_to_amount:

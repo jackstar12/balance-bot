@@ -118,6 +118,7 @@ USER = MessengerNameSpace.from_table(User)
 
 CLIENT = MessengerNameSpace.from_table(Client, parent=USER)
 
+
 BALANCE = MessengerNameSpace.from_table(Balance, parent=CLIENT)
 TRADE = TradeSpace.from_table(Trade, parent=CLIENT)
 TRANSFER = MessengerNameSpace.from_table(Transfer, parent=CLIENT)
@@ -142,20 +143,11 @@ class Category(Enum):
     DELETE = "delete"
     UPDATE = "update"
     FINISHED = "finished"
-    UPNL = "upnl"
+    LIVE = "live"
     ADDED = "added"
     REMOVED = "removed"
-    SIGNIFICANT_PNL = "significantpnl"
+
     REKT = "rekt"
-    VOLUME = "volume"
-    OI = "oi"
-    SESSIONS = "sessions"
-    BASIC = "basic"
-    ADVANCED = "advanced"
-    START = "start"
-    REGISTRATION_START = "registration-start"
-    END = "end"
-    REGISTRATION_END = "registration-end"
 
 
 class Word(Enum):

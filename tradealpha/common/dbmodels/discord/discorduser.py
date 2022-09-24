@@ -22,14 +22,28 @@ if TYPE_CHECKING:
     from tradealpha.common.dbmodels import Client, GuildAssociation
 
 
+def get_display_name(dc_client: discord.Client, member_id: int, guild_id: int):
+    try:
+        return dc_client.get_guild(guild_id).get_member(member_id).display_name
+    except AttributeError:
+        return None
+
+
+def get_client_display_name(dc: discord.Client, client: Client, guild_id: int):
+    return get_display_name(dc, int(client.user.discord_user.account_id), int(guild_id))
+
+
 class DiscordUser(OAuthAccount):
     __serializer_forbidden__ = ['global_client', 'global_associations']
 
     global_associations: list[GuildAssociation] = relationship('GuildAssociation',
-                                       lazy='noload',
-                                       cascade="all, delete",
-                                       back_populates='discord_user')
-    alerts = relationship('Alert', backref=backref('discord_user', lazy='noload'), lazy='noload', cascade="all, delete")
+                                                               lazy='noload',
+                                                               cascade="all, delete",
+                                                               back_populates='discord_user')
+    alerts = relationship('Alert',
+                          backref=backref('discord_user', lazy='noload'),
+                          lazy='noload',
+                          cascade="all, delete")
 
     clients = relationship(
         'Client',
@@ -86,13 +100,6 @@ class DiscordUser(OAuthAccount):
 
     async def get_discord_embed(self, dc: discord.Client) -> List[discord.Embed]:
         return [await self.get_client_embed(dc, client) for client in self.clients]
-
-    @classmethod
-    def get_display_name(cls, dc_client: discord.Client, member_id: int, guild_id: int):
-        try:
-            return dc_client.get_guild(guild_id).get_member(member_id).display_name
-        except AttributeError:
-            return None
 
     def get_events_and_guilds_string(self, dc: discord.Client, client: Client):
         return join_args(
