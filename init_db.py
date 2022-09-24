@@ -2,9 +2,8 @@
 # tables:
 from tradealpha.common.dbsync import Base, engine
 from alembic.config import Config
-from alembic import command, context
-import tradealpha.common.dbmodels
-from tradealpha.api.app import app
+from alembic import command
+
 Base.metadata.create_all(engine)
 
 # then, load the Alembic configuration and generate the
