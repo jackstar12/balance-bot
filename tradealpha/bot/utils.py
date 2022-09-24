@@ -33,7 +33,7 @@ from sqlalchemy import asc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import tradealpha.common.dbmodels as dbmodels
-from common.models.history import History
+from tradealpha.common.models.history import History
 from tradealpha.common.models.eventinfo import EventScore, EventRank
 from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.dbmodels.user import User

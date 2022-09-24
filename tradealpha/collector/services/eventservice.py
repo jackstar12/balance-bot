@@ -6,9 +6,6 @@ from typing import Callable
 import pytz
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import select, and_
-import tradealpha.common.dbmodels
-from common.utils import utc_now
-from tradealpha.collector.services.syncedservice import SyncedService
 from tradealpha.collector.services.baseservice import BaseService
 from tradealpha.common.dbasync import db_all, db_select
 from tradealpha.common.dbmodels import Client
