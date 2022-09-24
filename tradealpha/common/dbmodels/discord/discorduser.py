@@ -40,6 +40,7 @@ class DiscordUser(OAuthAccount):
                                                                lazy='noload',
                                                                cascade="all, delete",
                                                                back_populates='discord_user')
+
     alerts = relationship('Alert',
                           backref=backref('discord_user', lazy='noload'),
                           lazy='noload',

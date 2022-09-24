@@ -27,7 +27,7 @@ import discord
 from tradealpha.common.dbsync import Base
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
-    select, insert, literal, and_, update
+    select, insert, literal, and_, update, Numeric
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels.user import User
@@ -88,6 +88,8 @@ class Event(Base, Serializer):
     description = Column(Document, nullable=False)
     public = Column(Boolean, default=False, nullable=False)
     location = Column(Location, nullable=False)
+    currency = Column(String(10), nullable=False, server_default='USD')
+    rekt_treshhold = Column(Numeric, nullable=False, server_default='-99')
 
     owner: User = relationship('User', lazy='noload')
 

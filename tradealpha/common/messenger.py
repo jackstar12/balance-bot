@@ -18,7 +18,7 @@ from sqlalchemy.orm.util import identity_key
 from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.redis import TableNames
 import tradealpha.common.utils as utils
-from tradealpha.common.dbmodels import Client, Balance, Chapter, Event
+from tradealpha.common.dbmodels import Client, Balance, Chapter, Event, EventScore
 from tradealpha.common.dbmodels.alert import Alert
 from tradealpha.common.dbmodels.journal import Journal
 from tradealpha.common.dbmodels.pnldata import PnlData
@@ -118,7 +118,6 @@ USER = MessengerNameSpace.from_table(User)
 
 CLIENT = MessengerNameSpace.from_table(Client, parent=USER)
 
-
 BALANCE = MessengerNameSpace.from_table(Balance, parent=CLIENT)
 TRADE = TradeSpace.from_table(Trade, parent=CLIENT)
 TRANSFER = MessengerNameSpace.from_table(Transfer, parent=CLIENT)
@@ -126,7 +125,9 @@ TRANSFER = MessengerNameSpace.from_table(Transfer, parent=CLIENT)
 PNL_DATA = MessengerNameSpace.from_table(PnlData, parent=TRADE)
 
 ALERT = MessengerNameSpace.from_table(Alert, parent=USER)
+
 EVENT = EventSpace.from_table(Event, parent=USER)
+EVENT_SCORE = MessengerNameSpace.from_table(EventScore, parent=EVENT)
 
 JOURNAL = MessengerNameSpace.from_table(Journal, parent=USER)
 CHAPTER = MessengerNameSpace.from_table(Chapter, parent=JOURNAL)

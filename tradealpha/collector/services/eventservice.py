@@ -7,6 +7,7 @@ import pytz
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import select, and_
 import tradealpha.common.dbmodels
+from common.utils import utc_now
 from tradealpha.collector.services.syncedservice import SyncedService
 from tradealpha.collector.services.baseservice import BaseService
 from tradealpha.common.dbasync import db_all, db_select
@@ -79,7 +80,7 @@ class EventService(BaseService):
             balance = Balance(**data)
 
             for score in scores:
-                event = await self._db.get(Event, score.event_id)
+                event: Event = await self._db.get(Event, score.event_id)
 
                 if score.init_balance is None:
                     score.init_balance = await Client.get_balance_at_time(
@@ -92,6 +93,10 @@ class EventService(BaseService):
                     db=self._db, since=event.start, to=event.end
                 )
                 score.update(balance, offset)
+                if score.rel_value < event.rekt_treshhold:
+                    score.rekt_on = balance.time
+                    await self._messenger.v2_pub_instance(score, Category.REKT)
+                await self._db.flush()
                 await Event.save_leaderboard(event.id, self._db)
             await self._db.commit()
 
@@ -104,8 +109,7 @@ class EventService(BaseService):
             EventScore.client,
             session=self._db
         )
-        # await self._redis.zadd('event:leaderboard', )
-        # await self._redis.zrange()
+
         event: Event = await self._db.get(Event, data['id'])
         for score in scores:
             if score.init_balance is None:

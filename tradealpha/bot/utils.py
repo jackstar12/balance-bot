@@ -38,7 +38,7 @@ from tradealpha.common.models.eventinfo import EventScore, EventRank
 from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.calc import calc_gains, transfer_gen
-from tradealpha.common.utils import calc_percentage, call_unknown_function, groupby
+from tradealpha.common.utils import calc_percentage, call_unknown_function, groupby, utc_now
 from tradealpha.common.dbasync import async_session, db_all, async_maker, time_range
 from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
 from tradealpha.common.errors import UserInputError, InternalError
@@ -527,12 +527,16 @@ async def get_leaderboard(dc_client: discord.Client,
                                                 ))
                                             ])
     if since:
+        now = utc_now()
         scores = [
             EventScore(
                 user_id=client.user_id,
                 client_id=client.id,
-                gain=await client.calc_gain(event, since=since, db=async_session, currency='USD'),
-                current_rank=EventRank(value=1)
+                gain=await client.calc_gain(event, since=since, db=async_session, currency=event.currency),
+                current_rank=EventRank(
+                    value=1,
+                    time=now
+                )
             )
             for client in event.registrations
         ]
