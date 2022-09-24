@@ -472,7 +472,8 @@ async def create_history(to_graph: List[Tuple[Client, str]],
         plt.close()
 
 
-async def get_leaderboard_embed(guild: discord.Guild,
+async def get_leaderboard_embed(event: dbmodels.Event,
+                                guild: discord.Guild,
                                 scores: list[EventScore],
                                 db: AsyncSession):
     footer = ''
@@ -488,7 +489,7 @@ async def get_leaderboard_embed(guild: discord.Guild,
     for current in grouped.get(True, []):
         name = await display_name(current)
         if name:
-            value = f'{round(current.gain.relative, ndigits=3)}% ({round(current.gain.absolute, ndigits=3)}$)'
+            value = current.gain.to_string(event.currency)
             description += f'{current.current_rank.value}. **{name}** {value}\n'
 
     if False in grouped:
@@ -526,6 +527,7 @@ async def get_leaderboard(dc_client: discord.Client,
                                                     dbmodels.EventScore.client, dbmodels.Client.user
                                                 ))
                                             ])
+
     if since:
         now = utc_now()
         scores = [
@@ -552,7 +554,7 @@ async def get_leaderboard(dc_client: discord.Client,
     else:
         scores = event.leaderboard
 
-    return await get_leaderboard_embed(guild, scores, db=async_session)
+    return await get_leaderboard_embed(event, guild, scores, db=async_session)
 
 
 def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[datetime]:

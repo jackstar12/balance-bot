@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import NamedTuple, Optional, TYPE_CHECKING
 
+from tradealpha.common import config
 from tradealpha.common.models import BaseModel
 
 if TYPE_CHECKING:
@@ -12,6 +13,9 @@ if TYPE_CHECKING:
 class Gain(BaseModel):
     relative: Decimal
     absolute: Decimal
+
+    def to_string(self, ccy: str):
+        return f'{round(self.relative, ndigits=3)}% ({round(self.absolute, ndigits=config.CURRENCY_PRECISION.get(ccy, 3))}{ccy})'
 
 
 class ClientGain(NamedTuple):
