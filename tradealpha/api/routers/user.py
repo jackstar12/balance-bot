@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tradealpha.common.dbmodels.label import LabelGroup
 from tradealpha.api.dependencies import get_db
 from tradealpha.api.models.user import UserInfo
 from tradealpha.api.users import CurrentUser
@@ -32,7 +33,7 @@ async def delete_user(db: AsyncSession = Depends(get_db), user: User = Depends(C
 
 user_info_dep = get_current_user(
     User.oauth_accounts,
-    User.labels,
+    (User.label_groups, LabelGroup.labels),
     User.alerts,
     (
         User.all_clients, Client.events

@@ -1,10 +1,12 @@
 from http import HTTPStatus
+from typing import Any
 
 from fastapi import APIRouter, Depends, Body
 from fastapi.exceptions import HTTPException
 from sqlalchemy import or_, select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.crudrouter import create_crud_router
 from tradealpha.common.dbmodels import TradeDB
 from tradealpha.api.utils.client import get_user_client
 from tradealpha.common.dbasync import async_session, db_first, db_eager, db_all, db_select, db_exec, db_del_filter
@@ -13,61 +15,35 @@ from tradealpha.api.users import CurrentUser
 from tradealpha.common.dbsync import session
 
 from tradealpha.common.dbmodels.client import Client, add_client_filters
-from tradealpha.common.dbmodels.label import Label as LabelDB
-from tradealpha.api.models.labelinfo import LabelInfo
+from tradealpha.common.dbmodels.label import Label as LabelDB, LabelGroup as LabelGroupDB
+from tradealpha.api.models.labelinfo import LabelInfo, LabelGroupInfo, LabelGroupCreate
 from tradealpha.common.dbmodels.trade import Trade, trade_association
 from tradealpha.common.dbmodels.user import User
-from tradealpha.api.models.labelinfo import SetLabels, RemoveLabel, AddLabel, EditLabel
-from tradealpha.api.utils.responses import BadRequest, OK, Response, NotFound
-
-router = APIRouter(
-    prefix="/label",
-    tags=["label"],
-    dependencies=[Depends(CurrentUser)],
-    responses={
-        401: {"detail": "Wrong Email or Password"},
-        400: {"detail": "Email is already used"}
-    }
-)
+from tradealpha.api.models.labelinfo import RemoveLabel, AddLabel, CreateLabel
+from tradealpha.api.utils.responses import BadRequest, OK, NotFound
 
 
-@router.post('/', response_model=LabelInfo)
-async def create_label(body: EditLabel,
-                       user: User = Depends(CurrentUser),
-                       db: AsyncSession = Depends(get_db)):
-    label = LabelDB(name=body.name, color=body.color, user=user)
-    db.add(label)
-    await db.commit()
-    return LabelInfo.from_orm(label)
+def label_filter(stmt: Any, user: User):
+    return stmt.join(
+        LabelDB.group
+    ).where(
+        LabelGroupDB.user_id == user.id
+    )
 
 
-@router.delete('/{label_id}/')
-async def delete_label(label_id: int,
-                       user: User = Depends(CurrentUser),
-                       db: AsyncSession = Depends(get_db)):
-    result = await db_del_filter(LabelDB, id=label_id, user_id=user.id, session=db)
-    await db.commit()
-    if result.rowcount == 1:
-        return OK('Deleted')
-    else:
-        return NotFound('Invalid label id')
+router = create_crud_router(prefix="/label",
+                            table=LabelDB,
+                            read_schema=LabelInfo,
+                            create_schema=CreateLabel,
+                            add_filters=label_filter)
 
+group_router = create_crud_router(prefix="/group",
+                                  table=LabelGroupDB,
+                                  read_schema=LabelGroupInfo,
+                                  create_schema=LabelGroupCreate,
+                                  eager_loads=[LabelGroupDB.labels])
 
-@router.patch('/{label_id}/', response_model=LabelInfo)
-async def update_label(label_id: int, body: EditLabel,
-                       user: User = Depends(CurrentUser),
-                       db: AsyncSession = Depends(get_db)):
-    label = await db_select(LabelDB, id=label_id, user_id=user.id, session=db)
-
-    if label:
-        label.name = body.name
-        label.color = body.color
-
-        await db.commit()
-
-        return LabelInfo.from_orm(label)
-    else:
-        return NotFound('Invalid id')
+router.include_router(group_router)
 
 
 def add_trade_filters(stmt, user: User, trade_id: int):
@@ -140,28 +116,3 @@ async def remove_label(body: RemoveLabel,
         return NotFound('Invalid Label ID')
 
 
-@router.patch('/trade')
-async def set_labels(body: SetLabels,
-                     user: User = Depends(CurrentUser),
-                     db: AsyncSession = Depends(get_db)):
-    trade = await db_first(
-        add_trade_filters(select(Trade), user, body.trade_id),
-        Trade.labels,
-        session=db
-    )
-
-    if not trade:
-        return BadRequest('Invalid Trade ID')
-
-    if len(body.label_ids) > 0:
-        trade.labels = await db_all(
-            select(LabelDB).filter(
-                LabelDB.id.in_(body.label_ids),
-                LabelDB.user_id == user.id
-            ),
-            session=db
-        )
-    else:
-        trade.labels = []
-    await db.commit()
-    return OK('Success')

@@ -5,10 +5,11 @@ from typing import List, Optional
 
 from pydantic import Field, Extra
 
+from tradealpha.common.models.document import DocumentModel
 from tradealpha.common.models.balance import Balance
 from tradealpha.api.models import OutputID
 from tradealpha.api.models.pnldata import PnlData
-from tradealpha.common.models import OrmBaseModel
+from tradealpha.common.models import OrmBaseModel, BaseModel, InputID
 from tradealpha.api.models.execution import Execution
 from tradealpha.common.enums import Side, Status, TradeSession
 from tradealpha.common.models.compactpnldata import CompactPnlData
@@ -58,9 +59,15 @@ class DetailledTrade(Trade):
     realized_r: Optional[Decimal]
     account_size_init: Optional[Decimal]
     account_gain: Optional[Decimal]
-    memo: Optional[str]
+    notes: Optional[DocumentModel]
 
     class Config:
         orm_mode = True
         arbitrary_types_allowed = False
         extra = Extra.ignore
+
+
+class UpdateTrade(BaseModel):
+    label_ids: Optional[list[InputID]]
+    notes: Optional[DocumentModel]
+

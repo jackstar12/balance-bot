@@ -8,7 +8,7 @@ from fastapi_users.schemas import BaseOAuthAccount
 from tradealpha.common.dbmodels.user import OAuthData
 from tradealpha.api.models.alert import Alert
 from tradealpha.api.models.client import ClientInfo
-from tradealpha.api.models.labelinfo import LabelInfo
+from tradealpha.api.models.labelinfo import LabelGroupInfo
 
 
 class OAuthInfo(schemas.BaseOAuthAccount):
@@ -29,7 +29,7 @@ class UserUpdate(schemas.BaseUserUpdate):
 
 class UserInfo(UserRead):
     all_clients: List[ClientInfo]
-    labels: List[LabelInfo]
+    label_groups: List[LabelGroupInfo]
     alerts: List[Alert]
 
     class Config:

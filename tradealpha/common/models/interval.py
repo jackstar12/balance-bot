@@ -4,14 +4,14 @@ from typing import NamedTuple, Union
 from datetime import datetime, date, timedelta
 from typing import TYPE_CHECKING
 
+from tradealpha.common.models.gain import Gain
 from tradealpha.common.models import BaseModel
 from tradealpha.common.models.balance import Amount
 
 
 class Interval(BaseModel):
     day: Union[date, str]
-    diff_absolute: Decimal
-    diff_relative: Decimal
+    gain: Gain
     start_balance: Amount
     end_balance: Amount
     offset: Decimal
@@ -24,11 +24,9 @@ class Interval(BaseModel):
         if not hasattr(current, 'time'):
             pass
         current_date = current.time
-        abs, rel = current.gain_since(prev, offset)
         return cls(
             day=current_date.strftime('%Y-%m-%d') if as_string else current_date,
-            diff_absolute=abs,
-            diff_relative=rel,
+            gain=current.gain_since(prev, offset),
             start_balance=prev,
             end_balance=current,
             offset=offset

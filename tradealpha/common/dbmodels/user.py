@@ -76,16 +76,20 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
     )
 
     # Data
-    clients = relationship('Client', back_populates='user', lazy='noload', cascade="all, delete",
+    clients = relationship('Client',
+                           back_populates='user',
+                           lazy='noload',
+                           cascade="all, delete",
                            foreign_keys="[Client.user_id]")
 
-    labels = relationship('Label', backref='user', lazy='raise', cascade="all, delete")
+    label_groups = relationship('LabelGroup', backref='user', lazy='raise', cascade="all, delete")
     alerts = relationship('Alert', backref='user', lazy='noload', cascade="all, delete")
 
     journals = relationship('Journal',
                             back_populates='user',
                             cascade="all, delete",
                             lazy='raise')
+
     templates = relationship('Template',
                              back_populates='user',
                              cascade="all, delete",

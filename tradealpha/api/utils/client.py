@@ -118,9 +118,9 @@ async def update_client_data_balance(cache: Dict, client: Client, config: Client
 
     winning_days, losing_days = cache.get('winning_days', 0), cache.get('losing_days', 0)
     for day in daily:
-        if day.diff_absolute > 0:
+        if day.gain.absolute > 0:
             winning_days += 1
-        elif day.diff_absolute < 0:
+        elif day.gain.absolute < 0:
             losing_days += 1
     result['daily'] = daily
 

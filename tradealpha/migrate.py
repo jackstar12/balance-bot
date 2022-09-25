@@ -31,36 +31,6 @@ parser.add_argument("--uuid", action="store_true", help="Specifying this puts th
 args = parser.parse_args()
 
 
-if args.uuid:
-    users = db.session.query(User).all()
-
-    for user in users:
-        user.uuid = uuid.uuid4()
-        for alert in user._alerts:
-            alert.USER_ID = user.uuid
-        for label in user.labels:
-            label.USER_ID = user.uuid
-        for client in user._alerts:
-            client.USER_ID = user.uuid
-    db.session.commit()
-
-    discord_users = db.session.query(DiscordUser).all()
-
-    users = db.session.query(User).all()
-    for user in users:
-        user.discord_user_id = user.discord_user.USER_ID
-
-    for client in db.session.query(Client).all():
-        if client.discord_user:
-            client.discord_user_id = client.discord_user.USER_ID
-
-    db.session.commit()
-
-    db.session.query(DiscordUser).filter(DiscordUser.id != DiscordUser.user_id).delete()
-    db.session.commit()
-    print('Migrated discorduser ids')
-
-
 if args.discordids:
     discord_users = db.session.query(DiscordUser).all()
 

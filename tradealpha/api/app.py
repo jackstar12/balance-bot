@@ -18,6 +18,7 @@ import tradealpha.api.routers.template as template
 import tradealpha.api.routers.user as user
 import tradealpha.api.routers.event as event
 import tradealpha.api.routers.test as test
+import tradealpha.api.routers.trade as trade
 import tradealpha.common.dbasync as aio_db
 from tradealpha.api.dependencies import get_db, messenger
 from tradealpha.common.dbmodels import Event, Client, EventScore
@@ -50,7 +51,7 @@ app = FastAPI(
     },
 )
 
-# app.add_middleware(SessionMiddleware, secret_key='SECRET')
+#app.add_middleware(SessionMiddleware, secret_key='SECRET')
 # app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
 # app.add_midleware(DbSessionMiddleware)
 
@@ -101,7 +102,8 @@ for module in (
         template,
         user,
         event,
-        test
+        test,
+        trade
 ):
     app.include_router(module.router, prefix='/api/v1')
 

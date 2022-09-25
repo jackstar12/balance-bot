@@ -1,20 +1,27 @@
 from typing import List, Optional
 
+from tradealpha.common.models import OrmBaseModel
 from tradealpha.api.models import BaseModel, OutputID, InputID
 
 
-class LabelInfo(BaseModel):
-    id: OutputID
+class CreateLabel(BaseModel):
     name: str
     color: str
-
-    class Config:
-        orm_mode = True
+    group_id: InputID
 
 
-class SetLabels(BaseModel):
-    trade_id: InputID
-    label_ids: list[InputID]
+class LabelInfo(OrmBaseModel, CreateLabel):
+    id: OutputID
+    group_id: OutputID
+
+
+class LabelGroupCreate(OrmBaseModel):
+    name: str
+
+
+class LabelGroupInfo(LabelGroupCreate):
+    id: OutputID
+    labels: list[LabelInfo]
 
 
 class RemoveLabel(BaseModel):
@@ -24,8 +31,3 @@ class RemoveLabel(BaseModel):
 
 class AddLabel(RemoveLabel):
     pass
-
-
-class EditLabel(BaseModel):
-    name: str
-    color: str
