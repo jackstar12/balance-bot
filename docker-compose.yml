@@ -45,6 +45,13 @@ services:
       context: .
     env_file:
       - .env
+  web:
+    image: "nginx:latest"
+    volumes:
+      - ./nginx.confg:/etc/nginx/nginx.confg
+    ports:
+      - "80:80"
+      - "443:443"
   redis-server:
     image: "redis:latest"
     container_name: redis-server
