@@ -4,8 +4,6 @@ from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
 
-from tradealpha.common import customjson
-
 
 InputID = Union[int, str]
 OutputID = str
@@ -83,6 +81,7 @@ class BaseModel(PydanticBaseModel):
 class OrmBaseModel(BaseModel):
     class Config:
         orm_mode = True
+
 
 __all__ = [
     "OrmBaseModel",

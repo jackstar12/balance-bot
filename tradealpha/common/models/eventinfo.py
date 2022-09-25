@@ -8,8 +8,7 @@ from pydantic import validator, Field
 from tradealpha.common.models.gain import Gain
 from tradealpha.common.dbmodels.event import EventState
 from tradealpha.common.models.document import DocumentModel
-from tradealpha.common.models import OrmBaseModel
-from tradealpha.api.models import BaseModel, OutputID, InputID
+from tradealpha.common.models import OrmBaseModel, BaseModel, OutputID
 
 
 class LocationModel(OrmBaseModel):
