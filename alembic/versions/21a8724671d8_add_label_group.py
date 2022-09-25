@@ -20,7 +20,7 @@ from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbsync import Base
 
 revision = '21a8724671d8'
-down_revision = 'a2e192a59a90'
+down_revision = None
 branch_labels = None
 depends_on = None
 
