@@ -1,48 +1,30 @@
-import functools
-import itertools
-import logging
-import operator
 import time
-from datetime import datetime, date
-from decimal import Decimal
-from typing import Optional, List, Type, Iterable
+from typing import List, Type
 
-import aiohttp
-import jwt
-import pytz
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import delete, select, asc, func, text
+from sqlalchemy import select, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
 import tradealpha.api.utils.client as client_utils
-from api.routers.label import add_trade_filters
-from tradealpha.api.authenticator import Authenticator
-from tradealpha.api.dependencies import get_authenticator, get_messenger, get_db, \
+from tradealpha.api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
-from tradealpha.api.models.client import ClientConfirm, ClientEdit, \
-    ClientOverview, Transfer, ClientCreateBody, ClientInfo, ClientCreateResponse, get_query_params
+from tradealpha.api.models.client import get_query_params
 from tradealpha.api.models.trade import Trade, BasicTrade, DetailledTrade, UpdateTrade
-from tradealpha.api.settings import settings
+from tradealpha.api.routers.label import add_trade_filters
 from tradealpha.api.users import CurrentUser
-from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound, ResponseModel
+from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, ResponseModel
 from tradealpha.common import utils
-from tradealpha.common.calc import calc_daily
-from tradealpha.common.dbasync import db_first, db_all, redis, async_maker
+from tradealpha.common.dbasync import db_first, db_all
 from tradealpha.common.dbmodels import TradeDB as TradeDB
+from tradealpha.common.dbmodels.client import add_client_filters
 from tradealpha.common.dbmodels.label import Label as LabelDB
-from tradealpha.common.dbmodels.client import Client, add_client_filters
 from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.user import User
-from tradealpha.common.enums import IntervalType
-from tradealpha.common.exchanges import EXCHANGES
-from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
 from tradealpha.common.models import BaseModel, OrmBaseModel
-from tradealpha.common.models.balance import Balance
 from tradealpha.common.redis.client import ClientCacheKeys
-from tradealpha.common.utils import validate_kwargs
 
 router = APIRouter(
     tags=["trade"],

@@ -6,7 +6,7 @@ from fastapi.exceptions import HTTPException
 from sqlalchemy import or_, select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.crudrouter import create_crud_router
+from tradealpha.api.crudrouter import create_crud_router
 from tradealpha.common.dbmodels import TradeDB
 from tradealpha.api.utils.client import get_user_client
 from tradealpha.common.dbasync import async_session, db_first, db_eager, db_all, db_select, db_exec, db_del_filter

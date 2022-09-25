@@ -19,6 +19,7 @@ services:
   api:
     depends_on:
       - migrate
+      - redis-server
     build:
       dockerfile: tradealpha/api/Dockerfile
       context: .
@@ -29,6 +30,7 @@ services:
   collector:
     depends_on:
       - migrate
+      - redis-server
     build:
       dockerfile: tradealpha/collector/Dockerfile
       context: .
@@ -37,6 +39,7 @@ services:
   bot:
     depends_on:
       - migrate
+      - redis-server
     build:
       dockerfile: tradealpha/bot/Dockerfile
       context: .
@@ -46,14 +49,14 @@ services:
     image: "redis:latest"
     container_name: redis-server
     ports:
-      - "6379:6389"
+      - "6380:6379"
     env_file:
       - .env
   pg-server:
     image: "postgres"
     container_name: pg-server
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
     environment:
