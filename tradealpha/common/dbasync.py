@@ -114,7 +114,10 @@ def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False)
     return stmt
 
 
-def db_eager(stmt: Select, *eager: Union[Column, Tuple[Column, Union[Tuple, InstrumentedAttribute, List, str]]], root=None, joined=False):
+TEager = Union[Column, Tuple[Column, Union[Tuple, InstrumentedAttribute, List, str]]]
+
+
+def db_eager(stmt: Select, *eager: TEager, root=None, joined=False):
     for col in eager:
         if isinstance(col, Tuple):
             if root is None:

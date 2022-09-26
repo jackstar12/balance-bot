@@ -8,7 +8,7 @@ from sqlalchemy.sql import Select, Update, Delete
 from tradealpha.api.dependencies import get_db
 from tradealpha.api.users import CurrentUser
 from tradealpha.api.utils.responses import OK, NotFound
-from tradealpha.common.dbasync import db_all, db_del_filter, db_unique
+from tradealpha.common.dbasync import db_all, db_del_filter, db_unique, TEager
 from tradealpha.common.dbmodels.label import Label as LabelDB
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbsync import Base
@@ -23,7 +23,8 @@ def create_crud_router(prefix: str,
                        create_schema: Type[BaseModel],
                        update_schema: Type[BaseModel] = None,
                        add_filters: Callable[[TStmt, User], Select | Update | Delete] = None,
-                       eager_loads = None):
+                       eager_loads: list[TEager] = None,
+                       dependencies: list = None):
     def default_filter(stmt: TStmt, user: User) -> Select:
         return stmt.where(
             table.user_id == user.id
@@ -38,7 +39,8 @@ def create_crud_router(prefix: str,
 
     router = APIRouter(
         tags=[prefix],
-        prefix=prefix
+        prefix=prefix,
+        dependencies=dependencies
     )
 
     def read_one(entity_id: int, user: User, db: AsyncSession, **kwargs):
@@ -64,7 +66,8 @@ def create_crud_router(prefix: str,
     @router.post('/', response_model=read_schema)
     async def create(body: create_schema,
                      user: User = Depends(CurrentUser),
-                     db: AsyncSession = Depends(get_db)):
+                     db: AsyncSession = Depends(get_db),
+                     **kwargs):
         instance = table(**body.dict())
         if hasattr(instance, 'user'):
             instance.user = user
@@ -75,8 +78,9 @@ def create_crud_router(prefix: str,
     @router.delete('/{entity_id}')
     async def delete_one(entity_id: int,
                          user: User = Depends(CurrentUser),
-                         db: AsyncSession = Depends(get_db)):
-        entity = await read_one(entity_id, user, db)
+                         db: AsyncSession = Depends(get_db),
+                         **kwargs):
+        entity = await read_one(entity_id, user, db, **kwargs)
         if entity:
             await db.delete(entity)
             await db.commit()
@@ -86,8 +90,9 @@ def create_crud_router(prefix: str,
 
     @router.get('/', response_model=list[read_schema])
     async def get_all(user: User = Depends(CurrentUser),
-                      db: AsyncSession = Depends(get_db)):
-        results = await read_all(user, db)
+                      db: AsyncSession = Depends(get_db),
+                      **kwargs):
+        results = await read_all(user, db, **kwargs)
 
         return OK(
             detail='OK',
@@ -97,23 +102,25 @@ def create_crud_router(prefix: str,
             ]
         )
 
-    #@router.get('/{entity_id}', response_model=read_schema)
-    #async def get_one(entity_id: int,
-    #                  user: User = Depends(CurrentUser),
-    #                  db: AsyncSession = Depends(get_db)):
-    #    entity = await read_one(entity_id, user, db)
-#
-    #    if entity:
-    #        return read_schema.from_orm(entity)
-    #    else:
-    #        return NotFound('Invalid id')
+    @router.get('/{entity_id}', response_model=read_schema)
+    async def get_one(entity_id: int,
+                      user: User = Depends(CurrentUser),
+                      db: AsyncSession = Depends(get_db),
+                      **kwargs):
+        entity = await read_one(entity_id, user, db, **kwargs)
+
+        if entity:
+            return read_schema.from_orm(entity)
+        else:
+            return NotFound('Invalid id')
 
     @router.patch('/{entity_id}', response_model=read_schema)
     async def update_one(entity_id: int,
                          body: update_schema,
                          user: User = Depends(CurrentUser),
-                         db: AsyncSession = Depends(get_db)):
-        entity = await read_one(entity_id, user, db)
+                         db: AsyncSession = Depends(get_db),
+                         **kwargs):
+        entity = await read_one(entity_id, user, db, **kwargs)
 
         if entity:
             for key, value in body.dict(exclude_none=True).items():
