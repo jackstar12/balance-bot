@@ -375,7 +375,7 @@ def safe_cmp(fnc: Callable, a: Any, b: Any):
 
 
 async def create_history(to_graph: List[Tuple[Client, str]],
-                         event: dbmodels.Event,
+                         event: dbmodels.Event | None,
                          start: datetime,
                          end: datetime,
                          currency_display: str,
@@ -410,8 +410,8 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
             history = await dbutils.get_client_history(registered_client,
                                                        init_time=event.start if event else start,
-                                                       since=safe_cmp(max, start, event.start),
-                                                       to=safe_cmp(min, end, event.end),
+                                                       since=safe_cmp(max, start, getattr(event, 'start')),
+                                                       to=safe_cmp(min, end, getattr(event, 'end')),
                                                        currency=currency)
 
             pnl_data = await db_all(

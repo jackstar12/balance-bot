@@ -5,7 +5,9 @@ from datetime import datetime
 
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
+from prettytable import PrettyTable
 
+from common.utils import date_string
 from tradealpha.common.dbasync import async_session
 from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
@@ -51,10 +53,8 @@ class BalanceCog(CogBase):
             usr_balance = await registered_user.get_latest_balance(self.redis, async_session, currency)
             if not usr_balance:
                 await ctx.send(f'There are no records about {user.display_name}\'s balance')
-            if usr_balance.error is None:
-                await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
             else:
-                await ctx.send(f'Error while getting {user.display_name}\'s balance: {usr_balance.error}')
+                await ctx.send(f'{user.display_name}\'s balance: {usr_balance.to_string()}')
         else:
             user: DiscordUser = await dbutils.get_discord_user(ctx.author_id, eager_loads=[
                 (DiscordUser.clients, Client.events),
@@ -68,11 +68,8 @@ class BalanceCog(CogBase):
                 balance_message = f'Your balance ({user.get_events_and_guilds_string(self.bot, user_client)}): '
                 if not usr_balance:
                     await ctx.send('There are no records about your balance')
-                if usr_balance.error is None:
-                    await ctx.send(f'{balance_message}{usr_balance.to_string()}')
                 else:
-                    msg = user.get_events_and_guilds_string(self.bot, user_client)
-                    await ctx.send(f'Error while getting your balance ({msg}): {usr_balance.error}')
+                    await ctx.send(f'{balance_message}{usr_balance.to_string()}')
 
     @cog_ext.cog_slash(
         name="gain",
@@ -178,7 +175,18 @@ class BalanceCog(CogBase):
     async def daily(self, ctx: SlashContext, user: discord.Member, amount: int = None, currency: str = None):
         client = await dbutils.get_discord_client(user.id, ctx.guild_id, registration=True)
         await ctx.defer()
-        daily_gains = await calc_daily(client, amount, ctx.guild_id, string=True, currency=currency)
+
+        daily_gains = await calc_daily(client, amount, ctx.guild_id, currency=currency)
+
+        results = PrettyTable(
+            field_names=["Date", "Amount", "Diff", "Diff %"]
+        )
+
+        for interval in daily_gains:
+            results.add_row([
+                date_string(interval.day), interval.start_balance.realized, interval.gain.absolute, interval.gain.relative
+            ])
+
         await ctx.send(embed=discord.Embed(
             title=f'Daily gains for {ctx.author.display_name}',
             description=f'```\n{daily_gains}```')

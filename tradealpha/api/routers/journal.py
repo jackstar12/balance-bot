@@ -84,7 +84,7 @@ async def query_clients(client_ids: list[int] | set[int], user: User, db_session
     return clients
 
 
-@router.post('/')
+@router.post('')
 async def create_journal(body: JournalCreate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
@@ -109,7 +109,7 @@ async def create_journal(body: JournalCreate,
 
 
 @router.get(
-    '/',
+    '',
     description="Query all the users journals",
     response_model=List[JournalInfo]
 )

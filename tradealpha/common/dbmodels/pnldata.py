@@ -46,9 +46,10 @@ class PnlData(Base, Serializer):
     def unrealized_ccy(self, currency: str):
         return self.unrealized * self._rate(currency)
 
+    @property
     def compact(self) -> CompactPnlData:
         return CompactPnlData(
-            ts=self.time.timestamp(),
+            ts=int(self.time.timestamp()),
             realized=self.realized,
             unrealized=self.unrealized
         )

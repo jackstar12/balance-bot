@@ -63,7 +63,7 @@ def create_crud_router(prefix: str,
             session=db
         )
 
-    @router.post('/', response_model=read_schema)
+    @router.post('', response_model=read_schema)
     async def create(body: create_schema,
                      user: User = Depends(CurrentUser),
                      db: AsyncSession = Depends(get_db),
@@ -88,7 +88,7 @@ def create_crud_router(prefix: str,
         else:
             return NotFound('Invalid id')
 
-    @router.get('/', response_model=list[read_schema])
+    @router.get('', response_model=list[read_schema])
     async def get_all(user: User = Depends(CurrentUser),
                       db: AsyncSession = Depends(get_db),
                       **kwargs):

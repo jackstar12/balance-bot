@@ -1,13 +1,16 @@
 import time
-from typing import List, Type
+from decimal import Decimal
+from typing import List, Type, Union
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
+from pydantic import conlist
 from sqlalchemy import select, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
 import tradealpha.api.utils.client as client_utils
+from common.models.compactpnldata import CompactPnlData
 from tradealpha.api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
 from tradealpha.api.models.client import get_query_params
@@ -23,7 +26,7 @@ from tradealpha.common.dbmodels.label import Label as LabelDB
 from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.user import User
-from tradealpha.common.models import BaseModel, OrmBaseModel
+from tradealpha.common.models import BaseModel, OrmBaseModel, OutputID
 from tradealpha.common.redis.client import ClientCacheKeys
 
 router = APIRouter(
@@ -148,23 +151,31 @@ create_trade_endpoint(
     TradeDB.initial,
     TradeDB.max_pnl,
     TradeDB.min_pnl,
-    TradeDB.pnl_data,
     TradeDB.labels,
     TradeDB.init_balance,
 )
 
 
-@router.get('/trade-detailled/pnl-data')
-async def get_pnl_data(trade_id: list[int] = Query(..., alias='trade-id'),
+class PnlDataResponse(BaseModel):
+    # Named Tuples are not supported (workaround with conlist)
+    by_trade: dict[
+        OutputID,
+        list[conlist(Union[int, Decimal], min_items=3, max_items=3)]
+    ]
+
+
+@router.get('/trade-detailled/pnl-data',
+            response_model=ResponseModel[PnlDataResponse])
+async def get_pnl_data(trade_id: list[int] = Query(default=[], alias='trade-id'),
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     data: List[PnlData] = await db_all(
         add_client_filters(
             select(PnlData)
-            .where(PnlData.trade_id.in_(trade_id))
+            .where(PnlData.trade_id.in_(trade_id) if trade_id else True)
             .join(PnlData.trade)
             .join(TradeDB.client)
-            .order_by(asc(PnlData.time)),
+            .order_by(PnlData.time),
             user=user
         ),
         session=db
@@ -172,7 +183,7 @@ async def get_pnl_data(trade_id: list[int] = Query(..., alias='trade-id'),
 
     result = {}
     for pnl_data in data:
-        result.setdefault(pnl_data.trade_id, []).append(pnl_data.compact())
+        result.setdefault(str(pnl_data.trade_id), []).append(pnl_data.compact)
 
-    return CustomJSONResponse(content=jsonable_encoder(result))
+    return CustomJSONResponse(content={'by_trade': jsonable_encoder(result)})
 

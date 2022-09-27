@@ -10,7 +10,7 @@ from tradealpha.common.models.balance import Amount
 
 
 class Interval(BaseModel):
-    day: Union[date, str]
+    day: date
     gain: Gain
     start_balance: Amount
     end_balance: Amount
@@ -20,12 +20,11 @@ class Interval(BaseModel):
         orm_mode = True
 
     @classmethod
-    def create(cls, prev: Amount, current: Amount, offset: Decimal, as_string=False) -> Interval:
+    def create(cls, prev: Amount, current: Amount, offset: Decimal) -> Interval:
         if not hasattr(current, 'time'):
             pass
-        current_date = current.time
         return cls(
-            day=current_date.strftime('%Y-%m-%d') if as_string else current_date,
+            day=current.time,
             gain=current.gain_since(prev, offset),
             start_balance=prev,
             end_balance=current,

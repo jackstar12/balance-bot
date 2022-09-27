@@ -10,7 +10,6 @@ from httpx_oauth.clients.discord import DiscordOAuth2
 import tradealpha.api.routers.analytics as analytics
 import tradealpha.api.routers.authentication as auth
 import tradealpha.api.routers.client as client
-import tradealpha.api.routers.discordauth as discordauth
 import tradealpha.api.routers.discord as discord
 import tradealpha.api.routers.journal as journal
 import tradealpha.api.routers.label as label
@@ -100,7 +99,6 @@ app.include_router(
 )
 
 for module in (
-        discord,
         # auth,
         client,
         label,

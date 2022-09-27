@@ -48,10 +48,7 @@ class DetailledTrade(Trade):
     init_balance: Optional[Balance]
     max_pnl: Optional[PnlData]
     min_pnl: Optional[PnlData]
-    # order_count: int
     sessions: list[TradeSession]
-    pnl_history: List[CompactPnlData]
-    #pnl_data: List[PnlData]
 
     fomo_ratio: Optional[Decimal]
     greed_ratio: Optional[Decimal]

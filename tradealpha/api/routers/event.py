@@ -92,7 +92,7 @@ async def owner_event_dep(event_id: int,
     return await query_event(event_id, user, owner=True, db=db)
 
 
-@router.post('/', response_model=ResponseModel[EventInfo])
+@router.post('', response_model=ResponseModel[EventInfo])
 async def create_event(body: EventCreate,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
@@ -137,7 +137,7 @@ EventUserDep = get_current_user(
 )
 
 
-@router.get('/', response_model=ResponseModel[list[EventInfo]])
+@router.get('', response_model=ResponseModel[list[EventInfo]])
 async def get_events(user: User = Depends(EventUserDep)):
     return OK(
         result=[

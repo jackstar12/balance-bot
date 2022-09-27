@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
+from common import config
 from tradealpha.common.models.gain import Gain
 from tradealpha.common.utils import calc_percentage, calc_percentage_diff
 from tradealpha.common.models import OrmBaseModel
@@ -59,6 +60,20 @@ class Balance(Amount):
             time=min(self.time, other.time) if self.time else None,
             extra_currencies=(self.extra_currencies or []) + (other.extra_currencies or [])
         )
+
+    def to_string(self, display_extras=False):
+        ccy = self.currency
+        string = f'{round(self.unrealized, ndigits=config.CURRENCY_PRECISION.get(ccy, 3))}{ccy}'
+
+        if self.extra_currencies and display_extras:
+            currencies = " / ".join(
+                f'{amount.unrealized}{amount.currency}'
+                for amount in self.extra_currencies
+            )
+            string += f'({currencies})'
+
+        return string
+
 
     def get_currency(self, currency: str):
         if currency == self.currency:

@@ -28,12 +28,11 @@ if TYPE_CHECKING:
 
 async def calc_daily(client: Client,
                      amount: int = None,
-                     string=False,
                      throw_exceptions=False,
                      since: datetime = None,
                      to: datetime = None,
                      currency: str = None,
-                     db: AsyncSession = None) -> Union[List[Interval], str]:
+                     db: AsyncSession = None) -> List[Interval]:
     """
     Calculates daily balance changes for a given client.
     :param since:
@@ -47,7 +46,7 @@ async def calc_daily(client: Client,
     """
     now = utils.utc_now()
 
-    currency = currency or '$'
+    currency = currency or 'USD'
     since = since or datetime.fromtimestamp(0, pytz.utc)
     to = to or now
 
@@ -93,15 +92,11 @@ async def calc_daily(client: Client,
         if throw_exceptions:
             raise UserInputError(reason='Got no data for this user')
         else:
-            return "" if string else []
+            return []
 
-    if string:
-        results = PrettyTable(
-            field_names=["Date", "Amount", "Diff", "Diff %"]
-        )
-    else:
-        results = []
+    results = []
 
+    # TODO: Optimize transfers
     offset_gen = transfer_gen(client,
                               [t for t in client.transfers if history[0].time < t.time < history[-1].time],
                               reset=True)
@@ -114,15 +109,13 @@ async def calc_daily(client: Client,
             offsets = offset_gen.send(current.time)
         except StopIteration:
             offsets = {}
-        values = Interval.create(
-            prev.get_currency(client.currency),
-            current.get_currency(client.currency),
-            offsets.get(client.currency, 0)
+        results.append(
+            Interval.create(
+                prev.get_currency(client.currency),
+                current.get_currency(client.currency),
+                offsets.get(client.currency, 0)
+            )
         )
-        if string:
-            results.add_row([*values])
-        else:
-            results.append(values)
 
     return results
 

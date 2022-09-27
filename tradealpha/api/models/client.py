@@ -16,7 +16,7 @@ from tradealpha.api.models.transfer import Transfer
 
 
 def get_query_params(id: set[InputID] = Query(default=[]),
-                     currency: str = Query(default='$'),
+                     currency: str = Query(default='USD'),
                      since: datetime = Query(default=None),
                      to: datetime = Query(default=None),
                      limit: int = Query(default=None)):

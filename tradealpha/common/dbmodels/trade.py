@@ -192,13 +192,7 @@ class Trade(Base, Serializer, CurrencyMixin):
 
     @hybrid_property
     def compact_pnl_data(self):
-        return [
-            CompactPnlData(
-                ts=int(pnl_data.time.timestamp()),
-                realized=pnl_data.realized,
-                unrealized=pnl_data.unrealized
-            ) for pnl_data in self.pnl_data
-        ]
+        return [pnl_data.compact for pnl_data in self.pnl_data]
 
     @hybrid_property
     def pnl_history(self):

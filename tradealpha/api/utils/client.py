@@ -248,7 +248,7 @@ class ClientCache(Generic[T]):
             cached_last_exec = data[client.cache_hash][0]
             cached_query_params: QueryParams = data[client.cache_hash][1]
 
-            if last_exec and False:
+            if last_exec:
                 self.client_last_exec[client_id] = last_exec
 
                 if (
