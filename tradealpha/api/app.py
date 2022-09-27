@@ -50,6 +50,7 @@ app = FastAPI(
         "name": "Apache 2.0",
         "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
     },
+
 )
 
 # app.add_middleware(SessionMiddleware, secret_key='SECRET')
@@ -58,7 +59,7 @@ app = FastAPI(
 
 OAUTH2_CLIENT_ID = os.environ.get('OAUTH2_CLIENT_ID')
 OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET')
-OAUTH2_REDIRECT_URI = os.environ.get('DISCORD_AUTH_REDIRECT')
+OAUTH2_REDIRECT_URI = os.environ.get('REDIRECT_BASE_URI')
 
 assert OAUTH2_CLIENT_SECRET
 assert OAUTH2_CLIENT_ID
@@ -73,23 +74,29 @@ discord_oauth = DiscordOAuth2(
     OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, scopes=['identify', 'email', 'guilds']
 )
 
+OAUTH_PREFIX = '/oauth/discord'
+
 app.include_router(
     fastapi_users.get_custom_oauth_router(
         discord_oauth,
         user_schema=UserRead,
         backend=auth_backend,
         state_secret="SECRET",
+        redirect_url=OAUTH2_REDIRECT_URI + OAUTH_PREFIX + '/callback'
     ),
     prefix=PREFIX + '/oauth/discord'
 )
+
+ASSOC_PREFIX = PREFIX + '/oauth/discord/associate'
 
 app.include_router(
     fastapi_users.get_oauth_associate_router(
         discord_oauth,
         user_schema=UserRead,
         state_secret="SECRET",
+        redirect_url=OAUTH2_REDIRECT_URI + ASSOC_PREFIX + '/callback'
     ),
-    prefix=PREFIX + '/oauth/discord/associate'
+    prefix=ASSOC_PREFIX
 )
 
 for module in (
