@@ -37,13 +37,16 @@ router = create_crud_router(prefix="/label",
                             create_schema=CreateLabel,
                             add_filters=label_filter)
 
-group_router = create_crud_router(prefix="/group",
+group_router = create_crud_router(prefix="/label/group",
                                   table=LabelGroupDB,
                                   read_schema=LabelGroupInfo,
                                   create_schema=LabelGroupCreate,
                                   eager_loads=[LabelGroupDB.labels])
 
-router.include_router(group_router)
+group_router.include_router(router)
+router = group_router
+
+#router.include_router(group_router)
 
 
 def add_trade_filters(stmt, user: User, trade_id: int):

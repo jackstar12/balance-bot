@@ -10,8 +10,6 @@ from tradealpha.api.models.trade import Trade
 
 from tests.mockexchange import MockExchange
 from tradealpha.common.dbmodels import Event, Client, EventScore
-from tradealpha.common import utils
-from tradealpha.api.app import app
 from tradealpha.common.dbsync import Base
 from tradealpha.common.dbasync import REDIS_URI
 from tradealpha.common.messenger import Messenger, NameSpaceInput

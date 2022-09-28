@@ -57,20 +57,21 @@ async def set_labels(trade_id: int,
         trade.notes = body.notes
 
     if body.labels:
-        added = body.labels.label_ids - set(trade.label_ids)
+        added = body.labels.label_ids - set(label.id for label in trade.labels)
         for label_id in added:
-            await db.execute(
+            res = await db.execute(
                 insert(trade_association).values(
                     trade_id=trade_id,
                     label_id=label_id
                 ),
             )
+            pass
 
         await db.execute(
             delete(trade_association).where(
                 LabelDB.id == trade_association.c.label_id,
                 LabelDB.group_id.in_(body.labels.group_ids),
-                LabelDB.id.in_(body.labels.label_ids)
+                ~LabelDB.id.in_(body.labels.label_ids)
             ),
         )
     await db.commit()

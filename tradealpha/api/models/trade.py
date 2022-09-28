@@ -72,4 +72,3 @@ class LabelUpdate(BaseModel):
 class UpdateTrade(BaseModel):
     labels: Optional[LabelUpdate]
     notes: Optional[DocumentModel]
-

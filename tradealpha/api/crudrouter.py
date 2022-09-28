@@ -39,8 +39,7 @@ def create_crud_router(prefix: str,
 
     router = APIRouter(
         tags=[prefix],
-        prefix=prefix,
-        dependencies=dependencies
+        dependencies=dependencies,
     )
 
     def read_one(entity_id: int, user: User, db: AsyncSession, **kwargs):
@@ -63,11 +62,10 @@ def create_crud_router(prefix: str,
             session=db
         )
 
-    @router.post('', response_model=read_schema)
+    @router.post(prefix, response_model=read_schema)
     async def create(body: create_schema,
                      user: User = Depends(CurrentUser),
-                     db: AsyncSession = Depends(get_db),
-                     **kwargs):
+                     db: AsyncSession = Depends(get_db)):
         instance = table(**body.dict())
         if hasattr(instance, 'user'):
             instance.user = user
@@ -75,12 +73,11 @@ def create_crud_router(prefix: str,
         await db.commit()
         return read_schema.from_orm(instance)
 
-    @router.delete('/{entity_id}')
+    @router.delete(prefix + '/{entity_id}')
     async def delete_one(entity_id: int,
                          user: User = Depends(CurrentUser),
-                         db: AsyncSession = Depends(get_db),
-                         **kwargs):
-        entity = await read_one(entity_id, user, db, **kwargs)
+                         db: AsyncSession = Depends(get_db)):
+        entity = await read_one(entity_id, user, db)
         if entity:
             await db.delete(entity)
             await db.commit()
@@ -88,11 +85,21 @@ def create_crud_router(prefix: str,
         else:
             return NotFound('Invalid id')
 
-    @router.get('', response_model=list[read_schema])
+    @router.get(prefix + '/{entity_id}', response_model=read_schema)
+    async def get_one(entity_id: int,
+                      user: User = Depends(CurrentUser),
+                      db: AsyncSession = Depends(get_db)):
+        entity = await read_one(entity_id, user, db)
+
+        if entity:
+            return read_schema.from_orm(entity)
+        else:
+            return NotFound('Invalid id')
+
+    @router.get(prefix, response_model=list[read_schema])
     async def get_all(user: User = Depends(CurrentUser),
-                      db: AsyncSession = Depends(get_db),
-                      **kwargs):
-        results = await read_all(user, db, **kwargs)
+                      db: AsyncSession = Depends(get_db)):
+        results = await read_all(user, db)
 
         return OK(
             detail='OK',
@@ -102,25 +109,12 @@ def create_crud_router(prefix: str,
             ]
         )
 
-    @router.get('/{entity_id}', response_model=read_schema)
-    async def get_one(entity_id: int,
-                      user: User = Depends(CurrentUser),
-                      db: AsyncSession = Depends(get_db),
-                      **kwargs):
-        entity = await read_one(entity_id, user, db, **kwargs)
-
-        if entity:
-            return read_schema.from_orm(entity)
-        else:
-            return NotFound('Invalid id')
-
-    @router.patch('/{entity_id}', response_model=read_schema)
+    @router.patch(prefix + '/{entity_id}', response_model=read_schema)
     async def update_one(entity_id: int,
                          body: update_schema,
                          user: User = Depends(CurrentUser),
-                         db: AsyncSession = Depends(get_db),
-                         **kwargs):
-        entity = await read_one(entity_id, user, db, **kwargs)
+                         db: AsyncSession = Depends(get_db)):
+        entity = await read_one(entity_id, user, db)
 
         if entity:
             for key, value in body.dict(exclude_none=True).items():
