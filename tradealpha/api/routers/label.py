@@ -55,64 +55,60 @@ def add_trade_filters(stmt, user: User, trade_id: int):
     )
 
 
-@router.post('/trade')
-async def add_label(body: AddLabel,
-                    user: User = Depends(CurrentUser),
-                    db: AsyncSession = Depends(get_db)):
-    verify_trade_id = await db_exec(
-        add_trade_filters(
-            select(TradeDB.id),
-            user=user,
-            trade_id=body.trade_id
-        ),
-        session=db
-    )
-
-    if not verify_trade_id:
-        return BadRequest('Invalid Trade ID')
-
-    verify_label_id = await db_select(
-        LabelDB,
-        id=body.label_id,
-        user_id=user.id,
-        session=db
-    )
-
-    if not verify_label_id:
-        return BadRequest('Invalid Label ID')
-
-    await db_exec(
-        insert(trade_association).values(
-            trade_id=body.trade_id,
-            label_id=body.label_id
-        ),
-        session=db
-    )
-    await db.commit()
-
-    return OK('Success')
-
-
-@router.delete('/trade')
-async def remove_label(body: RemoveLabel,
-                       user: User = Depends(CurrentUser),
-                       db: AsyncSession = Depends(get_db)):
-    trade = await db_first(
-        add_trade_filters(select(Trade), user, body.trade_id),
-        Trade.labels
-    )
-    label = await db_first(
-        select(LabelDB).filter(
-            LabelDB.id == body.label_id,
-            LabelDB.client_id == body.client_id
-        )
-    )
-    if label:
-        if label in trade.labels:
-            trade.labels.remove(label)
-        else:
-            return BadRequest('Trade already has this label')
-    else:
-        return NotFound('Invalid Label ID')
-
-
+#@router.post('/trade')
+#async def add_label(body: AddLabel,
+#                    user: User = Depends(CurrentUser),
+#                    db: AsyncSession = Depends(get_db)):
+#    verify_trade_id = await db_exec(
+#        add_trade_filters(
+#            select(TradeDB.id),
+#            user=user,
+#            trade_id=body.trade_id
+#        ),
+#        session=db
+#    )
+#
+#    if not verify_trade_id:
+#        return BadRequest('Invalid Trade ID')
+#
+#    verify_label_id = await db_select(
+#        LabelDB,
+#        id=body.label_id,
+#        user_id=user.id,
+#        session=db
+#    )
+#
+#    if not verify_label_id:
+#        return BadRequest('Invalid Label ID')
+#
+#    await db.execute(
+#        insert(trade_association).values(
+#            trade_id=body.trade_id,
+#            label_id=body.label_id
+#        ),
+#    )
+#    await db.commit()
+#
+#    return OK('Success')
+#
+#
+#@router.delete('/trade')
+#async def remove_label(body: RemoveLabel,
+#                       user: User = Depends(CurrentUser),
+#                       db: AsyncSession = Depends(get_db)):
+#    trade = await db_first(
+#        add_trade_filters(select(Trade), user, body.trade_id),
+#        Trade.labels
+#    )
+#    label = await db_first(
+#        select(LabelDB).filter(
+#            LabelDB.id == body.label_id,
+#        )
+#    )
+#    if label:
+#        if label in trade.labels:
+#            trade.labels.remove(label)
+#        else:
+#            return BadRequest('Trade already has this label')
+#    else:
+#        return NotFound('Invalid Label ID')

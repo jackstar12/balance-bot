@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from common import config
+from tradealpha.common import config
 from tradealpha.common.models.gain import Gain
 from tradealpha.common.utils import calc_percentage, calc_percentage_diff
 from tradealpha.common.models import OrmBaseModel

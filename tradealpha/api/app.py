@@ -100,6 +100,7 @@ app.include_router(
 
 for module in (
         # auth,
+        discord,
         client,
         label,
         analytics,

@@ -64,7 +64,12 @@ class DetailledTrade(Trade):
         extra = Extra.ignore
 
 
+class LabelUpdate(BaseModel):
+    group_ids: set[InputID]
+    label_ids: set[InputID]
+
+
 class UpdateTrade(BaseModel):
-    label_ids: Optional[list[InputID]]
+    labels: Optional[LabelUpdate]
     notes: Optional[DocumentModel]
 

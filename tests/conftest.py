@@ -6,7 +6,7 @@ from typing import Any, Callable, Optional
 import pytest
 from aioredis import Redis
 
-from api.models.trade import Trade
+from tradealpha.api.models.trade import Trade
 
 from tests.mockexchange import MockExchange
 from tradealpha.common.dbmodels import Event, Client, EventScore

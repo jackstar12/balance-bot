@@ -5,12 +5,12 @@ from typing import List, Type, Union
 from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import conlist
-from sqlalchemy import select, asc
+from sqlalchemy import select, asc, delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
 import tradealpha.api.utils.client as client_utils
-from common.models.compactpnldata import CompactPnlData
+from tradealpha.common.dbmodels.trade import trade_association
 from tradealpha.api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
 from tradealpha.api.models.client import get_query_params
@@ -56,16 +56,23 @@ async def set_labels(trade_id: int,
     if body.notes:
         trade.notes = body.notes
 
-    if len(body.label_ids) > 0:
-        trade.labels = await db_all(
-            select(LabelDB).filter(
-                LabelDB.id.in_(body.label_ids),
-                LabelDB.user_id == user.id
+    if body.labels:
+        added = body.labels.label_ids - set(trade.label_ids)
+        for label_id in added:
+            await db.execute(
+                insert(trade_association).values(
+                    trade_id=trade_id,
+                    label_id=label_id
+                ),
+            )
+
+        await db.execute(
+            delete(trade_association).where(
+                LabelDB.id == trade_association.c.label_id,
+                LabelDB.group_id.in_(body.labels.group_ids),
+                LabelDB.id.in_(body.labels.label_ids)
             ),
-            session=db
         )
-    else:
-        trade.labels = []
     await db.commit()
     return DetailledTrade.from_orm(trade)
 

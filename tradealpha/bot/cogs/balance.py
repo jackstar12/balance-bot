@@ -7,7 +7,7 @@ from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 from prettytable import PrettyTable
 
-from common.utils import date_string
+from tradealpha.common.utils import date_string
 from tradealpha.common.dbasync import async_session
 from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
