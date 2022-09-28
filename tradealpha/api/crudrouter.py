@@ -26,9 +26,11 @@ def create_crud_router(prefix: str,
                        eager_loads: list[TEager] = None,
                        dependencies: list = None):
     def default_filter(stmt: TStmt, user: User) -> Select:
-        return stmt.where(
-            table.user_id == user.id
-        )
+        if hasattr(table, 'user_id'):
+            return stmt.where(
+                table.user_id == user.id
+            )
+        return stmt
 
     eager = eager_loads or []
 
