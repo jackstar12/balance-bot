@@ -45,7 +45,7 @@ class EventCreate(BaseModel):
     public: bool
     location: Union[DiscordLocation, WebLocation] = Field(..., disriminator='platform')
     max_registrations: int
-    rekt_treshhold: Decimal
+    rekt_threshold: Decimal
     currency: str
 
 

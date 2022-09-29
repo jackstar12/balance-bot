@@ -25,8 +25,8 @@ branch_labels = None
 depends_on = None
 
 
-class LabelTmp(Label):
-    user_id = sa.Column(sa.ForeignKey(User.id, ondelete="CASCADE"))
+# class LabelTmp(Label):
+#     user_id = sa.Column(sa.ForeignKey(User.id, ondelete="CASCADE"))
 
 
 def upgrade():

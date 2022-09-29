@@ -90,7 +90,7 @@ class EventService(BaseService):
                     db=self._db, since=event.start, to=event.end
                 )
                 score.update(balance, offset)
-                if score.rel_value < event.rekt_treshhold:
+                if score.rel_value < event.rekt_threshold:
                     score.rekt_on = balance.time
                     await self._messenger.v2_pub_instance(score, Category.REKT)
                 await self._db.flush()

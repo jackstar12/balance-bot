@@ -73,7 +73,7 @@ discord_oauth = DiscordOAuth2(
     OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, scopes=['identify', 'email', 'guilds']
 )
 
-OAUTH_PREFIX = PREFIX + '/oauth/discord'
+OAUTH_PREFIX = '/oauth/discord'
 
 app.include_router(
     fastapi_users.get_custom_oauth_router(
@@ -83,10 +83,11 @@ app.include_router(
         state_secret="SECRET",
         redirect_url=OAUTH2_REDIRECT_URI + OAUTH_PREFIX + '/callback'
     ),
-    prefix=OAUTH_PREFIX
+    prefix=PREFIX + OAUTH_PREFIX
 )
 
-ASSOC_PREFIX = PREFIX + '/oauth/discord/associate'
+
+ASSOC_PREFIX = OAUTH_PREFIX + '/associate'
 
 app.include_router(
     fastapi_users.get_oauth_associate_router(
@@ -95,7 +96,7 @@ app.include_router(
         state_secret="SECRET",
         redirect_url=OAUTH2_REDIRECT_URI + ASSOC_PREFIX + '/callback'
     ),
-    prefix=ASSOC_PREFIX
+    prefix=PREFIX + ASSOC_PREFIX
 )
 
 for module in (

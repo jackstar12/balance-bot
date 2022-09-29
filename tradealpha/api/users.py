@@ -1,3 +1,4 @@
+import os
 import uuid
 from typing import Optional, Generic, Any
 
@@ -15,6 +16,7 @@ from httpx_oauth.oauth2 import BaseOAuth2
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
+from starlette.responses import Response, RedirectResponse
 
 from tradealpha.api.usermanager import UserManager
 from tradealpha.api.oauth import get_oauth_router
@@ -108,11 +110,26 @@ def get_redis_strategy():
     return RedisStrategy(redis=redis, lifetime_seconds=48 * 60 * 60)
 
 
+OAUTH2_REDIRECT_URI = os.environ.get('REDIRECT_BASE_URI')
+
+assert OAUTH2_REDIRECT_URI
+
+
+# class CustomTransport(CookieTransport):
+#     def get_login_response(self, token: str, response: Response) -> Any:
+#         resp = RedirectResponse(url=)
+#
+#         super().get_login_response(token, response)
+#         response.st
+
+
+
 auth_backend = AuthenticationBackend(
     name="cookie",
     transport=CookieTransport(settings.session_cookie_name, cookie_secure=False),
     get_strategy=get_redis_strategy
 )
+
 
 fastapi_users = CustomFastAPIUsers(
     get_user_manager,

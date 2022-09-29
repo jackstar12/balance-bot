@@ -89,7 +89,7 @@ class Event(Base, Serializer):
     public = Column(Boolean, default=False, nullable=False)
     location = Column(Location, nullable=False)
     currency = Column(String(10), nullable=False, server_default='USD')
-    rekt_treshhold = Column(Numeric, nullable=False, server_default='-99')
+    rekt_threshold = Column(Numeric, nullable=False, server_default='-99')
 
     owner: User = relationship('User', lazy='noload')
 
