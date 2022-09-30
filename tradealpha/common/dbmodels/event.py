@@ -42,6 +42,7 @@ class LocationModel(OrmBaseModel):
 
 
 class EventState(Enum):
+    UPCOMING = "upcoming"
     ACTIVE = "active"
     REGISTRATION = "registration"
     ARCHIVED = "archived"
@@ -119,6 +120,8 @@ class Event(Base, Serializer):
     def state(self):
         now = datetime.now(pytz.utc)
         res = []
+        if self.registration_start > now:
+            res.append(EventState.UPCOMING)
         if self.end < now:
             res.append(EventState.ARCHIVED)
         if self.start <= now <= self.end:
@@ -153,7 +156,7 @@ class Event(Base, Serializer):
             raise ValueError("Registration end can't be after event end.")
         if self.registration_start > self.start:
             raise ValueError("Registration start should be before event start.")
-        if self.max_registrations < len(self.registrations):
+        if self.max_registrations < len(self.all_clients):
             raise ValueError("Max Registrations can not be less than current registration count")
 
     async def validate_location(self, redis: Redis):

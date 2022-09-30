@@ -17,6 +17,7 @@ from tradealpha.common.models.document import DocumentModel
 
 import tradealpha.common.dbmodels.chapter as db_chapter
 from dateutil.relativedelta import relativedelta
+
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels.chapter import Chapter
 
@@ -35,6 +36,7 @@ class JournalType(Enum):
 class JournalData(TypedDict):
     chapter_interval: Optional[timedelta]
 
+
 class IntervalType(Enum):
     DAY = "day"
     WEEK = "week"
@@ -52,7 +54,7 @@ class Journal(Base, BaseMixin):
     chapter_interval = sa.Column(sa.Enum(IntervalType), nullable=True)
     type = sa.Column(sa.Enum(JournalType), default=JournalType.MANUAL)
 
-    #data: JournalData = sa.Column(Data, nullable=True)
+    # data: JournalData = sa.Column(Data, nullable=True)
 
     clients = orm.relationship(
         'Client',
@@ -122,17 +124,21 @@ class Journal(Base, BaseMixin):
             new_chapter.doc = template.doc
             new_chapter.doc.content = template.doc.content[0:]
 
+            data = {
+                'clientIds': [str(id) for id in self.client_ids]
+            }
+
+            if new_chapter.data:
+                data['dates'] = {
+                    'since': new_chapter.data.start_date,
+                    'to': new_chapter.data.end_date,
+                }
+
             new_chapter.doc[0] = DocumentModel(
                 type="title",
                 attrs={
                     'level': 1,
-                    'data': {
-                        'dates': {
-                            'since': new_chapter.data.start_date,
-                            'to': new_chapter.data.end_date,
-                        },
-                        'clientIds': [str(id) for id in self.client_ids]
-                    }
+                    'data': data
                 },
                 content=[
                     DocumentModel(

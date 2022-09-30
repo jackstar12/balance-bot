@@ -74,22 +74,22 @@ def query_event(event_id: int,
             EventDB.id == event_id
         ),
         user=user,
-        owner=owner
+        owner=owner,
     )
 
-    return db_first(stmt, *eager, session=db)
+    return db_first(stmt, *eager, EventDB.registrations, session=db)
 
 
-async def event_dep(event_id: int,
-                    user: User = Depends(CurrentUser),
-                    db: AsyncSession = Depends(get_db)) -> EventDB:
-    return await query_event(event_id, user, db=db)
+def create_event_dep(*eager, owner=False):
+    async def dependency(event_id: int,
+                         user: User = Depends(CurrentUser),
+                         db: AsyncSession = Depends(get_db)) -> EventDB:
+        return await query_event(event_id, user, *eager, owner=owner, db=db)
+
+    return dependency
 
 
-async def owner_event_dep(event_id: int,
-                          user: User = Depends(CurrentUser),
-                          db: AsyncSession = Depends(get_db)) -> EventDB:
-    return await query_event(event_id, user, owner=True, db=db)
+default_event = create_event_dep()
 
 
 @router.post('', response_model=ResponseModel[EventInfo])
@@ -150,7 +150,6 @@ async def get_events(user: User = Depends(EventUserDep)):
 async def get_event(event_id: int,
                     user: User = Depends(CurrentUser),
                     db: AsyncSession = Depends(get_db)):
-
     await EventDB.save_leaderboard(event_id, db)
     await db.commit()
 
@@ -176,7 +175,6 @@ async def get_event_registration(event_id: int,
                                  client_id: int,
                                  user: User = Depends(CurrentUser),
                                  db: AsyncSession = Depends(get_db)):
-
     score = await db_unique(
         add_event_filters(
             select(EventScoreDB
@@ -211,13 +209,13 @@ class EventUpdate(BaseModel):
             raise ValueError(f'Can not udpate date from the past')
 
 
+owner_event = create_event_dep(EventDB.registrations, owner=True)
+
+
 @router.patch('/{event_id}', response_model=ResponseModel[EventInfo])
 async def update_event(body: EventUpdate,
-                       event: EventDB = Depends(owner_event_dep),
-                       db: AsyncSession = Depends(get_db),
-                       messenger: Messenger = Depends(get_messenger)):
-    assert db.sync_session == object_session(event)
-    now = datetime.now(pytz.utc)
+                       event: EventDB = Depends(owner_event),
+                       db: AsyncSession = Depends(get_db)):
 
     # dark magic
     for key, value in body.dict(exclude_none=True).items():
@@ -231,9 +229,6 @@ async def update_event(body: EventUpdate,
 
     await db.commit()
 
-    messenger.pub_channel(TableNames.EVENT, Category.UPDATE,
-                          {'id': event.id}, event.id)
-
     return OK('Event Updated', result=EventInfo.from_orm(event))
 
 
@@ -245,13 +240,11 @@ async def delete_event(event_id: int,
     result = await db_del_filter(
         EventDB,
         session=db,
-        id=event_id, owner_id=user.id
+        id=event_id,
+        owner_id=user.id
     )
     if result.rowcount == 1:
         await db.commit()
-        messenger.pub_channel(TableNames.EVENT,
-                              Category.DELETE,
-                              {'id': event_id})
         return OK('Deleted')
     else:
         return BadRequest('You can not delete this event')
@@ -259,7 +252,7 @@ async def delete_event(event_id: int,
 
 @router.post('/{event_id}/registrations/{client_id}')
 async def register_event(client_id: int,
-                         event: EventDB = Depends(event_dep),
+                         event: EventDB = Depends(default_event),
                          db: AsyncSession = Depends(get_db),
                          user: User = Depends(CurrentUser)):
     client_id = await db_first(
@@ -290,7 +283,7 @@ async def register_event(client_id: int,
 
 @router.delete('/{event_id}/registrations/{client_id}')
 async def unregister_event(client_id: int,
-                           event: EventDB = Depends(event_dep),
+                           event: EventDB = Depends(default_event),
                            db: AsyncSession = Depends(get_db),
                            user: User = Depends(CurrentUser)):
     client_id = await db_first(
