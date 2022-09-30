@@ -116,6 +116,11 @@ class Event(Base, Serializer):
         except sqlalchemy.exc.InvalidRequestError:
             return [score.client for score in self.leaderboard]
 
+    def validate_time_range(self, since: datetime = None, to: datetime = None):
+        since = max(self.start, since) if since else self.start
+        to = min(self.end, to) if to else self.end
+        return since, to
+
     @hybrid_property
     def state(self):
         now = datetime.now(pytz.utc)
@@ -224,6 +229,8 @@ class Event(Base, Serializer):
             )
         )
 
+        await db.flush()
+
         await db.execute(
             update(EventScore).values(
                 last_rank_update=now
@@ -262,7 +269,7 @@ class Event(Base, Serializer):
     def get_discord_embed(self, title: str, dc_client: discord.Client, registrations=False):
         embed = discord.Embed(title=title)
         embed.add_field(name="Name", value=self.name)
-        # embed.add_field(name="Description", value=self.description)
+        embed.add_field(name="Channel", value=f'<#{self.channel_id}>')
         embed.add_field(name="Start", value=self.start, inline=False)
         embed.add_field(name="End", value=self.end)
         embed.add_field(name="Registration Start", value=self.registration_start, inline=False)

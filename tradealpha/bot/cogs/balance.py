@@ -7,6 +7,7 @@ from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 from prettytable import PrettyTable
 
+from tradealpha.common.dbmodels.event import EventState
 from tradealpha.common.utils import date_string
 from tradealpha.common.dbasync import async_session
 from tradealpha.common.dbmodels.client import Client
@@ -103,18 +104,28 @@ class BalanceCog(CogBase):
             currency = 'USD'
         currency = currency.upper()
 
+        since_start = time is None
+
         if ctx.guild:
             registered_client = await dbutils.get_discord_client(
                 user.id, ctx.guild_id, client_eager=[Client.events]
             )
             clients = [registered_client]
+
+            event = await dbutils.get_discord_event(ctx.guild_id,
+                                                    ctx.channel_id,
+                                                    EventState.ACTIVE,
+                                                    throw_exceptions=False)
+
+            if event:
+                time, to = event.validate_time_range(time)
+
         else:
             discord_user = await dbutils.get_discord_user(
                 ctx.author_id, eager_loads=[(DiscordUser.clients, Client.events, DiscordUser.global_associations)]
             )
             clients = discord_user.clients
 
-        since_start = time is None
         time_str = utils.readable_time(time)
 
         await ctx.defer()

@@ -207,6 +207,7 @@ class EventUpdate(BaseModel):
         now = datetime.now(pytz.utc)
         if v and v < now:
             raise ValueError(f'Can not udpate date from the past')
+        return v
 
 
 owner_event = create_event_dep(EventDB.registrations, owner=True)

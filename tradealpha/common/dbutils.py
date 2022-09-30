@@ -39,7 +39,7 @@ async def get_client_history(client: db_client.Client,
     ))
 
     if init_time and init_time != since:
-        initial = await client.get_balance_at_time(client.id, init_time, async_session)
+        initial = await client.get_balance_at_time(init_time, async_session)
 
     if not initial:
         try:

@@ -228,7 +228,7 @@ class BasicBalanceService(_BalanceServiceBase):
         for client in await db_all(
                 self._all_client_stmt.filter(
                     or_(
-                        Client.is_premium == False,
+                        Client.type == ClientType.BASIC,
                         Client.exchange.in_([
                             ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
                             if not ExchangeCls.supports_extended_data
@@ -246,7 +246,7 @@ class BasicBalanceService(_BalanceServiceBase):
     async def run_forever(self):
         while True:
             # For efficiency reasons, balances are always grouped in 2-second intervals
-            # (less commits to database)
+            # (fewer round trips to database)
             balances = [await self._balance_queue.get()]
 
             await asyncio.sleep(2)
@@ -274,7 +274,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
         clients = await db_all(
             self._all_client_stmt.filter(
-                Client.is_premium,
+                Client.is_full,
                 Client.exchange.in_([
                     ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
                     if ExchangeCls.supports_extended_data
@@ -287,7 +287,6 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 await self.add_client(client)
             except Exception as e:
                 self._logger.error('Could not add client')
-
         #
         return
         await asyncio.gather(
@@ -311,9 +310,6 @@ class ExtendedBalanceService(_BalanceServiceBase):
         worker = await self.get_worker(client_id, create_if_missing=True)
         if worker:
             await self._refresh_worker(worker)
-            # async with self._db_lock:
-            #    trade = await self._db.get(Trade, trade_id)
-            #    await self._db.refresh(trade)
 
     async def _on_trade_finished(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=False)
@@ -325,8 +321,8 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 # there is no need to keep it subscribed
                 unsubscribe_symbol = all(
                     trade.symbol != symbol
-                    for cur_worker in self._workers_by_id.values() if
-                    cur_worker.client.exchange == worker.client.exchange
+                    for cur_worker in self._workers_by_id.values()
+                    if cur_worker.client.exchange == worker.client.exchange
                     for trade in cur_worker.client.open_trades
                 )
                 if unsubscribe_symbol:

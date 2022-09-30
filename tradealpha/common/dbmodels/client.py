@@ -223,8 +223,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     def validate(self):
         pass
 
-    #nc def get_transfers
-
     async def calc_gain(self,
                         event: Event,
                         since: datetime,
@@ -334,29 +332,25 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         elif self.user_id:
             return True
 
-    @classmethod
-    async def get_balance_at_time(cls, client_id: int, time: datetime, db: AsyncSession) -> Balance:
+    async def get_balance_at_time(self, time: datetime, db: AsyncSession) -> Balance:
         DbBalance = db_balance.Balance
-        stmt = select(DbBalance).where(
-            DbBalance.time < time,
-            DbBalance.client_id == client_id
-        ).order_by(
-            desc(DbBalance.time)
-        )
-        balance = await db_first(stmt, session=db)
-        if not balance:
-            balance = await db_first(
-                select(DbBalance).where(
-                    DbBalance.client_id == client_id
-                ).order_by(DbBalance.time),
-                session=db
+        balance = None
+        if time:
+            stmt = select(DbBalance).where(
+                DbBalance.time < time,
+                DbBalance.client_id == self.id
+            ).order_by(
+                desc(DbBalance.time)
             )
+            balance = await db_first(stmt, session=db)
+        if not balance:
+            balance = await self.initial(db)
         return balance
 
     async def get_exact_balance_at_time(self, time: datetime, currency: str = None, db: AsyncSession = None) -> BalanceModel:
-        balance = await self.get_balance_at_time(self.id, time, db)
+        balance = await self.get_balance_at_time(time, db)
 
-        if self.is_premium and balance:
+        if self.is_full and balance and time:
             # Probably the most beautiful query I've ever written
             subq = select(
                 PnlData.id.label('pnl_id'),
@@ -381,6 +375,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             )
 
             pnl_data: list[PnlData] = await db_all(full_stmt, session=db)
+
             return db_balance.Balance(
                 client_id=self.id,
                 client=self,
@@ -406,45 +401,24 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         return not all(not event.is_active for event in self.events)
 
     @hybrid_property
-    def is_premium(self):
+    def is_full(self):
         return self.type == ClientType.FULL
 
-    async def initial(self):
-        try:
-            if self.id:
-                return await db_first(self.history.statement.order_by(asc(db_balance.Balance.time)))
-        except ValueError:
-            raise
-            # return balance.Balance(amount=config.REGISTRATION_MINIMUM, currency='$', error=None, extra_kwargs={})
+    async def initial(self, db: AsyncSession):
+        b = db_balance.Balance
+        return await db_first(
+            select(b).where(
+                b.client_id == self.id
+            ).order_by(
+                b.time
+            ),
+            session=db
+        )
 
     def get_event_string(self):
         return ', '.join(
             event.name for event in self.events if event.is_active or event.is_free_for_registration()
         )
-
-    async def get_discord_embed(self, guilds: Optional[List[Guild]] = None):
-
-        embed = discord.Embed(title="User Information")
-
-        def embed_add_value_safe(name, value, **kwargs):
-            if value:
-                embed.add_field(name=name, value=value, **kwargs)
-
-        embed_add_value_safe('Events', self.get_event_string())
-        embed_add_value_safe('Servers', await self.get_guilds_string(guilds), inline=False)
-        embed.add_field(name='Exchange', value=self.exchange)
-        embed.add_field(name='Api Key', value=self.api_key)
-
-        if self.subaccount:
-            embed.add_field(name='Subaccount', value=self.subaccount)
-        for extra in self.extra_kwargs:
-            embed.add_field(name=extra, value=self.extra_kwargs[extra])
-
-        initial = await self.initial()
-        if initial:
-            embed.add_field(name='Initial Balance', value=initial.to_string())
-
-        return embed
 
     def __hash__(self):
         return self.id.__hash__()

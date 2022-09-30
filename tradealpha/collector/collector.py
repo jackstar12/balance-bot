@@ -53,7 +53,7 @@ async def run(session: aiohttp.ClientSession):
                                           data_service=data_service)
     action_service = ActionService(*service_args)
     event_service = EventService(*service_args)
-    services = (data_service, alert_service, pnl_service, event_service, action_service)
+    services = (data_service, alert_service, pnl_service, event_service, action_service, balance_service)
 
     scheduler.start()
     await asyncio.gather(

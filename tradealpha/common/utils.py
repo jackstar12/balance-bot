@@ -7,16 +7,15 @@ import os
 import re
 import sys
 import typing
-from datetime import datetime, timedelta, date
+from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
-from typing import Callable, Optional, Union, Dict, Any
+from typing import Callable, Union, Dict, Any
 from typing import TYPE_CHECKING
 
 import pytz
 
 import tradealpha.common.config as config
-from tradealpha.common.errors import UserInputError
 
 if TYPE_CHECKING:
     pass
@@ -28,6 +27,10 @@ def utc_now():
 
 def date_string(d: date | datetime):
     return d.strftime('%Y-%m-%d')
+
+
+def round_ccy(amount: typing.SupportsRound, ccy: str):
+    return round(amount, ndigits=config.CURRENCY_PRECISION.get(ccy, 3))
 
 
 # Some consts to make TF tables prettier
@@ -101,8 +104,6 @@ def calc_percentage_diff(then: Union[float, Decimal], diff: Union[float, Decimal
 TIn = typing.TypeVar('TIn')
 TOut = typing.TypeVar('TOut')
 CoroOrCallable = Union[Callable[[TIn], TOut], Callable[[TIn], typing.Awaitable[TOut]]]
-
-
 
 
 async def call_unknown_function(fn: CoroOrCallable, *args, **kwargs) -> Any:

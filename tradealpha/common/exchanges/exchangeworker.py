@@ -269,23 +269,17 @@ class ExchangeWorker:
                 date = date or datetime.now(pytz.utc)
                 result = await self.get_balance(date=date)
 
-                if not result:
-                    return
+                if result:
+                    history = client.recent_history
+                    if len(history) > 2:
+                        # If balance hasn't changed at all, why bother keeping it?
+                        if result == history[-1] == history[-2]:
+                            history[-1].time = date
+                            return None
+                    if result.error:
+                        logger.error(f'Error while fetching {client.id=} balance: {result.error}')
 
-                history = client.recent_history
-                if len(history) > 2:
-                    # If balance hasn't changed at all, why bother keeping it?
-                    if result == history[-1] == history[-2]:
-                        history[-1].time = date
-                        return None
-                if result.error:
-                    logger.error(f'Error while fetching {client.id=} balance: {result.error}')
-                else:
-                    if result.realized <= self.rekt_threshold and not client.rekt_on:
-                        client.rekt_on = time
-                        self.messenger.pub_channel(TableNames.CLIENT, Category.REKT, channel_id=client.id,
-                                                   obj={'id': client.id})
-                return result
+            return result
 
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
         if not since:
@@ -371,8 +365,6 @@ class ExchangeWorker:
                 )
 
             await db.flush()
-
-
 
             if executions_by_symbol:
                 for symbol, executions in executions_by_symbol.items():

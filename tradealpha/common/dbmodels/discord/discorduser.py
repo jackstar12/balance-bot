@@ -86,7 +86,7 @@ class DiscordUser(OAuthAccount):
             for extra in client.extra_kwargs:
                 embed.add_field(name=extra, value=client.extra_kwargs[extra])
 
-        initial = await client.initial()
+        initial = await client.initial(async_session)
         if initial:
             embed.add_field(name='Initial Balance', value=initial.to_string())
 

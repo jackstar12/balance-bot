@@ -408,10 +408,13 @@ async def create_history(to_graph: List[Tuple[Client, str]],
     if True:
         for registered_client, name in to_graph:
 
+            if event:
+                start, end = event.validate_time_range(start, end)
+
             history = await dbutils.get_client_history(registered_client,
                                                        init_time=event.start if event else start,
-                                                       since=safe_cmp(max, start, getattr(event, 'start')),
-                                                       to=safe_cmp(min, end, getattr(event, 'end')),
+                                                       since=start,
+                                                       to=end,
                                                        currency=currency)
 
             pnl_data = await db_all(
@@ -421,7 +424,7 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                 ).join(
                     PnlData.trade
                 ).order_by(
-                    asc(PnlData.time)
+                    PnlData.time
                 ),
                 PnlData.trade
             )
@@ -528,7 +531,7 @@ async def get_leaderboard(dc_client: discord.Client,
                                                 ))
                                             ])
 
-    if since:
+    if since and since != event.start:
         now = utc_now()
         scores = [
             EventScore(
