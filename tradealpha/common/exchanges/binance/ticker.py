@@ -42,15 +42,15 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
         await self.close()
 
     async def _subscribe(self, channel: Channel, **kwargs):
-        if channel.value == Channel.TICKER:
+        if channel == Channel.TICKER:
             await self.send_message("SUBSCRIBE", _ticker_stream(kwargs.get("symbol")))
-        elif channel.value is Channel.TRADES:
+        elif channel is Channel.TRADES:
             await self.send_message("SUBSCRIBE", _trade_stream(kwargs.get("symbol")))
 
     async def _unsubscribe(self, channel: Channel, **kwargs):
-        if channel.value == Channel.TICKER:
+        if channel == Channel.TICKER:
             await self.send_message("UNSUBSCRIBE", _ticker_stream(kwargs.get("symbol")))
-        if channel.value == Channel.TRADES:
+        if channel == Channel.TRADES:
             await self.send_message("UNSUBSCRIBE", _trade_stream(kwargs.get("symbol")))
 
     async def send_message(self, method: str, *params: str):

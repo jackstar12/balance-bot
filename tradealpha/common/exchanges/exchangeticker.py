@@ -4,11 +4,7 @@ from typing import Dict
 
 
 from tradealpha.common.models.observer import Observer, Observable
-
-
-class Channel(Enum):
-    TICKER = "ticker"
-    TRADES = "trades"
+from tradealpha.collector.channel import Channel
 
 
 class ExchangeTicker:

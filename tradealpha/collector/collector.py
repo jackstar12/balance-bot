@@ -5,12 +5,9 @@ from apscheduler.executors.asyncio import AsyncIOExecutor
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-import tradealpha.common.dbmodels as dbmodels
 from tradealpha.collector.services.actionservice import ActionService
 from tradealpha.collector.services.eventservice import EventService
 from tradealpha.common.dbasync import redis, async_maker
-from tradealpha.common.config import DATA_PATH, REKT_THRESHOLD
-from tradealpha.common.exchanges import EXCHANGES
 from tradealpha.collector.services.cointracker import CoinTracker
 from tradealpha.collector.services.alertservice import AlertService
 from tradealpha.collector.services.dataservice import DataService

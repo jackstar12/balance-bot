@@ -3,18 +3,13 @@ from enum import Enum
 from typing import Dict
 import sqlalchemy.ext.hybrid
 from tradealpha.collector.errors import InvalidExchangeError
-from tradealpha.common.exchanges.exchangeticker import ExchangeTicker
+from tradealpha.common.exchanges.exchangeticker import ExchangeTicker, Channel
 from tradealpha.collector.services.baseservice import BaseService
 from tradealpha.common import utils
 from tradealpha.common.exchanges import EXCHANGE_TICKERS
 from tradealpha.common.messenger import TableNames
 from tradealpha.common.models.observer import Observer
 from tradealpha.common.models.ticker import Ticker
-
-
-class Channel(Enum):
-    TICKER = "ticker"
-    TRADES = "trades"
 
 
 class DataService(BaseService, Observer):

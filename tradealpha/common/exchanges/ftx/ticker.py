@@ -19,9 +19,9 @@ class FtxTicker(ExchangeTicker):
         await self._ws.close()
 
     async def _subscribe(self, channel: Channel, **kwargs):
-        if channel.value == Channel.TICKER:
+        if channel == Channel.TICKER:
             await self._ws.get_ticker(kwargs['symbol'])
-        elif channel.value is Channel.TRADES:
+        elif channel is Channel.TRADES:
             await self._ws.get_trades(kwargs['symbol'])
 
     async def _on_message(self, msg):
