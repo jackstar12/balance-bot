@@ -3,7 +3,7 @@ from typing import List, Dict
 
 from sqlalchemy import select
 
-from common.redis import TableNames
+from tradealpha.common.redis import TableNames
 from tradealpha.common.dbasync import db_all
 from tradealpha.common.dbmodels.alert import Alert
 from tradealpha.collector.services.baseservice import BaseService
