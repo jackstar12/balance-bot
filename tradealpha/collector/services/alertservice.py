@@ -7,10 +7,10 @@ from tradealpha.common.redis import TableNames
 from tradealpha.common.dbasync import db_all
 from tradealpha.common.dbmodels.alert import Alert
 from tradealpha.collector.services.baseservice import BaseService
-from tradealpha.collector.channel import Channel
+from tradealpha.common.exchanges.channel import Channel
 from tradealpha.collector.services.dataservice import DataService
 from tradealpha.common.enums import Side
-from tradealpha.common.messenger import TableNames as MsgChannel, Category
+from tradealpha.common.messenger import Category
 from tradealpha.common.models.observer import Observer
 from tradealpha.common.models.ticker import Ticker
 

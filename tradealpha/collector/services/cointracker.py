@@ -5,7 +5,7 @@ import pytz
 from sqlalchemy import select
 from tradealpha.common.dbasync import db_all, async_session
 from tradealpha.collector.services.baseservice import BaseService
-from tradealpha.collector.channel import Channel
+from tradealpha.common.exchanges.channel import Channel
 from tradealpha.common.models.observer import Observable, Observer
 import ccxt.async_support as ccxt
 from datetime import datetime, timedelta

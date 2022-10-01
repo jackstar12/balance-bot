@@ -1,10 +1,9 @@
-from enum import Enum
 import aiohttp
 from typing import Dict
 
 
 from tradealpha.common.models.observer import Observer, Observable
-from tradealpha.collector.channel import Channel
+from tradealpha.common.exchanges.channel import Channel
 
 
 class ExchangeTicker:
