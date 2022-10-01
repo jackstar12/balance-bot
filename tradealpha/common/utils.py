@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     pass
 
 
+logger = logging.getLogger(__name__)
+
+
 def utc_now():
     return datetime.now(pytz.utc)
 
@@ -116,13 +119,14 @@ async def call_unknown_function(fn: CoroOrCallable, *args, **kwargs) -> Any:
                 if inspect.isawaitable(res):
                     return await res
                 return res
-        except Exception:
+        except Exception as e:
             print(
                 f'Exception occured while execution {fn} {args=} {kwargs=}'
             )
-            logging.exception(
+            logger.exception(
                 f'Exception occured while execution {fn} {args=} {kwargs=}'
             )
+            raise
 
 
 def validate_kwargs(kwargs: Dict, required: list[str] | set[str]):

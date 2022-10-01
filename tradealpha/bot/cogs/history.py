@@ -108,7 +108,7 @@ class HistoryCog(CogBase):
                       since: datetime = None,
                       to: datetime = None,
                       currency: str = None,
-                      upnl=False,
+                      upnl=True,
                       mode: Literal['balance', 'pnl'] = 'balance'):
         if ctx.guild:
             registered_client = await dbutils.get_discord_client(user.id, ctx.guild.id)
@@ -168,7 +168,8 @@ class HistoryCog(CogBase):
             currency=currency,
             percentage=percentage,
             path=config.DATA_PATH + "tmp.png",
-            mode=mode
+            mode=mode,
+            include_upnl=upnl
         )
 
         file = discord.File(config.DATA_PATH + "tmp.png", "history.png")

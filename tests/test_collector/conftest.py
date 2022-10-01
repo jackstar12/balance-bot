@@ -9,6 +9,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import delete
 
 import tradealpha.collector.collector as collector
+from tradealpha.collector.services.eventservice import EventService
+from tradealpha.common.utils import setup_logger
 from tests.mockexchange import MockExchange
 from tradealpha.common.dbasync import db_select
 from tradealpha.collector.services.balanceservice import ExtendedBalanceService, BasicBalanceService
@@ -33,10 +35,11 @@ def session():
 def run_service(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
+
         async with func(*args, **kwargs) as service:
-            await utils.call_unknown_function(service.init)
+            await service.init()
             task = asyncio.create_task(
-                utils.call_unknown_function(service.run_forever)
+                service.run_forever()
             )
             yield service
             task.cancel()
@@ -45,13 +48,21 @@ def run_service(func):
 
 
 @pytest.fixture(scope='session')
-async def service_args(messenger, redis, session_maker):
+async def http_session():
+
+    logger = setup_logger(debug=True)
+
+    async with aiohttp.ClientSession() as session:
+        yield session
+
+
+@pytest.fixture(scope='session')
+async def service_args(messenger, redis, session_maker, http_session):
     scheduler = AsyncIOScheduler(
         executors={'default': AsyncIOExecutor()}
     )
-    async with aiohttp.ClientSession() as session:
-        scheduler.start()
-        return session, messenger, redis, scheduler, session_maker
+    scheduler.start()
+    return http_session, messenger, redis, scheduler, session_maker
 
 
 @pytest.fixture(scope='session')
@@ -70,6 +81,13 @@ def pnl_service(data_service, service_args):
 @run_service
 def balance_service(data_service, service_args):
     return BasicBalanceService(*service_args, data_service=data_service)
+
+
+@pytest.fixture(scope='session')
+@run_service
+def event_service(data_service, service_args):
+    return EventService(*service_args)
+
 
 
 @pytest.fixture
@@ -91,17 +109,18 @@ async def test_user(db):
 
 
 @pytest.fixture
-async def db_client(request, time, db, test_user, messenger) -> Client:
+async def db_client(pnl_service, request, time, db, test_user, messenger) -> Client:
     async with Messages.create(
-        Channel(TableNames.CLIENT, Category.UPDATE, validate=lambda data: data['state'] == 'synchronizing'),
-        Channel(TableNames.CLIENT, Category.UPDATE, validate=lambda data: data['state'] == 'ok'),
+        #Channel(TableNames.CLIENT, Category.UPDATE, validate=lambda data: data['state'] == 'synchronizing'),
+        #Channel(TableNames.CLIENT, Category.UPDATE, validate=lambda data: data['state'] == 'ok'),
+        Channel(TableNames.CLIENT, Category.ADDED),
         messenger=messenger
     ) as listener:
         request.param.import_since = time
-        client: Client = request.param.create(test_user)
+        client: Client = request.param.get(test_user)
         db.add(client)
         await db.commit()
-        await listener.wait(5)
+        await listener.wait(10)
 
     try:
         yield client

@@ -301,16 +301,17 @@ class Trade(Base, Serializer, CurrencyMixin):
             )
 
         significant = False
-        latest = self.latest_pnl.total if self.latest_pnl else None
+
         live = self.live_pnl.total
         if (
-                not latest
+                not self.latest_pnl
                 or force
                 or self.max_pnl.total == self.min_pnl.total
-                or abs((live - latest) / (self.max_pnl.total - self.min_pnl.total)) > Decimal(.25)
+                or abs((live - self.latest_pnl.total) / (self.max_pnl.total - self.min_pnl.total)) > Decimal(.25)
         ):
             db.add(self.live_pnl)
             self.latest_pnl = self.live_pnl
+            latest = self.latest_pnl.total
             if latest:
                 if latest > self.max_pnl.total:
                     self.max_pnl = self.latest_pnl

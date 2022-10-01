@@ -33,19 +33,19 @@ async def test_invalid_client(create_client, data):
     indirect=True
 )
 @pytest.mark.parametrize(
-    'register_client',
+    'confirmed_client',
     SANDBOX_CLIENTS,
     indirect=True
 )
-async def test_valid_client(redis_messages, create_client, register_client):
+async def test_valid_client(redis_messages, create_client, confirmed_client):
     await redis_messages.wait(0.5)
 
 
 @pytest.mark.parametrize(
-    'register_client',
+    'confirmed_client',
     SANDBOX_CLIENTS,
     indirect=True
 )
-async def test_overview(register_client, api_client):
+async def test_overview(confirmed_client, api_client):
     resp = api_client.get('/api/v1/client')
     assert resp.status_code == 200

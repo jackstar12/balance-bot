@@ -98,11 +98,11 @@ async def create_event(body: EventCreate,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     event = EventDB(
-        **body.dict(exclude={"actions"}),
+        **body.__dict__,
         owner=user,
-        actions=[
-            Action(**action.dict()) for action in body.actions
-        ]
+        # actions=[
+        #     Action(**action.dict()) for action in body.actions
+        # ] if body.actions else None
     )
 
     try:

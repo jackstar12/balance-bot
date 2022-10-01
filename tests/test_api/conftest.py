@@ -1,3 +1,5 @@
+import contextlib
+
 import pytest
 from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
@@ -58,36 +60,36 @@ def create_client(api_client_logged_in):
 
 
 @pytest.fixture
-def confirm_clients(api_client, create_client, request):
-    results = []
+def confirm_clients(api_client, create_client):
+    @contextlib.contextmanager
+    def _confirm_clients(clients: list[ClientCreate]):
+        results = []
 
-    for data in request.param:
-        resp = create_client(data)
-        assert resp.status_code == 200
+        for data in clients:
+            resp = create_client(data)
+            assert resp.status_code == 200
 
-        resp = api_client.post('/api/v1/client/confirm', json={**resp.json()})
-        assert resp.status_code == 200
+            resp = api_client.post('/api/v1/client/confirm', json={**resp.json()})
+            assert resp.status_code == 200
 
-        results.append(ClientInfo(**resp.json()))
+            results.append(ClientInfo(**resp.json()))
 
-    yield results
+        yield results
 
-    for result in results:
-        resp = api_client.delete(f'/api/v1/client/{result.id}')
-        assert resp.status_code == 200
+        for result in results:
+            resp = api_client.delete(f'/api/v1/client/{result.id}')
+            assert resp.status_code == 200
 
-
-@pytest.fixture
-def confirm_client(api_client, confirm_clients):
-
-    def _confirm(data: ClientCreate):
-        with confirm_clients(data) as clients:
-            return clients[0]
-
-    return _confirm
+    return _confirm_clients
 
 
 @pytest.fixture
-def register_client(request, confirm_client):
-    with confirm_client(request.param) as client:
-        yield client
+def confirmed_clients(api_client, create_client, request, confirm_clients):
+    with confirm_clients(request.param) as clients:
+        yield clients
+
+
+@pytest.fixture
+def confirmed_client(request, confirm_clients):
+    with confirm_clients([request.param]) as clients:
+        yield clients[0]

@@ -6,10 +6,10 @@ from typing import Any, Callable, Optional
 import pytest
 from aioredis import Redis
 
-from tradealpha.api.models.trade import Trade
 
 from tests.mockexchange import MockExchange
-from tradealpha.common.dbmodels import Event, Client, EventScore
+from tradealpha.common.dbmodels.trade import Trade
+from tradealpha.common.dbmodels import Event, Client, EventScore, Balance
 from tradealpha.common.dbsync import Base
 from tradealpha.common.dbasync import REDIS_URI
 from tradealpha.common.messenger import Messenger, NameSpaceInput
@@ -69,10 +69,11 @@ def redis() -> Redis:
 @pytest.fixture(scope='session')
 def messenger(redis) -> Messenger:
     messenger = Messenger(redis=redis)
-    messenger.listen_class(Event)
-    messenger.listen_class(Client)
-    messenger.listen_class(EventScore)
-    messenger.listen_class(Trade)
+    messenger.listen_class_all(Event)
+    messenger.listen_class_all(Client)
+    messenger.listen_class_all(EventScore)
+    messenger.listen_class_all(Trade)
+    messenger.listen_class_all(Balance)
     return messenger
 
 
@@ -92,7 +93,8 @@ class Messages:
     async def wait(self, timeout: float = 1):
         waiter = asyncio.gather(*self.results.values())
         try:
-            await asyncio.wait_for(waiter, timeout)
+            result = await asyncio.wait_for(waiter, timeout)
+            return result
         except asyncio.exceptions.TimeoutError:
             pytest.fail(f'Missed following messages:')
             #pytest.fail(f'Missed following messages:' + '\n\t'.join(name for name, fut in self.results.values() if not fut.done()))
@@ -103,28 +105,34 @@ class Messages:
         return cls(
             channels=list(channels),
             results={
-                c.ns.name: loop.create_future()
+                c.ns.name + str(c.topic): loop.create_future()
                 for c in channels
             },
             messenger=messenger
         )
 
     async def __aenter__(self):
-        for channel in self.channels:
+
+        async def register_channel(channel: Channel):
             def callback(data):
                 if not channel.validate or channel.validate(data):
-                    self.results[channel.ns.name].set_result(data)
+                    fut = self.results[channel.ns.name + str(channel.topic)]
+                    if not fut.done():
+                        fut.set_result(data)
 
             await self.messenger.sub_channel(
                 channel.ns,
                 channel.topic,
                 callback
             )
+
+        for channel in self.channels:
+            await register_channel(channel)
         return self
 
     async def __aexit__(self, *args):
         for channel in self.channels:
-            await self.messenger.unsub_channel(channel.ns.name, channel.topic)
+            await self.messenger.unsub_channel(channel.ns, channel.topic)
 
 
 @pytest.fixture(scope='function')

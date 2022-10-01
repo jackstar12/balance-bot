@@ -18,9 +18,3 @@ async def test_dies():
 async def test_info(api_client_logged_in):
     resp = api_client_logged_in.get("/api/v1/info")
     assert resp.ok
-
-
-async def test_connectivity(api_client):
-    pass
-    resp = api_client.get('/api/v1/connectivity')
-    assert resp.ok

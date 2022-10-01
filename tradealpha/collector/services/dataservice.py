@@ -68,6 +68,7 @@ class DataService(BaseService, Observer):
 
     async def update(self, ticker: Ticker):
         #ticker: Ticker = new_state[0]
+        self._logger.debug(ticker)
         self._tickers[(ticker.exchange, ticker.symbol)] = ticker
 
     async def get_ticker(self, symbol, exchange):

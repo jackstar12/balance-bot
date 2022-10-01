@@ -99,7 +99,7 @@ class _BalanceServiceBase(BaseService):
         await self._messenger.pub_channel(CLIENT,
                                           Category.REMOVED,
                                           data,
-                                          client_id=data['id'], user_id=data['user_id'])
+                                          client_id=data['id'])
 
     async def _on_client_add(self, data: Dict):
         await self.add_client_by_id(data['id'])
@@ -138,7 +138,7 @@ class _BalanceServiceBase(BaseService):
                 session=self._db
             )
         if client:
-            await self.add_client(client)
+            return await self.add_client(client)
         else:
             raise ValueError(f'Invalid {client_id=} passed in')
 
@@ -271,7 +271,6 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 TRADE.FINISHED: self._on_trade_finished,
             }
         )
-
         clients = await db_all(
             self._all_client_stmt.filter(
                 Client.is_full,
@@ -314,19 +313,19 @@ class ExtendedBalanceService(_BalanceServiceBase):
     async def _on_trade_finished(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=False)
         if worker:
-            await self._refresh_worker(worker)
-            if len(worker.client.open_trades) == 0:
+            client = await self._refresh_worker(worker)
+            if len(client.open_trades) == 0:
                 symbol = data['symbol']
                 # If there are no trades on the same exchange matching the deleted symbol,
                 # there is no need to keep it subscribed
                 unsubscribe_symbol = all(
                     trade.symbol != symbol
                     for cur_worker in self._workers_by_id.values()
-                    if cur_worker.client.exchange == worker.client.exchange
+                    if cur_worker.client.exchange == client.exchange
                     for trade in cur_worker.client.open_trades
                 )
                 if unsubscribe_symbol:
-                    await self.data_service.unsubscribe(worker.client.exchange, Channel.TICKER, symbol=symbol)
+                    await self.data_service.unsubscribe(client.exchange, Channel.TICKER, symbol=symbol)
                 await self._remove_worker(worker)
 
     async def _add_worker(self, worker: ExchangeWorker):
@@ -355,7 +354,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
             if client_id:
                 worker = self._workers_by_id.get(client_id)
                 if not worker and create_if_missing:
-                    await self.add_client_by_id(client_id)
+                    worker = await self.add_client_by_id(client_id)
                 return worker
 
     async def run_forever(self):
@@ -390,8 +389,10 @@ class ExtendedBalanceService(_BalanceServiceBase):
                                     db=self._db
                                 )
                         balance = client.evaluate_balance()
-                        if client.live_balance and balance != client.live_balance:
+                        if balance != client.live_balance:
                             balances.append(balance)
+                        client.live_balance = balance
+
                 await self._db.commit()
             self._logger.debug(balances)
             if balances:
@@ -404,4 +405,4 @@ class ExtendedBalanceService(_BalanceServiceBase):
                     for balance in balances:
                         await self._messenger.pub_instance(balance, Category.LIVE)
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)

@@ -233,8 +233,7 @@ class Messenger:
 
     async def pub_channel(self, namespace: NameSpaceInput, topic: Any, obj: object, **ids):
         channel, pattern = self.get_namespace(namespace).format(topic, **ids)
-        logging.info(f'Pub: {channel=} {obj=}')
-        # await self._redis.publish(channel, customjson.dumps({'ids': ids, 'obj': obj}))
+        logging.debug(f'Pub: {channel=} {obj=}')
         ret = await self._redis.publish(channel, customjson.dumps(obj))
         return ret
 
@@ -272,23 +271,32 @@ class Messenger:
 
         return wait
 
-    def _listen(self,
-                target_cls: Type[Serializer],
-                identifier: str,
-                namespace: MessengerNameSpace[Type[Serializer]],
-                sub: Category):
+    def listen_class(self,
+                     target_cls: Type[Serializer],
+                     identifier: str,
+                     namespace: MessengerNameSpace[Type[Serializer]],
+                     sub: Category | str,
+                     condition: Callable[[Serializer], bool] = None):
         @event.listens_for(target_cls, identifier)
         def on_insert(mapper, connection, target: target_cls):
-            if getattr(target, '__realtime__', None) is not False:
+            realtime = getattr(target, '__realtime__', True)
+            if realtime and (not condition or condition(target)):
                 asyncio.create_task(
                     self.pub_channel(namespace, sub,
                                      obj=jsonable_encoder(target.serialize(include_none=False)),
                                      **namespace.get_ids(target))
                 )
 
-    def listen_class(self, target_cls: Type[Serializer], namespace: MessengerNameSpace = None):
+    def listen_class_all(self, target_cls: Type[Serializer], namespace: MessengerNameSpace = None):
         if not namespace:
             namespace = self.get_namespace(target_cls.__tablename__)
-        self._listen(target_cls, "after_insert", namespace, Category.NEW)
-        self._listen(target_cls, "after_update", namespace, Category.UPDATE)
-        self._listen(target_cls, "after_delete", namespace, Category.DELETE)
+
+        if namespace is TRADE:
+            def is_finished(trade: Trade):
+                return ~trade.is_open
+
+            self.listen_class(target_cls, "after_update", namespace, TRADE.FINISHED, condition=is_finished)
+
+        self.listen_class(target_cls, "after_insert", namespace, Category.NEW)
+        self.listen_class(target_cls, "after_update", namespace, Category.UPDATE)
+        self.listen_class(target_cls, "after_delete", namespace, Category.DELETE)

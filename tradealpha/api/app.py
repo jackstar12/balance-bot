@@ -2,7 +2,7 @@ import os
 
 import dotenv
 import uvicorn
-from fastapi import FastAPI, Depends, APIRouter
+from fastapi import FastAPI, Depends, APIRouter, HTTPException
 from sqlalchemy.orm import object_session
 from starlette.middleware.sessions import SessionMiddleware
 from starlette_csrf import CSRFMiddleware
@@ -116,12 +116,35 @@ for module in (
     app.include_router(module.router, prefix='/api/v1')
 
 
+db_permission_flag = False
+
+
+def enforce_enabled():
+    if not db_permission_flag:
+        raise HTTPException(status_code=400, detail='Route is not enabled')
+
+
+protected_router = APIRouter(
+    dependencies=[Depends(enforce_enabled)]
+)
+
+
+@protected_router.get('/has-to-be-enabled')
+async def some_route():
+    pass
+
+
+@protected_router.get('/also-to-be-enabled')
+async def some_other_route():
+    pass
+
+
 @app.on_event("startup")
 async def on_start():
     setup_logger()
-    messenger.listen_class(Event)
-    messenger.listen_class(Client)
-    messenger.listen_class(EventScore)
+    messenger.listen_class_all(Event)
+    messenger.listen_class_all(Client)
+    messenger.listen_class_all(EventScore)
 
 
 def run():

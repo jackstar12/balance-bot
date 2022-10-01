@@ -167,7 +167,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     state = Column(sa.Enum(ClientState), nullable=False, default=ClientState.OK)
 
     trades: list[Trade] = relationship('Trade', lazy='raise',
-                                       cascade="all, delete",
                                        back_populates='client',
                                        order_by="Trade.open_time")
 
@@ -178,7 +177,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
     history: AppenderQuery = relationship('Balance',
                                           back_populates='client',
-                                          cascade="all, delete",
                                           lazy='dynamic',
                                           order_by='Balance.time',
                                           foreign_keys='Balance.client_id')
@@ -188,14 +186,12 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     #                        cascade="all, delete",
     #                        lazy='raise')
 
-    transfers: list = relationship('Transfer', back_populates='client',
-                             cascade='all, delete', lazy='raise')
+    transfers: list = relationship('Transfer', back_populates='client', lazy='raise')
 
     currently_realized_id = Column(ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
     currently_realized = relationship('Balance',
                                       lazy='joined',
                                       foreign_keys=currently_realized_id,
-                                      cascade="all, delete",
                                       post_update=True)
 
     last_transfer_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
@@ -268,13 +264,12 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             return
         realized = self.currently_realized.realized
         upnl = sum(trade.live_pnl.unrealized for trade in self.open_trades if trade.live_pnl)
-        new = db_balance.Balance(
+        return db_balance.Balance(
             realized=realized,
             unrealized=realized + upnl,
             time=datetime.now(pytz.utc),
             client=self
         )
-        return new
 
     async def update_journals(self, current_balance: db_balance.Balance, today: date, db_session: AsyncSession):
         today = today or date.today()

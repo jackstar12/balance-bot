@@ -32,29 +32,30 @@ size = Decimal('0.01')
 async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger, redis):
     db_client: Client
 
+    prev_balance = await db_client.get_latest_balance(redis, db=db)
+
     async with Messages.create(
             Channel(TableNames.TRADE, Category.NEW),
             messenger=messenger
     ) as listener:
         ccxt_client.create_market_buy_order(symbol, float(size))
+
         await listener.wait(5)
 
-    prev_balance = await db_client.get_latest_balance(redis, db=db)
-
-    await asyncio.sleep(3)
+    await asyncio.sleep(2.5)
 
     first_balance = await db_client.get_latest_balance(redis, db=db)
 
-    assert prev_balance.total != first_balance.total
+    assert prev_balance.realized != first_balance.realized
 
     async with Messages.create(
+            Channel(TableNames.BALANCE, Category.LIVE),
             Channel(TableNames.TRADE, Category.UPDATE),
             messenger=messenger
     ) as listener:
         ccxt_client.create_market_sell_order(symbol, float(size / 2))
-        await listener.wait(5)
+        await listener.wait(15)
 
-    await asyncio.sleep(1)
     second_balance = await db_client.get_latest_balance(redis, db=db)
     assert first_balance.realized != second_balance.realized
 

@@ -1,9 +1,13 @@
-from typing import Type, Union
+from __future__ import annotations
+from typing import Type, Union, TYPE_CHECKING
 
 from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
 
+if TYPE_CHECKING:
+    from tradealpha.common.dbmodels import User
+    from tradealpha.common.dbsync import BaseMixin
 
 InputID = Union[int, str]
 OutputID = str
@@ -76,6 +80,12 @@ class BaseModel(PydanticBaseModel):
 
         return SAType
 
+
+class CreateableMixin:
+    __table__: Type[BaseMixin]
+
+    def get(self, user: User):
+        return self.__table__(**self.__dict__)
 
 
 class OrmBaseModel(BaseModel):

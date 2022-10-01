@@ -429,6 +429,13 @@ async def create_history(to_graph: List[Tuple[Client, str]],
                 PnlData.trade
             )
 
+            transfers = await db_all(
+                select(Transfer).where(
+                    time_range(Transfer.time, start, end),
+                    Transfer.client_id == registered_client.id
+                ).order_by(Transfer.time)
+            )
+
             if len(history.data) == 0:
                 if throw_exceptions:
                     raise UserInputError(f'Got no data for {name}!')
@@ -437,9 +444,9 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
             xs, ys = calc_xs_ys(history,
                                 pnl_data,
-                                [],
-                                currency,
-                                percentage,
+                                transfers=transfers,
+                                ccy=currency,
+                                percentage=percentage,
                                 include_upnl=include_upnl,
                                 mode=mode)
 
@@ -655,8 +662,12 @@ def calc_xs_ys(history: History,
     xs = []
     ys = []
 
-    def get_amount(balance: Balance):
-        return balance.get_unrealized(ccy) if include_upnl and not pnl_data else balance.get_realized(ccy)
+    if include_upnl and not pnl_data:
+        def get_amount(balance: Balance):
+            return balance.get_unrealized(ccy)
+    else:
+        def get_amount(balance: Balance):
+            return balance.get_realized(ccy)
 
     if history.data:
         init = history.initial

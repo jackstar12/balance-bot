@@ -90,7 +90,6 @@ class EventService(BaseService):
 
                 if score.init_balance is None:
                     score.init_balance = await score.client.get_balance_at_time(
-                        data['client_id'],
                         event.start,
                         db=self._db
                     )

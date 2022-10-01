@@ -7,6 +7,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from requests import Response
 
+from tests.mock import event_mock
 from tradealpha.common.models.document import DocumentModel
 from tradealpha.common.models.eventinfo import EventInfo, EventDetailed
 from tradealpha.api.routers.event import EventCreate, EventUpdate
@@ -29,18 +30,8 @@ def parse_response(resp: Response, model: Type[T]) -> tuple[Response, T]:
 def event(api_client_logged_in):
     now = datetime.now(pytz.utc)
 
-    resp = api_client_logged_in.post('/api/v1/event/', json=jsonable_encoder(
-        EventCreate(
-            name='Mock',
-            description=DocumentModel(type='doc'),
-            start=now + timedelta(seconds=10),
-            end=now + timedelta(seconds=20),
-            registration_start=now + timedelta(seconds=5),
-            registration_end=now + timedelta(seconds=15),
-            public=True,
-            location={'platform': 'web', 'data': {}},
-            max_registrations=100
-        )
+    resp = api_client_logged_in.post('/api/v1/event', json=jsonable_encoder(
+        event_mock(now)
     ))
 
     assert resp.ok
@@ -81,13 +72,13 @@ def test_modify_event(event, api_client_logged_in):
 
 
 @pytest.mark.parametrize(
-    'confirm_clients',
+    'confirmed_clients',
     [[SANDBOX_CLIENTS[0], SANDBOX_CLIENTS[0]]],
     indirect=True
 )
-def test_register_event(event, api_client_logged_in, confirm_clients):
+def test_register_event(event, api_client_logged_in, confirmed_clients):
 
-    for client in confirm_clients:
+    for client in confirmed_clients:
         url = f'/api/v1/event/{event.id}/registrations/{client.id}'
         resp = api_client_logged_in.post(url)
         assert resp.ok
@@ -97,11 +88,11 @@ def test_register_event(event, api_client_logged_in, confirm_clients):
         EventDetailed
     )
 
-    assert len(result.leaderboard) == len(confirm_clients)
+    assert len(result.leaderboard) == len(confirmed_clients)
     for score in result.leaderboard:
         assert score.current_rank.value == 1
 
-    for client in confirm_clients:
+    for client in confirmed_clients:
         url = f'/api/v1/event/{event.id}/registrations/{client.id}'
         resp = api_client_logged_in.delete(url)
         assert resp.ok

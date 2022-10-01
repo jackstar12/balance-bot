@@ -61,7 +61,7 @@ async def new_client(request: Request, body: ClientCreateBody,
         if issubclass(exchange_cls, ExchangeWorker):
             # Check if required keyword args are given
             if validate_kwargs(body.extra_kwargs or {}, exchange_cls.required_extra_args):
-                client = body.create()
+                client = body.get()
 
                 async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session, db_maker=async_maker)
@@ -108,7 +108,7 @@ async def confirm_client(body: ClientConfirm,
         **jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
     )
     try:
-        client = client_data.create(user)
+        client = client_data.get(user)
         db.add(client)
         await db.commit()
         return ClientInfo.from_orm(client)

@@ -33,7 +33,7 @@ class ClientCreate(BaseModel):
         values['extra'] = extra
         return values
 
-    def create(self, user: User = None) -> Client:
+    def get(self, user: User = None) -> Client:
         client = Client(user=user, **self.dict(exclude={'import_since'}))
         if self.import_since:
             client.last_execution_sync = self.import_since

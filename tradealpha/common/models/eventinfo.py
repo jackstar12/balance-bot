@@ -5,11 +5,12 @@ from uuid import UUID
 
 from pydantic import validator, Field, condecimal
 
+from tradealpha.common.dbmodels import User, Event
 from tradealpha.common.models.action import ActionCreate
 from tradealpha.common.models.gain import Gain
 from tradealpha.common.dbmodels.event import EventState
 from tradealpha.common.models.document import DocumentModel
-from tradealpha.common.models import OrmBaseModel, BaseModel, OutputID
+from tradealpha.common.models import OrmBaseModel, BaseModel, OutputID, CreateableMixin
 
 
 class LocationModel(OrmBaseModel):
@@ -46,12 +47,16 @@ class _Common(BaseModel):
     public: bool
     location: Union[DiscordLocation, WebLocation] = Field(..., disriminator='platform')
     max_registrations: int
-    rekt_threshold: condecimal(gt=Decimal(-100), lt=Decimal(0))
     currency: Optional[str] = Field(default='USD')
+    rekt_threshold: condecimal(gt=Decimal(-100), lt=Decimal(0)) = -99
 
 
-class EventCreate(_Common):
-    actions: Optional[list[ActionCreate]]
+class EventCreate(_Common, CreateableMixin):
+
+    def get(self, user: User):
+        return Event(**self.__dict__, owner=user)
+
+    # actions: Optional[list[ActionCreate]]
 
 
 class EventInfo(_Common):

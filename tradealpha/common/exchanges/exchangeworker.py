@@ -326,9 +326,7 @@ class ExchangeWorker:
             check_executions = await db_all(
                 select(Execution).order_by(
                     asc(Execution.time)
-                ).join(
-                    Execution.trade
-                ).where(
+                ).join(Execution.trade).where(
                     Trade.client_id == self.client_id,
                     Execution.time > since if since else True
                 ),
@@ -818,6 +816,8 @@ class ExchangeWorker:
         """
         while True:
             try:
+
+
                 item = await cls._request_queue.get()
                 request = item.request
 
@@ -831,13 +831,12 @@ class ExchangeWorker:
                         ts = time.monotonic()
                         limit.refill(ts)
 
-                async with cls._http.request(request.method,
-                                             request.url,
-                                             params=request.params,
-                                             headers=request.headers,
-                                             json=request.json) as resp:
-
-                    try:
+                try:
+                    async with cls._http.request(request.method,
+                                                 request.url,
+                                                 params=request.params,
+                                                 headers=request.headers,
+                                                 json=request.json) as resp:
                         cls.set_weights(item.weight, resp)
                         resp = await cls._process_response(resp)
 
@@ -849,28 +848,28 @@ class ExchangeWorker:
                             )
 
                         item.future.set_result(resp)
-                    except InvalidClientError as e:
-                        logger.error(f'Error while executing request: {e.human} {e.root_error}')
-                        item.future.set_exception(e)
-                    except ResponseError as e:
-                        if e.root_error.status == 401:
-                            e = InvalidClientError(root_error=e.root_error, human=e.human)
-                        logger.error(f'Error while executing request: {e.human} {e.root_error}')
-                        item.future.set_exception(e)
-                    except RateLimitExceeded as e:
-                        cls.state = State.RATE_LIMIT
-                        if e.retry_ts:
-                            await asyncio.sleep(time.monotonic() - e.retry_ts)
-                    except ExchangeUnavailable as e:
-                        cls.state = State.OFFLINE
-                    except ExchangeMaintenance as e:
-                        cls.state = State.MAINTANENANCE
-                    except Exception as e:
-                        logger.exception(f'Exception while execution request {item}')
-                        item.future.set_exception(e)
-                    finally:
-                        cls._request_queue.task_done()
-            except Exception:
+                except InvalidClientError as e:
+                    logger.error(f'Error while executing request: {e.human} {e.root_error}')
+                    item.future.set_exception(e)
+                except ResponseError as e:
+                    if e.root_error.status == 401:
+                        e = InvalidClientError(root_error=e.root_error, human=e.human)
+                    logger.error(f'Error while executing request: {e.human} {e.root_error}')
+                    item.future.set_exception(e)
+                except RateLimitExceeded as e:
+                    cls.state = State.RATE_LIMIT
+                    if e.retry_ts:
+                        await asyncio.sleep(time.monotonic() - e.retry_ts)
+                except ExchangeUnavailable as e:
+                    cls.state = State.OFFLINE
+                except ExchangeMaintenance as e:
+                    cls.state = State.MAINTANENANCE
+                except Exception as e:
+                    logger.exception(f'Exception while execution request {item}')
+                    item.future.set_exception(e)
+                finally:
+                    cls._request_queue.task_done()
+            except Exception as e:
                 logger.exception('why')
 
     async def _request(self,
