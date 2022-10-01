@@ -16,21 +16,21 @@ class ExchangeTicker:
     def __init__(self, session: aiohttp.ClientSession):
         self.session = session
         # Initialize Channels
-        self._callbacks: Dict[str, Observable] = {}
+        self._callbacks: Dict[Channel, Observable] = {}
         for channel in Channel:
-            self._callbacks[channel.value] = Observable()
+            self._callbacks[channel] = Observable()
 
     async def subscribe(self, channel: Channel, observer: Observer, **kwargs):
-        self._callbacks[channel.value].attach(observer)
-        if len(self._callbacks[channel.value]) == 1:
+        self._callbacks[channel].attach(observer)
+        if len(self._callbacks[channel]) == 1:
             await self._subscribe(channel, **kwargs)
 
     async def _subscribe(self, channel: Channel, **kwargs):
         raise NotImplementedError
 
     async def unsubscribe(self, channel: Channel, observer: Observer, **kwargs):
-        self._callbacks[channel.value].detach(observer)
-        if len(self._callbacks[channel.value]) == 0:
+        self._callbacks[channel].detach(observer)
+        if len(self._callbacks[channel]) == 0:
             await self._unsubscribe(channel, **kwargs)
 
     async def _unsubscribe(self, channel: Channel, **kwargs):

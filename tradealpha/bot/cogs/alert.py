@@ -29,9 +29,6 @@ class AlertCog(CogBase):
                 message
             )
 
-    async def on_ready(self):
-        await self.messenger.sub_channel(TableNames.ALERT, sub=Category.FINISHED, callback=self.on_alert_trigger)
-
     @cog_ext.cog_subcommand(
         base="alert",
         name="new",
@@ -90,8 +87,6 @@ class AlertCog(CogBase):
         await async_session.commit()
 
         await ctx.send('Alert created', embed=alert.get_discord_embed())
-
-        self.messenger.pub_channel(TableNames.ALERT, Category.NEW, obj=alert.serialize(data=True, full=False))
 
     @cog_ext.cog_subcommand(
         base="alert",

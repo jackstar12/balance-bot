@@ -53,7 +53,7 @@ class SyncedService(Generic[TTable]):
         return wrapper
 
     async def sub(self):
-        await self._messenger.v2_bulk_sub(
+        await self._messenger.bulk_sub(
             self.namespace,
             {
                 Category.NEW: self.uses_identity(self._on_add),

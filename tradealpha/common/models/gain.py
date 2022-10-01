@@ -3,8 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import NamedTuple, Optional, TYPE_CHECKING
 
-from common.utils import round_ccy
-from tradealpha.common import config
+from tradealpha.common.utils import round_ccy
 from tradealpha.common.models import BaseModel
 
 if TYPE_CHECKING:

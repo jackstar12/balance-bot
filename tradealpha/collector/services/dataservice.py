@@ -79,7 +79,7 @@ class DataService(BaseService, Observer):
         ticker = self._tickers.get((exchange, symbol))
         if not ticker:
             try:
-                await (self.subscribe(exchange, Channel.TICKER, self, symbol=symbol))
+                await self.subscribe(exchange, Channel.TICKER, self, symbol=symbol)
             except asyncio.exceptions.TimeoutError:
                 pass
         return self._tickers.get((exchange, symbol))

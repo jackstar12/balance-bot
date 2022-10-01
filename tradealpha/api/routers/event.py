@@ -8,6 +8,7 @@ from sqlalchemy import select, or_, insert, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import object_session
 
+from tradealpha.common.dbmodels.action import Action
 from tradealpha.api.dependencies import get_messenger, get_db
 from tradealpha.api.users import CurrentUser, get_current_user
 from tradealpha.common.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventScore
@@ -96,7 +97,13 @@ default_event = create_event_dep()
 async def create_event(body: EventCreate,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
-    event = EventDB(**body.__dict__, owner=user)
+    event = EventDB(
+        **body.dict(exclude={"actions"}),
+        owner=user,
+        actions=[
+            Action(**action.dict()) for action in body.actions
+        ]
+    )
 
     try:
         event.validate()
@@ -133,7 +140,7 @@ async def create_event(body: EventCreate,
 
 
 EventUserDep = get_current_user(
-    User.events
+    (User.events, EventDB.actions)
 )
 
 
@@ -233,18 +240,15 @@ async def update_event(body: EventUpdate,
     return OK('Event Updated', result=EventInfo.from_orm(event))
 
 
+# Actions have to be loaded and deleted in-app because of dynamic functionality of actions
+delete_dep = create_event_dep(EventDB.actions)
+
+
 @router.delete('/{event_id}')
-async def delete_event(event_id: int,
-                       user: User = Depends(CurrentUser),
-                       db: AsyncSession = Depends(get_db),
-                       messenger: Messenger = Depends(get_messenger)):
-    result = await db_del_filter(
-        EventDB,
-        session=db,
-        id=event_id,
-        owner_id=user.id
-    )
-    if result.rowcount == 1:
+async def delete_event(event: EventDB = Depends(delete_dep),
+                       db: AsyncSession = Depends(get_db)):
+    if event:
+        await db.delete(event)
         await db.commit()
         return OK('Deleted')
     else:

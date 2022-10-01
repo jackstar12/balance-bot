@@ -85,7 +85,7 @@ class _BalanceServiceBase(BaseService):
             return True
 
     async def _sub_client(self):
-        await self._messenger.v2_bulk_sub(
+        await self._messenger.bulk_sub(
             TableNames.CLIENT,
             {
                 Category.NEW: self._on_client_add,
@@ -96,10 +96,10 @@ class _BalanceServiceBase(BaseService):
 
     async def _on_client_delete(self, data: Dict):
         await self._remove_worker_by_id(data['id'])
-        await self._messenger.v2_pub_channel(CLIENT,
-                                             Category.REMOVED,
-                                             data,
-                                             client_id=data['id'], user_id=data['user_id'])
+        await self._messenger.pub_channel(CLIENT,
+                                          Category.REMOVED,
+                                          data,
+                                          client_id=data['id'], user_id=data['user_id'])
 
     async def _on_client_add(self, data: Dict):
         await self.add_client_by_id(data['id'])
@@ -152,7 +152,7 @@ class _BalanceServiceBase(BaseService):
                                       messenger=self._messenger,
                                       rekt_threshold=self.rekt_threshold)
                 await self._add_worker(worker)
-                await self._messenger.v2_pub_instance(client, Category.ADDED)
+                await self._messenger.pub_instance(client, Category.ADDED)
                 return worker
             else:
                 self._logger.error(f'Exchange class {exchange_cls} does NOT subclass ExchangeWorker')
@@ -263,7 +263,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
     async def init(self):
         await self._sub_client()
 
-        await self._messenger.v2_bulk_sub(
+        await self._messenger.bulk_sub(
             TRADE,
             {
                 Category.UPDATE: self._on_trade_update,
@@ -372,7 +372,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
                         client = await self._refresh_worker(worker)
 
                     if not client:
-                        await self._messenger.v2_pub_channel(
+                        await self._messenger.pub_channel(
                             TableNames.CLIENT, Category.DELETE, obj={'id': worker.client_id}, id=worker.client_id
                         )
                         continue
@@ -402,6 +402,6 @@ class ExtendedBalanceService(_BalanceServiceBase):
                     await pipe.execute()
 
                     for balance in balances:
-                        await self._messenger.v2_pub_instance(balance, Category.LIVE)
+                        await self._messenger.pub_instance(balance, Category.LIVE)
 
             await asyncio.sleep(2)

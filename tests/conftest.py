@@ -115,7 +115,7 @@ class Messages:
                 if not channel.validate or channel.validate(data):
                     self.results[channel.ns.name].set_result(data)
 
-            await self.messenger.v2_sub_channel(
+            await self.messenger.sub_channel(
                 channel.ns,
                 channel.topic,
                 callback
@@ -124,7 +124,7 @@ class Messages:
 
     async def __aexit__(self, *args):
         for channel in self.channels:
-            await self.messenger.v2_unsub_channel(channel.ns.name, channel.topic)
+            await self.messenger.unsub_channel(channel.ns.name, channel.topic)
 
 
 @pytest.fixture(scope='function')

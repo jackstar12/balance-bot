@@ -8,7 +8,6 @@ from discord.ext.commands import Bot
 from discord.ext.commands.cog import Cog
 from discord_slash import SlashCommand
 
-from tradealpha.bot.eventmanager import EventManager
 from tradealpha.common.messenger import Messenger
 
 
@@ -20,10 +19,9 @@ class CogBase(Cog):
         bot.add_cog(instance)
         return instance
 
-    def __init__(self, bot: Bot, redis: Redis, event_manager: EventManager, messenger: Messenger, slash_cmd_handler: SlashCommand):
+    def __init__(self, bot: Bot, redis: Redis, messenger: Messenger, slash_cmd_handler: SlashCommand):
         self.bot = bot
         self.redis = redis
-        self.event_manager = event_manager
         self.messenger = messenger
         self.slash_cmd_handler = slash_cmd_handler
 

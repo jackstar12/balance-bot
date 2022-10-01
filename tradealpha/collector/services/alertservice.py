@@ -3,6 +3,7 @@ from typing import List, Dict
 
 from sqlalchemy import select
 
+from common.redis import TableNames
 from tradealpha.common.dbasync import db_all
 from tradealpha.common.dbmodels.alert import Alert
 from tradealpha.collector.services.baseservice import BaseService
@@ -28,8 +29,10 @@ class AlertService(BaseService, Observer):
             await self.data_service.subscribe(alert.exchange, Channel.TICKER, self, symbol=alert.symbol)
             self.add_alert(alert)
 
-        await self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.NEW, callback=self._update)
-        await self._messenger.sub_channel(MsgChannel.ALERT, sub=Category.DELETE, callback=self._delete)
+        await self._messenger.bulk_sub(TableNames.ALERT, {
+            Category.NEW: self._update,
+            Category.DELETE: self._delete
+        })
 
     def add_alert(self, alert: Alert):
         symbol = (alert.symbol, alert.exchange)
@@ -81,7 +84,6 @@ class AlertService(BaseService, Observer):
             await self._db.commit()
 
     async def _finish_alert(self, finished: Alert):
-        self._messenger.pub_channel(MsgChannel.ALERT, Category.FINISHED, obj=finished.serialize())
+        self._messenger.pub_instance(finished, Category.FINISHED)
         self._remove_alert(finished)
         await self._db.delete(finished)
-

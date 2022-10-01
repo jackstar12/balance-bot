@@ -25,12 +25,12 @@ class _BybitTicker(ExchangeTicker):
 
     async def _subscribe(self, channel: Channel, **kwargs):
         # I have no idea why the values have to be compared
-        if channel.value == Channel.TICKER.value:
+        if channel.value == Channel.TICKER:
             res = await self._ws.subscribe("trade", kwargs["symbol"])
             pass
 
     async def _unsubscribe(self, channel: Channel, **kwargs):
-        if channel.value == Channel.TICKER.value:
+        if channel.value == Channel.TICKER:
             res = await self._ws.unsubscribe("trade", kwargs["symbol"])
             pass
 
@@ -44,7 +44,7 @@ class _BybitTicker(ExchangeTicker):
         all_data = message["data"]
         if "trade" in message["topic"]:
             data = all_data[0]
-            await self._callbacks.get(Channel.TICKER.value).notify(
+            await self._callbacks.get(Channel.TICKER).notify(
                 Ticker(
                     symbol=data["symbol"],
                     exchange=self.EXCHANGE,

@@ -106,7 +106,12 @@ class Event(Base, Serializer):
 
     archive = relationship('Archive',
                            backref=backref('event', lazy='noload'),
-                           uselist=False,
+                           uselist=False)
+
+    actions = relationship('Action',
+                           lazy='raise',
+                           backref=backref('event', lazy='noload'),
+                           primaryjoin="foreign(Action.trigger_ids['event_id'].astext.cast(Integer)) == Event.id",
                            cascade="all, delete")
 
     @hybrid_property

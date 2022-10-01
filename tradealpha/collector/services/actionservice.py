@@ -7,7 +7,7 @@ from sqlalchemy import select, and_
 
 from tradealpha.common.dbmodels import Execution
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
-from tradealpha.common.dbmodels.action import Action, ActionType
+from tradealpha.common.dbmodels.action import Action, ActionType, ActionTrigger
 from tradealpha.common.models.discord.guild import MessageRequest
 from tradealpha.common.redis import rpc
 from tradealpha.collector.services.baseservice import BaseService
@@ -41,6 +41,7 @@ class ActionService(BaseService):
             return cls.get_balance_embed(Balance(**data))
         if table == Trade:
             return cls.get_trade_embed(Trade(**data))
+        return None
 
     @classmethod
     def get_trade_embed(cls, trade: Trade):
@@ -77,7 +78,6 @@ class ActionService(BaseService):
             }
         )
 
-
     def get_action(self, data: dict):
         return db_select(
             Action, Action.id == data['id']
@@ -95,17 +95,17 @@ class ActionService(BaseService):
         await self.remove(action)
         await self.add(action)
 
-    async def add(self, action: Action):
-        await self._messenger.v2_sub_channel(
-            self._messenger.get_namespace(action.namespace),
+    def add(self, action: Action):
+        return self._messenger.sub_channel(
+            action.namespace,
             action.topic,
             lambda data: self.execute(action, data),
             **action.all_ids
         )
 
-    async def remove(self, action: Action):
-        await self._messenger.v2_unsub_channel(
-            self._messenger.get_namespace(action.namespace),
+    def remove(self, action: Action):
+        return self._messenger.unsub_channel(
+            action.namespace,
             action.topic,
             **action.all_ids
         )
@@ -117,13 +117,18 @@ class ActionService(BaseService):
             # call
         elif action.action_type == ActionType.DISCORD:
             dc = rpc.Client('discord', self._redis)
+            embed = self.to_embed(messenger_space.table, data)
             await dc(
                 'send',
                 MessageRequest(
                     **action.extra,
-                    embed=self.to_embed(messenger_space.table, data).to_dict()
+                    embed=embed.to_dict() if embed else None
                 )
             )
+
+        if action.trigger_type == ActionTrigger.ONCE:
+            await self.remove(action)
+            await self._db.delete(action)
 
     async def init(self):
         for action in await db_all(select(Action)):

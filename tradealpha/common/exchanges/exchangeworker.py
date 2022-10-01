@@ -679,7 +679,7 @@ class ExchangeWorker:
             return active_trade
 
     def pub_trade(self, category: Category, trade: Trade):
-        return self.messenger.pub_channel(TableNames.TRADE, category, trade.serialize(), trade.id)
+        return self.messenger.pub_instance(trade, category)
 
     async def _convert(self, amount: Decimal, to: str, from_ccy: str, date: datetime):
         pass
@@ -914,10 +914,6 @@ class ExchangeWorker:
                     await db.execute(
                         update(Client).where(Client.id == self.client_id).values(invalid=True)
                     )
-                await self.disconnect()
-                self.messenger.pub_channel(TableNames.CLIENT, Category.UPDATE, {
-                    'id': self.client_id, 'invalid': True
-                })
             raise
 
     def get(self, path: str, **kwargs):

@@ -162,7 +162,7 @@ class ClientUpdate(BaseModel):
     premium: Optional[bool]
 
 
-NameSpaceInput = MessengerNameSpace | TableNames
+NameSpaceInput = MessengerNameSpace | TableNames | Type[BaseMixin] | Any
 
 
 class Messenger:
@@ -211,25 +211,27 @@ class Messenger:
     #    def wrapper(callback):
 
     @classmethod
-    def get_namespace(cls, name: Any):
+    def get_namespace(cls, name: NameSpaceInput):
         if isinstance(name, MessengerNameSpace):
             return name
-        elif isinstance(name, TableNames):
+        elif isinstance(name, Enum):
             return by_names.get(name.value)
+        elif hasattr(name, '__tablename__'):
+            return by_names.get(name.__tablename__)
         return by_names.get(str(name))
 
-    def v2_sub_channel(self, namespace: NameSpaceInput, topic: Any, callback: Callable, **ids):
-        return self.v2_bulk_sub(self.get_namespace(namespace), {topic: callback}, **ids)
+    def sub_channel(self, namespace: NameSpaceInput, topic: Any, callback: Callable, **ids):
+        return self.bulk_sub(self.get_namespace(namespace), {topic: callback}, **ids)
 
-    def v2_unsub_channel(self, namespace: NameSpaceInput, topic: Any, **ids):
+    def unsub_channel(self, namespace: NameSpaceInput, topic: Any, **ids):
         channel, pattern = self.get_namespace(namespace).format(topic, **ids)
         return self.unsub(channel=channel, is_pattern=pattern)
 
-    def v2_pub_instance(self, instance: Serializer, topic: Any):
+    def pub_instance(self, instance: Serializer, topic: Any):
         ns = self.get_namespace(instance.__tablename__)
-        return self.v2_pub_channel(ns, topic, instance.serialize(), **ns.get_ids(instance))
+        return self.pub_channel(ns, topic, instance.serialize(), **ns.get_ids(instance))
 
-    async def v2_pub_channel(self, namespace: NameSpaceInput, topic: Any, obj: object, **ids):
+    async def pub_channel(self, namespace: NameSpaceInput, topic: Any, obj: object, **ids):
         channel, pattern = self.get_namespace(namespace).format(topic, **ids)
         logging.info(f'Pub: {channel=} {obj=}')
         # await self._redis.publish(channel, customjson.dumps({'ids': ids, 'obj': obj}))
@@ -244,7 +246,7 @@ class Messenger:
     # user:*:event:*:start
     # user:*:event:23:start
     # user:234f-345k:journal:23:chapter:new
-    async def v2_bulk_sub(self, namespace: NameSpaceInput, topics: dict[Any, Callable], **ids):
+    async def bulk_sub(self, namespace: NameSpaceInput, topics: dict[Any, Callable], **ids):
         subscription = {}
         pattern = False
         namespace = self.get_namespace(namespace)
@@ -252,19 +254,6 @@ class Messenger:
             channel, pattern = namespace.format(topic, **ids)
             subscription[channel] = self._wrap(callback)
         await self.sub(pattern=pattern, **subscription)
-
-    async def sub_channel(self, namespace: TableNames, sub: Category | str, callback: Callable, channel_id: int = None,
-                          pattern=False, rcv_event=False):
-        channel = utils.join_args(namespace, sub, channel_id)
-        if pattern:
-            channel += '*'
-        kwargs = {channel: self._wrap(callback)}
-        logging.info(f'Sub: {kwargs}')
-        await self.sub(pattern=pattern, **kwargs)
-
-    async def unsub_channel(self, category: TableNames, sub: Category, channel_id: int = None, pattern=False):
-        channel = utils.join_args(category.value, sub.value, channel_id)
-        await self.unsub(channel, pattern)
 
     async def setup_waiter(self, channel: str, is_pattern=False, timeout=.25):
         fut = asyncio.get_running_loop().create_future()
@@ -283,11 +272,6 @@ class Messenger:
 
         return wait
 
-    def pub_channel(self, category: TableNames | str, sub: Category, obj: object, channel_id: int = None):
-        ch = utils.join_args(category, sub.value, channel_id)
-        logging.info(f'Pub: {ch=} {obj=}')
-        return asyncio.create_task(self._redis.publish(ch, customjson.dumps(obj)))
-
     def _listen(self,
                 target_cls: Type[Serializer],
                 identifier: str,
@@ -297,9 +281,9 @@ class Messenger:
         def on_insert(mapper, connection, target: target_cls):
             if getattr(target, '__realtime__', None) is not False:
                 asyncio.create_task(
-                    self.v2_pub_channel(namespace, sub,
-                                        obj=jsonable_encoder(target.serialize(include_none=False)),
-                                        **namespace.get_ids(target))
+                    self.pub_channel(namespace, sub,
+                                     obj=jsonable_encoder(target.serialize(include_none=False)),
+                                     **namespace.get_ids(target))
                 )
 
     def listen_class(self, target_cls: Type[Serializer], namespace: MessengerNameSpace = None):

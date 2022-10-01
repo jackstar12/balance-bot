@@ -24,7 +24,6 @@ from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.common.dbmodels.discord.guild import Guild as GuildDB
 from tradealpha.bot.config import *
 from tradealpha.bot.cogs import *
-from tradealpha.bot.eventmanager import EventManager
 from tradealpha.common.enums import Tier
 from tradealpha.common.messenger import Messenger, TableNames, Category
 from tradealpha.common.utils import setup_logger
@@ -108,11 +107,6 @@ async def send(request: MessageRequest):
 async def on_ready():
     if not os.path.exists(DATA_PATH):
         os.mkdir(DATA_PATH)
-
-    asyncio.create_task(redis_server.run())
-
-    await messenger.sub_channel(TableNames.CLIENT, Category.REKT, callback=on_rekt_async, pattern=True)
-    await event_manager.initialize_events()
 
     for cog in cog_instances:
         await cog.on_ready()
@@ -265,14 +259,13 @@ parser.add_argument("-r", "--reset", action="store_true", help="Archives the cur
 
 args = parser.parse_known_args()
 
-event_manager = EventManager(discord_client=bot)
 messenger = Messenger(redis)
 
 KEY = os.environ.get('BOT_KEY')
 assert KEY, 'BOT_KEY missing'
 
 cog_instances = [
-    cog.setup(bot, redis, event_manager, messenger, slash)
+    cog.setup(bot, redis, messenger, slash)
     for cog in [
         balance.BalanceCog,
         history.HistoryCog,

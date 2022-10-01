@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import validator, Field, condecimal
 
+from tradealpha.common.models.action import ActionCreate
 from tradealpha.common.models.gain import Gain
 from tradealpha.common.dbmodels.event import EventState
 from tradealpha.common.models.document import DocumentModel
@@ -35,7 +36,7 @@ class WebLocation(LocationModel):
     data: WebData
 
 
-class EventCreate(BaseModel):
+class _Common(BaseModel):
     registration_start: datetime
     registration_end: datetime
     start: datetime
@@ -49,7 +50,11 @@ class EventCreate(BaseModel):
     currency: Optional[str] = Field(default='USD')
 
 
-class EventInfo(EventCreate):
+class EventCreate(_Common):
+    actions: Optional[list[ActionCreate]]
+
+
+class EventInfo(_Common):
     id: OutputID
     state: list[EventState]
 

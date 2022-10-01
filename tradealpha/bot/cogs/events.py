@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from functools import wraps
 from typing import List
 
 import discord.ext.commands
@@ -8,20 +9,75 @@ from discord_slash import cog_ext, SlashContext
 from sqlalchemy import select, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tradealpha.common.dbmodels.user import User
+from tradealpha.common.messenger import EVENT
+from tradealpha.common.redis import TableNames
+from tradealpha.bot import config
+from tradealpha.bot import utils
+from tradealpha.bot.cogs.cogbase import CogBase
+from tradealpha.bot.utils import create_complete_history, get_summary_embed, get_leaderboard
+from tradealpha.common import dbutils
+from tradealpha.common.dbasync import db_all, db_select
+from tradealpha.common.dbasync import db_select_all
 from tradealpha.common.dbmodels import EventScore, Client
 from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
-from tradealpha.common.dbasync import db_all, db_select_all
-from tradealpha.common import dbutils
-from tradealpha.bot import utils
-from tradealpha.common.dbmodels.event import Event, EventState
-from tradealpha.bot import config
-from tradealpha.bot.cogs.cogbase import CogBase
+from tradealpha.common.dbmodels.event import Event
+from tradealpha.common.dbmodels.event import EventState
+from tradealpha.common.dbmodels.user import User
 from tradealpha.common.errors import UserInputError
 from tradealpha.common.models.selectionoption import SelectionOption
 
 
 class EventsCog(CogBase):
+
+    async def on_ready(self):
+        await self.messenger.bulk_sub(
+            Event, {
+                EVENT.START: self._wrap_event_coro(self._event_start),
+                EVENT.END: self._wrap_event_coro(self._event_end),
+                EVENT.REGISTRATION_START: self._wrap_event_coro(self._event_registration_start),
+                EVENT.REGISTRATION_END: self._wrap_event_coro(self._event_registration_end)
+            }
+        )
+
+    def _get_channel(self, event: Event) -> discord.TextChannel:
+        guild = self.bot.get_guild(event.guild_id)
+        return guild.get_channel(event.channel_id)
+
+    async def _event_start(self, event: Event):
+        await self._get_channel(event).send(content=f'Event **{event.name}** just started!',
+                                            embed=event.get_discord_embed(title="Event",
+                                                                          dc_client=self.bot,
+                                                                          registrations=True))
+
+    async def _event_end(self, event: Event):
+        await self._get_channel(event).send(
+            content=f'Event **{event.name}** just ended! Final standings:',
+            embed=await get_leaderboard(self.bot, event.guild_id, event.channel_id, since=event.start)
+        )
+
+        complete_history = await create_complete_history(self.bot, event)
+        summary = await get_summary_embed(event, self.bot)
+        await self._get_channel(event).send(
+            embed=summary.set_image(url=f'attachment://{complete_history.filename}'),
+            file=complete_history
+        )
+
+    async def _event_registration_start(self, event: Event):
+        await self._get_channel(event).send(content=f'Registration period for **{event.name}** has started!')
+
+    async def _event_registration_end(self, event: Event):
+        await self._get_channel(event).send(content=f'Registration period for **{event.name}** has ended!')
+
+    def _wrap_event_coro(self, coro):
+        @wraps(coro)
+        async def wrapper(data: dict):
+            event = await db_select(Event,
+                                    Event.location['platform'] == 'discord',
+                                    Event.id == data['id'])
+            if event:
+                return await coro(event)
+        return wrapper
+
 
     @cog_ext.cog_subcommand(
         base='event',

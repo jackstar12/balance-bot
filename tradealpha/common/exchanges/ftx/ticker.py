@@ -19,9 +19,9 @@ class FtxTicker(ExchangeTicker):
         await self._ws.close()
 
     async def _subscribe(self, channel: Channel, **kwargs):
-        if channel.value == Channel.TICKER.value:
+        if channel.value == Channel.TICKER:
             await self._ws.get_ticker(kwargs['symbol'])
-        elif channel.value is Channel.TRADES.value:
+        elif channel.value is Channel.TRADES:
             await self._ws.get_trades(kwargs['symbol'])
 
     async def _on_message(self, msg):
@@ -32,7 +32,7 @@ class FtxTicker(ExchangeTicker):
 
         if channel == 'trades':
             data = data[0]
-            await self._callbacks.get(Channel.TRADES.value).notify(
+            await self._callbacks.get(Channel.TRADES).notify(
                 Trade(
                     symbol=market,
                     price=data['price'],
@@ -44,7 +44,7 @@ class FtxTicker(ExchangeTicker):
                 )
             )
         elif channel == 'ticker':
-            await self._callbacks.get(Channel.TICKER.value).notify(
+            await self._callbacks.get(Channel.TICKER).notify(
                 Ticker(
                     symbol=market,
                     price=data['last'],

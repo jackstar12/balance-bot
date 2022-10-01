@@ -19,6 +19,11 @@ class ActionType(Enum):
     DISCORD = "discord"
 
 
+class ActionTrigger(Enum):
+    ONCE = "once"
+    RECURRING = "recurring"
+
+
 class Action(Base, EditsMixin):
     __tablename__ = 'action'
 
@@ -28,6 +33,7 @@ class Action(Base, EditsMixin):
     namespace = sa.Column(sa.String(length=12), nullable=False)
     topic = sa.Column(sa.String, nullable=False)
     trigger_ids = sa.Column(JSONB, nullable=False)
+    trigger_type = sa.Column(sa.Enum(ActionTrigger), nullable=False)
 
     action_type = sa.Column(sa.Enum(ActionType), nullable=False)
     extra = sa.Column(JSONB, nullable=False)
