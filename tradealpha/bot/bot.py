@@ -111,6 +111,10 @@ async def on_ready():
     for cog in cog_instances:
         await cog.on_ready()
 
+    asyncio.create_task(
+        redis_server.run()
+    )
+
     db_guilds_by_id = {
         db_guild.id: db_guild for db_guild in await db_all(
             select(GuildDB), GuildDB.users, GuildDB.associations
