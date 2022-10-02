@@ -1,17 +1,6 @@
-from typing import Optional, Dict
-from fastapi import APIRouter, Depends, WebSocket
-from fastapi.encoders import jsonable_encoder
-from pydantic import ValidationError
-from starlette.websockets import WebSocketDisconnect
+from fastapi import APIRouter, Depends
 
-from tradealpha.api.models.websocket import WebsocketMessage, ClientConfig
 from tradealpha.api.users import CurrentUser
-from tradealpha.common.dbmodels.client import Client
-from tradealpha.common.dbmodels.user import User
-from tradealpha.api.utils.client import create_client_data_serialized, get_user_client
-import tradealpha.api.utils.client as client_utils
-from tradealpha.common.messenger import Messenger, TableNames, Category
-
 
 router = APIRouter(
     tags=["websocket"],

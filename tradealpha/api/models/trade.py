@@ -1,18 +1,16 @@
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
 from typing import List, Optional
 
-from pydantic import Field, Extra
+from pydantic import Extra
 
-from tradealpha.common.models.document import DocumentModel
-from tradealpha.common.models.balance import Balance
 from tradealpha.api.models import OutputID
-from tradealpha.api.models.pnldata import PnlData
-from tradealpha.common.models import OrmBaseModel, BaseModel, InputID
 from tradealpha.api.models.execution import Execution
+from tradealpha.api.models.pnldata import PnlData
 from tradealpha.common.enums import Side, Status, TradeSession
-from tradealpha.common.models.compactpnldata import CompactPnlData
+from tradealpha.common.models import OrmBaseModel, BaseModel, InputID
+from tradealpha.common.models.balance import Balance
+from tradealpha.common.models.document import DocumentModel
 
 
 class BasicTrade(OrmBaseModel):

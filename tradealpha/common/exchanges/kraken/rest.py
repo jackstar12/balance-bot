@@ -1,14 +1,12 @@
 import base64
 import hashlib
 import hmac
-import json
 import time
 import urllib.parse
 from datetime import datetime
 
 from aiohttp import ClientResponse
 
-from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker, create_limit
 
 

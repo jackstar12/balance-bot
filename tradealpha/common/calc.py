@@ -1,24 +1,22 @@
 from __future__ import annotations
+
 import itertools
 import typing
-from collections import OrderedDict
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Callable, Union, Any, Generator
+from typing import List, Generator
 from typing import TYPE_CHECKING
 
 import pytz
-from prettytable import PrettyTable
 from sqlalchemy import asc, select, func, desc, Date
 from sqlalchemy.ext.asyncio import AsyncSession
-import tradealpha.common.utils as utils
 
-from tradealpha.common import dbutils
-from tradealpha.common.dbmodels.transfer import Transfer
-from tradealpha.common.models.gain import ClientGain, Gain
-from tradealpha.common.dbasync import async_session, db_all, redis, db_select, db_select_all
+import tradealpha.common.utils as utils
+from tradealpha.common.dbasync import db_all
 from tradealpha.common.dbmodels.balance import Balance
+from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.errors import UserInputError
+from tradealpha.common.models.gain import Gain
 from tradealpha.common.models.interval import Interval
 
 if TYPE_CHECKING:

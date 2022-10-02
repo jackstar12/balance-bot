@@ -8,20 +8,16 @@ from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import delete
 
-import tradealpha.collector.collector as collector
-from tradealpha.collector.services.eventservice import EventService
-from tradealpha.common.utils import setup_logger
-from tests.mockexchange import MockExchange
-from tradealpha.common.dbasync import db_select
-from tradealpha.collector.services.balanceservice import ExtendedBalanceService, BasicBalanceService
-from tradealpha.collector.services.baseservice import BaseService
-from tradealpha.collector.services.dataservice import DataService
-from tradealpha.common import utils
-from tradealpha.common.dbmodels.client import Client
-from tradealpha.common.messenger import TableNames, Category
 from tests.conftest import Messages, Channel
+from tradealpha.collector.services.balanceservice import ExtendedBalanceService, BasicBalanceService
+from tradealpha.collector.services.dataservice import DataService
+from tradealpha.collector.services.eventservice import EventService
+from tradealpha.common.dbasync import db_select
+from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.exchanges import CCXT_CLIENTS
+from tradealpha.common.messenger import TableNames, Category
+from tradealpha.common.utils import setup_logger
 
 pytestmark = pytest.mark.anyio
 

@@ -1,22 +1,20 @@
-import json
-import urllib.parse
 import hmac
+import json
 import logging
+import time
+import urllib.parse
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Union, List, Optional, Dict, Iterator
+from typing import List, Optional, Dict
 
-import pytz
 import ccxt.async_support as ccxt
-from sqlalchemy.ext.asyncio import AsyncSession
+import pytz
 
-from tradealpha.common.dbmodels.execution import Execution
 import tradealpha.common.dbmodels.balance as balance
+from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.dbmodels.transfer import RawTransfer
 from tradealpha.common.enums import Side, ExecType
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
-import time
-
 from tradealpha.common.exchanges.ftx.websocket import FtxWebsocketClient
 from tradealpha.common.models.ohlc import OHLC
 

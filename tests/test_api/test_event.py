@@ -8,12 +8,11 @@ from pydantic import ValidationError
 from requests import Response
 
 from tests.mock import event_mock
-from tradealpha.common.models.document import DocumentModel
-from tradealpha.common.models.eventinfo import EventInfo, EventDetailed
-from tradealpha.api.routers.event import EventCreate, EventUpdate
+from tradealpha.api.routers.event import EventUpdate
 from tradealpha.api.utils.responses import ResponseModel
 from tradealpha.common.exchanges import SANDBOX_CLIENTS
 from tradealpha.common.models import BaseModel
+from tradealpha.common.models.eventinfo import EventInfo, EventDetailed
 
 T = TypeVar('T', bound=BaseModel)
 

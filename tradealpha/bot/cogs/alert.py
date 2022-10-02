@@ -4,14 +4,13 @@ from typing import Dict
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option, create_choice
 
-from tradealpha.common.dbasync import async_session
-from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.bot import utils
-from tradealpha.common import dbutils
-from tradealpha.common.dbmodels.alert import Alert
 from tradealpha.bot.cogs.cogbase import CogBase
+from tradealpha.common import dbutils
+from tradealpha.common.dbasync import async_session
+from tradealpha.common.dbmodels.alert import Alert
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.common.exchanges import EXCHANGES
-from tradealpha.common.messenger import TableNames, Category
 from tradealpha.common.models.selectionoption import SelectionOption
 
 

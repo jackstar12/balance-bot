@@ -9,8 +9,6 @@ from discord_slash import cog_ext, SlashContext
 from sqlalchemy import select, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tradealpha.common.messenger import EVENT
-from tradealpha.common.redis import TableNames
 from tradealpha.bot import config
 from tradealpha.bot import utils
 from tradealpha.bot.cogs.cogbase import CogBase
@@ -24,6 +22,7 @@ from tradealpha.common.dbmodels.event import Event
 from tradealpha.common.dbmodels.event import EventState
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.errors import UserInputError
+from tradealpha.common.messenger import EVENT
 from tradealpha.common.models.selectionoption import SelectionOption
 
 

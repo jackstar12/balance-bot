@@ -2,9 +2,7 @@ import operator
 from enum import Enum
 from typing import Any, Type, TypeVar, Generic
 
-from pydantic import Field
-
-from tradealpha.api.models import BaseModel
+from tradealpha.common.models import BaseModel
 
 
 class Operator(Enum):

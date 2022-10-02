@@ -1,10 +1,8 @@
-import asyncio
+import os
 from typing import Optional
 
-from sqlalchemy import create_engine, MetaData
 import dotenv
-import os
-import aioredis
+from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker, scoped_session, Session, declarative_base
 
 from tradealpha.common.models import BaseModel

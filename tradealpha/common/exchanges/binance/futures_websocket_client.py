@@ -1,14 +1,12 @@
 from __future__ import annotations
+
 import logging
-import asyncio
-from abc import ABC
 from typing import Callable, TYPE_CHECKING
 
-from tradealpha.common import utils
-from tradealpha.common.config import TESTING
-from tradealpha.common.models.async_websocket_manager import WebsocketManager
 import aiohttp
 
+from tradealpha.common import utils
+from tradealpha.common.models.async_websocket_manager import WebsocketManager
 
 if TYPE_CHECKING:
     from tradealpha.common.exchanges.binance.worker import BinanceFutures

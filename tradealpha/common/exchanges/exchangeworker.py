@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import abc
 import asyncio
 import itertools
@@ -6,41 +7,37 @@ import logging
 import time
 import urllib.parse
 from asyncio import Future, Task
+from asyncio.queues import PriorityQueue
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import List, Callable, Dict, Tuple, Optional, Union, Set
+from typing import List, Dict, Tuple, Optional, Union, Set
+from typing import NamedTuple
+from typing import TYPE_CHECKING
+
 import aiohttp.client
 import pytz
 from aiohttp import ClientResponse, ClientResponseError
-from typing import NamedTuple
-from asyncio.queues import PriorityQueue
-from dataclasses import dataclass
-
 from sqlalchemy import select, desc, asc, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, sessionmaker, joinedload
 
 import tradealpha.common.utils as utils
-from tradealpha.common.models.miscincome import MiscIncome
-from tradealpha.common.redis.client import ClientSpace
 from tradealpha.common import customjson
+from tradealpha.common.config import PRIORITY_INTERVALS
 from tradealpha.common.dbasync import db_unique, db_all, db_select
+from tradealpha.common.dbmodels.client import Client, ClientState
 from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.dbmodels.pnldata import PnlData
-from tradealpha.common.dbmodels.trade import Trade, trade_from_execution
-
-from tradealpha.common.dbmodels.transfer import Transfer, RawTransfer, TransferType
-from tradealpha.common.config import PRIORITY_INTERVALS
+from tradealpha.common.dbmodels.trade import Trade
+from tradealpha.common.dbmodels.transfer import Transfer, RawTransfer
 from tradealpha.common.enums import Priority, ExecType, Side
 from tradealpha.common.errors import RateLimitExceeded, ExchangeUnavailable, ExchangeMaintenance, ResponseError, \
     InvalidClientError, ClientDeletedError
 from tradealpha.common.messenger import TableNames, Category, Messenger
-
-from tradealpha.common.dbmodels.client import Client, ClientState
-from typing import TYPE_CHECKING
-
+from tradealpha.common.models.miscincome import MiscIncome
 from tradealpha.common.models.ohlc import OHLC
 from tradealpha.common.utils import combine_time_series
 
@@ -340,9 +337,9 @@ class ExchangeWorker:
             exec_sum = check_sum = Decimal(0)
             for execution, check in itertools.zip_longest(check_executions, all_executions):
                 if execution:
-                    exec_sum += abs(execution.realized_pnl or execution.qty)
+                    exec_sum += abs(execution.qty or execution.realized_pnl)
                 if check:
-                    check_sum += abs(check.realized_pnl or check.qty)
+                    check_sum += abs(execution.qty or check.realized_pnl)
                 if exec_sum == check_sum and exec_sum != 0:
                     valid_until = execution.time if execution else check.time
 

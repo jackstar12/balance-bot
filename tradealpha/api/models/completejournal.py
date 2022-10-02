@@ -1,14 +1,11 @@
-from datetime import datetime, date, timedelta
+from datetime import date
 from decimal import Decimal
-from typing import List, Literal, Optional, NamedTuple, Set, Any
+from typing import List, Optional, NamedTuple, Set
 
-from tradealpha.common.dbmodels.journal import IntervalType
-from tradealpha.common.models.balance import Balance
 from tradealpha.api.models import BaseModel, OutputID, InputID
-
-from tradealpha.common.models.document import DocumentModel
-from tradealpha.common.dbmodels.journal import JournalType
 from tradealpha.api.models.template import TemplateInfo
+from tradealpha.common.dbmodels.editing.journal import IntervalType, JournalType
+from tradealpha.common.models.document import DocumentModel
 
 
 class Gain(NamedTuple):

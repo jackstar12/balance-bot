@@ -1,15 +1,9 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 import sqlalchemy.exc
-from fastapi.encoders import jsonable_encoder
-from pydantic.main import BaseModel
-from sqlalchemy import select
 from sqlalchemy.inspection import inspect
-from sqlalchemy.orm import InstrumentedAttribute, selectinload, RelationshipProperty
 from sqlalchemy.orm.dynamic import AppenderQuery
-from sqlalchemy.sql import Select
 
 from tradealpha.common.dbsync import BaseMixin
 

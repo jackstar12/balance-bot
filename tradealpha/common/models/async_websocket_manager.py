@@ -1,13 +1,10 @@
 import asyncio
-import json
 import logging
 import time
 from asyncio import Future
-from typing import Callable, Optional, Any
+from typing import Callable, Any
 
 import aiohttp
-import typing_extensions
-
 from aiohttp import WSMessage
 from typing_extensions import Self
 

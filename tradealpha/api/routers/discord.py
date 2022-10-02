@@ -1,19 +1,18 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert as insertpg
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tradealpha.api.models import InputID
-from tradealpha.api.utils.client import get_user_client
-from tradealpha.common.dbmodels.discord.guild import Guild as GuildDB
 from tradealpha.api.dependencies import get_db, get_dc_rpc_client
+from tradealpha.api.models import InputID
 from tradealpha.api.models.discord_user import DiscordUserInfo
 from tradealpha.api.users import CurrentUser
+from tradealpha.api.utils.client import get_user_client
 from tradealpha.api.utils.responses import OK, BadRequest, ResponseModel, InternalError
 from tradealpha.common.dbasync import db_select_all, db_select
 from tradealpha.common.dbmodels import GuildAssociation as GuildAssociationDB
+from tradealpha.common.dbmodels.discord.guild import Guild as GuildDB
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.models import BaseModel
 from tradealpha.common.models.discord.guild import UserRequest, Guild as GuildModel, GuildRequest

@@ -1,22 +1,17 @@
 import argparse
-import json
-import logging
-import uuid
+import os
 from datetime import datetime, timedelta
 
+import dotenv
 import pytz
 from sqlalchemy.orm import make_transient
+from sqlalchemy_utils.types.encrypted.encrypted_type import FernetEngine
 
 import tradealpha.common.dbsync as db
 from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.common.dbmodels.event import Event
-from sqlalchemy_utils.types.encrypted.encrypted_type import FernetEngine
-import dotenv
-import os
-
 from tradealpha.common.dbmodels.user import User
-from tradealpha.bot.config import DATA_PATH
 
 dotenv.load_dotenv()
 

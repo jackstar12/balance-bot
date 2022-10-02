@@ -1,18 +1,17 @@
 from __future__ import annotations
-from typing import Dict, List, Tuple, TYPE_CHECKING
+
+from typing import Dict, List, Tuple
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi_users import models, schemas
+from fastapi_users.authentication import AuthenticationBackend, Strategy, Authenticator
+from fastapi_users.jwt import SecretType, decode_jwt, generate_jwt
+from fastapi_users.router.common import ErrorCode, ErrorModel
 from fastapi_users.types import DependencyCallable
 from httpx_oauth.integrations.fastapi import OAuth2AuthorizeCallback
 from httpx_oauth.oauth2 import BaseOAuth2, OAuth2Token
 from pydantic import BaseModel
-
-from fastapi_users import models, schemas
-from fastapi_users.authentication import AuthenticationBackend, Strategy, Authenticator
-from fastapi_users.jwt import SecretType, decode_jwt, generate_jwt
-from fastapi_users.manager import BaseUserManager, UserManagerDependency
-from fastapi_users.router.common import ErrorCode, ErrorModel
 
 from tradealpha.api.usermanager import UserManager
 

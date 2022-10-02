@@ -3,10 +3,9 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Callable, Dict, Optional, Type, TypeVar, Generic, Any
+from typing import Callable, Optional, Type, TypeVar, Generic, Any
 
 import sqlalchemy.orm
-import sqlalchemy_utils
 from aioredis import Redis
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
@@ -15,18 +14,18 @@ from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import object_session
 from sqlalchemy.orm.util import identity_key
 
-from tradealpha.common.dbmodels.transfer import Transfer
-from tradealpha.common.redis import TableNames
 import tradealpha.common.utils as utils
+from tradealpha.common import customjson
 from tradealpha.common.dbmodels import Client, Balance, Chapter, Event, EventScore
 from tradealpha.common.dbmodels.alert import Alert
-from tradealpha.common.dbmodels.journal import Journal
+from tradealpha.common.dbmodels.editing import Journal
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.trade import Trade
+from tradealpha.common.dbmodels.transfer import Transfer
 from tradealpha.common.dbmodels.user import User
-from tradealpha.common.dbsync import Base, BaseMixin
-from tradealpha.common.dbmodels.mixins.serializer import Serializer
-from tradealpha.common import customjson
+from tradealpha.common.dbsync import BaseMixin
+from tradealpha.common.redis import TableNames
 
 TTable = TypeVar('TTable', bound=BaseMixin)
 
@@ -244,7 +243,7 @@ class Messenger:
     # user:*:client:*:trade:new
     # user:*:event:*:start
     # user:*:event:23:start
-    # user:234f-345k:journal:23:chapter:new
+    # user:234f-345k:editing:23:chapter:new
     async def bulk_sub(self, namespace: NameSpaceInput, topics: dict[Any, Callable], **ids):
         subscription = {}
         pattern = False

@@ -1,22 +1,19 @@
-import asyncio
+from datetime import datetime
 from typing import Sequence, Literal
 
 import discord
-from datetime import datetime
-
-import pytz
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 from sqlalchemy import delete
 
-from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
-from tradealpha.bot import utils
-from tradealpha.common import dbutils
 from tradealpha.bot import config
+from tradealpha.bot import utils
 from tradealpha.bot.cogs.cogbase import CogBase
-from tradealpha.common.dbmodels.client import Client
+from tradealpha.common import dbutils
 from tradealpha.common.dbasync import db_exec, async_session, db_first
 from tradealpha.common.dbmodels.balance import Balance
+from tradealpha.common.dbmodels.client import Client
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 
 
 class HistoryCog(CogBase):

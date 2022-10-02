@@ -5,9 +5,11 @@ Revises: ${down_revision | comma,n}
 Create Date: ${create_date}
 
 """
-from alembic import op
+import fastapi_users_db_sqlalchemy
 import sqlalchemy as sa
-import tradealpha
+from alembic import op
+from sqlalchemy.orm import Session
+
 ${imports if imports else ""}
 
 # revision identifiers, used by Alembic.
@@ -18,8 +20,10 @@ depends_on = ${repr(depends_on)}
 
 
 def upgrade():
+    session = Session(bind=op.get_bind())
     ${upgrades if upgrades else "pass"}
 
 
 def downgrade():
+    session = Session(bind=op.get_bind())
     ${downgrades if downgrades else "pass"}

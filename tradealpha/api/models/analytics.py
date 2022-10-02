@@ -1,14 +1,11 @@
-from dataclasses import dataclass
-from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import List, Dict, NamedTuple, Optional, Any, Tuple
+from typing import List, NamedTuple, Any, Tuple
 
-from pydantic import Field, Extra
 from tradealpha.api.models import BaseModel, OutputID
-
 from tradealpha.api.models.trade import DetailledTrade
 from tradealpha.common.enums import Filter
+
 
 class Calculation(Enum):
     PNL = "pnl"

@@ -5,9 +5,8 @@ import discord
 from discord_slash import cog_ext, SlashContext
 
 from tradealpha.bot import utils
-import tradealpha.common.config as config
-from tradealpha.common.exchanges import EXCHANGES
 from tradealpha.bot.cogs.cogbase import CogBase
+from tradealpha.common.exchanges import EXCHANGES
 
 
 class MiscCog(CogBase):

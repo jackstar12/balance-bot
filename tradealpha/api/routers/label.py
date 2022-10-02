@@ -1,26 +1,12 @@
-from http import HTTPStatus
 from typing import Any
 
-from fastapi import APIRouter, Depends, Body
-from fastapi.exceptions import HTTPException
-from sqlalchemy import or_, select, update, insert
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from tradealpha.api.crudrouter import create_crud_router
-from tradealpha.common.dbmodels import TradeDB
-from tradealpha.api.utils.client import get_user_client
-from tradealpha.common.dbasync import async_session, db_first, db_eager, db_all, db_select, db_exec, db_del_filter
-from tradealpha.api.dependencies import get_db
-from tradealpha.api.users import CurrentUser
-from tradealpha.common.dbsync import session
-
-from tradealpha.common.dbmodels.client import Client, add_client_filters
-from tradealpha.common.dbmodels.label import Label as LabelDB, LabelGroup as LabelGroupDB
+from tradealpha.api.models.labelinfo import CreateLabel
 from tradealpha.api.models.labelinfo import LabelInfo, LabelGroupInfo, LabelGroupCreate
-from tradealpha.common.dbmodels.trade import Trade, trade_association
+from tradealpha.common.dbmodels.client import add_client_filters
+from tradealpha.common.dbmodels.label import Label as LabelDB, LabelGroup as LabelGroupDB
+from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.dbmodels.user import User
-from tradealpha.api.models.labelinfo import RemoveLabel, AddLabel, CreateLabel
-from tradealpha.api.utils.responses import BadRequest, OK, NotFound
 
 
 def label_filter(stmt: Any, user: User):

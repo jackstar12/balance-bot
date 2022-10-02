@@ -1,33 +1,24 @@
 import os
 
-import dotenv
 import uvicorn
 from fastapi import FastAPI, Depends, APIRouter, HTTPException
-from sqlalchemy.orm import object_session
-from starlette.middleware.sessions import SessionMiddleware
-from starlette_csrf import CSRFMiddleware
 from httpx_oauth.clients.discord import DiscordOAuth2
+
+import tradealpha.api.routers.action as action
 import tradealpha.api.routers.analytics as analytics
-import tradealpha.api.routers.authentication as auth
 import tradealpha.api.routers.client as client
 import tradealpha.api.routers.discord as discord
+import tradealpha.api.routers.event as event
 import tradealpha.api.routers.journal as journal
 import tradealpha.api.routers.label as label
 import tradealpha.api.routers.template as template
-import tradealpha.api.routers.user as user
-import tradealpha.api.routers.event as event
 import tradealpha.api.routers.test as test
 import tradealpha.api.routers.trade as trade
-import tradealpha.api.routers.action as action
-import tradealpha.common.dbasync as aio_db
-from tradealpha.api.dependencies import get_db, messenger
+import tradealpha.api.routers.user as user
+from tradealpha.api.dependencies import messenger
+from tradealpha.api.models.user import UserRead, UserCreate
+from tradealpha.api.users import fastapi_users, auth_backend
 from tradealpha.common.dbmodels import Event, Client, EventScore
-from tradealpha.common.messenger import TableNames
-from tradealpha.api.utils.responses import OK
-from tradealpha.api.db_session_middleware import DbSessionMiddleware
-from tradealpha.api.models.user import UserInfo, UserRead, UserCreate
-from tradealpha.api.settings import settings
-from tradealpha.api.users import fastapi_users, auth_backend, CurrentUser
 from tradealpha.common.utils import setup_logger
 
 VERSION = 1

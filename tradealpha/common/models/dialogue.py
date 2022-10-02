@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, List, Iterable
-import discord
-import asyncio
+from typing import Callable, Iterable
 
 
 @dataclass

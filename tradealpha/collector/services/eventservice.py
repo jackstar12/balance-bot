@@ -1,14 +1,12 @@
 from dataclasses import dataclass
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 
-import pytz
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import select, and_
+
 from tradealpha.collector.services.baseservice import BaseService
-from tradealpha.common.dbasync import db_all, db_select
-from tradealpha.common.dbmodels import Client
+from tradealpha.common.dbasync import db_all
 from tradealpha.common.dbmodels.event import Event, EventState
 from tradealpha.common.dbmodels.score import EventScore
 from tradealpha.common.messenger import Category, TableNames, EVENT

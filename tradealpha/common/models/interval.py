@@ -1,12 +1,11 @@
 from __future__ import annotations
-from decimal import Decimal
-from typing import NamedTuple, Union
-from datetime import datetime, date, timedelta
-from typing import TYPE_CHECKING
 
-from tradealpha.common.models.gain import Gain
+from datetime import date
+from decimal import Decimal
+
 from tradealpha.common.models import BaseModel
 from tradealpha.common.models.balance import Amount
+from tradealpha.common.models.gain import Gain
 
 
 class Interval(BaseModel):

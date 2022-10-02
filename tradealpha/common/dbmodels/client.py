@@ -2,17 +2,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, date
-from decimal import Decimal
 from enum import Enum
-from typing import List, Optional, Union, Literal, Any, TYPE_CHECKING
+from typing import Optional, Union, Literal, Any, TYPE_CHECKING
 from uuid import UUID
 import sqlalchemy as sa
-import discord
 import pytz
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, asc, \
-    Boolean, select, func
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, reconstructor
 
@@ -26,7 +23,6 @@ import dotenv
 
 import tradealpha.common.dbmodels.balance as db_balance
 import tradealpha.common.utils as utils
-from tradealpha.common.models.gain import Gain
 from tradealpha.common.dbmodels.transfer import Transfer
 
 from tradealpha.common.dbmodels.mixins.querymixin import QueryMixin
@@ -34,8 +30,7 @@ from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
 from tradealpha.common import customjson
 from tradealpha.common.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey, db_unique, \
     time_range
-from tradealpha.common.dbmodels.chapter import Chapter
-from tradealpha.common.dbmodels.discord.guild import Guild
+from tradealpha.common.dbmodels.editing.chapter import Chapter
 from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
@@ -45,7 +40,6 @@ from tradealpha.common.dbsync import Base
 from tradealpha.common.redis import TableNames
 from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.redis.client import ClientSpace
-from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels import BalanceDB as Balance, Event
@@ -181,11 +175,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                                           order_by='Balance.time',
                                           foreign_keys='Balance.client_id')
 
-    # journals = relationship('Journal',
-    #                        back_populates='client',
-    #                        cascade="all, delete",
-    #                        lazy='raise')
-
     transfers: list = relationship('Transfer', back_populates='client', lazy='raise')
 
     currently_realized_id = Column(ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
@@ -193,6 +182,9 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                                       lazy='joined',
                                       foreign_keys=currently_realized_id,
                                       post_update=True)
+
+    trade_template_id = Column(ForeignKey('template.id', ondelete='SET NULL'), nullable=True)
+    trade_template = relationship('Template', lazy='raise', foreign_keys=trade_template_id)
 
     last_transfer_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)

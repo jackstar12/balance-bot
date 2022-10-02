@@ -8,21 +8,24 @@ import tradealpha.common.dbmodels.archive
 import tradealpha.common.dbmodels.balance
 import tradealpha.common.dbmodels.client
 import tradealpha.common.dbmodels.coin
-import tradealpha.common.dbmodels.discord.discorduser
 import tradealpha.common.dbmodels.event
 import tradealpha.common.dbmodels.execution
-import tradealpha.common.dbmodels.journal
 import tradealpha.common.dbmodels.label
 import tradealpha.common.dbmodels.pnldata
 import tradealpha.common.dbmodels.mixins.serializer
 import tradealpha.common.dbmodels.trade
 import tradealpha.common.dbmodels.transfer
 import tradealpha.common.dbmodels.user
-import tradealpha.common.dbmodels.chapter
-import tradealpha.common.dbmodels.template
 import tradealpha.common.dbmodels.score
-import tradealpha.common.dbmodels.discord.guildassociation as ga
 import tradealpha.common.dbmodels.action
+
+import tradealpha.common.dbmodels.editing.chapter as chapter
+import tradealpha.common.dbmodels.editing.template as template
+import tradealpha.common.dbmodels.editing.journal as journal
+
+import tradealpha.common.dbmodels.discord.discorduser
+import tradealpha.common.dbmodels.discord.guild as guild
+import tradealpha.common.dbmodels.discord.guildassociation as ga
 
 Client = client.Client
 User = user.User

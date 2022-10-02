@@ -1,5 +1,3 @@
-from typing import List
-
 from tradealpha.api.models import BaseModel, OutputID
 
 from tradealpha.common.enums import Side

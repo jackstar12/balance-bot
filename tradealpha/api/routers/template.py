@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import operator
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,9 +9,9 @@ from tradealpha.api.dependencies import get_messenger, get_db
 from tradealpha.api.models.template import TemplateUpdate, TemplateInfo, TemplateCreate
 from tradealpha.api.users import CurrentUser
 from tradealpha.api.utils.responses import OK, CustomJSONResponse, NotFound
-from tradealpha.common.dbasync import db_unique, db_all, db_del_filter
-from tradealpha.common.dbmodels.journal import Journal
-from tradealpha.common.dbmodels.template import Template as DbTemplate
+from tradealpha.common.dbasync import db_unique, db_all, db_del_filter, safe_op
+from tradealpha.common.dbmodels.editing import Journal
+from tradealpha.common.dbmodels.editing.template import Template as DbTemplate, TemplateType
 from tradealpha.common.dbmodels.user import User
 
 router = APIRouter(
@@ -23,21 +25,21 @@ router = APIRouter(
 
 
 async def query_templates(template_ids: list[int],
+                          *where,
                           user: User,
-                          *eager,
                           session: AsyncSession,
                           raise_not_found=True,
                           **filters):
     func = db_unique if len(template_ids) == 1 else db_all
     template = await func(
-        select(DbTemplate).filter(
+        select(DbTemplate).where(
             DbTemplate.id.in_(template_ids) if template_ids else True,
-            DbTemplate.user_id == user.id
+            DbTemplate.user_id == user.id,
+            *where
         ).filter_by(
             **filters
         ),
         session=session,
-        *eager
     )
     if not template and raise_not_found:
         raise HTTPException(404, 'Chapter not found')
@@ -71,10 +73,12 @@ async def create_template(body: TemplateCreate,
 
 @router.get('/template/{template_id}', response_model=TemplateInfo)
 async def get_template(template_id: int,
+                       template_type: TemplateType = Query(default=None),
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     template = await query_templates([template_id],
-                                     user,
+                                     safe_op(DbTemplate.type, template_type, operator.eq),
+                                     user=user,
                                      session=db)
 
     return TemplateInfo.from_orm(template)
@@ -82,8 +86,10 @@ async def get_template(template_id: int,
 
 @router.get('/template', response_model=list[TemplateInfo])
 async def get_templates(user: User = Depends(CurrentUser),
+                        template_type: TemplateType = Query(default=None),
                         db: AsyncSession = Depends(get_db)):
     templates = await query_templates([],
+                                      safe_op(DbTemplate.type, template_type),
                                       user=user,
                                       session=db,
                                       raise_not_found=False)
@@ -99,7 +105,7 @@ async def update_template(template_id: int,
                           user: User = Depends(CurrentUser),
                           db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        update(DbTemplate).where(
+        update(DbTemplate.title).where(
             DbTemplate.id == template_id,
             DbTemplate.user_id == user.id
         ).values(

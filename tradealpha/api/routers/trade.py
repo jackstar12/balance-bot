@@ -5,12 +5,11 @@ from typing import List, Type, Union
 from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import conlist
-from sqlalchemy import select, asc, delete, insert
+from sqlalchemy import select, delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
 import tradealpha.api.utils.client as client_utils
-from tradealpha.common.dbmodels.trade import trade_association
 from tradealpha.api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
 from tradealpha.api.models.client import get_query_params
@@ -25,6 +24,7 @@ from tradealpha.common.dbmodels.client import add_client_filters
 from tradealpha.common.dbmodels.label import Label as LabelDB
 from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
 from tradealpha.common.dbmodels.pnldata import PnlData
+from tradealpha.common.dbmodels.trade import trade_association
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.models import BaseModel, OrmBaseModel, OutputID
 from tradealpha.common.redis.client import ClientCacheKeys

@@ -81,11 +81,11 @@ class BaseModel(PydanticBaseModel):
         return SAType
 
 
-class CreateableMixin:
+class CreateableModel(BaseModel):
     __table__: Type[BaseMixin]
 
-    def get(self, user: User):
-        return self.__table__(**self.__dict__)
+    def get(self, user: User) -> BaseMixin:
+        return self.__table__(**self.__dict__, user=user)
 
 
 class OrmBaseModel(BaseModel):
@@ -97,5 +97,6 @@ __all__ = [
     "OrmBaseModel",
     "BaseModel",
     "InputID",
-    "OutputID"
+    "OutputID",
+    "CreateableModel"
 ]

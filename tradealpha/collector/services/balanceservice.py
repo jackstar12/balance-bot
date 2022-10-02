@@ -4,26 +4,21 @@ from asyncio import Queue
 from collections import deque
 from typing import Dict, Optional, Deque, NamedTuple
 
-from aioredis.client import Pipeline
 from apscheduler.job import Job
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select, and_, or_
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.inspection import inspect
 
 from tradealpha.common.config import DATA_PATH, REKT_THRESHOLD
 from tradealpha.common.exchanges import EXCHANGES
 from tradealpha.collector.services.baseservice import BaseService
 from tradealpha.collector.services.dataservice import DataService, Channel
-from tradealpha.common import utils, customjson
-from tradealpha.common.dbasync import db_all, db_unique, db_eager, redis_bulk_hashes, RedisKey
-from tradealpha.common.dbmodels.chapter import Chapter
+from tradealpha.common.dbasync import db_all, db_unique, db_eager
 from tradealpha.common.dbmodels.client import Client, ClientState, ClientType
-from tradealpha.common.dbmodels.journal import Journal
+from tradealpha.common.dbmodels.editing import Journal
 from tradealpha.common.dbmodels.trade import Trade
-from tradealpha.common.errors import InvalidClientError, ResponseError, ClientDeletedError
+from tradealpha.common.errors import InvalidClientError
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
-from tradealpha.common.messenger import ClientUpdate, CLIENT, TRADE
+from tradealpha.common.messenger import CLIENT, TRADE
 from tradealpha.common.messenger import TableNames, Category
 
 
@@ -62,8 +57,8 @@ class _BalanceServiceBase(BaseService):
 
         self._all_client_stmt = db_eager(
             select(Client).where(
-                Client.archived == False,
-                Client.invalid == False
+                not Client.archived,
+                not Client.invalid
             ),
             Client.currently_realized,
             (Client.open_trades, [Trade.max_pnl, Trade.min_pnl]),

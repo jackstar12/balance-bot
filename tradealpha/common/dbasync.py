@@ -1,26 +1,25 @@
 import asyncio
 import logging
-import time
+import operator
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from operator import and_
-from typing import List, Tuple, Union, Any, OrderedDict, TypeVar, Type, Optional, Callable
+from typing import List, Tuple, Union, Any, TypeVar, Type, Optional, Callable
 
-import dotenv
-import os
 import aioredis
+import dotenv
 from pydantic import ValidationError
-from sqlalchemy import delete, select, Column, update
-
-from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedAttribute, RelationshipProperty
+from sqlalchemy import delete, select, Column
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedAttribute, RelationshipProperty
 from sqlalchemy.sql import Select
 from sqlalchemy.util import symbol
 
+from tradealpha.common import customjson
 from tradealpha.common.dbsync import Base
 from tradealpha.common.models import BaseModel
-from tradealpha.common import customjson
 
 dotenv.load_dotenv()
 
@@ -91,11 +90,17 @@ async def db_del_filter(cls, session=None, **kwargs):
     return await db_exec(delete(cls).filter_by(**kwargs), session)
 
 
+def safe_op(col: Column, value: Any, op: operator = operator.eq):
+    return op(col, value) if value is not None else True
+
+
 def time_range(col: Column, since: datetime = None, to: datetime = None):
     return and_(
-        col > since if since else True,
-        col < to if to else True
+        safe_op(col, since, operator.gt),
+        safe_op(col, to, operator.lt),
     )
+
+
 
 
 def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False):

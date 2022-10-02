@@ -1,8 +1,10 @@
-from tradealpha.common.dbmodels.action import ActionType
-from tradealpha.common.models import BaseModel, OrmBaseModel
+from tradealpha.common.dbmodels.action import ActionType, Action
+from tradealpha.common.models import OrmBaseModel, CreateableModel
 
 
-class ActionCreate(BaseModel):
+class ActionCreate(CreateableModel):
+    __table__ = Action
+
     namespace: str
     topic: str
     action_type: ActionType

@@ -1,13 +1,13 @@
 import hmac
 import time
 import urllib.parse
+from typing import Callable, Dict, Awaitable, Any
 
 import aiohttp
 from typing_extensions import Self
 
-from tradealpha.common import customjson, utils
+from tradealpha.common import utils
 from tradealpha.common.models.async_websocket_manager import WebsocketManager
-from typing import TYPE_CHECKING, Callable, List, Dict, Awaitable, Any
 
 
 class BybitWebsocketClient(WebsocketManager):

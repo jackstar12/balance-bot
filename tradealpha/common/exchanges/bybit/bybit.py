@@ -1,30 +1,24 @@
 import asyncio
-import urllib.parse
-import time
-import logging
 import hmac
+import logging
+import time
+import urllib.parse
 from abc import ABC
-from collections import namedtuple
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Dict, List, Tuple, Optional, Type
 
-import aiohttp
-import pytz
 from aiohttp import ClientResponseError, ClientResponse
 
 from tradealpha.common import utils
-from tradealpha.common.config import TESTING
-from tradealpha.common.dbmodels.client import Client
+from tradealpha.common.dbmodels.balance import Balance, Amount
 from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.dbmodels.transfer import RawTransfer
 from tradealpha.common.enums import ExecType, Side
 from tradealpha.common.errors import ResponseError, InvalidClientError
 from tradealpha.common.exchanges.bybit.websocket import BybitWebsocketClient
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker, create_limit
-from tradealpha.common.dbmodels.balance import Balance, Amount
-from typing import Dict, List, Union, Tuple, Optional, Type
-
 from tradealpha.common.models.async_websocket_manager import WebsocketManager
 from tradealpha.common.models.ohlc import OHLC
 

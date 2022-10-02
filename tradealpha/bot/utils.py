@@ -1,58 +1,50 @@
 from __future__ import annotations
+
 import asyncio
 import itertools
+import logging
 import math
 import re
-import logging
 import traceback
 from asyncio import Future
-from decimal import Decimal
+from datetime import datetime, timedelta
 from functools import wraps
-from uuid import UUID
+from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal
+from typing import TYPE_CHECKING
 
 import discord
-import inspect
-import matplotlib.pyplot as plt
-import numpy
-from matplotlib.collections import LineCollection
-from matplotlib.patches import Polygon
+import discord_slash.utils.manage_components as discord_components
+import matplotlib.colors as mcolors
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pytz
-from scipy import interpolate
-from prettytable import PrettyTable
-
-from discord_slash.utils.manage_components import create_button, create_actionrow, create_select_option
-import discord_slash.utils.manage_components as discord_components
-from discord_slash.model import ButtonStyle
 from discord_slash import SlashCommand, ComponentContext, SlashContext
-from datetime import datetime, timedelta
-from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal, TypeVar, Iterable
-
-from sqlalchemy import asc, select
+from discord_slash.model import ButtonStyle
+from discord_slash.utils.manage_components import create_button, create_actionrow, create_select_option
+from matplotlib.collections import LineCollection
+from matplotlib.patches import Polygon
+from scipy import interpolate
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import tradealpha.common.dbmodels as dbmodels
-from tradealpha.common.models.history import History
-from tradealpha.common.models.eventinfo import EventScore, EventRank
-from tradealpha.common.dbmodels.transfer import Transfer
-from tradealpha.common.dbmodels.user import User
-from tradealpha.common.calc import calc_gains, transfer_gen
-from tradealpha.common.utils import calc_percentage, call_unknown_function, groupby, utc_now
-from tradealpha.common.dbasync import async_session, db_all, async_maker, time_range
-from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
-from tradealpha.common.errors import UserInputError, InternalError
-from tradealpha.common import dbutils
-from tradealpha.common.dbmodels.discord.discorduser import DiscordUser, get_display_name, get_client_display_name
-from tradealpha.common.dbmodels.balance import Balance
-from tradealpha.bot.config import CURRENCY_PRECISION, REKT_THRESHOLD
-from tradealpha.common.models.selectionoption import SelectionOption
 import tradealpha.common.config as config
-from typing import TYPE_CHECKING
-import matplotlib.colors as mcolors
+import tradealpha.common.dbmodels as dbmodels
+from tradealpha.common import dbutils
+from tradealpha.common import utils
+from tradealpha.common.calc import transfer_gen
+from tradealpha.common.dbasync import async_session, db_all, async_maker, time_range
+from tradealpha.common.dbmodels.balance import Balance
+from tradealpha.common.dbmodels.discord.discorduser import DiscordUser, get_display_name, get_client_display_name
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.trade import Trade
-from tradealpha.common import utils
+from tradealpha.common.dbmodels.transfer import Transfer
+from tradealpha.common.dbmodels.user import User
+from tradealpha.common.errors import UserInputError, InternalError
+from tradealpha.common.models.eventinfo import EventScore, EventRank
+from tradealpha.common.models.history import History
+from tradealpha.common.models.selectionoption import SelectionOption
+from tradealpha.common.utils import calc_percentage, call_unknown_function, groupby, utc_now
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels.client import Client

@@ -1,33 +1,33 @@
 from __future__ import annotations
+
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+import discord
+import numpy
 import pytz
 import sqlalchemy.exc
 from aioredis import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from tradealpha.common.dbutils import get_client_history
-from tradealpha.common.models import OrmBaseModel
-from tradealpha.common.dbmodels.discord.discorduser import DiscordUser, get_display_name
-from tradealpha.common.utils import join_args
-from tradealpha.common.dbmodels.score import EventScore, EventRank
-from tradealpha.common.models.discord.guild import GuildRequest
-from tradealpha.common.redis import rpc
-from tradealpha.common.dbmodels.types import Document
-import numpy
-from tradealpha.common.dbmodels.archive import Archive
-from tradealpha.common.dbmodels.mixins.serializer import Serializer
-from datetime import datetime
-from sqlalchemy.ext.hybrid import hybrid_property
-import discord
-
-from tradealpha.common.dbsync import Base
-from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
     select, insert, literal, and_, update, Numeric
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import relationship, backref
+
+from tradealpha.common.dbmodels.archive import Archive
+from tradealpha.common.dbmodels.discord.discorduser import get_display_name
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
+from tradealpha.common.dbmodels.score import EventScore, EventRank
+from tradealpha.common.dbmodels.types import Document
+from tradealpha.common.dbsync import Base
+from tradealpha.common.dbutils import get_client_history
+from tradealpha.common.models import OrmBaseModel
+from tradealpha.common.models.discord.guild import GuildRequest
+from tradealpha.common.redis import rpc
+from tradealpha.common.utils import join_args
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels.user import User

@@ -1,15 +1,15 @@
 import asyncio
 from functools import wraps
-from typing import Dict, Optional, TypeVar, Generic, Callable, Any
+from typing import Dict, Optional, TypeVar, Generic, Any
 
-from sqlalchemy.sql import Select
 from sqlalchemy.ext.asyncio import AsyncSession
-from tradealpha.common.utils import CoroOrCallable
-from tradealpha.common.dbsync import Base
+from sqlalchemy.sql import Select
+
 from tradealpha.common.dbasync import db_unique
+from tradealpha.common.dbsync import Base
 from tradealpha.common.messenger import Category
 from tradealpha.common.messenger import Messenger, MessengerNameSpace
-
+from tradealpha.common.utils import CoroOrCallable
 
 TTable = TypeVar('TTable', bound=Base)
 

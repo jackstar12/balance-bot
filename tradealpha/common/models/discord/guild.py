@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import List, Optional, Any, TYPE_CHECKING
 
-from tradealpha.common.models import BaseModel, OutputID, InputID, OrmBaseModel
+from typing import Optional, TYPE_CHECKING
 
 from tradealpha.common.enums import Tier
+from tradealpha.common.models import BaseModel, OutputID, InputID, OrmBaseModel
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels import GuildAssociation as GuildAssociationDB

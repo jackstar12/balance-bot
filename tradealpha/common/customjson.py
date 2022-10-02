@@ -1,11 +1,10 @@
+import json
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
-import json
+
 import orjson
 from pydantic import BaseModel
-
-from tradealpha.common import utils
 
 
 def default(obj: Any):

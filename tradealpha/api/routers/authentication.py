@@ -1,17 +1,15 @@
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from tradealpha.api.models.user import UserRead
 from tradealpha.api.authenticator import Authenticator
+from tradealpha.api.dependencies import get_authenticator, get_db
+from tradealpha.api.models.user import UserRead
+from tradealpha.api.utils.responses import OK, CustomJSONResponse
 from tradealpha.common.dbasync import db_select
 from tradealpha.common.dbmodels.user import User
-import bcrypt
-
-from tradealpha.api.dependencies import get_authenticator, get_db
-from tradealpha.api.utils.responses import OK, CustomJSONResponse
 
 router = APIRouter(
     tags=["authentication"],

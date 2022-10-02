@@ -1,9 +1,7 @@
 import logging
-from typing import List
 
 import discord
 from aioredis import Redis
-from discord import Embed
 from discord.ext.commands import Bot
 from discord.ext.commands.cog import Cog
 from discord_slash import SlashCommand

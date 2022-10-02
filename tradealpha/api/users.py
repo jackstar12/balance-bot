@@ -1,31 +1,28 @@
 import os
 import uuid
-from typing import Optional, Generic, Any
+from typing import Optional, Generic
 
-from fastapi import Depends, Request, APIRouter
-from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, models, exceptions, schemas
+from fastapi import Depends, APIRouter
+from fastapi_users import FastAPIUsers, schemas
 from fastapi_users.authentication import (
     CookieTransport,
     AuthenticationBackend
 )
 from fastapi_users.jwt import SecretType
-from fastapi_users.models import ID, UP, UOAP, OAP
-
+from fastapi_users.models import ID, UOAP, OAP
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from httpx_oauth.oauth2 import BaseOAuth2
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
-from starlette.responses import Response, RedirectResponse
 
-from tradealpha.api.usermanager import UserManager
-from tradealpha.api.oauth import get_oauth_router
+from tradealpha.api.authenticator import RedisStrategy
 from tradealpha.api.dependencies import get_db
+from tradealpha.api.oauth import get_oauth_router
 from tradealpha.api.settings import settings
-from tradealpha.api.authenticator import Authenticator, RedisStrategy
-from tradealpha.common.dbmodels.user import User as UserTable, User, OAuthAccount
-from tradealpha.common.dbasync import async_session, redis, db_eager
-
+from tradealpha.api.usermanager import UserManager
+from tradealpha.common.dbasync import redis, db_eager
+from tradealpha.common.dbmodels.user import User, OAuthAccount
 
 
 class UserDatabase(Generic[UOAP, ID, OAP], SQLAlchemyUserDatabase[UOAP, ID]):

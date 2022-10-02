@@ -1,28 +1,15 @@
-import asyncio
-import builtins
+import itertools
 import itertools
 import logging
-import time
 from decimal import Decimal
+from typing import Tuple
 
 from pydantic import ValidationError
-from sqlalchemy import select
 
-import msgpack
-from datetime import datetime
-from typing import Optional, Dict, List, Tuple
-
-import pytz
-
-import tradealpha.common.utils as utils
-from tradealpha.api.models.trade import DetailledTrade
 from tradealpha.api.models.analytics import ClientAnalytics, FilteredPerformance, Performance, Calculation
-from tradealpha.api.models.execution import Execution
-from tradealpha.common.dbasync import db_first
-from tradealpha.common.dbmodels.balance import Balance
-from tradealpha.common.dbmodels.client import Client, add_client_filters
-from tradealpha.common.dbmodels.user import User
+from tradealpha.api.models.trade import DetailledTrade
 from tradealpha.api.models.websocket import ClientConfig
+from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.enums import Filter
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,9 @@
-import os
+#import os
 from logging.config import fileConfig
+
+from alembic import context
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-from alembic import context
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -17,7 +18,8 @@ fileConfig(config.config_file_name)
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from tradealpha.common.dbsync import Base
-import tradealpha.common.dbmodels
+import os
+
 target_metadata = Base.metadata
 
 config.set_main_option(

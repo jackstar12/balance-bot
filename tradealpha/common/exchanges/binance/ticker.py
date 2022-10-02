@@ -1,16 +1,10 @@
-import json
-from datetime import datetime
 from decimal import Decimal
-from typing import List, Any
 
-import pytz
-
-from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
-from tradealpha.common.models.trade import Trade
 from tradealpha.common.exchanges.exchangeticker import ExchangeTicker, Channel
-from tradealpha.common.config import TESTING
+from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
 from tradealpha.common.models.async_websocket_manager import WebsocketManager
 from tradealpha.common.models.ticker import Ticker
+from tradealpha.common.models.trade import Trade
 
 
 # https://binance-docs.github.io/apidocs/futures/en/#aggregate-trade-streams

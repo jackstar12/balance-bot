@@ -1,28 +1,23 @@
+import asyncio
 import os
 from asyncio import Future
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
-
-import pytest
-from aioredis import Redis
-
-
-from tests.mockexchange import MockExchange
-from tradealpha.common.dbmodels.trade import Trade
-from tradealpha.common.dbmodels import Event, Client, EventScore, Balance
-from tradealpha.common.dbsync import Base
-from tradealpha.common.dbasync import REDIS_URI
-from tradealpha.common.messenger import Messenger, NameSpaceInput
-
-import asyncio
+from typing import Any, Callable
 
 import aioredis
-
-from sqlalchemy.orm import sessionmaker
+import pytest
+from aioredis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
+from tests.mockexchange import MockExchange
 from tradealpha.common import customjson
+from tradealpha.common.dbasync import REDIS_URI
+from tradealpha.common.dbmodels import Event, Client, EventScore, Balance
+from tradealpha.common.dbmodels.trade import Trade
+from tradealpha.common.dbsync import Base
 from tradealpha.common.exchanges import EXCHANGES
+from tradealpha.common.messenger import Messenger, NameSpaceInput
 
 pytestmark = pytest.mark.anyio
 

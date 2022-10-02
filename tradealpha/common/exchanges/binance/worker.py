@@ -1,36 +1,32 @@
 from __future__ import annotations
 
-import itertools
-from abc import ABC
-from decimal import Decimal
-from enum import Enum
-from typing import NamedTuple, List, Optional, Union, Iterator
-
 import asyncio
 import hmac
 import json
 import logging
 import sys
 import time
-import ccxt.async_support as ccxt
 import urllib.parse
+from abc import ABC
 from datetime import datetime, timedelta
-from typing import Dict
+from decimal import Decimal
+from enum import Enum
+from typing import List, Iterator
 
+import ccxt.async_support as ccxt
 import pytz
 from aiohttp import ClientResponse
 
-from tradealpha.common.utils import utc_now
-from tradealpha.common.models.miscincome import MiscIncome
-from tradealpha.common.config import TESTING
-from tradealpha.common.dbmodels.transfer import RawTransfer
+import tradealpha.common.dbmodels.balance as balance
 from tradealpha.common import utils
+from tradealpha.common.dbmodels.execution import Execution
+from tradealpha.common.dbmodels.transfer import RawTransfer
 from tradealpha.common.enums import Side, ExecType
 from tradealpha.common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker, create_limit
-import tradealpha.common.dbmodels.balance as balance
-from tradealpha.common.dbmodels.execution import Execution
+from tradealpha.common.models.miscincome import MiscIncome
 from tradealpha.common.models.ohlc import OHLC
+from tradealpha.common.utils import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +131,6 @@ _interval_map = {
 
 
 class BinanceFutures(_BinanceBaseClient):
-
     _ENDPOINT = 'https://fapi.binance.com'
     _SANDBOX_ENDPOINT = 'https://testnet.binancefuture.com'
     exchange = 'binance-futures'
@@ -291,12 +286,15 @@ class BinanceFutures(_BinanceBaseClient):
                     if get_safe(symbol, 'tradeId') == trade_id:
                         current_commission[symbol] = None
             if income_type == "INSURANCE_CLEAR" or income_type == "FUNDING_FEE":
+                type = ExecType.FUNDING if income_type == "FUNDING_FEE" else ExecType.LIQUIDATION
+                amount = Decimal(income['income'])
                 results.append(
                     Execution(
                         symbol=symbol,
-                        realized_pnl=Decimal(income['income']),
+                        realized_pnl=amount if type == ExecType.LIQUIDATION else 0,
+                        commission=amount if type == ExecType.FUNDING else 0,
                         time=self.parse_ms(income['time']),
-                        type=ExecType.FUNDING if income_type == "FUNDING_FEE" else ExecType.LIQUIDATION
+                        type=type
                     )
                 )
             elif income_type not in ('COMMISSION', 'TRANSFER', 'REALIZED_PNL'):
@@ -347,7 +345,6 @@ class BinanceFutures(_BinanceBaseClient):
 
     async def _on_message(self, ws, message):
         event = message['e']
-        data = message.get('o')
         json.dump(message, fp=sys.stdout, indent=3)
 
         """
@@ -397,6 +394,7 @@ class BinanceFutures(_BinanceBaseClient):
         }        
         """
         if event == 'ORDER_TRADE_UPDATE':
+            data = message.get('o')
             if data['X'] == 'FILLED':
                 x = data['x']
                 o = data['o']
@@ -419,9 +417,24 @@ class BinanceFutures(_BinanceBaseClient):
                     side=data['S'],
                     time=self.parse_ms(message['E']),
                     type=execType,
-                    realized_pnl=Decimal(data['rp'])
+                    realized_pnl=Decimal(data['rp']),
+                    commission=Decimal(data['n'])
                 )
-                await utils.call_unknown_function(self._on_execution, trade)
+                await self._on_execution(trade)
+
+        # https://binance-docs.github.io/apidocs/futures/en/#event-balance-and-position-update
+        if event == 'ACCOUNT_UPDATE':
+            data = message.get['a']
+            if data["m"] == "FUNDING_FEE":
+                asset = data["B"][0]
+                await self._on_execution(
+                    Execution(
+                        symbol=asset["a"],
+                        time=self.parse_ms(message['E']),
+                        type=ExecType.FUNDING,
+                        commission=Decimal(asset['bc'])
+                    )
+                )
 
     @classmethod
     def set_weights(cls, weight: int, response: ClientResponse):

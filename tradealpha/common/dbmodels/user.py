@@ -4,17 +4,15 @@ from typing import Optional, TypedDict
 import sqlalchemy as sa
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID, SQLAlchemyBaseOAuthAccountTableUUID
-from sqlalchemy import Column, ForeignKey, BigInteger
+from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship
 
-
+from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
+from tradealpha.common.dbsync import Base
 from tradealpha.common.models.discord.guild import UserRequest
 from tradealpha.common.redis import rpc
-from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
-from tradealpha.common.dbsync import Base
-from tradealpha.common.dbmodels.mixins.serializer import Serializer
 
 
 class Subscription(enum.Enum):

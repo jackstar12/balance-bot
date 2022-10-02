@@ -1,21 +1,18 @@
 import base64
-from abc import ABC
-
-import pytz
 import hmac
-from datetime import datetime
-
 import time
+from abc import ABC
+from datetime import datetime
 from decimal import Decimal
 from typing import List, Literal
+
+import pytz
 
 from tradealpha.common import utils
 from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.dbmodels.transfer import RawTransfer
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
-from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.models.ohlc import OHLC
-from tradealpha.common.config import TESTING
 from tradealpha.common.models.ticker import Ticker
 
 

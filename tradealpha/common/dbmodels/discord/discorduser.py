@@ -1,22 +1,15 @@
 from __future__ import annotations
-from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING, Type
-from uuid import UUID
+
+from typing import List, TYPE_CHECKING
 
 import discord
-from aioredis import Redis
-from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.ext.hybrid import hybrid_property
-
-from tradealpha.common.utils import join_args
-from tradealpha.common.dbmodels.user import OAuthAccount
-from tradealpha.common.dbasync import async_session, db_unique, db_select, db_select_all
-import tradealpha.common.dbmodels.client as db_client
-from tradealpha.common.dbmodels.mixins.serializer import Serializer
-
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import select, Column, String, BigInteger, ForeignKey
+
+import tradealpha.common.dbmodels.client as db_client
+from tradealpha.common.dbasync import async_session, db_select
+from tradealpha.common.dbmodels.user import OAuthAccount
+from tradealpha.common.utils import join_args
 
 if TYPE_CHECKING:
     from tradealpha.common.dbmodels import Client, GuildAssociation

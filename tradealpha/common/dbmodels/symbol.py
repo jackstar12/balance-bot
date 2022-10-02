@@ -1,5 +1,4 @@
 import sqlalchemy as sa
-from sqlalchemy.ext.hybrid import hybrid_property
 
 
 class CurrencyMixin:

@@ -3,9 +3,9 @@ from decimal import Decimal
 from typing import Optional
 
 from tradealpha.common import config
-from tradealpha.common.models.gain import Gain
-from tradealpha.common.utils import calc_percentage, calc_percentage_diff
 from tradealpha.common.models import OrmBaseModel
+from tradealpha.common.models.gain import Gain
+from tradealpha.common.utils import calc_percentage_diff
 
 
 class AmountBase(OrmBaseModel):

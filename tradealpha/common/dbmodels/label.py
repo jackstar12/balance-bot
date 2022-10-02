@@ -1,9 +1,8 @@
-from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy.orm import relationship, backref, declared_attr
-
-from tradealpha.common.dbsync import Base
 from sqlalchemy import Column, Integer, ForeignKey, String
+from sqlalchemy.orm import relationship, declared_attr
+
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
+from tradealpha.common.dbsync import Base
 
 
 class Group:

@@ -1,20 +1,19 @@
 from __future__ import annotations
-from datetime import datetime
 
-import pytz
+from datetime import datetime
+from typing import Optional, Union, TYPE_CHECKING
+
 from sqlalchemy import select, desc, JSON, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select, Delete, Update
 
 import tradealpha.common.dbmodels.client as db_client
-
-from tradealpha.common.dbmodels.user import User
+import tradealpha.common.dbmodels.event as db_event
 from tradealpha.common.dbasync import db_first, db_all, \
     db_select, async_session, time_range
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
-import tradealpha.common.dbmodels.event as db_event
-from typing import Optional, Union, TYPE_CHECKING
+from tradealpha.common.dbmodels.user import User
 from tradealpha.common.errors import UserInputError
 from tradealpha.common.models.history import History
 

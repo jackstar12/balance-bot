@@ -1,4 +1,3 @@
-from datetime import timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,17 +6,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tradealpha.api.routers.template import query_templates
-from tradealpha.api.dependencies import get_messenger, CurrentUserDep, get_db
+from tradealpha.api.dependencies import get_messenger, get_db
 from tradealpha.api.users import CurrentUser, get_current_user
 from tradealpha.api.models.completejournal import (
     JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
-    ChapterInfo, ChapterCreate, ChapterUpdate, JournalDetailedInfo
+    ChapterCreate, ChapterUpdate, JournalDetailedInfo
 )
-from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound
+from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse
 from tradealpha.common.dbasync import db_unique, db_all
-from tradealpha.common.dbmodels.chapter import Chapter as DbChapter
+from tradealpha.common.dbmodels.editing.chapter import Chapter as DbChapter
 from tradealpha.common.dbmodels.client import add_client_filters, Client
-from tradealpha.common.dbmodels.journal import Journal, JournalType
+from tradealpha.common.dbmodels.editing.journal import Journal, JournalType
 from tradealpha.common.dbmodels.user import User
 
 router = APIRouter(
@@ -241,7 +240,7 @@ async def create_chapter(journal_id: int,
     template = None
     if body.template_id:
         template = await query_templates([body.template_id],
-                                         user,
+                                         user=user,
                                          session=db)
 
     new_chapter = journal.create_chapter(body.parent_id, template)

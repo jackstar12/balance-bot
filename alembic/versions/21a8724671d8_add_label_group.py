@@ -6,19 +6,14 @@ Create Date: 2022-09-25 14:39:00.476165
 
 """
 import fastapi_users_db_sqlalchemy
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import orm, update
+from alembic import op
 from sqlalchemy.orm import Session
 
-import tradealpha
 from sqlalchemy.dialects import postgresql
+from tradealpha.common.dbmodels.user import User
 
 # revision identifiers, used by Alembic.
-from tradealpha.common.dbmodels.label import Label
-from tradealpha.common.dbmodels.user import User
-from tradealpha.common.dbsync import Base
-
 revision = '21a8724671d8'
 down_revision = None
 branch_labels = None
@@ -54,7 +49,7 @@ def upgrade():
     op.add_column('label', sa.Column('group_id', sa.Integer(), nullable=True))
 
     session.execute(
-        update(LabelTmp).values(
+        sa.update(LabelTmp).values(
             group_id=labelgroup.c.id
         ).where(
             labelgroup.c.user_id == LabelTmp.user_id

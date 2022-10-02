@@ -1,18 +1,18 @@
 from datetime import datetime, date
-from decimal import Decimal
-from typing import Dict, List, Set, Optional, Any
-import pydantic
+from typing import Dict, Optional
+
 from fastapi import Query
 from pydantic import UUID4
-from starlette.requests import Request
 
-from tradealpha.common.models.client import ClientCreate
-from tradealpha.common.dbmodels.client import ClientType, ClientState
-from tradealpha.common.models.balance import Balance
-from tradealpha.common.models.interval import Interval
 import tradealpha.common.dbmodels.mixins.querymixin as qmxin
+from api.models.template import TemplateInfo
+from common.models.eventinfo import EventInfo
 from tradealpha.api.models import BaseModel, OutputID, InputID
 from tradealpha.api.models.transfer import Transfer
+from tradealpha.common.dbmodels.client import ClientType, ClientState
+from tradealpha.common.models.balance import Balance
+from tradealpha.common.models.client import ClientCreate
+from tradealpha.common.models.interval import Interval
 
 
 def get_query_params(id: set[InputID] = Query(default=[]),
@@ -27,7 +27,6 @@ def get_query_params(id: set[InputID] = Query(default=[]),
         to=to,
         limit=limit
     )
-
 
 
 class ClientCreateBody(ClientCreate):
@@ -47,6 +46,7 @@ class ClientEdit(BaseModel):
     name: Optional[str]
     state: Optional[ClientState]
     type: Optional[ClientType]
+    trade_template_id: Optional[InputID]
 
 
 class ClientInfo(BaseModel):
@@ -54,23 +54,26 @@ class ClientInfo(BaseModel):
     user_id: Optional[UUID4]
     discord_user_id: Optional[OutputID]
 
-    api_key: str
     exchange: str
-    subaccount: Optional[str]
-    extra_kwargs: Optional[Dict]
-
     name: Optional[str]
-    rekt_on: Optional[datetime]
     type: ClientType
     state: ClientState
-    archived: bool
-    invalid: bool
-
-    created_at: datetime
-    last_edited: Optional[datetime]
 
     class Config:
         orm_mode = True
+
+
+class ClientDetailed(ClientInfo):
+    # More detailed information
+    created_at: datetime
+    last_edited: Optional[datetime]
+    subaccount: Optional[str]
+    api_key: str
+    extra_kwargs: Optional[Dict]
+
+    # Relations
+    trade_template: TemplateInfo
+    events: Optional[list[EventInfo]]
 
 
 class ClientOverview(BaseModel):

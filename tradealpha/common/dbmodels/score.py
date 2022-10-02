@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import pytz
-from sqlalchemy import Column, ForeignKey, Numeric, Integer, DateTime, and_, asc, ForeignKeyConstraint, desc, select
+from sqlalchemy import Column, ForeignKey, Numeric, Integer, DateTime, and_, asc, ForeignKeyConstraint
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, declared_attr, foreign, aliased
+from sqlalchemy.orm import relationship, foreign
 
 from tradealpha.common.models.gain import Gain
 

@@ -1,17 +1,12 @@
 from enum import Enum
 
 import sqlalchemy as sa
-from sqlalchemy import orm
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import relationship
 
-from tradealpha.common.redis import TableNames
 from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
-from tradealpha.common.dbmodels.types import Document, Data
-from tradealpha.common.models.document import DocumentModel
-
 from tradealpha.common.dbsync import Base
-from typing import TYPE_CHECKING
 
 
 class ActionType(Enum):
@@ -29,6 +24,7 @@ class Action(Base, EditsMixin):
 
     id = sa.Column(sa.Integer, primary_key=True)
     user_id = sa.Column(sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    user = relationship('User', lazy='raise')
 
     namespace = sa.Column(sa.String(length=12), nullable=False)
     topic = sa.Column(sa.String, nullable=False)

@@ -2,7 +2,6 @@ import asyncio
 import time
 from asyncio import Future
 
-from tradealpha.common import customjson
 from tradealpha.common.models.async_websocket_manager import WebsocketManager
 
 

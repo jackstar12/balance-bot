@@ -1,16 +1,16 @@
 import secrets
 from http import HTTPStatus
-from typing import Optional, Union, Generic
+from typing import Optional, Generic
 
 import aioredis
-from fastapi import Response, Request, HTTPException
 from aioredis import Redis
+from fastapi import Response, Request, HTTPException
 from fastapi_users import models, BaseUserManager, exceptions
 from fastapi_users.authentication import Strategy
 from pydantic import UUID4
 
-from tradealpha.common.dbmodels.user import User
 from tradealpha.api.settings import settings
+from tradealpha.common.dbmodels.user import User
 
 
 class Authenticator:

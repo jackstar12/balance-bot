@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import NamedTuple, Dict, Optional
+from typing import NamedTuple
 
 
 class Amount(NamedTuple):

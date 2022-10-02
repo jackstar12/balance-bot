@@ -1,7 +1,5 @@
-from typing import List, Optional
-
-from tradealpha.common.models import OrmBaseModel
 from tradealpha.api.models import BaseModel, OutputID, InputID
+from tradealpha.common.models import OrmBaseModel
 
 
 class CreateLabel(BaseModel):

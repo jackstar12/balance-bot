@@ -1,10 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy.dialects.postgresql import JSONB
-
 from sqlalchemy import Column, DateTime, Numeric
-from sqlalchemy import orm
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class AmountMixin:

@@ -5,7 +5,7 @@ import operator
 import time
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Optional, List, Type, Iterable
+from typing import Optional, Iterable
 
 import aiohttp
 import jwt
@@ -16,28 +16,26 @@ from sqlalchemy import delete, select, asc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
+from tradealpha.common.dbmodels.event import LocationModel
 import tradealpha.api.utils.client as client_utils
 from tradealpha.api.authenticator import Authenticator
-from tradealpha.api.dependencies import get_authenticator, get_messenger, get_db, \
-    FilterQueryParamsDep
+from tradealpha.api.dependencies import get_authenticator, get_messenger, get_db
 from tradealpha.api.models.client import ClientConfirm, ClientEdit, \
-    ClientOverview, Transfer, ClientCreateBody, ClientInfo, ClientCreateResponse, get_query_params
-from tradealpha.api.models.trade import Trade, BasicTrade, DetailledTrade
+    ClientOverview, Transfer, ClientCreateBody, ClientInfo, ClientCreateResponse, get_query_params, ClientDetailed
 from tradealpha.api.settings import settings
 from tradealpha.api.users import CurrentUser
 from tradealpha.api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound, ResponseModel
 from tradealpha.common import utils
 from tradealpha.common.calc import calc_daily
-from tradealpha.common.dbasync import db_first, db_all, redis, async_maker
+from tradealpha.common.dbasync import db_first, redis, async_maker, time_range
 from tradealpha.common.dbmodels import TradeDB, BalanceDB
 from tradealpha.common.dbmodels.client import Client, add_client_filters
 from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
-from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.enums import IntervalType
 from tradealpha.common.exchanges import EXCHANGES
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
-from tradealpha.common.models import BaseModel, OrmBaseModel
+from tradealpha.common.models import OrmBaseModel
 from tradealpha.common.models.balance import Balance
 from tradealpha.common.redis.client import ClientCacheKeys
 from tradealpha.common.utils import validate_kwargs
@@ -122,7 +120,9 @@ OverviewCache = client_utils.ClientCacheDependency(
 )
 
 
-@router.get('/client', response_model=ClientOverview)
+
+
+@router.get('/client/overview', response_model=ClientOverview)
 async def get_client_overview(background_tasks: BackgroundTasks,
                               cache: client_utils.ClientCache[ClientOverview] = Depends(OverviewCache),
                               query_params: QueryParams = Depends(get_query_params),
@@ -217,6 +217,23 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         return BadRequest('Invalid client id', 40000)
 
 
+@router.get('/client/{client_id}', response_model=ClientDetailed)
+async def get_client(client_id: int,
+                     user: User = Depends(CurrentUser),
+                     db: AsyncSession = Depends(get_db)):
+    client = await client_utils.get_user_client(user,
+                                                client_id,
+                                                Client.trade_template,
+                                                Client.events,
+                                                db=db)
+
+    if client:
+        return ClientDetailed.from_orm(client)
+    else:
+        return NotFound('Invalid id')
+
+
+
 @router.delete('/client/{id}')
 async def delete_client(id: int,
                         user: User = Depends(CurrentUser),
@@ -282,11 +299,6 @@ async def get_client_performance(interval: IntervalType = Query(default=None),
                                  db: AsyncSession = Depends(get_db)):
     ts1 = time.perf_counter()
 
-    test = (await db.execute(text("""
-SELECT count(*) AS count, date_trunc('day', trade.open_time) AS date 
-FROM trade GROUP BY date_trunc('day', trade.open_time)
-    """))).all()
-
     if interval:
         stmt = performance_base_select.add_columns(
             func.date_trunc('day', TradeDB.open_time).label('date')
@@ -299,8 +311,7 @@ FROM trade GROUP BY date_trunc('day', trade.open_time)
 
     stmt = add_client_filters(
         stmt.where(
-            TradeDB.open_time > query_params.since if query_params.since else True,
-            TradeDB.open_time < query_params.to if query_params.to else True,
+            time_range(TradeDB.open_time, query_params.since, query_params.to),
             TradeDB.id.in_(trade_id) if trade_id else True
         ).join(
             TradeDB.client

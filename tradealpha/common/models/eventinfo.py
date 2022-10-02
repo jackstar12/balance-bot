@@ -3,19 +3,13 @@ from decimal import Decimal
 from typing import Literal, TypedDict, Union, Optional
 from uuid import UUID
 
-from pydantic import validator, Field, condecimal
+from pydantic import Field, condecimal
 
 from tradealpha.common.dbmodels import User, Event
-from tradealpha.common.models.action import ActionCreate
-from tradealpha.common.models.gain import Gain
-from tradealpha.common.dbmodels.event import EventState
+from tradealpha.common.dbmodels.event import EventState, LocationModel
+from tradealpha.common.models import OrmBaseModel, BaseModel, OutputID, CreateableModel
 from tradealpha.common.models.document import DocumentModel
-from tradealpha.common.models import OrmBaseModel, BaseModel, OutputID, CreateableMixin
-
-
-class LocationModel(OrmBaseModel):
-    platform: str
-    data: dict
+from tradealpha.common.models.gain import Gain
 
 
 class DiscordData(TypedDict):
@@ -51,7 +45,7 @@ class _Common(BaseModel):
     rekt_threshold: condecimal(gt=Decimal(-100), lt=Decimal(0)) = -99
 
 
-class EventCreate(_Common, CreateableMixin):
+class EventCreate(_Common, CreateableModel):
 
     def get(self, user: User):
         return Event(**self.__dict__, owner=user)

@@ -1,14 +1,12 @@
 import uuid
-from typing import Optional, List, TypedDict
+from typing import Optional, List
 
 from fastapi_users import schemas
-from fastapi_users.models import ID
-from fastapi_users.schemas import BaseOAuthAccount
 
-from tradealpha.common.dbmodels.user import OAuthData
 from tradealpha.api.models.alert import Alert
 from tradealpha.api.models.client import ClientInfo
 from tradealpha.api.models.labelinfo import LabelGroupInfo
+from tradealpha.common.dbmodels.user import OAuthData
 
 
 class OAuthInfo(schemas.BaseOAuthAccount):

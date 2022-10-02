@@ -1,33 +1,31 @@
 from __future__ import annotations
+
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
 
-import discord
 import pytz
 from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship, Session
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import relationship
 
 from tradealpha.common.dbmodels.types import Document
 
 if TYPE_CHECKING:
-    from tradealpha.common.dbmodels import Client
+    pass
 
 from tradealpha.common.dbmodels.pnldata import PnlData
 from tradealpha.common.dbsync import Base
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.dbmodels.execution import Execution
 from tradealpha.common.enums import Side, ExecType, Status, TradeSession
-from tradealpha.common.redis import TableNames
 
-from tradealpha.common.models.compactpnldata import CompactPnlData
 from tradealpha.common import utils
 from tradealpha.common.dbmodels.symbol import CurrencyMixin
 
 if TYPE_CHECKING:
-    from tradealpha.common.messenger import Category, Messenger
+    from tradealpha.common.messenger import Messenger
 
 trade_association = Table('trade_association', Base.metadata,
                           Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),

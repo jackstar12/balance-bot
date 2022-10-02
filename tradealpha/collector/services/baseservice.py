@@ -1,4 +1,3 @@
-import abc
 import asyncio
 import logging
 
@@ -9,8 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from tradealpha.common.messenger import Messenger
-from tradealpha.common.models.singleton import Singleton
-from tradealpha.common.dbasync import async_maker
 
 
 class BaseService:

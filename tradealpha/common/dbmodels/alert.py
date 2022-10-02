@@ -1,11 +1,9 @@
 import discord
-from fastapi_users_db_sqlalchemy import GUID
+from sqlalchemy import Column, Integer, ForeignKey, String, Enum, Numeric
 from sqlalchemy.dialects.postgresql import UUID
 
-from tradealpha.common.dbsync import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Enum, Numeric
-
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
+from tradealpha.common.dbsync import Base
 from tradealpha.common.enums import Side
 
 

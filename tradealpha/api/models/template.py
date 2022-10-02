@@ -1,7 +1,6 @@
 from typing import Optional
 
-from pydantic import Field
-
+from tradealpha.common.dbmodels.editing.template import TemplateType
 from tradealpha.api.models import BaseModel, InputID, OutputID
 
 
@@ -11,7 +10,6 @@ class TemplateCreate(BaseModel):
 
 
 class TemplateUpdate(BaseModel):
-    title: Optional[str]
     doc: Optional[dict]
     public: Optional[bool]
 
@@ -19,6 +17,7 @@ class TemplateUpdate(BaseModel):
 class TemplateInfo(TemplateCreate):
     id: OutputID
     doc: Optional[dict]
+    type: TemplateType
 
     class Config:
         orm_mode = True

@@ -1,12 +1,9 @@
-import asyncio
 import hmac
-import json
 import time
-from decimal import Decimal
-
-import aiohttp
 from collections import defaultdict, deque
 from typing import DefaultDict, Deque, List, Dict
+
+import aiohttp
 
 from tradealpha.common import utils
 from tradealpha.common.models.async_websocket_manager import WebsocketManager

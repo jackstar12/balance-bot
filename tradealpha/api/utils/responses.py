@@ -1,14 +1,11 @@
 from http import HTTPStatus
-from typing import Dict, Any, TypeVar, Optional, Generic
+from typing import Any, TypeVar, Optional, Generic
 
-import orjson
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import UJSONResponse
 from starlette.responses import JSONResponse
 
-from tradealpha.common.models import BaseModel
 from tradealpha.common import customjson
-
+from tradealpha.common.models import BaseModel
 
 ResultT = TypeVar('ResultT', bound=BaseModel)
 

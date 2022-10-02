@@ -3,21 +3,17 @@ from datetime import datetime
 from typing import Callable, Type
 
 import discord
-from sqlalchemy import select, and_
+from sqlalchemy import select
 
+from tradealpha.collector.services.baseservice import BaseService
+from tradealpha.common.dbasync import db_all, db_select
 from tradealpha.common.dbmodels import Execution
-from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.dbmodels.action import Action, ActionType, ActionTrigger
+from tradealpha.common.dbmodels.balance import Balance
+from tradealpha.common.dbmodels.mixins.serializer import Serializer
+from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.models.discord.guild import MessageRequest
 from tradealpha.common.redis import rpc
-from tradealpha.collector.services.baseservice import BaseService
-from tradealpha.common.dbasync import db_all, db_select, db_unique
-from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
-
-
-from tradealpha.common.dbmodels.balance import Balance
-from tradealpha.common.dbmodels.trade import Trade
-
 
 
 @dataclass

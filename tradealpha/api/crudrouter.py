@@ -1,18 +1,17 @@
 from typing import Type, Callable
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select, Update, Delete
 
 from tradealpha.api.dependencies import get_db
 from tradealpha.api.users import CurrentUser
 from tradealpha.api.utils.responses import OK, NotFound
-from tradealpha.common.dbasync import db_all, db_del_filter, db_unique, TEager
-from tradealpha.common.dbmodels.label import Label as LabelDB
+from tradealpha.common.dbasync import db_all, db_unique, TEager
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbsync import Base
-from tradealpha.common.models import BaseModel, OrmBaseModel
+from tradealpha.common.models import BaseModel, OrmBaseModel, CreateableModel
 
 TStmt = Select | Update | Delete
 
@@ -20,7 +19,7 @@ TStmt = Select | Update | Delete
 def create_crud_router(prefix: str,
                        table: Type[Base],
                        read_schema: Type[OrmBaseModel],
-                       create_schema: Type[BaseModel],
+                       create_schema: Type[CreateableModel],
                        update_schema: Type[BaseModel] = None,
                        add_filters: Callable[[TStmt, User], Select | Update | Delete] = None,
                        eager_loads: list[TEager] = None,
@@ -66,7 +65,7 @@ def create_crud_router(prefix: str,
     async def create(body: create_schema,
                      user: User = Depends(CurrentUser),
                      db: AsyncSession = Depends(get_db)):
-        instance = table(**body.dict())
+        instance = body.get(user)
         if hasattr(instance, 'user'):
             instance.user = user
         db.add(instance)

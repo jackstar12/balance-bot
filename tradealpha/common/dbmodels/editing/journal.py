@@ -1,6 +1,6 @@
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from enum import Enum
-from typing import Iterator, TypedDict, Optional
+from typing import TypedDict, Optional
 from typing import TYPE_CHECKING
 from fastapi_users_db_sqlalchemy import GUID
 
@@ -9,17 +9,17 @@ from sqlalchemy import orm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from .template import Template
+from tradealpha.common.dbmodels.editing.template import Template
 from tradealpha.common import utils
 from tradealpha.common.dbsync import Base, BaseMixin
 from tradealpha.common.dbmodels.types import Document
 from tradealpha.common.models.document import DocumentModel
 
-import tradealpha.common.dbmodels.chapter as db_chapter
+import tradealpha.common.dbmodels.editing.chapter as db_chapter
 from dateutil.relativedelta import relativedelta
 
 if TYPE_CHECKING:
-    from tradealpha.common.dbmodels.chapter import Chapter
+    from tradealpha.common.dbmodels.editing.chapter import Chapter
 
 journal_association = sa.Table(
     'journal_association', Base.metadata,

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from common.utils import utc_now
+from tradealpha.common.utils import utc_now
 from tradealpha.common.models.document import DocumentModel
 from tradealpha.common.models.eventinfo import EventCreate
 

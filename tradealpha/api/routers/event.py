@@ -6,24 +6,20 @@ from fastapi import APIRouter, Depends
 from pydantic import validator
 from sqlalchemy import select, or_, insert, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import object_session
 
-from tradealpha.common.dbmodels.action import Action
 from tradealpha.api.dependencies import get_messenger, get_db
 from tradealpha.api.users import CurrentUser, get_current_user
-from tradealpha.common.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventScore
 from tradealpha.api.utils.responses import BadRequest, OK, InternalError, ResponseModel, NotFound
 from tradealpha.common import dbutils
-from tradealpha.common.dbasync import db_first, db_del_filter, redis, db_unique
+from tradealpha.common.dbasync import db_first, redis, db_unique
 from tradealpha.common.dbmodels import Client
 from tradealpha.common.dbmodels.event import Event as EventDB, EventState
 from tradealpha.common.dbmodels.score import EventScore as EventScoreDB
-
-from tradealpha.common.models.document import DocumentModel
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.dbutils import add_client_filters
-from tradealpha.common.messenger import Messenger, TableNames, Category
 from tradealpha.common.models import BaseModel
+from tradealpha.common.models.document import DocumentModel
+from tradealpha.common.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventScore
 
 router = APIRouter(
     tags=["event"],

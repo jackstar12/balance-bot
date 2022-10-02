@@ -2,25 +2,24 @@ import asyncio
 import logging
 import time
 from http import HTTPStatus
-from typing import Type, AsyncGenerator, TypeVar
+from typing import Type
 from uuid import UUID
 
+from fastapi import Depends
 from fastapi import Request, HTTPException
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy.orm import joinedload
 
-from tradealpha.common.redis import rpc
-from tradealpha.api.models.FilterParam import FilterParam
-from tradealpha.common.models import BaseModel
 from tradealpha.api.authenticator import Authenticator
-from tradealpha.common.dbasync import redis, db_eager, db_unique, async_maker
+from tradealpha.api.models.FilterParam import FilterParam
 from tradealpha.api.settings import settings
-from fastapi import Depends
+from tradealpha.common.dbasync import redis, db_eager, db_unique, async_maker
 from tradealpha.common.dbmodels.user import User
 from tradealpha.common.messenger import Messenger
+from tradealpha.common.models import BaseModel
+from tradealpha.common.redis import rpc
 
 default_authenticator = Authenticator(
     redis,

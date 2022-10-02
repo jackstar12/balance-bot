@@ -1,37 +1,30 @@
 import asyncio
 import dataclasses
 import time
+from collections import OrderedDict
+from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from typing import Optional, Dict, List, Mapping, Any, Type, TypeVar, Generic, Awaitable
 from uuid import UUID
 
-from fastapi import Depends
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, Table, Column
-
-import msgpack
-from datetime import datetime
-from typing import Optional, Dict, List, Mapping, Any, Type, TypeVar, Coroutine, Generic, Awaitable
-from collections import OrderedDict
-
 import pytz
+from fastapi import Depends
+from sqlalchemy import select, Column
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import tradealpha.common.utils as utils
-from tradealpha.common.calc import calc_daily
+from tradealpha.api.dependencies import get_user_id
 from tradealpha.api.models.client import get_query_params
-from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
-from tradealpha.api.dependencies import get_user_id, get_db
-from tradealpha.common.models import BaseModel
-from tradealpha.common.redis.client import ClientSpace, ClientCacheKeys
-from tradealpha.common.dbmodels import TradeDB
+from tradealpha.api.models.websocket import ClientConfig
 from tradealpha.common import customjson
-from tradealpha.common.dbsync import Base
-from tradealpha.common.dbasync import redis, db_all, redis_bulk, redis_bulk_hashes, RedisKey, db_first
+from tradealpha.common.calc import calc_daily
+from tradealpha.common.dbasync import redis, db_all, redis_bulk, RedisKey, db_first, time_range
+from tradealpha.common.dbmodels import TradeDB
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.client import Client, add_client_filters, ClientRedis
+from tradealpha.common.dbmodels.mixins.querymixin import QueryParams
 from tradealpha.common.dbmodels.user import User
-from tradealpha.api.models.websocket import ClientConfig
+from tradealpha.common.models import BaseModel
+from tradealpha.common.redis.client import ClientSpace, ClientCacheKeys
 
 
 def ratio(a: float, b: float):
@@ -316,8 +309,7 @@ async def query_table(*eager,
         add_client_filters(
             select(table).filter(
                 table.id.in_(ids) if ids else True,
-                time_col >= query_params.since if query_params.since else True,
-                time_col <= query_params.to if query_params.to else True
+                time_range(time_col, query_params.since, query_params.to)
             ).join(
                 table.client
             ).limit(

@@ -3,29 +3,28 @@ import asyncio
 import logging
 import os
 import random
-import dotenv
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select, update, insert, literal, delete
 from typing import Dict
 
 import discord
 import discord.errors
+import dotenv
 from discord.ext import commands
 from discord_slash import SlashCommand
+from fastapi.encoders import jsonable_encoder
+from sqlalchemy import select, update, insert, literal, delete
 
-from tradealpha.common.dbmodels.user import OAuthData
-from tradealpha.common.models.discord.guild import Guild, UserRequest, GuildRequest, GuildData, MessageRequest
-from tradealpha.common.models import BaseModel
-from tradealpha.common.redis.rpc import Server
-from tradealpha.common.dbasync import async_session, db_all, redis, db_select_all, db_select
-from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
+from tradealpha.bot.cogs import *
+from tradealpha.bot.config import *
+from tradealpha.common.dbasync import async_session, db_all, redis, db_select
 from tradealpha.common.dbmodels.client import Client
 from tradealpha.common.dbmodels.discord.discorduser import DiscordUser
 from tradealpha.common.dbmodels.discord.guild import Guild as GuildDB
-from tradealpha.bot.config import *
-from tradealpha.bot.cogs import *
+from tradealpha.common.dbmodels.discord.guildassociation import GuildAssociation
+from tradealpha.common.dbmodels.user import OAuthData
 from tradealpha.common.enums import Tier
-from tradealpha.common.messenger import Messenger, TableNames, Category
+from tradealpha.common.messenger import Messenger
+from tradealpha.common.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest
+from tradealpha.common.redis.rpc import Server
 from tradealpha.common.utils import setup_logger
 
 dotenv.load_dotenv()

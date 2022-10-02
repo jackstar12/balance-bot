@@ -1,23 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, date, timedelta
-from typing import TypedDict, Optional
+from datetime import date
+from typing import Optional
 
 import sqlalchemy as sa
-from sqlalchemy import orm, Date, select, case, func, literal
-from sqlalchemy.dialects.postgresql import JSONB
-
+from sqlalchemy import orm, select, func, literal
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import aliased
 
-import tradealpha.common.utils as utils
-from tradealpha.common.models import BaseModel
-from tradealpha.common.dbasync import db_all
+from tradealpha.common.dbmodels.editing._base import PageMixin
 from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
-from tradealpha.common.dbmodels.types import Document, Data
-from tradealpha.common.models.document import DocumentModel
 from tradealpha.common.dbsync import Base
-from tradealpha.common.models.gain import Gain
+from tradealpha.common.models import BaseModel
+from tradealpha.common.models.document import DocumentModel
 
 balance_association = sa.Table(
     'balance_association', Base.metadata,
@@ -40,81 +34,14 @@ class ChapterData(BaseModel):
     #     return self.start_date + interval
 
 
-class Chapter(Base, EditsMixin):
+class Chapter(Base, EditsMixin, PageMixin):
     __tablename__ = 'chapter'
 
     # Identifiers
-    id = sa.Column(sa.Integer, primary_key=True)
-    parent_id = sa.Column(sa.ForeignKey('chapter.id', ondelete="CASCADE"),
-                          nullable=True)
-    journal_id = sa.Column(sa.ForeignKey('journal.id', ondelete="CASCADE"),
-                           nullable=False)
-
-    # Relations
-    children = orm.relationship('Chapter',
-                                backref=orm.backref('parent', remote_side=[id]),
-                                lazy='noload',
-                                cascade="all, delete")
-
-    journal = orm.relationship('Journal',
-                               lazy='noload')
-
-    # Data
-    doc = sa.Column(Document, nullable=True)
+    journal_id = sa.Column(sa.ForeignKey('journal.id', ondelete="CASCADE"), nullable=False)
     data: Optional[ChapterData] = sa.Column(ChapterData.get_sa_type(validate=True), nullable=True)
 
-    @hybrid_property
-    def title(self):
-        self.doc: DocumentModel
-        if self.doc:
-            titleNode = self.doc.content[0]
-            return titleNode.content[0].text if titleNode else None
-
-    @title.expression
-    def title(cls):
-        return cls.doc['content'][0]['content'][0]['text']
-
-    @hybrid_property
-    def child_ids(self):
-        return [child.id for child in self.children]
-
-    @hybrid_property
-    def performance(self) -> Gain:
-        if self.balances:
-            start_balance = self.balances[0]
-            end_balance = self.balances[1]
-            return Gain(
-                relative=utils.calc_percentage(start_balance.total, end_balance.total, string=False),
-                absolute=end_balance.realized - start_balance.realized
-            )
-
-    @classmethod
-    async def all_childs(cls, root_id: int, db):
-        included = select(
-            Chapter.id,
-        ).filter(
-            Chapter.parent_id == root_id
-        ).cte(name="included", recursive=True)
-
-        included_alias = aliased(included, name="parent")
-        chapter_alias = aliased(Chapter, name="child")
-
-        included = included.union_all(
-            select(
-                chapter_alias.id,
-            ).filter(
-                chapter_alias.parent_id == included_alias.c.id
-            )
-        )
-
-        child_stmt = select(
-            Chapter
-        ).where(
-            Chapter.id.in_(included)
-        )
-
-        child = await db_all(child_stmt, session=db)
-        pass
+    journal = orm.relationship('Journal', lazy='noload')
 
     @hybrid_property
     def start_date(self):
