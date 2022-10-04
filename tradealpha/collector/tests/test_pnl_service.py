@@ -9,7 +9,7 @@ from tradealpha.common.dbmodels import Client, Execution
 from tradealpha.common.dbasync import db_select_all, db_all
 from tradealpha.common.dbmodels.trade import Trade
 from tradealpha.common.messenger import TableNames, Category
-from tests.conftest import Channel, Messages
+from tradealpha.common.tests.conftest import Channel, Messages
 from tradealpha.common.exchanges import SANDBOX_CLIENTS
 
 pytestmark = pytest.mark.anyio

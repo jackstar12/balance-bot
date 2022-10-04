@@ -1,17 +1,15 @@
 import os
 from asyncio import Future
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import pytest
 from aioredis import Redis
 
 from api.models.trade import Trade
 
-from tests.mockexchange import MockExchange
+from tradealpha.common.tests.mockexchange import MockExchange
 from tradealpha.common.dbmodels import Event, Client, EventScore
-from tradealpha.common import utils
-from tradealpha.api.app import app
 from tradealpha.common.dbsync import Base
 from tradealpha.common.dbasync import REDIS_URI
 from tradealpha.common.messenger import Messenger, NameSpaceInput

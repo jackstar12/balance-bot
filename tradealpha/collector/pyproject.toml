@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "The heart of the platform - gets the data."
 
 [tool.poetry.dependencies]
-python = "3.8.6"
 common = {path = "../common", develop = true }
 
 [tool.poetry.dev-dependencies]
