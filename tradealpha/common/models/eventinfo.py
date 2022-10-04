@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal, TypedDict, Union, Optional
 from uuid import UUID
 
-from pydantic import validator, Field
+from pydantic import validator, Field, condecimal
 
 from tradealpha.common.models.gain import Gain
 from tradealpha.common.dbmodels.event import EventState
@@ -45,7 +45,7 @@ class EventCreate(BaseModel):
     public: bool
     location: Union[DiscordLocation, WebLocation] = Field(..., disriminator='platform')
     max_registrations: int
-    rekt_treshhold: Decimal
+    rekt_treshhold: Optional[condecimal(lt=0)]
     currency: str
 
 

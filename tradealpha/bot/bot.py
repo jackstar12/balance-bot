@@ -37,10 +37,10 @@ intents.guilds = True
 bot = commands.Bot(command_prefix=PREFIX, self_bot=True, intents=intents)
 slash = SlashCommand(bot)
 
-redis_server = Server('discord', redis)
+rpc_server = Server('discord', redis)
 
 
-@redis_server.method(input_model=UserRequest)
+@rpc_server.method(input_model=UserRequest)
 def user_info(request: UserRequest):
     test = bot.get_user(request.user_id)
 
@@ -52,7 +52,7 @@ def user_info(request: UserRequest):
     )
 
 
-@redis_server.method(input_model=UserRequest)
+@rpc_server.method(input_model=UserRequest)
 def guilds(request: UserRequest):
     return jsonable_encoder([
         GuildData(
@@ -75,7 +75,7 @@ async def send_dm(self, user_id: int, message: str, embed: discord.Embed = None)
             logging.exception(f'Not allowed to send messages to {user}')
 
 
-@redis_server.method(input_model=GuildRequest)
+@rpc_server.method(input_model=GuildRequest)
 def guild(request: GuildRequest):
     g: discord.Guild = bot.get_guild(request.guild_id)
     m: discord.Member = g.get_member(request.user_id)
@@ -96,7 +96,7 @@ def _get_channel(guild_id: int, channel_id: int) -> discord.TextChannel:
         return guild.get_channel(channel_id)
 
 
-@redis_server.method(input_model=MessageRequest)
+@rpc_server.method(input_model=MessageRequest)
 async def send(request: MessageRequest):
     channel = _get_channel(request.guild_id, request.channel_id)
     await channel.send(content=request.message,
@@ -109,7 +109,7 @@ async def on_ready():
     if not os.path.exists(DATA_PATH):
         os.mkdir(DATA_PATH)
 
-    asyncio.create_task(redis_server.run())
+    asyncio.create_task(rpc_server.run())
 
     await messenger.sub_channel(TableNames.CLIENT, Category.REKT, callback=on_rekt_async, pattern=True)
     await event_manager.initialize_events()
