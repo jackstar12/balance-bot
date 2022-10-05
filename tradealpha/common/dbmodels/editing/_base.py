@@ -44,7 +44,7 @@ class PageMixin:
     def body(self):
         self.doc: DocumentModel
         if self.doc:
-            return self.doc.content[0:]
+            return self.doc.content[1:]
 
     @title.expression
     def title(cls):
