@@ -36,6 +36,12 @@ def round_ccy(amount: typing.SupportsRound, ccy: str):
     return round(amount, ndigits=config.CURRENCY_PRECISION.get(ccy, 3))
 
 
+def weighted_avg(values: tuple[Decimal, Decimal], weights: tuple[Decimal, Decimal]):
+    total = weights[0] + weights[1]
+    return values[0] * (weights[0] / total) + values[1] * (weights[1] / total)
+
+
+
 # Some consts to make TF tables prettier
 MINUTE = 60
 HOUR = MINUTE * 60

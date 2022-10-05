@@ -93,7 +93,6 @@ app.include_router(
 for module in (
         # auth,
         discord,
-        client,
         label,
         analytics,
         journal,
@@ -102,7 +101,8 @@ for module in (
         event,
         test,
         trade,
-        action
+        action,
+        client,
 ):
     app.include_router(module.router, prefix='/api/v1')
 

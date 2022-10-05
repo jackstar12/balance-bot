@@ -40,6 +40,12 @@ class PageMixin:
             titleNode = self.doc.content[0]
             return titleNode.content[0].text if titleNode else None
 
+    @hybrid_property
+    def body(self):
+        self.doc: DocumentModel
+        if self.doc:
+            return self.doc.content[0:]
+
     @title.expression
     def title(cls):
         return cls.doc['content'][0]['content'][0]['text']

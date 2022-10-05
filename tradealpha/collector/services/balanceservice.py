@@ -57,8 +57,7 @@ class _BalanceServiceBase(BaseService):
 
         self._all_client_stmt = db_eager(
             select(Client).where(
-                not Client.archived,
-                not Client.invalid
+                ~Client.state.in_([ClientState.ARCHIVED, ClientState.INVALID])
             ),
             Client.currently_realized,
             (Client.open_trades, [Trade.max_pnl, Trade.min_pnl]),
@@ -219,8 +218,7 @@ class BasicBalanceService(_BalanceServiceBase):
                 args=(exchange_queue,)
             )
             self._exchange_jobs[exchange] = ExchangeJob(exchange, job, exchange_queue)
-
-        for client in await db_all(
+        clients = await db_all(
                 self._all_client_stmt.filter(
                     or_(
                         Client.type == ClientType.BASIC,
@@ -231,7 +229,8 @@ class BasicBalanceService(_BalanceServiceBase):
                     )
                 ),
                 session=self._db
-        ):
+        )
+        for client in clients:
             try:
                 await self.add_client(client)
             except Exception:

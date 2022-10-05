@@ -80,6 +80,7 @@ class DataService(BaseService, Observer):
         return self._tickers.get((exchange, symbol))
 
     async def _update_redis(self):
+        return None
         while True:
             for ticker in self._tickers.values():
                 await self._redis.set(

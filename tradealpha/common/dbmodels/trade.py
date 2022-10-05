@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
+from common.utils import weighted_avg
 from tradealpha.common.dbmodels.types import Document
 
 if TYPE_CHECKING:
@@ -328,44 +329,105 @@ class Trade(Base, Serializer, CurrencyMixin):
 
         return significant
 
+    def add_execution(self, execution: Execution, db: AsyncSession):
+        execution.trade = self
+        active = self
+
+        if execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
+            self.realized_pnl += execution.realized_pnl or 0
+
+        if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
+            if execution.side == self.initial.side:
+                self.entry = weighted_avg(
+                    (self.entry, execution.price),
+                    (self.qty, execution.qty)
+                )
+                self.qty += execution.qty
+                self.open_qty += execution.qty
+            else:
+                if execution.qty > self.open_qty:
+                    new_exec = Execution(
+                        qty=execution.qty - self.open_qty,
+                        symbol=execution.symbol,
+                        price=execution.price,
+                        side=execution.side,
+                        time=execution.time,
+                        type=execution.type
+                    )
+                    # Because the execution is "split" we also have to assign
+                    # the commissions accordingly
+                    if execution.commission:
+                        new_exec.commission = execution.commission * new_exec.qty / execution.qty
+                        execution.commission -= new_exec.commission
+                    execution.qty = self.open_qty
+
+                    active = Trade.from_execution(new_exec, self.client_id)
+
+                    db.add(active)
+                if execution.qty <= self.open_qty:
+
+                    if self.exit is None:
+                        self.exit = execution.price
+                    else:
+                        realized_qty = self.qty - self.open_qty
+                        self.exit = weighted_avg((self.exit, execution.price),
+                                                         (realized_qty, execution.qty))
+
+                    if execution.realized_pnl is None:
+                        execution.realized_pnl = self.calc_rpnl(execution.qty, execution.price)
+
+                    self.open_qty -= execution.qty
+                    self.realized_pnl += execution.realized_pnl
+
+                    if execution.commission:
+                        self.total_commissions += execution.commission
+
+                    if self.open_qty.is_zero():
+                        self.update_pnl(0, force=True, now=execution.time, db=db)
+
+        return active
+
     async def reverse_to(self,
                          date: datetime,
-                         db_session: AsyncSession):
+                         db: AsyncSession) -> Optional[Trade]:
         """
         Method used for setting a trade back to a specific point in time.
         Used when an invalid series of executions is detected (e.g. websocket shut down
         without notice)
 
         :param date: the date to reverse
-        :param db_session: database session
+        :param db: database session
         :return:
         """
+        if self.executions[-1].time < date:
+            self.__realtime__ = False
+            await db.delete(self)
 
-        if date < self.open_time:
-            # if we reverse to beyond existense of the trade, straight up
-            # delete it
-            await db_session.delete(self)
-        else:
-            removals = False
-            for execution in reversed(self.executions):
-                if execution.time > date:
-                    # If the side of the execution equals the side of the trade,
-                    # remove_qty will be positive, so the size of the trade decreases
-                    remove_qty = execution.effective_qty * self.initial.side.value
-                    if execution.type == ExecType.TRANSFER:
-                        self.transferred_qty -= remove_qty
+            if date > self.open_time:
+                # First, create a new copy based on the same initial execution
+                new_trade = Trade.from_execution(self.initial, self.client_id)
+                new_trade.__realtime__ = False
+
+                # Then reapply the executions that are not due for deletion
+                # (important that initial is excluded in this case)
+                for execution in self.executions[1:]:
+                    if execution.time < date:
+                        new_trade.add_execution(execution, db)
                     else:
-                        self.open_qty -= remove_qty
-                    self.qty -= remove_qty
-                    await db_session.delete(execution)
-                    removals = True
-            if removals:
-                await db_session.execute(
-                    delete(PnlData).filter(
+                        await db.delete(execution)
+
+                self.__realtime__ = False
+                await db.execute(
+                    delete(PnlData).where(
                         PnlData.trade_id == self.id,
                         PnlData.time > date
                     )
                 )
+
+                db.add(new_trade)
+
+                return new_trade
+
 
     @classmethod
     def _replace_pnl(cls, old: PnlData, new: PnlData, cmp_func):

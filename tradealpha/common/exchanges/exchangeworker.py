@@ -46,12 +46,8 @@ if TYPE_CHECKING:
 
 import tradealpha.common.dbmodels.balance as db_balance
 
+
 logger = logging.getLogger(__name__)
-
-
-def weighted_avg(values: Tuple[Decimal, Decimal], weights: Tuple[Decimal, Decimal]):
-    total = weights[0] + weights[1]
-    return values[0] * (weights[0] / total) + values[1] * (weights[1] / total)
 
 
 class Cached(NamedTuple):
@@ -335,19 +331,20 @@ class ExchangeWorker:
 
             valid_until = since
             exec_sum = check_sum = Decimal(0)
-            for execution, check in itertools.zip_longest(check_executions, all_executions):
+            for execution, check in itertools.zip_longest(all_executions, check_executions):
                 if execution:
                     exec_sum += abs(execution.qty or execution.realized_pnl)
                 if check:
-                    check_sum += abs(execution.qty or check.realized_pnl)
+                    check_sum += abs(check.qty or check.realized_pnl)
                 if exec_sum == check_sum and exec_sum != 0:
                     valid_until = execution.time if execution else check.time
 
+            valid_until = None
             all_executions = [e for e in all_executions if e.time > valid_until] if valid_until else all_executions
 
             for trade in self.client.trades:
                 if valid_until:
-                    await trade.reverse_to(valid_until, db_session=db)
+                    await trade.reverse_to(valid_until, db=db)
                 else:
                     await db.delete(trade)
 
@@ -565,9 +562,10 @@ class ExchangeWorker:
             await self._add_executions(db, execs, realtime=True)
             await db.commit()
 
-    async def _add_executions(self, db: AsyncSession, executions: list[Execution], realtime=True) -> Trade:
+    async def _add_executions(self, db: AsyncSession, executions: list[Execution], realtime=True):
         publish = []
         if executions:
+            active_trade: Optional[Trade] = None
             if realtime:
                 # Updating LAST_EXEC is siginificant for caching
                 asyncio.create_task(
@@ -599,70 +597,15 @@ class ExchangeWorker:
                         desc(Trade.open_time)
                     )
 
-                active_trade: Trade = await db_unique(stmt, session=db)
+                active_trade = await db_unique(stmt, session=db)
 
                 if active_trade:
                     # Update existing trade
 
-                    execution.trade = active_trade
                     execution.__realtime__ = realtime
                     db.add(execution)
 
-                    if execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
-                        active_trade.realized_pnl += execution.realized_pnl
-
-                    if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
-                        if execution.side == active_trade.initial.side:
-                            active_trade.entry = weighted_avg(
-                                (active_trade.entry, execution.price),
-                                (active_trade.qty, execution.qty)
-                            )
-                            active_trade.qty += execution.qty
-                            active_trade.open_qty += execution.qty
-                        else:
-                            new_exec = None
-                            if execution.qty > active_trade.open_qty:
-                                new_exec = Execution(
-                                    qty=execution.qty - active_trade.open_qty,
-                                    symbol=execution.symbol,
-                                    price=execution.price,
-                                    side=execution.side,
-                                    time=execution.time,
-                                    type=execution.type
-                                )
-                                # Because the execution is "split" we also have to assign
-                                # the commissions accordingly
-                                if execution.commission:
-                                    new_exec.commission = execution.commission * new_exec.qty / execution.qty
-                                    execution.commission -= new_exec.commission
-                                execution.qty = active_trade.open_qty
-
-                                new_trade = Trade.from_execution(new_exec, self.client_id)
-
-                                db.add(new_trade)
-                            if execution.qty <= active_trade.open_qty:
-
-                                if active_trade.exit is None:
-                                    active_trade.exit = execution.price
-                                else:
-                                    realized_qty = active_trade.qty - active_trade.open_qty
-                                    active_trade.exit = weighted_avg((active_trade.exit, execution.price),
-                                                                     (realized_qty, execution.qty))
-
-                                if execution.realized_pnl is None:
-                                    execution.realized_pnl = active_trade.calc_rpnl(execution.qty, execution.price)
-
-                                active_trade.open_qty -= execution.qty
-                                active_trade.realized_pnl += execution.realized_pnl
-
-                                if execution.commission:
-                                    active_trade.total_commissions += execution.commission
-
-                                if active_trade.open_qty.is_zero():
-                                    active_trade.update_pnl(0, force=True, now=execution.time, db=db)
-                                    # if realtime:
-                                    #     await
-
+                    active_trade = active_trade.add_execution(execution, db)
                 else:
                     active_trade = Trade.from_execution(execution, self.client_id)
                     active_trade.__realtime__ = realtime

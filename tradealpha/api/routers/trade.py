@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
 import tradealpha.api.utils.client as client_utils
+from api.routers.template import query_templates
+from common.models.document import DocumentModel
 from tradealpha.api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
 from tradealpha.api.models.client import get_query_params
@@ -40,10 +42,10 @@ router = APIRouter(
 
 
 @router.patch('/trade/{trade_id}', response_model=DetailledTrade)
-async def set_labels(trade_id: int,
-                     body: UpdateTrade,
-                     user: User = Depends(CurrentUser),
-                     db: AsyncSession = Depends(get_db)):
+async def update_trade(trade_id: int,
+                       body: UpdateTrade,
+                       user: User = Depends(CurrentUser),
+                       db: AsyncSession = Depends(get_db)):
     trade = await db_first(
         add_trade_filters(select(TradeDB), user, trade_id),
         TradeDB.labels,
@@ -59,13 +61,12 @@ async def set_labels(trade_id: int,
     if body.labels:
         added = body.labels.label_ids - set(label.id for label in trade.labels)
         for label_id in added:
-            res = await db.execute(
+            await db.execute(
                 insert(trade_association).values(
                     trade_id=trade_id,
                     label_id=label_id
                 ),
             )
-            pass
 
         await db.execute(
             delete(trade_association).where(
@@ -74,6 +75,14 @@ async def set_labels(trade_id: int,
                 ~LabelDB.id.in_(body.labels.label_ids)
             ),
         )
+
+    if body.template_id:
+        template = await query_templates([body.template_id], user=user, session=db)
+        trade.notes = DocumentModel(
+            content=template.body,
+            type='doc'
+        )
+
     await db.commit()
     return DetailledTrade.from_orm(trade)
 

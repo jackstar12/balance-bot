@@ -1,12 +1,12 @@
 from datetime import datetime, date
-from typing import Dict, Optional
+from typing import Dict, Optional, TypedDict
 
 from fastapi import Query
 from pydantic import UUID4
 
 import tradealpha.common.dbmodels.mixins.querymixin as qmxin
-from api.models.template import TemplateInfo
-from common.models.eventinfo import EventInfo
+from tradealpha.api.models.template import TemplateInfo
+from tradealpha.common.models.eventinfo import EventInfo
 from tradealpha.api.models import BaseModel, OutputID, InputID
 from tradealpha.api.models.transfer import Transfer
 from tradealpha.common.dbmodels.client import ClientType, ClientState
@@ -58,9 +58,20 @@ class ClientInfo(BaseModel):
     name: Optional[str]
     type: ClientType
     state: ClientState
+    trade_template_id: Optional[OutputID]
+
+    created_at: datetime
+    last_edited: Optional[datetime]
+    subaccount: Optional[str]
+    api_key: str
+    extra_kwargs: Optional[Dict]
 
     class Config:
         orm_mode = True
+
+
+class Test(TypedDict):
+    name: str
 
 
 class ClientDetailed(ClientInfo):

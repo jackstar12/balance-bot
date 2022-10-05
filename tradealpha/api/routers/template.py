@@ -29,7 +29,7 @@ async def query_templates(template_ids: list[int],
                           user: User,
                           session: AsyncSession,
                           raise_not_found=True,
-                          **filters):
+                          **filters) -> DbTemplate | list[DbTemplate]:
     func = db_unique if len(template_ids) == 1 else db_all
     template = await func(
         select(DbTemplate).where(

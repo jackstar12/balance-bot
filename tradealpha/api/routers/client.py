@@ -16,7 +16,6 @@ from sqlalchemy import delete, select, asc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
-from tradealpha.common.dbmodels.event import LocationModel
 import tradealpha.api.utils.client as client_utils
 from tradealpha.api.authenticator import Authenticator
 from tradealpha.api.dependencies import get_authenticator, get_messenger, get_db
@@ -216,58 +215,6 @@ async def get_client_overview(background_tasks: BackgroundTasks,
     else:
         return BadRequest('Invalid client id', 40000)
 
-
-@router.get('/client/{client_id}', response_model=ClientDetailed)
-async def get_client(client_id: int,
-                     user: User = Depends(CurrentUser),
-                     db: AsyncSession = Depends(get_db)):
-    client = await client_utils.get_user_client(user,
-                                                client_id,
-                                                Client.trade_template,
-                                                Client.events,
-                                                db=db)
-
-    if client:
-        return ClientDetailed.from_orm(client)
-    else:
-        return NotFound('Invalid id')
-
-
-
-@router.delete('/client/{id}')
-async def delete_client(id: int,
-                        user: User = Depends(CurrentUser),
-                        db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        add_client_filters(delete(Client), user, {id}),
-    )
-    await db.commit()
-    if result.rowcount == 1:
-        return OK(detail='Success')
-    else:
-        return NotFound(detail='Invalid ID')
-
-
-@router.patch('/client/{client_id}', response_model=ClientInfo)
-async def update_client(client_id: int, body: ClientEdit,
-                        user: User = Depends(CurrentUser),
-                        db: AsyncSession = Depends(get_db)):
-    client = await client_utils.get_user_client(
-        user, client_id, db=db
-    )
-
-    if client:
-        for k, v in body.dict(exclude_none=True).items():
-            setattr(client, k, v)
-
-        client.validate()
-    else:
-        return BadRequest('Invalid client id')
-
-    await db.commit()
-    return ClientInfo.from_orm(client)
-
-
 class PnlStat(OrmBaseModel):
     win: Decimal
     loss: Decimal
@@ -361,3 +308,55 @@ async def get_client_balance(balance_id: list[int] = Query(None, alias='balance-
         db=db
     )
     return Balance.from_orm(balance)
+
+
+
+@router.get('/client/{client_id}', response_model=ClientDetailed)
+async def get_client(client_id: int,
+                     user: User = Depends(CurrentUser),
+                     db: AsyncSession = Depends(get_db)):
+    client = await client_utils.get_user_client(user,
+                                                client_id,
+                                                Client.trade_template,
+                                                Client.events,
+                                                db=db)
+
+    if client:
+        return ClientDetailed.from_orm(client)
+    else:
+        return NotFound('Invalid id')
+
+
+
+@router.delete('/client/{id}')
+async def delete_client(id: int,
+                        user: User = Depends(CurrentUser),
+                        db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        add_client_filters(delete(Client), user, {id}),
+    )
+    await db.commit()
+    if result.rowcount == 1:
+        return OK(detail='Success')
+    else:
+        return NotFound(detail='Invalid ID')
+
+
+@router.patch('/client/{client_id}', response_model=ClientInfo)
+async def update_client(client_id: int, body: ClientEdit,
+                        user: User = Depends(CurrentUser),
+                        db: AsyncSession = Depends(get_db)):
+    client = await client_utils.get_user_client(
+        user, client_id, db=db
+    )
+
+    if client:
+        for k, v in body.dict(exclude_none=True).items():
+            setattr(client, k, v)
+
+        client.validate()
+    else:
+        return BadRequest('Invalid client id')
+
+    await db.commit()
+    return ClientInfo.from_orm(client)
