@@ -20,6 +20,7 @@ from tradealpha.common.errors import InvalidClientError
 from tradealpha.common.exchanges.exchangeworker import ExchangeWorker
 from tradealpha.common.messenger import CLIENT, TRADE
 from tradealpha.common.messenger import TableNames, Category
+from tradealpha.common.models.market import Market
 
 
 class ExchangeJob(NamedTuple):
@@ -376,11 +377,21 @@ class ExtendedBalanceService(_BalanceServiceBase):
                     if client and client.open_trades:
                         for trade in client.open_trades:
                             ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
-                            if ticker:
+                            market = worker.get_market(trade.symbol)
+                            if market.quote != client.currency:
+                                extra_ticker = await self.data_service.get_ticker(
+                                    worker.get_symbol(
+                                        Market(base=market.base, quote=client.currency)
+                                    ),
+                                    client.exchange
+                                )
+                            else:
+                                extra_ticker = ticker
+                            if ticker and extra_ticker:
                                 trade.update_pnl(
                                     trade.calc_upnl(ticker.price),
                                     realtime=True,
-                                    extra_currencies={'USD': ticker.price},
+                                    extra_currencies={client.currency: extra_ticker.price},
                                     db=self._db
                                 )
                         balance = client.evaluate_balance()

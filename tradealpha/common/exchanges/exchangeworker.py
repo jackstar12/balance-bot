@@ -39,6 +39,7 @@ from tradealpha.common.errors import RateLimitExceeded, ExchangeUnavailable, Exc
 from tradealpha.common.messenger import TableNames, Category, Messenger
 from tradealpha.common.models.miscincome import MiscIncome
 from tradealpha.common.models.ohlc import OHLC
+from tradealpha.common.models.market import Market
 from tradealpha.common.utils import combine_time_series
 
 if TYPE_CHECKING:
@@ -737,6 +738,15 @@ class ExchangeWorker:
             if cls._response_result and cls._response_result in response_json:
                 return response_json[cls._response_result]
             return response_json
+
+    @classmethod
+    def get_market(cls, raw: str) -> Market:
+        raise NotImplementedError
+
+    @classmethod
+    def get_symbol(cls, market: Market) -> str:
+        return market.base + market.quote
+
 
     @classmethod
     def set_weights(cls, weight: int, response: ClientResponse):
