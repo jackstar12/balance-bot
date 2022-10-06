@@ -20,7 +20,7 @@ class Interval(BaseModel):
 
     @classmethod
     def create(cls, prev: Amount, current: Amount, offset: Decimal) -> Interval:
-        if not hasattr(current, 'time'):
+        if not current:
             pass
         return cls(
             day=current.time,

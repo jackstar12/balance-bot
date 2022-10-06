@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from enum import Enum
 from typing import Optional, Union, Literal, Any, TYPE_CHECKING
 from uuid import UUID
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 import pytz
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, reconstructor
 
@@ -21,8 +21,9 @@ from sqlalchemy_utils.types.encrypted.encrypted_type import StringEncryptedType,
 import os
 import dotenv
 
-import tradealpha.common.dbmodels.balance as db_balance
+import tradealpha.common.dbmodels as dbmodels
 import tradealpha.common.utils as utils
+from common.errors import UserInputError
 from tradealpha.common.dbmodels.transfer import Transfer
 
 from tradealpha.common.dbmodels.mixins.querymixin import QueryMixin
@@ -100,7 +101,7 @@ class ClientRedis:
             space='normal'
         )
 
-    #async def set_last_transfer(self, dt: datetime):
+    # async def set_last_transfer(self, dt: datetime):
     #    await self.redis_set(
     #        keys={RedisKey(ClientSpace.LAST_EXEC): dt.timestamp()},
     #        space='normal'
@@ -229,9 +230,54 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                 transfered
             )
 
+    def daily_balance_stmt(self,
+                           amount: int = None,
+                           since: datetime = None,
+                           to: datetime = None):
+        now = utils.utc_now()
+
+        since = since or datetime.fromtimestamp(0, pytz.utc)
+        to = to or now
+
+        since_date = since.replace(tzinfo=pytz.UTC).replace(hour=0, minute=0, second=0)
+        daily_end = min(now, to)
+
+        if amount:
+            try:
+                daily_start = daily_end - timedelta(days=amount - 1)
+            except OverflowError:
+                raise UserInputError('Invalid daily amount given')
+        else:
+            daily_start = since_date
+
+        # We always want to fetch the last balance of the date (first balance of next date),
+        # so we need to partition by the current date and order by
+        # time in descending order so that we can pick out the first (last) one
+
+        sub = select(
+            func.row_number().over(
+                order_by=desc(dbmodels.Balance.time),
+                partition_by=dbmodels.Balance.time.cast(Date)
+            ).label('row_number'),
+            dbmodels.Balance.id.label('id')
+        ).filter(
+            dbmodels.Balance.client_id == self.id,
+            dbmodels.Balance.time > daily_start
+        ).subquery()
+
+        return select(
+            dbmodels.Balance,
+            sub
+        ).filter(
+            sub.c.row_number == 1,
+            dbmodels.Balance.id == sub.c.id
+        ).order_by(
+            dbmodels.Balance.time
+        )
+
     async def get_total_transfered(self,
                                    db: AsyncSession,
-                                   ccy = None,
+                                   ccy=None,
                                    since: datetime = None,
                                    to: datetime = None):
         stmt = select(
@@ -256,14 +302,14 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             return
         realized = self.currently_realized.realized
         upnl = sum(trade.live_pnl.unrealized for trade in self.open_trades if trade.live_pnl)
-        return db_balance.Balance(
+        return dbmodels.Balance(
             realized=realized,
             unrealized=realized + upnl,
             time=datetime.now(pytz.utc),
             client=self
         )
 
-    async def update_journals(self, current_balance: db_balance.Balance, today: date, db_session: AsyncSession):
+    async def update_journals(self, current_balance: dbmodels.Balance, today: date, db_session: AsyncSession):
         today = today or date.today()
 
         for journal in self.journals:
@@ -294,13 +340,13 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
     async def latest(self, db: AsyncSession):
         try:
-            balance = db_balance.Balance
+            balance = dbmodels.Balance
 
             return await db_first(
                 select(balance).where(
                     balance.client_id == self.id
                 ).order_by(
-                    desc(db_balance.Balance.time)
+                    desc(dbmodels.Balance.time)
                 ),
                 session=db
             )
@@ -320,7 +366,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             return True
 
     async def get_balance_at_time(self, time: datetime, db: AsyncSession) -> Balance:
-        DbBalance = db_balance.Balance
+        DbBalance = dbmodels.Balance
         balance = None
         if time:
             stmt = select(DbBalance).where(
@@ -334,7 +380,8 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             balance = await self.initial(db)
         return balance
 
-    async def get_exact_balance_at_time(self, time: datetime, currency: str = None, db: AsyncSession = None) -> BalanceModel:
+    async def get_exact_balance_at_time(self, time: datetime, currency: str = None,
+                                        db: AsyncSession = None) -> BalanceModel:
         balance = await self.get_balance_at_time(time, db)
 
         if self.is_full and balance and time:
@@ -363,7 +410,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
             pnl_data: list[PnlData] = await db_all(full_stmt, session=db)
 
-            return db_balance.Balance(
+            return dbmodels.Balance(
                 client_id=self.id,
                 client=self,
                 time=time,
@@ -392,7 +439,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         return self.type == ClientType.FULL
 
     async def initial(self, db: AsyncSession):
-        b = db_balance.Balance
+        b = dbmodels.Balance
         return await db_first(
             select(b).where(
                 b.client_id == self.id
@@ -412,8 +459,8 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
 
 def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: set[int] | list[int] = None) -> \
-Union[
-    Select, Delete, Update]:
+        Union[
+            Select, Delete, Update]:
     """
     Commonly used utility to add filters that ensure authorized client access
     :param stmt: stmt to add filters to

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import functools
 import inspect
 import itertools
 import logging
+import operator
 import os
 import re
 import sys
@@ -191,7 +193,14 @@ def join_args(*args, denominator=':'):
 T = typing.TypeVar('T')
 
 
-def groupby(items: list[T], key: str | Callable[[T], Any]) -> dict[Any, list[T]]:
+def safe_cmp(fnc: Callable[[T, T], T], a: T, b: T):
+    return fnc(a, b) if a and b else a or b
+
+
+def sum_iter(iterator: typing.Iterable[T]):
+    return functools.reduce(operator.add, iterator)
+
+def groupby(items: typing.Iterable[T], key: str | Callable[[T], Any]) -> dict[Any, list[T]]:
     res = {}
     if isinstance(key, str):
         key = lambda x: getattr(x, key)

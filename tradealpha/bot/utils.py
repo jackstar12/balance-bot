@@ -362,10 +362,6 @@ async def create_complete_history(dc: discord.Client, event: dbmodels.Event):
     return file
 
 
-def safe_cmp(fnc: Callable, a: Any, b: Any):
-    return fnc(a, b) if a and b else a or b
-
-
 async def create_history(to_graph: List[Tuple[Client, str]],
                          event: dbmodels.Event | None,
                          start: datetime,
@@ -665,7 +661,7 @@ def calc_xs_ys(history: History,
         init = history.initial
         relative_to_amount = get_amount(init)
 
-        offset_gen = transfer_gen(init.client_save, transfers, reset=False)
+        offset_gen = transfer_gen(transfers, default_ccy=ccy, reset=False)
         offset_gen.send(None)
 
         upnl_by_trade = {}

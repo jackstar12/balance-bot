@@ -2,16 +2,18 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
+from common.dbasync import safe_op
 from tradealpha.common import config
-from tradealpha.common.models import OrmBaseModel
+from tradealpha.common.models import OrmBaseModel, OutputID
 from tradealpha.common.models.gain import Gain
-from tradealpha.common.utils import calc_percentage_diff
+from tradealpha.common.utils import calc_percentage_diff, safe_cmp
 
 
 class AmountBase(OrmBaseModel):
     currency: Optional[str]
     realized: Decimal
     unrealized: Decimal
+    client_id: Optional[OutputID]
 
     def _assert_equal(self, other: 'AmountBase'):
         assert self.currency == other.currency
@@ -33,7 +35,7 @@ class AmountBase(OrmBaseModel):
         return AmountBase(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
-            currency=self.currency,
+            currency=self.currency
         )
 
 
@@ -46,7 +48,7 @@ class Amount(AmountBase):
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
             currency=self.currency,
-            time=self.time
+            time=safe_cmp(max, self.time, other.time)
         )
 
 
@@ -54,11 +56,13 @@ class Balance(Amount):
     extra_currencies: Optional[list[AmountBase]]
 
     def __add__(self, other: 'Balance'):
+        self._assert_equal(other)
         return Balance(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
-            time=min(self.time, other.time) if self.time else None,
-            extra_currencies=(self.extra_currencies or []) + (other.extra_currencies or [])
+            time=safe_cmp(max, self.time, other.time),
+            extra_currencies=(self.extra_currencies or []) + (other.extra_currencies or []),
+            currency=self.currency
         )
 
     def to_string(self, display_extras=False):

@@ -111,7 +111,6 @@ def create_trade_endpoint(path: str,
                          db: AsyncSession = Depends(get_db)):
         ts1 = time.perf_counter()
         hits, misses = await cache.read(db)
-        print('missed: ', misses)
         ts2 = time.perf_counter()
         if misses:
             query_params.client_ids = misses
@@ -144,8 +143,6 @@ def create_trade_endpoint(path: str,
             if all(f.check(trade) for f in filter_params)
         ]
         ts4 = time.perf_counter()
-        print('Cache Reading: ', ts2 - ts1)
-        print('Query: ', ts4 - ts2)
         return OK(
             result=res
         )

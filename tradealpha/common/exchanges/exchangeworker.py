@@ -404,7 +404,6 @@ class ExchangeWorker:
                             elif isinstance(item, OHLC) and current_trade:
                                 current_trade.update_pnl(
                                     current_trade.calc_upnl(item.open),
-                                    realtime=False,
                                     now=item.time,
                                     db=db
                                 )
@@ -581,6 +580,7 @@ class ExchangeWorker:
                 stmt = select(Trade).where(
                     Trade.symbol == execution.symbol,
                     Trade.client_id == self.client_id,
+                    Trade.init_balance
                 ).options(
                     selectinload(Trade.executions),
                     joinedload(Trade.initial),

@@ -24,6 +24,33 @@ if TYPE_CHECKING:
     from tradealpha.common.dbmodels import Event
 
 
+def create_daily(history: list[Balance],
+                 transfers: list[Transfer],
+                 ccy: str) -> list[Interval]:
+    results = []
+
+    # TODO: Optimize transfers
+    offset_gen = transfer_gen(transfers, default_ccy=ccy, reset=True)
+
+    # Initialise generator
+    offset_gen.send(None)
+
+    for prev, current in itertools.pairwise(history):
+        try:
+            offsets = offset_gen.send(current.time)
+        except StopIteration:
+            offsets = {}
+        results.append(
+            Interval.create(
+                prev.get_currency(ccy),
+                current.get_currency(ccy),
+                offsets.get(ccy, 0)
+            )
+        )
+
+    return results
+
+
 async def calc_daily(client: Client,
                      amount: int = None,
                      throw_exceptions=False,
@@ -42,49 +69,11 @@ async def calc_daily(client: Client,
     :param string: Whether the created table should be stored as a string using prettytable or as a list of
     :return:
     """
-    now = utils.utc_now()
 
-    currency = currency or 'USD'
-    since = since or datetime.fromtimestamp(0, pytz.utc)
-    to = to or now
-
-    since_date = since.replace(tzinfo=pytz.UTC).replace(hour=0, minute=0, second=0)
-    daily_end = min(now, to)
-
-    if amount:
-        try:
-            daily_start = daily_end - timedelta(days=amount - 1)
-        except OverflowError:
-            raise UserInputError('Invalid daily amount given')
-    else:
-        daily_start = since_date
-
-    # We always want to fetch the last balance of the date (first balance of next date),
-    # so we need to partition by the current date and order by
-    # time in descending order so that we can pick out the first (last) one
-
-    sub = select(
-        func.row_number().over(
-            order_by=desc(Balance.time),
-            partition_by=Balance.time.cast(Date)
-        ).label('row_number'),
-        Balance.id.label('id')
-    ).filter(
-        Balance.client_id == client.id,
-        Balance.time > daily_start
-    ).subquery()
-
-    stmt = select(
-        Balance,
-        sub
-    ).filter(
-        sub.c.row_number == 1,
-        Balance.id == sub.c.id
-    ).order_by(
-        asc(Balance.time)
+    history: list[Balance] = await db_all(
+        client.daily_balance_stmt(amount=amount, since=since, to=to),
+        session=db
     )
-
-    history: list[Balance] = await db_all(stmt, Balance.client, session=db)
 
     if len(history) == 0:
         if throw_exceptions:
@@ -92,30 +81,9 @@ async def calc_daily(client: Client,
         else:
             return []
 
-    results = []
-
-    # TODO: Optimize transfers
-    offset_gen = transfer_gen(client,
-                              [t for t in client.transfers if history[0].time < t.time < history[-1].time],
-                              reset=True)
-
-    # Initialise generator
-    offset_gen.send(None)
-
-    for prev, current in itertools.pairwise(history):
-        try:
-            offsets = offset_gen.send(current.time)
-        except StopIteration:
-            offsets = {}
-        results.append(
-            Interval.create(
-                prev.get_currency(client.currency),
-                current.get_currency(client.currency),
-                offsets.get(client.currency, 0)
-            )
-        )
-
-    return results
+    return create_daily(history,
+                        [t for t in client.transfers if history[0].time < t.time < history[-1].time],
+                        client.currency)
 
 
 _KT = typing.TypeVar('_KT')
@@ -129,8 +97,8 @@ def _add_safe(d: dict[_KT, _VT], key: _KT, val: _VT):
 TOffset = dict[str, Decimal]
 
 
-def transfer_gen(client: Client,
-                 transfers: list[Transfer],
+def transfer_gen(transfers: list[Transfer],
+                 default_ccy: str,
                  reset=False) -> Generator[TOffset, datetime, None]:
     # transfers = await db_select_all(
     #     Transfer,
@@ -147,7 +115,7 @@ def transfer_gen(client: Client,
             next_time = yield offsets
             if reset:
                 offsets = {}
-        _add_safe(offsets, client.currency, transfer.amount)
+        _add_safe(offsets, default_ccy, transfer.amount)
         if transfer.extra_currencies:
             for ccy, amount in transfer.extra_currencies.items():
                 _add_safe(offsets, ccy, Decimal(amount))

@@ -5,6 +5,7 @@ from fastapi import Query
 from pydantic import UUID4
 
 import tradealpha.common.dbmodels.mixins.querymixin as qmxin
+from tradealpha.api.models.trade import Trade, BasicTrade
 from tradealpha.api.models.template import TemplateInfo
 from tradealpha.common.models.eventinfo import EventInfo
 from tradealpha.api.models import BaseModel, OutputID, InputID
@@ -87,8 +88,17 @@ class ClientDetailed(ClientInfo):
     events: Optional[list[EventInfo]]
 
 
-class ClientOverview(BaseModel):
+class _Common(BaseModel):
     initial_balance: Balance
     current_balance: Balance
-    transfers: dict[str, Transfer]
-    daily: dict[date, Interval]
+    open_trades: list[BasicTrade]
+    transfers: list[Transfer]
+
+
+class ClientOverviewCache(_Common):
+    id: int
+    daily: list[Balance]
+
+
+class ClientOverview(_Common):
+    intervals: list[Interval]

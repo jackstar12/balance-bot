@@ -377,20 +377,22 @@ class ExtendedBalanceService(_BalanceServiceBase):
                     if client and client.open_trades:
                         for trade in client.open_trades:
                             ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
-                            market = worker.get_market(trade.symbol)
-                            if market.quote != client.currency:
-                                extra_ticker = await self.data_service.get_ticker(
-                                    worker.get_symbol(
-                                        Market(base=market.base, quote=client.currency)
-                                    ),
-                                    client.exchange
-                                )
-                            else:
-                                extra_ticker = ticker
+                            extra_ticker = ticker
+                            try:
+                                market = worker.get_market(trade.symbol)
+                                if market.quote != client.currency:
+                                    extra_ticker = await self.data_service.get_ticker(
+                                        worker.get_symbol(
+                                            Market(base=market.base, quote=client.currency)
+                                        ),
+                                        client.exchange
+                                    )
+                            except NotImplementedError:
+                                pass
+
                             if ticker and extra_ticker:
                                 trade.update_pnl(
                                     trade.calc_upnl(ticker.price),
-                                    realtime=True,
                                     extra_currencies={client.currency: extra_ticker.price},
                                     db=self._db
                                 )
