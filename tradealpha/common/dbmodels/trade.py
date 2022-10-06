@@ -263,8 +263,6 @@ class Trade(Base, Serializer, CurrencyMixin):
 
     def update_pnl(self,
                    upnl: int | Decimal,
-                   messenger: Messenger = None,
-                   realtime=True,
                    force=False,
                    now: datetime = None,
                    extra_currencies: dict[str, Decimal] = None,
@@ -306,7 +304,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                 not self.latest_pnl
                 or force
                 or self.max_pnl.total == self.min_pnl.total
-                or abs((live - self.latest_pnl.total) / (self.max_pnl.total - self.min_pnl.total)) > Decimal(.25)
+                or abs((live - self.latest_pnl.total) / self.init_balance.realized) > Decimal(.2)
         ):
             db.add(self.live_pnl)
             self.latest_pnl = self.live_pnl
@@ -322,10 +320,6 @@ class Trade(Base, Serializer, CurrencyMixin):
                 significant = True
             if self._replace_pnl(self.min_pnl, self.live_pnl, Decimal.__le__):
                 significant = True
-
-        # if realtime and messenger:
-        #     messenger.pub_channel(NameSpace.TRADE, Category.UPNL, channel_id=self.client_id,
-        #                           obj={'id': self.id, 'upnl': upnl})
 
         return significant
 

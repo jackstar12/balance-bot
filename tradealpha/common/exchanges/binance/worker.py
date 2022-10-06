@@ -452,6 +452,7 @@ class BinanceSpot(_BinanceBaseClient):
     _ENDPOINT = 'https://api.binance.com'
     _SANDBOX_ENDPOINT = 'https://testnet.binance.vision'
     exchange = 'binance-spot'
+    supports_extended_data = False
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
     async def _get_balance(self, time: datetime, upnl=True):
@@ -489,6 +490,11 @@ class BinanceSpot(_BinanceBaseClient):
             total_balance += amount * price
 
         return balance.Balance(realized=total_balance, unrealized=total_balance, time=time)
+
+    # async def _get_executions(self,
+    #                           since: datetime,
+    #                           init=False) -> tuple[List[Execution], List[MiscIncome]]:
+    #     result = await self.get('/api/v3/myTrades', )
 
     async def _get_transfers(self,
                              since: datetime,

@@ -379,7 +379,8 @@ class ExtendedBalanceService(_BalanceServiceBase):
                             if ticker:
                                 trade.update_pnl(
                                     trade.calc_upnl(ticker.price),
-                                    realtime=True, extra_currencies={'USD': ticker.price},
+                                    realtime=True,
+                                    extra_currencies={'USD': ticker.price},
                                     db=self._db
                                 )
                         balance = client.evaluate_balance()

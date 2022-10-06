@@ -121,6 +121,7 @@ class WebsocketManager:
                 if msg.type == aiohttp.WSMsgType.CLOSED:
                     self._logger.info(f'DISCONNECTED {self=}')
                     await self._callback(self._on_close, ws)
+                    await self.reconnect()
                     break
 
     async def ping(self):
