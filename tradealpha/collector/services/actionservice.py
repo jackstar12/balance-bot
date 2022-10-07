@@ -12,6 +12,7 @@ from tradealpha.common.dbmodels.action import Action, ActionType, ActionTrigger
 from tradealpha.common.dbmodels.balance import Balance
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
 from tradealpha.common.dbmodels.trade import Trade
+from tradealpha.common.enums import Side
 from tradealpha.common.models.discord.guild import MessageRequest
 from tradealpha.common.redis import rpc
 
@@ -45,9 +46,12 @@ class ActionService(BaseService):
             title='Trade',
             fields={
                 'Symbol': trade.symbol,
+                'Side': 'Long' if trade.side == Side.BUY else 'Short',
                 'Realized PNL': trade.realized_pnl,
                 'Entry': trade.entry,
-                'Exit': trade.exit
+                'Exit': trade.exit,
+                'Open Date': trade.open_time,
+                'Close Date': trade.open_time,
             }
         )
 
@@ -107,13 +111,19 @@ class ActionService(BaseService):
         )
 
     async def execute(self, action: Action, data: dict):
-        messenger_space = self._messenger.get_namespace(action.namespace)
+        namespace = self._messenger.get_namespace(action.namespace)
         if action.action_type == ActionType.WEBHOOK:
+            if action.extra.get('format') == 'discord':
+                embed = self.to_embed(namespace.table, data)
+                if embed:
+                    send = embed.to_dict()
             url = action.extra['url']
-            # call
+            async with self._http_session.post(url) as response:
+                if response.status_code == 200:
+                    pass  # OK
         elif action.action_type == ActionType.DISCORD:
             dc = rpc.Client('discord', self._redis)
-            embed = self.to_embed(messenger_space.table, data)
+            embed = self.to_embed(namespace.table, data)
             await dc(
                 'send',
                 MessageRequest(

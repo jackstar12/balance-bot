@@ -13,6 +13,7 @@ from tradealpha.common.dbmodels.editing.template import Template
 from tradealpha.common import utils
 from tradealpha.common.dbsync import Base, BaseMixin
 from tradealpha.common.dbmodels.types import Document
+from tradealpha.common.enums import IntervalType
 from tradealpha.common.models.document import DocumentModel
 
 import tradealpha.common.dbmodels.editing.chapter as db_chapter
@@ -36,11 +37,6 @@ class JournalType(Enum):
 class JournalData(TypedDict):
     chapter_interval: Optional[timedelta]
 
-
-class IntervalType(Enum):
-    DAY = "day"
-    WEEK = "week"
-    MONTH = "month"
 
 
 class Journal(Base, BaseMixin):

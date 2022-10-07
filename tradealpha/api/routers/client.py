@@ -189,7 +189,9 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         )
 
         for _, balances in by_day.items():
-            present_ids = [balance.client_id for balance in balances]
+            present_ids = [
+                balance.client_id for balance in balances
+            ]
             present_excluded = [
                 balance for client_id, balance in latest_by_client.items() if
                 client_id not in present_ids

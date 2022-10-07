@@ -4,7 +4,7 @@ Goals to strive for.
 
 ## Structure:
 - `name`
-- `type` Fixed or Reoccuring
+- `type` Fixed or Reoccurring
 - `calculations` 
   a list of calculations which are considered to be a goal
 e.g. Win Rate > 50% PNL > 5%

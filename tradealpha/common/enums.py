@@ -2,6 +2,7 @@ from enum import Enum
 
 
 class IntervalType(Enum):
+    ALL_TIME = "all_time"
     DAY = "day"
     WEEK = "week"
     MONTH = "month"

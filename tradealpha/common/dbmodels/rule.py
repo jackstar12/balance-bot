@@ -3,6 +3,7 @@ from datetime import datetime
 import sqlalchemy as sa
 import enum
 
+from tradealpha.common.dbmodels.mixins.editsmixin import EditsMixin
 from tradealpha.common.dbsync import Base
 from sqlalchemy import Column, Integer, DateTime
 from tradealpha.common.dbmodels.mixins.serializer import Serializer
@@ -26,10 +27,7 @@ class Expression:
 # Example goal:
 # Winrate > 50% && Kelly Optimization = True
 
-class Rule(Base, Serializer):
+class Rule(Base, Serializer, EditsMixin):
     id: int = Column(Integer, primary_key=True)
-    creation_date: datetime = Column(DateTime(timezone=True))
-    finish_date: datetime = Column(DateTime(timezone=True))
-    conditions = Column(sa.JSON, nullable=False)
-    expression = Column(sa.JSON, nullable=False)
-    expressions: list[Expression]
+    filters = Column(sa.JSON, nullable=False)
+    expressions: list[Expression] = Column(sa.JSON, nullable=False)
