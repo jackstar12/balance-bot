@@ -8,16 +8,14 @@ Create Date: 2022-09-25 14:39:00.476165
 import fastapi_users_db_sqlalchemy
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import orm, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-import tradealpha
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-from tradealpha.common.dbmodels.label import Label
-from tradealpha.common.dbmodels.user import User
-from tradealpha.common.dbsync import Base
+from common.dbmodels.label import Label
+from common.dbmodels.user import User
 
 revision = '21a8724671d8'
 down_revision = None

@@ -1,0 +1,41 @@
+[tool.poetry]
+name = "common"
+version = "0.1.0"
+description = ""
+authors = ["jacksn"]
+
+
+[tool.poetry.dependencies]
+python = "3.10.3"
+matplotlib = "3.5.0"
+discord-py-slash-command = "3.0.1"
+discord-py = "1.7.1"
+SQLAlchemy = { extras=["asyncio"], version="1.4.40" }
+prettytable = "3.1.0"
+bcrypt = "3.2.0"
+DateTime = "4.4"
+numpy = "1.22.4"
+python-dotenv = "0.19.0"
+alembic = "1.7.6"
+PyJWT = "2.4.0"
+cryptography = "36.0.1"
+ccxt = "1.57.99"
+aiohttp = ">3.7.4"
+pydantic = "1.8.2"
+aioredis = "2.0.1"
+msgpack = "0.6.2"
+asyncpg = "0.25.0"
+sqlalchemy_utils = "0.38.2"
+orjson = "3.6.8"
+fastapi_users_db_sqlalchemy = "4.0.3"
+psycopg2-binary = "2.9.3"
+scipy = "1.8.1"
+APScheduler = "3.9.1"
+
+
+[tool.poetry.dev-dependencies]
+pytest = "7.1.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

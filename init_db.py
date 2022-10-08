@@ -1,7 +1,7 @@
 # inside of a "create the database" script, first create
 # tables:
-from tradealpha.common.dbsync import Base, engine
-import tradealpha.common.dbmodels as dbmodels
+from common.dbsync import Base, engine
+import common.dbmodels as dbmodels
 from alembic.config import Config
 from alembic import command
 

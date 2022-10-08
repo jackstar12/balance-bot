@@ -4,7 +4,7 @@ data
 archive
 log.txt
 LOGS
-tradealpha/api/db.sqlite3
+projects/api/db.sqlite3
 migrations
 .env
 venv
