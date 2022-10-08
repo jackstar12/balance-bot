@@ -7,10 +7,10 @@ from api.dependencies import get_messenger, get_db
 from api.models.template import TemplateUpdate, TemplateInfo, TemplateCreate
 from api.users import CurrentUser
 from api.utils.responses import OK, CustomJSONResponse, NotFound
-from common.dbasync import db_unique, db_all, db_del_filter
-from common.dbmodels.journal import Journal
-from common.dbmodels.template import Template as DbTemplate
-from common.dbmodels.user import User
+from database.dbasync import db_unique, db_all, db_del_filter
+from database.dbmodels.journal import Journal
+from database.dbmodels.template import Template as DbTemplate
+from database.dbmodels.user import User
 
 router = APIRouter(
     tags=["template"],

@@ -13,11 +13,11 @@ from api.models.completejournal import (
     ChapterCreate, ChapterUpdate, JournalDetailedInfo
 )
 from api.utils.responses import BadRequest, OK, CustomJSONResponse
-from common.dbasync import db_unique, db_all
-from common.dbmodels.chapter import Chapter as DbChapter
-from common.dbmodels.client import add_client_filters, Client
-from common.dbmodels.journal import Journal, JournalType
-from common.dbmodels.user import User
+from database.dbasync import db_unique, db_all
+from database.dbmodels.chapter import Chapter as DbChapter
+from database.dbmodels.client import add_client_filters, Client
+from database.dbmodels.journal import Journal, JournalType
+from database.dbmodels.user import User
 
 router = APIRouter(
     tags=["journal"],

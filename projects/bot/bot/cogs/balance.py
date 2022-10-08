@@ -6,13 +6,13 @@ from datetime import datetime
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 
-from common.dbasync import async_session
-from common.dbmodels.client import Client
-from common.dbmodels.discord.discorduser import DiscordUser
+from database.dbasync import async_session
+from database.dbmodels.client import Client
+from database.dbmodels.discord.discorduser import DiscordUser
 from bot import utils, config
-from common import dbutils
+from database import utils as dbutils
 from bot.cogs.cogbase import CogBase
-from common.calc import calc_gains, calc_daily
+from database.calc import calc_gains, calc_daily
 
 
 class BalanceCog(CogBase):

@@ -2,7 +2,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
 
 from api.models.client import ClientInfo
-from common.models.client import ClientCreate
+from database.models.client import ClientCreate
 from api.app import app
 from common.test_utils.fixtures import *
 

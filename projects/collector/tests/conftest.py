@@ -8,14 +8,14 @@ from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import delete
 
-from common.dbasync import db_select
+from database.dbasync import db_select
 from collector.services.balanceservice import ExtendedBalanceService, BasicBalanceService
 from collector.services.dataservice import DataService
 from common import utils
-from common.dbmodels.client import Client
+from database.dbmodels.client import Client
 from common.messenger import TableNames, Category
 from common.test_utils.fixtures import Messages, Channel
-from common.dbmodels.user import User
+from database.dbmodels.user import User
 from common.exchanges import CCXT_CLIENTS
 from common.test_utils.fixtures import *
 

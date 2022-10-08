@@ -5,16 +5,16 @@ from sqlalchemy import select, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.crudrouter import create_crud_router
-from common.dbmodels import TradeDB
-from common.dbasync import db_first, db_select, db_exec
+from database.dbmodels import TradeDB
+from database.dbasync import db_first, db_select, db_exec
 from api.dependencies import get_db
 from api.users import CurrentUser
 
-from common.dbmodels.client import add_client_filters
-from common.dbmodels.label import Label as LabelDB, LabelGroup as LabelGroupDB
+from database.dbmodels.client import add_client_filters
+from database.dbmodels.label import Label as LabelDB, LabelGroup as LabelGroupDB
 from api.models.labelinfo import LabelInfo, LabelGroupInfo, LabelGroupCreate, RemoveLabel, AddLabel, CreateLabel
-from common.dbmodels.trade import Trade, trade_association
-from common.dbmodels.user import User
+from database.dbmodels.trade import Trade, trade_association
+from database.dbmodels.user import User
 from api.utils.responses import BadRequest, OK, NotFound
 
 

@@ -7,12 +7,12 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from requests import Response
 
-from common.models.document import DocumentModel
-from common.models.eventinfo import EventInfo, EventDetailed
+from database.models.document import DocumentModel
+from database.models.eventinfo import EventInfo, EventDetailed
 from api.routers.event import EventCreate, EventUpdate
 from api.utils.responses import ResponseModel
 from common.exchanges import SANDBOX_CLIENTS
-from common.models import BaseModel
+from database.models import BaseModel
 
 T = TypeVar('T', bound=BaseModel)
 

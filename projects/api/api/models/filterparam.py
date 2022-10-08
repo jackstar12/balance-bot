@@ -2,7 +2,7 @@ import operator
 from enum import Enum
 from typing import Any, Type, TypeVar, Generic
 
-from common.models import BaseModel
+from database.models import BaseModel
 
 
 class Operator(Enum):

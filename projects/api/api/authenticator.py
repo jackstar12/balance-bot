@@ -9,7 +9,7 @@ from fastapi_users import models, BaseUserManager, exceptions
 from fastapi_users.authentication import Strategy
 from pydantic import UUID4
 
-from common.dbmodels.user import User
+from database.dbmodels.user import User
 from api.settings import settings
 
 

@@ -6,7 +6,8 @@ authors = ["jacksn"]
 
 [tool.poetry.dependencies]
 python = "3.10.3"
-common = {path = "../common", develop = true }
+APScheduler = "3.9.1"
+common = {path = "../../lib/common", develop = true }
 
 [tool.poetry.dev-dependencies]
 pytest = "7.1.2"

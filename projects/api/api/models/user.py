@@ -3,7 +3,7 @@ from typing import Optional, List
 
 from fastapi_users import schemas
 
-from common.dbmodels.user import OAuthData
+from database.dbmodels.user import OAuthData
 from api.models.alert import Alert
 from api.models.client import ClientInfo
 from api.models.labelinfo import LabelGroupInfo

@@ -1,14 +1,11 @@
 from http import HTTPStatus
-from typing import Dict, Any, TypeVar, Optional, Generic
+from typing import Any, TypeVar, Optional, Generic
 
-import orjson
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import UJSONResponse
 from starlette.responses import JSONResponse
 
-from common.models import BaseModel
-from common import customjson
-
+from database.models import BaseModel
+from lib.utils.utils import json
 
 ResultT = TypeVar('ResultT', bound=BaseModel)
 
@@ -46,4 +43,4 @@ class CustomJSONResponse(JSONResponse):
     media_type = "application/json"
 
     def render(self, content: Any) -> bytes:
-        return customjson.dumps(content)
+        return json.dumps(content)

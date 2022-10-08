@@ -1,6 +1,6 @@
 from api.crudrouter import create_crud_router
-from common.dbmodels.action import Action
-from common.models.action import ActionInfo, ActionCreate
+from database.dbmodels.action import Action
+from database.models.action import ActionInfo, ActionCreate
 
 router = create_crud_router(
     prefix='/action',

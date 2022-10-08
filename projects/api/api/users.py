@@ -21,8 +21,8 @@ from api.oauth import get_oauth_router
 from api.dependencies import get_db
 from api.settings import settings
 from api.authenticator import RedisStrategy
-from common.dbmodels.user import User, OAuthAccount
-from common.dbasync import redis, db_eager
+from database.dbmodels.user import User, OAuthAccount
+from database.dbasync import redis, db_eager
 
 
 

@@ -12,13 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from api.models.filterparam import FilterParam
-from common.redis import rpc
-from common.models import BaseModel
+from database.redis import rpc
+from database.models import BaseModel
 from api.authenticator import Authenticator
-from common.dbasync import redis, db_eager, db_unique, async_maker
+from database.dbasync import redis, db_eager, db_unique, async_maker
 from api.settings import settings
 from fastapi import Depends
-from common.dbmodels.user import User
+from database.dbmodels.user import User
 from common.messenger import Messenger
 
 default_authenticator = Authenticator(

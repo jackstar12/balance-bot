@@ -13,18 +13,18 @@ import discord.errors
 from discord.ext import commands
 from discord_slash import SlashCommand
 
-from common.dbmodels.user import OAuthData
-from common.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest
-from common.redis.rpc import Server
-from common.dbasync import async_session, db_all, redis, db_select
-from common.dbmodels.discord.guildassociation import GuildAssociation
-from common.dbmodels.client import Client
-from common.dbmodels.discord.discorduser import DiscordUser
-from common.dbmodels.discord.guild import Guild as GuildDB
+from database.dbmodels.user import OAuthData
+from database.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest
+from database.redis.rpc import Server
+from database.dbasync import async_session, db_all, redis, db_select
+from database.dbmodels.discord.guildassociation import GuildAssociation
+from database.dbmodels.client import Client
+from database.dbmodels.discord.discorduser import DiscordUser
+from database.dbmodels.discord.guild import Guild as GuildDB
 from bot.config import *
 from bot.cogs import *
 from bot.eventmanager import EventManager
-from common.enums import Tier
+from database.enums import Tier
 from common.messenger import Messenger, TableNames, Category
 from common.utils import setup_logger
 

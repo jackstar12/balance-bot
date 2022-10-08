@@ -5,9 +5,9 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from common.dbmodels import Client, Execution
-from common.dbasync import db_select_all, db_all
-from common.dbmodels.trade import Trade
+from database.dbmodels import Client, Execution
+from database.dbasync import db_select_all, db_all
+from database.dbmodels.trade import Trade
 from common.messenger import TableNames, Category
 from common.test_utils.fixtures import Channel, Messages
 from common.exchanges import SANDBOX_CLIENTS

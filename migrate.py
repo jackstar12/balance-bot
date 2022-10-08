@@ -4,15 +4,15 @@ from datetime import datetime, timedelta
 import pytz
 from sqlalchemy.orm import make_transient
 
-import common.dbsync as db
-from common.dbmodels.client import Client
-from common.dbmodels.discord.discorduser import DiscordUser
-from common.dbmodels.event import Event
+import database.dbsync as db
+from database.dbmodels.client import Client
+from database.dbmodels.discord.discorduser import DiscordUser
+from database.dbmodels.event import Event
 from sqlalchemy_utils.types.encrypted.encrypted_type import FernetEngine
 import dotenv
 import os
 
-from common.dbmodels.user import User
+from database.dbmodels.user import User
 
 dotenv.load_dotenv()
 

@@ -6,12 +6,12 @@ import pytz
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import select, and_
 from collector.services.baseservice import BaseService
-from common.dbasync import db_all, db_select
-from common.dbmodels import Client
-from common.dbmodels.event import Event, EventState
-from common.dbmodels.score import EventScore
+from database.dbasync import db_all, db_select
+from database.dbmodels import Client
+from database.dbmodels.event import Event, EventState
+from database.dbmodels.score import EventScore
 from common.messenger import Category, TableNames, EVENT
-from common.models.balance import Balance
+from database.models.balance import Balance
 
 
 @dataclass

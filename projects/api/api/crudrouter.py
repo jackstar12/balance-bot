@@ -8,10 +8,10 @@ from sqlalchemy.sql import Select, Update, Delete
 from api.dependencies import get_db
 from api.users import CurrentUser
 from api.utils.responses import OK, NotFound
-from common.dbasync import db_all, db_unique, TEager
-from common.dbmodels.user import User
-from common.dbsync import Base
-from common.models import BaseModel, OrmBaseModel
+from database.dbasync import db_all, db_unique, TEager
+from database.dbmodels.user import User
+from database.dbsync import Base
+from database.models import BaseModel, OrmBaseModel
 
 TStmt = Select | Update | Delete
 

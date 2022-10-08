@@ -7,7 +7,6 @@ import logging
 import traceback
 from asyncio import Future
 from functools import wraps
-
 import discord
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -27,28 +26,28 @@ from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal
 from sqlalchemy import asc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import common.dbmodels as dbmodels
-from common.models.history import History
-from common.models.eventinfo import EventScore, EventRank
-from common.dbmodels.transfer import Transfer
-from common.dbmodels.user import User
-from common.calc import transfer_gen
+import database.dbmodels as dbmodels
+from database.models.history import History
+from database.models.eventinfo import EventScore, EventRank
+from database.dbmodels.transfer import Transfer
+from database.dbmodels.user import User
+from database.calc import transfer_gen
 from common.utils import calc_percentage, call_unknown_function, groupby, utc_now
-from common.dbasync import async_session, db_all, async_maker, time_range
-from common.errors import UserInputError, InternalError
-from common import dbutils
-from common.dbmodels.discord.discorduser import DiscordUser, get_display_name, get_client_display_name
-from common.dbmodels.balance import Balance
-from common.models.selectionoption import SelectionOption
+from database.dbasync import async_session, db_all, async_maker, time_range
+from database.errors import UserInputError, InternalError
+from database import utils as dbutils
+from database.dbmodels.discord.discorduser import DiscordUser, get_display_name, get_client_display_name
+from database.dbmodels.balance import Balance
+from database.models.selectionoption import SelectionOption
 import common.config as config
 from typing import TYPE_CHECKING
 import matplotlib.colors as mcolors
-from common.dbmodels.pnldata import PnlData
-from common.dbmodels.trade import Trade
+from database.dbmodels.pnldata import PnlData
+from database.dbmodels.trade import Trade
 from common import utils
 
 if TYPE_CHECKING:
-    from common.dbmodels.client import Client
+    from database.dbmodels.client import Client
 
 # Some consts to make TF tables prettier
 MINUTE = 60

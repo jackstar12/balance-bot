@@ -1,5 +1,5 @@
-from common.models import OrmBaseModel
-from common.models import BaseModel, OutputID, InputID
+from database.models import OrmBaseModel
+from database.models import BaseModel, OutputID, InputID
 
 
 class CreateLabel(BaseModel):

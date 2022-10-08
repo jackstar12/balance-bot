@@ -3,16 +3,16 @@ import time
 
 import pytz
 from sqlalchemy import select
-from common.dbasync import db_all, async_session
+from database.dbasync import db_all, async_session
 from collector.services.baseservice import BaseService
 from collector.services.dataservice import Channel
-from common.models.observer import Observable, Observer
+from database.models.observer import Observable, Observer
 import ccxt.async_support as ccxt
 from datetime import datetime, timedelta
 from collections import deque
-from common.dbmodels.coin import Coin, Volume, OI
-from common.models.trade import Trade
-from common.models.volumeratio import VolumeRatio
+from database.dbmodels.coin import Coin, Volume, OI
+from database.models.trade import Trade
+from database.models.volumeratio import VolumeRatio
 from typing import Dict, List
 
 import aiohttp

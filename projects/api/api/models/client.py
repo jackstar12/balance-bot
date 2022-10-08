@@ -3,12 +3,12 @@ from typing import Dict, Optional
 from fastapi import Query
 from pydantic import UUID4
 
-from common.models.client import ClientCreate
-from common.dbmodels.client import ClientType, ClientState
-from common.models.balance import Balance
-from common.models.interval import Interval
-import common.dbmodels.mixins.querymixin as qmxin
-from common.models import BaseModel, OutputID, InputID
+from database.models.client import ClientCreate
+from database.dbmodels.client import ClientType, ClientState
+from database.models.balance import Balance
+from database.models.interval import Interval
+import database.dbmodels.mixins.querymixin as qmxin
+from database.models import BaseModel, OutputID, InputID
 from api.models.transfer import Transfer
 
 

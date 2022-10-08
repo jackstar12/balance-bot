@@ -2,11 +2,9 @@ from decimal import Decimal
 from enum import Enum
 from typing import List, NamedTuple, Any, Tuple
 
-from pydantic import Field, Extra
-
 from api.models.trade import DetailledTrade
-from common.models import BaseModel, OutputID
-from common.enums import Filter
+from database.models import BaseModel, OutputID
+from database.enums import Filter
 
 class Calculation(Enum):
     PNL = "pnl"

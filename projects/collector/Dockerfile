@@ -1,13 +1,15 @@
-FROM tradealpha_common:latest
+FROM python:3.10.3
 
-WORKDIR /code
+COPY lib /app/lib/
+COPY projects/ /app/projects/collector/
 
-COPY /tradealpha/collector/requirements.txt /code/tradealpha/collector/requirements.txt
+WORKDIR /app/projects/collector
 
-RUN pip install --no-cache-dir --upgrade -r /code/projects/collector/requirements.txt
+RUN curl -sSL https://install.python-poetry.org | python3 -
+RUN ~/.local/bin/poetry config virtualenvs.create false
+RUN ~/.local/bin/poetry install --without dev
 
-COPY /tradealpha/collector /code/tradealpha/collector
 
-CMD ["alembic", "upgrade", "head"]
+EXPOSE 5000
 
-CMD ["python3", "-m", "tradealpha.collector.collector"]
+CMD [ "python3", "-m", "__main__" ]

@@ -16,7 +16,7 @@ import api.routers.test as test
 import api.routers.trade as trade
 import api.routers.action as action
 from api.dependencies import messenger
-from common.dbmodels import Event, Client, EventScore
+from database.dbmodels import Event, Client, EventScore
 from api.models.user import UserRead, UserCreate
 from api.users import fastapi_users, auth_backend
 from common.utils import setup_logger

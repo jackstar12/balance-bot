@@ -7,8 +7,8 @@ from collector.services.baseservice import BaseService
 from common import utils
 from common.exchanges import EXCHANGE_TICKERS
 from common.messenger import TableNames
-from common.models.observer import Observer
-from common.models.ticker import Ticker
+from database.models.observer import Observer
+from database.models.ticker import Ticker
 
 
 class Channel(Enum):

@@ -5,8 +5,8 @@ from typing import Dict, Optional, TypeVar, Generic, Any
 from sqlalchemy.sql import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from common.utils import CoroOrCallable
-from common.dbsync import Base
-from common.dbasync import db_unique
+from database.dbsync import Base
+from database.dbasync import db_unique
 from common.messenger import Category
 from common.messenger import Messenger, MessengerNameSpace
 

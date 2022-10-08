@@ -4,13 +4,13 @@ from typing import List, Optional
 
 from pydantic import Extra
 
-from common.models.document import DocumentModel
-from common.models.balance import Balance
+from database.models.document import DocumentModel
+from database.models.balance import Balance
 from api.models.pnldata import PnlData
 from api.models.execution import Execution
-from common.models import OrmBaseModel, BaseModel, InputID, OutputID
-from common.enums import Side, Status, TradeSession
-from common.models.compactpnldata import CompactPnlData
+from database.models import OrmBaseModel, BaseModel, InputID, OutputID
+from database.enums import Side, Status, TradeSession
+from database.models.compactpnldata import CompactPnlData
 
 
 class BasicTrade(OrmBaseModel):

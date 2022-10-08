@@ -2,11 +2,11 @@ from datetime import date
 from decimal import Decimal
 from typing import List, Optional, NamedTuple, Set
 
-from common.dbmodels.journal import IntervalType
-from common.models import BaseModel, OutputID, InputID
+from database.dbmodels.journal import IntervalType
+from database.models import BaseModel, OutputID, InputID
 
-from common.models.document import DocumentModel
-from common.dbmodels.journal import JournalType
+from database.models.document import DocumentModel
+from database.dbmodels.journal import JournalType
 from api.models.template import TemplateInfo
 
 

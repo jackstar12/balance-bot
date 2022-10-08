@@ -6,7 +6,9 @@ authors = ["jacksn"]
 
 [tool.poetry.dependencies]
 python = "3.10.3"
-common = {path = "../common", develop = true }
+matplotlib = "3.5.0"
+discord-py-slash-command = "3.0.1"
+common = {path = "../../lib/common", develop = true }
 
 [tool.poetry.dev-dependencies]
 pytest = "7.1.2"

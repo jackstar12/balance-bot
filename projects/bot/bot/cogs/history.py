@@ -7,13 +7,13 @@ from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
 from sqlalchemy import delete
 
-from common.dbmodels.discord.discorduser import DiscordUser
+from database.dbmodels.discord.discorduser import DiscordUser
 from bot import utils, config
-from common import dbutils
+from database import utils as dbutils
 from bot.cogs.cogbase import CogBase
-from common.dbmodels.client import Client
-from common.dbasync import db_exec, async_session, db_first
-from common.dbmodels.balance import Balance
+from database.dbmodels.client import Client
+from database.dbasync import db_exec, async_session, db_first
+from database.dbmodels.balance import Balance
 
 
 class HistoryCog(CogBase):

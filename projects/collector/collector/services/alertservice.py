@@ -3,14 +3,14 @@ from typing import List, Dict
 
 from sqlalchemy import select
 
-from common.dbasync import db_all
-from common.dbmodels.alert import Alert
+from database.dbasync import db_all
+from database.dbmodels.alert import Alert
 from collector.services.baseservice import BaseService
 from collector.services.dataservice import Channel, DataService
-from common.enums import Side
+from database.enums import Side
 from common.messenger import TableNames as MsgChannel, Category
-from common.models.observer import Observer
-from common.models.ticker import Ticker
+from database.models.observer import Observer
+from database.models.ticker import Ticker
 
 
 class AlertService(BaseService, Observer):

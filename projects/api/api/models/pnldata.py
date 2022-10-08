@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from common.models import BaseModel
+from database.models import BaseModel
 
 
 class PnlData(BaseModel):

@@ -5,8 +5,8 @@ from pydantic import BaseModel, EmailStr
 
 from api.models.user import UserRead
 from api.authenticator import Authenticator
-from common.dbasync import db_select
-from common.dbmodels.user import User
+from database.dbasync import db_select
+from database.dbmodels.user import User
 import bcrypt
 
 from api.dependencies import get_authenticator, get_db

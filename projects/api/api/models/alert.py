@@ -1,6 +1,6 @@
-from common.models import BaseModel, OutputID
+from database.models import BaseModel, OutputID
 
-from common.enums import Side
+from database.enums import Side
 
 
 class Alert(BaseModel):

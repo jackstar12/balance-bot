@@ -4,8 +4,8 @@ from typing import Optional
 
 from pydantic import Field
 
-from common.models import BaseModel, OutputID
-from common.enums import ExecType, Side
+from database.models import BaseModel, OutputID
+from database.enums import ExecType, Side
 
 
 class Execution(BaseModel):

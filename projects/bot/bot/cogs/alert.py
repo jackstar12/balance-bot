@@ -4,15 +4,15 @@ from typing import Dict
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option, create_choice
 
-from common.dbasync import async_session
-from common.dbmodels.discord.discorduser import DiscordUser
+from database.dbasync import async_session
+from database.dbmodels.discord.discorduser import DiscordUser
 from bot import utils
-from common import dbutils
-from common.dbmodels.alert import Alert
+from database import utils as dbutils
+from database.dbmodels.alert import Alert
 from bot.cogs.cogbase import CogBase
 from common.exchanges import EXCHANGES
 from common.messenger import TableNames, Category
-from common.models.selectionoption import SelectionOption
+from database.models.selectionoption import SelectionOption
 
 
 class AlertCog(CogBase):

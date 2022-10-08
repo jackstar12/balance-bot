@@ -2,7 +2,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
-from common.dbasync import async_session
+from database.dbasync import async_session
 
 
 class DbSessionMiddleware(BaseHTTPMiddleware):

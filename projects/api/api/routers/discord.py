@@ -4,19 +4,19 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.dialects.postgresql import insert as insertpg
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common.models import InputID
+from database.models import InputID
 from api.utils.client import get_user_client
-from common.dbmodels.discord.guild import Guild as GuildDB
+from database.dbmodels.discord.guild import Guild as GuildDB
 from api.dependencies import get_db, get_dc_rpc_client
 from api.models.discord_user import DiscordUserInfo
 from api.users import CurrentUser
 from api.utils.responses import OK, BadRequest, ResponseModel, InternalError
-from common.dbasync import db_select_all, db_select
-from common.dbmodels import GuildAssociation as GuildAssociationDB
-from common.dbmodels.user import User
-from common.models import BaseModel
-from common.models.discord.guild import UserRequest, Guild as GuildModel, GuildRequest
-from common.redis import rpc
+from database.dbasync import db_select_all, db_select
+from database.dbmodels import GuildAssociation as GuildAssociationDB
+from database.dbmodels.user import User
+from database.models import BaseModel
+from database.models.discord.guild import UserRequest, Guild as GuildModel, GuildRequest
+from database.redis import rpc
 from common.utils import groupby_unique
 
 router = APIRouter(

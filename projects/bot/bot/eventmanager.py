@@ -11,8 +11,8 @@ import pytz
 from sqlalchemy import select
 
 from bot.utils import create_complete_history, get_summary_embed, get_leaderboard
-from common.dbmodels.event import Event
-from common.dbasync import db_all
+from database.dbmodels.event import Event
+from database.dbasync import db_all
 
 
 @dataclass

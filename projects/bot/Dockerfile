@@ -1,11 +1,15 @@
-FROM tradealpha_common:latest
+FROM python:3.10.3
 
-WORKDIR /code
+COPY lib /app/lib/
+COPY projects/bot /app/projects/bot/
 
-COPY /tradealpha/bot/requirements.txt /code/tradealpha/bot/requirements.txt
+WORKDIR /app/projects/bot
 
-RUN pip install --no-cache-dir --upgrade -r ./projects/bot/requirements.txt
+RUN curl -sSL https://install.python-poetry.org | python3 -
+RUN ~/.local/bin/poetry config virtualenvs.create false
+RUN ~/.local/bin/poetry install --without dev
 
-COPY /tradealpha/bot /code/tradealpha/bot
 
-CMD [ "python3", "-m", "tradealpha.bot.bot" ]
+EXPOSE 5000
+
+CMD [ "~/.local/bin/poetry", "run" ]

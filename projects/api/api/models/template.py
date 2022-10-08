@@ -1,6 +1,6 @@
 from typing import Optional
 
-from common.models import BaseModel, InputID, OutputID
+from database.models import BaseModel, InputID, OutputID
 
 
 class TemplateCreate(BaseModel):

@@ -2,15 +2,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common.dbmodels.label import LabelGroup
+from database.dbmodels.label import LabelGroup
 from api.dependencies import get_db
 from api.models.user import UserInfo
 from api.users import CurrentUser
 from api.users import get_current_user
 from api.utils.responses import OK, ResponseModel
-from common.dbasync import redis
-from common.dbmodels import Client
-from common.dbmodels.user import User
+from database.dbasync import redis
+from database.dbmodels import Client
+from database.dbmodels.user import User
 
 router = APIRouter(
     tags=["transfer"],

@@ -6,7 +6,7 @@ from fastapi_users import BaseUserManager, UUIDIDMixin, models, exceptions
 
 from api.authenticator import Authenticator
 from api.models.user import UserCreate
-from common.dbmodels.user import User
+from database.dbmodels.user import User
 
 
 SECRET = "SECRET"

@@ -8,8 +8,8 @@ from api.models.analytics import ClientAnalytics, FilteredPerformance, Performan
 from api.models.trade import DetailledTrade
 from api.models.websocket import ClientConfig
 
-from common.dbmodels.client import Client
-from common.enums import Filter
+from database.dbmodels.client import Client
+from database.enums import Filter
 
 logger = logging.getLogger(__name__)
 

@@ -8,9 +8,9 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse, JSONResponse
 
-from common.dbasync import async_session, db_exec
-from common.dbmodels.discord.discorduser import DiscordUser
-from common.dbmodels.user import User
+from database.dbasync import async_session, db_exec
+from database.dbmodels.discord.discorduser import DiscordUser
+from database.dbmodels.user import User
 from api.dependencies import get_db
 from api.users import CurrentUser
 

@@ -7,7 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from collector.services.actionservice import ActionService
 from collector.services.eventservice import EventService
-from common.dbasync import redis, async_maker
+from database.dbasync import redis, async_maker
 from collector.services.cointracker import CoinTracker
 from collector.services.alertservice import AlertService
 from collector.services.dataservice import DataService

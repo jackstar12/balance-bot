@@ -1,13 +1,15 @@
-FROM tradealpha_common:latest
+FROM python:3.10.3
 
-WORKDIR /code
+COPY lib /app/lib/
+COPY projects/api /app/projects/api/
 
-COPY /api/requirements.txt /code/tradealpha/api/requirements.txt
+WORKDIR /app/projects/api
 
-RUN pip install --no-cache-dir --upgrade -r ./projects/api/requirements.txt
+RUN curl -sSL https://install.python-poetry.org | python3 -
+RUN ~/.local/bin/poetry config virtualenvs.create false
+RUN ~/.local/bin/poetry install --without dev
 
-COPY /api /code/tradealpha/api
 
 EXPOSE 5000
 
-CMD ["uvicorn", "tradealpha.api.app:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "5000"]

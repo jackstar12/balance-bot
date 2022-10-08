@@ -10,19 +10,19 @@ from sqlalchemy.orm import object_session
 
 from api.dependencies import get_messenger, get_db
 from api.users import CurrentUser, get_current_user
-from common.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventScore
+from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventScore
 from api.utils.responses import BadRequest, OK, InternalError, ResponseModel, NotFound
-from common import dbutils
-from common.dbasync import db_first, db_del_filter, redis, db_unique
-from common.dbmodels import Client
-from common.dbmodels.event import Event as EventDB, EventState
-from common.dbmodels.score import EventScore as EventScoreDB
+from database import utils as dbutils
+from database.dbasync import db_first, db_del_filter, redis, db_unique
+from database.dbmodels import Client
+from database.dbmodels.event import Event as EventDB, EventState
+from database.dbmodels.score import EventScore as EventScoreDB
 
-from common.models.document import DocumentModel
-from common.dbmodels.user import User
-from common.dbutils import add_client_filters
+from database.models.document import DocumentModel
+from database.dbmodels.user import User
+from database.utils import add_client_filters
 from common.messenger import Messenger, TableNames, Category
-from common.models import BaseModel
+from database.models import BaseModel
 
 router = APIRouter(
     tags=["event"],

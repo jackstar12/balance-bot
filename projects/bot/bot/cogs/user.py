@@ -1,10 +1,10 @@
 from discord_slash import cog_ext, SlashContext
 
-from common.dbasync import db_del_filter, async_session
-from common.dbmodels.client import Client
-from common import dbutils
+from database.dbasync import db_del_filter, async_session
+from database.dbmodels.client import Client
+from database import utils as dbutils
 from bot import utils
-from common.dbmodels.discord.discorduser import DiscordUser
+from database.dbmodels.discord.discorduser import DiscordUser
 from bot.cogs.cogbase import CogBase
 
 

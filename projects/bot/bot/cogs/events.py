@@ -8,14 +8,14 @@ from discord_slash import cog_ext, SlashContext
 from sqlalchemy import select, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common.dbmodels.user import User
-from common.dbmodels import EventScore, Client
-from common.dbmodels.discord.discorduser import DiscordUser
-from common.dbasync import db_all, db_select_all
-from common import dbutils
-from common.dbmodels.event import Event, EventState
-from common.errors import UserInputError
-from common.models.selectionoption import SelectionOption
+from database.dbmodels.user import User
+from database.dbmodels import EventScore, Client
+from database.dbmodels.discord.discorduser import DiscordUser
+from database.dbasync import db_all, db_select_all
+from database import utils as dbutils
+from database.dbmodels.event import Event, EventState
+from database.errors import UserInputError
+from database.models.selectionoption import SelectionOption
 
 from bot.cogs.cogbase import CogBase
 from bot import utils, config
