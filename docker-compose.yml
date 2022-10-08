@@ -21,7 +21,7 @@ services:
       - migrate
       - redis-server
     build:
-      dockerfile: tradealpha/api/Dockerfile
+      dockerfile: projects/api/Dockerfile
       context: .
     ports:
       - "5000:5000"
@@ -32,7 +32,7 @@ services:
       - migrate
       - redis-server
     build:
-      dockerfile: tradealpha/collector/Dockerfile
+      dockerfile: projects/collector/Dockerfile
       context: .
     env_file:
       - .env
@@ -41,7 +41,7 @@ services:
       - migrate
       - redis-server
     build:
-      dockerfile: tradealpha/bot/Dockerfile
+      dockerfile: projects/bot/Dockerfile
       context: .
     env_file:
       - .env

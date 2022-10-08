@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "tradealpha"
+version = "0.1.0"
+description = "Social Journaling and Analytics Platform for Traders"
+authors = ["jacksn"]
+
+
+[tool.poetry.dependencies]
+python = "3.10.3"
+api = {path = "projects/api", develop = true}
+collector = {path = "projects/collector", develop = true}
+bot = {path = "projects/bot", develop = true}
+
+[tool.poetry.dev-dependencies]
+pytest = "7.1.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
