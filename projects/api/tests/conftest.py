@@ -3,7 +3,7 @@ import contextlib
 import pytest
 from fastapi.encoders import jsonable_encoder
 from fastapi.testclient import TestClient
-
+from common.test_utils.fixtures import *
 from database.models.client import ClientCreate
 from api.models.client import ClientInfo
 from api.app import app

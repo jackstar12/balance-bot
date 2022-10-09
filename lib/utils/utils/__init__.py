@@ -200,10 +200,16 @@ def safe_cmp(fnc: Callable[[T, T], T], a: T, b: T):
 def sum_iter(iterator: typing.Iterable[T]):
     return functools.reduce(operator.add, iterator)
 
-def groupby(items: typing.Iterable[T], key: str | Callable[[T], Any]) -> dict[Any, list[T]]:
+
+KT = typing.TypeVar('KT')
+VT = typing.TypeVar('VT')
+
+
+def groupby(items: typing.Iterable[VT], key: str | Callable[[VT], KT]) -> dict[KT, list[VT]]:
     res = {}
     if isinstance(key, str):
-        key = lambda x: getattr(x, key)
+        def key(x: VT) -> KT:
+            return getattr(x, key)
     for item in items:
         val = key(item)
         if val not in res:
@@ -212,14 +218,13 @@ def groupby(items: typing.Iterable[T], key: str | Callable[[T], Any]) -> dict[An
     return res
 
 
-def groupby_unique(items: list[T], key: str | Callable[[T], Any]) -> dict[Any, T]:
+def groupby_unique(items: list[VT], key: str | Callable[[VT], KT]) -> dict[KT, VT]:
     res = {}
     if isinstance(key, str):
-        key_func = lambda x: getattr(x, key)
-    else:
-        key_func = key
+        def key(x: VT) -> KT:
+            return getattr(x, key)
     for item in items:
-        val = key_func(item)
+        val = key(item)
         res[val] = item
     return res
 

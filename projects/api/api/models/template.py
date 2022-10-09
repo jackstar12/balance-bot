@@ -7,6 +7,7 @@ from database.models import BaseModel, InputID, OutputID
 class TemplateCreate(BaseModel):
     title: Optional[str]
     journal_id: Optional[InputID]
+    client_id: Optional[InputID]
 
 
 class TemplateUpdate(BaseModel):

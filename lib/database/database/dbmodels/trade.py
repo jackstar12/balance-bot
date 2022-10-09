@@ -8,13 +8,13 @@ import pytz
 from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, object_session
 
 from utils import weighted_avg
 from database.dbmodels.types import Document
 
 if TYPE_CHECKING:
-    pass
+    from database.dbmodels import Balance
 
 from database.dbmodels.pnldata import PnlData
 from database.dbsync import Base
@@ -24,9 +24,6 @@ from database.enums import Side, ExecType, Status, TradeSession
 
 import utils
 from database.dbmodels.symbol import CurrencyMixin
-
-if TYPE_CHECKING:
-    from common.messenger import Messenger
 
 trade_association = Table('trade_association', Base.metadata,
                           Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
@@ -55,7 +52,7 @@ class Trade(Base, Serializer, CurrencyMixin):
     realized_pnl: Decimal = Column(Numeric, nullable=True, default=Decimal(0))
     total_commissions: Decimal = Column(Numeric, nullable=True, default=Decimal(0))
 
-    init_balance_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    init_balance_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=False)
     init_balance = relationship(
         'Balance',
         lazy='noload',
@@ -137,7 +134,7 @@ class Trade(Base, Serializer, CurrencyMixin):
 
     @orm.reconstructor
     def init_on_load(self):
-        self.live_pnl: PnlData = None
+        self.live_pnl: Optional[PnlData] = None
         self.latest_pnl: PnlData = utils.list_last(self.pnl_data, None)
 
     def __init__(self, upnl: Decimal = None, *args, **kwargs):
@@ -265,8 +262,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                    upnl: int | Decimal,
                    force=False,
                    now: datetime = None,
-                   extra_currencies: dict[str, Decimal] = None,
-                   db: AsyncSession = None):
+                   extra_currencies: dict[str, Decimal] = None):
 
         if not now:
             now = datetime.now(pytz.utc)
@@ -306,7 +302,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                 or self.max_pnl.total == self.min_pnl.total
                 or abs((live - self.latest_pnl.total) / self.init_balance.realized) > Decimal(.2)
         ):
-            db.add(self.live_pnl)
+            object_session(self).add(self.live_pnl)
             self.latest_pnl = self.live_pnl
             latest = self.latest_pnl.total
             if latest:
@@ -323,9 +319,9 @@ class Trade(Base, Serializer, CurrencyMixin):
 
         return significant
 
-    def add_execution(self, execution: Execution, db: AsyncSession):
+    def add_execution(self, execution: Execution, current_balance: Balance):
         execution.trade = self
-        active = self
+        new = None
 
         if execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
             self.realized_pnl += execution.realized_pnl or 0
@@ -355,9 +351,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                         execution.commission -= new_exec.commission
                     execution.qty = self.open_qty
 
-                    active = Trade.from_execution(new_exec, self.client_id)
-
-                    db.add(active)
+                    new = Trade.from_execution(new_exec, self.client_id, current_balance)
                 if execution.qty <= self.open_qty:
 
                     if self.exit is None:
@@ -365,7 +359,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                     else:
                         realized_qty = self.qty - self.open_qty
                         self.exit = weighted_avg((self.exit, execution.price),
-                                                         (realized_qty, execution.qty))
+                                                 (realized_qty, execution.qty))
 
                     if execution.realized_pnl is None:
                         execution.realized_pnl = self.calc_rpnl(execution.qty, execution.price)
@@ -377,9 +371,9 @@ class Trade(Base, Serializer, CurrencyMixin):
                         self.total_commissions += execution.commission
 
                     if self.open_qty.is_zero():
-                        self.update_pnl(0, force=True, now=execution.time, db=db)
+                        self.update_pnl(0, force=True, now=execution.time)
 
-        return active
+        return new
 
     async def reverse_to(self,
                          date: datetime,
@@ -399,14 +393,14 @@ class Trade(Base, Serializer, CurrencyMixin):
 
             if date > self.open_time:
                 # First, create a new copy based on the same initial execution
-                new_trade = Trade.from_execution(self.initial, self.client_id)
+                new_trade = Trade.from_execution(self.initial, self.client_id, self.init_balance)
                 new_trade.__realtime__ = False
 
                 # Then reapply the executions that are not due for deletion
                 # (important that initial is excluded in this case)
                 for execution in self.executions[1:]:
                     if execution.time < date:
-                        new_trade.add_execution(execution, db)
+                        new_trade.add_execution(execution, self.init_balance)
                     else:
                         await db.delete(execution)
 
@@ -422,7 +416,6 @@ class Trade(Base, Serializer, CurrencyMixin):
 
                 return new_trade
 
-
     @classmethod
     def _replace_pnl(cls, old: PnlData, new: PnlData, cmp_func):
         if not old or cmp_func(new.total, old.total):
@@ -433,22 +426,7 @@ class Trade(Base, Serializer, CurrencyMixin):
         return False
 
     @classmethod
-    def from_execution(cls, execution: Execution, client_id: int):
-
-        # max = PnlData(
-        #    trade=trade,
-        #    realized=Decimal(0),
-        #    unrealized=Decimal(0),
-        #    time=execution.time
-        # )
-        # min = PnlData(
-        #    trade=trade,
-        #    realized=Decimal(0),
-        #    unrealized=Decimal(0),
-        #    time=execution.time
-        # )
-        # db.add(max)
-        # db.add(min)
+    def from_execution(cls, execution: Execution, client_id: int, current_balance: Balance):
 
         trade = Trade(
             entry=execution.price,
@@ -462,7 +440,8 @@ class Trade(Base, Serializer, CurrencyMixin):
             executions=[execution],
             inverse=execution.inverse,
             settle=execution.settle,
-            client_id=client_id
+            client_id=client_id,
+            init_balance=current_balance
         )
         execution.trade = trade
 
@@ -479,6 +458,3 @@ class Trade(Base, Serializer, CurrencyMixin):
             time=execution.time
         )
         return trade
-
-
-trade_from_execution = Trade.from_execution

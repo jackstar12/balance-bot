@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 from datetime import datetime
 from decimal import Decimal
 
@@ -85,13 +86,11 @@ async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger
 async def test_imports(pnl_service, time, db_client):
     trades = await db_select_all(
         Trade,
-        eager=[Trade.max_pnl, Trade.min_pnl],
+        eager=[Trade.executions, Trade.max_pnl, Trade.min_pnl],
         client_id=db_client.id
     )
-    execs = await db_all(
-        select(Execution).
-        join(Execution.trade).
-        where(Trade.client_id == db_client.id)
+    execs = list(
+        itertools.chain.from_iterable(trade.executions for trade in trades)
     )
 
     assert len(execs) >= 3

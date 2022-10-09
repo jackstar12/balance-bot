@@ -131,6 +131,8 @@ EventScore.rank_history = relationship(EventRank,
 
 __all__ = [
     "balance",
+    "Balance",
+    "BalanceDB",
     "client",
     "trade",
     "user",

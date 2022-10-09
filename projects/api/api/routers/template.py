@@ -10,6 +10,7 @@ from api.models.template import TemplateUpdate, TemplateInfo, TemplateCreate
 from api.users import CurrentUser
 from api.utils.responses import OK, CustomJSONResponse, NotFound
 from database.dbasync import db_unique, db_all, db_del_filter, safe_op
+from database.dbmodels import Client
 from database.dbmodels.editing import Journal
 from database.dbmodels.editing.template import Template as DbTemplate, TemplateType
 from database.dbmodels.user import User
@@ -55,7 +56,7 @@ async def create_template(body: TemplateCreate,
     )
 
     db.add(template)
-    await db.commit()
+    await db.flush()
 
     if body.journal_id:
         await db.execute(
@@ -64,6 +65,16 @@ async def create_template(body: TemplateCreate,
                 Journal.user_id == user.id
             ).values(
                 default_template_id=template.id
+            )
+        )
+
+    if body.client_id:
+        await db.execute(
+            update(Client).where(
+                Client.id == body.client_id,
+                Client.user_id == user.id
+            ).values(
+                trade_template_id=template.id
             )
         )
 

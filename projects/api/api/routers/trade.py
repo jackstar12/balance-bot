@@ -9,6 +9,7 @@ from sqlalchemy import select, delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
+import utils
 import api.utils.client as client_utils
 from api.routers.template import query_templates
 from database.models.document import DocumentModel
@@ -19,7 +20,6 @@ from api.models.trade import Trade, BasicTrade, DetailledTrade, UpdateTrade
 from api.routers.label import add_trade_filters
 from api.users import CurrentUser
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, ResponseModel
-import utils
 from database.dbasync import db_first, db_all
 from database.dbmodels import TradeDB as TradeDB
 from database.dbmodels.client import add_client_filters
@@ -91,6 +91,7 @@ def create_trade_endpoint(path: str,
                           model: Type[OrmBaseModel],
                           *eager,
                           **kwargs):
+
     class Trades(BaseModel):
         data: list[model]
 

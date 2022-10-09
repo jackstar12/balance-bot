@@ -43,7 +43,8 @@ class WebsocketManager:
         raise NotImplementedError()
 
     async def send(self, msg: str | bytes, msg_id: Any = None):
-        await self.connect()
+        if not self.connected:
+            return
 
         if isinstance(msg, str):
             msg = msg.encode('')

@@ -55,7 +55,7 @@ class Balance(Base, _Common, Serializer, QueryMixin):
     @hybrid_property
     def client_save(self):
         session: Session = object_session(self)
-        if session:
+        if session and self.client_id:
             return session.identity_map.get(
                 session.identity_key(dbmodels.Client, self.client_id)
             )
@@ -71,7 +71,8 @@ class Balance(Base, _Common, Serializer, QueryMixin):
 
     @hybrid_property
     def currency(self):
-        return self.client_save.currency
+        client = self.client_save
+        return client.currency if client else None
 
     def serialize(self, full=False, data=True, include_none=True, *args, **kwargs):
         d = BalanceModel.from_orm(self).dict()

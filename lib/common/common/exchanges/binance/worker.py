@@ -425,8 +425,8 @@ class BinanceFutures(_BinanceBaseClient):
 
         # https://binance-docs.github.io/apidocs/futures/en/#event-balance-and-position-update
         if event == 'ACCOUNT_UPDATE':
-            data = message.get['a']
-            if data["m"] == "FUNDING_FEE":
+            data = message.get('a')
+            if data and data["m"] == "FUNDING_FEE":
                 asset = data["B"][0]
                 await self._on_execution(
                     Execution(

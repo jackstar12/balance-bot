@@ -152,11 +152,11 @@ class _BalanceServiceBase(BaseService):
             else:
                 self._logger.error(f'Exchange class {exchange_cls} does NOT subclass ExchangeWorker')
 
-    async def __aexit__(self, *args):
-        await super().__aexit__(*args)
-        for worker in self._workers_by_id.values():
-            await self._remove_worker(worker)
-            await worker.cleanup()
+    async def teardown(self):
+        async with self._worker_lock:
+            for worker in self._workers_by_id.values():
+                await worker.cleanup()
+            self._workers_by_id = {}
 
     @abc.abstractmethod
     async def _remove_worker(self, worker: ExchangeWorker):
@@ -198,6 +198,7 @@ class BasicBalanceService(_BalanceServiceBase):
             exchange_job = self._exchange_jobs[worker.exchange]
             exchange_job.deque.remove(worker)
             self.reschedule(exchange_job)
+            await worker.cleanup()
 
     async def update_worker_queue(self, worker_queue: Deque[ExchangeWorker]):
         if worker_queue:
@@ -316,8 +317,8 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 unsubscribe_symbol = all(
                     trade.symbol != symbol
                     for cur_worker in self._workers_by_id.values()
-                    if cur_worker.client.exchange == client.exchange
-                    for trade in cur_worker.client.open_trades
+                    if client.exchange == client.exchange
+                    for trade in client.open_trades
                 )
                 if unsubscribe_symbol:
                     await self.data_service.unsubscribe(client.exchange, Channel.TICKER, symbol=symbol)
@@ -394,7 +395,6 @@ class ExtendedBalanceService(_BalanceServiceBase):
                                 trade.update_pnl(
                                     trade.calc_upnl(ticker.price),
                                     extra_currencies={client.currency: extra_ticker.price},
-                                    db=self._db
                                 )
                         balance = client.evaluate_balance()
                         if balance != client.live_balance:

@@ -354,13 +354,15 @@ async def delete_client(id: int,
         return NotFound(detail='Invalid ID')
 
 
-@router.patch('/client/{client_id}', response_model=ClientInfo)
+@router.patch('/client/{client_id}', response_model=ClientDetailed)
 async def update_client(client_id: int, body: ClientEdit,
                         user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):
-    client = await client_utils.get_user_client(
-        user, client_id, db=db
-    )
+    client = await client_utils.get_user_client(user,
+                                                client_id,
+                                                Client.trade_template,
+                                                Client.events,
+                                                db=db)
 
     if client:
         for k, v in body.dict(exclude_none=True).items():
@@ -371,4 +373,4 @@ async def update_client(client_id: int, body: ClientEdit,
         return BadRequest('Invalid client id')
 
     await db.commit()
-    return ClientInfo.from_orm(client)
+    return ClientDetailed.from_orm(client)
