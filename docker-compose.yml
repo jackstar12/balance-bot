@@ -1,13 +1,5 @@
 version: '3.9'
 services:
-  init:
-    depends_on:
-      - pg-server
-    build:
-      dockerfile: init.Dockerfile
-      context: .
-    env_file:
-      - .env
   migrate:
     depends_on:
       - pg-server

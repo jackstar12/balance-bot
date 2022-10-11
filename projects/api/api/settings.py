@@ -1,10 +1,7 @@
 from datetime import timedelta
 import os
 from pydantic import BaseSettings
-import dotenv
 
-
-dotenv.load_dotenv()
 
 
 class Settings(BaseSettings):

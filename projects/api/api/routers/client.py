@@ -27,7 +27,7 @@ from api.models.client import ClientConfirm, ClientEdit, \
 from api.settings import settings
 from api.users import CurrentUser
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound, ResponseModel
-import utils
+import core
 from database.calc import calc_daily, create_daily
 from database.dbasync import db_first, redis, async_maker, time_range, db_all
 from database.dbmodels import TradeDB, BalanceDB
@@ -40,7 +40,7 @@ from common.exchanges.exchangeworker import ExchangeWorker
 from database.models import OrmBaseModel, BaseModel, OutputID
 from database.models.balance import Balance
 from database.redis.client import ClientCacheKeys
-from utils import validate_kwargs, groupby, date_string, sum_iter
+from core.utils import validate_kwargs, groupby, date_string, sum_iter
 
 router = APIRouter(
     tags=["client"],
@@ -157,8 +157,6 @@ async def get_client_overview(background_tasks: BackgroundTasks,
                 id=client.id,
                 initial_balance=(
                     await client.get_exact_balance_at_time(query_params.since, db=db)
-                    if query_params.since else
-                    await client.initial(db)
                 ),
                 current_balance=(
                     await client.get_exact_balance_at_time(query_params.to, db=db)

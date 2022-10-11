@@ -5,7 +5,7 @@ from typing import DefaultDict, Deque, List, Dict
 
 import aiohttp
 
-import utils
+import core
 from database.models.async_websocket_manager import WebsocketManager
 
 
@@ -116,4 +116,4 @@ class FtxWebsocketClient(WebsocketManager):
             self._handle_orders_message(message)
         if self._on_message_callback:
             if callable(self._on_message_callback):
-                await utils.call_unknown_function(self._on_message_callback, message)
+                await core.call_unknown_function(self._on_message_callback, message)

@@ -13,7 +13,7 @@ from collector.services.alertservice import AlertService
 from collector.services.dataservice import DataService
 from collector.services.balanceservice import ExtendedBalanceService, BasicBalanceService
 from common.messenger import Messenger, BALANCE, CLIENT, EVENT, TRADE
-from utils import setup_logger
+from core.utils import setup_logger
 from collector.services.baseservice import BaseService
 
 

@@ -15,12 +15,12 @@ class LeaderboardCog(CogBase):
     #     description="Shows you the highest ranked users by $ balance",
     #     options=[]
     # )
-    # @utils.log_and_catch_errors()
-    # @utils.server_only
+    # @core.log_and_catch_errors()
+    # @core.server_only
     # async def leaderboard_balance(self, ctx: SlashContext):
     #     await ctx.defer()
     #     await ctx.send(content='',
-    #                    embed=await utils.create_leaderboard(dc_client=self.bot,
+    #                    embed=await core.create_leaderboard(dc_client=self.bot,
     #                                                         guild_id=ctx.guild_id,
     #                                                         mode='balance'))
 

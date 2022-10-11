@@ -24,9 +24,8 @@ from sqlalchemy import select, desc, asc, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, sessionmaker, joinedload
 
-import utils as utils
-from utils import json as customjson
-from common.config import PRIORITY_INTERVALS
+import core as utils
+from core import json as customjson
 from database.dbasync import db_unique, db_all, db_select
 from database.dbmodels.client import Client, ClientState
 from database.dbmodels.execution import Execution
@@ -40,7 +39,7 @@ from common.messenger import TableNames, Category, Messenger
 from database.models.miscincome import MiscIncome
 from database.models.ohlc import OHLC
 from database.models.market import Market
-from utils import combine_time_series
+from core.utils import combine_time_series
 
 if TYPE_CHECKING:
     from database.dbmodels.balance import Balance
@@ -92,6 +91,14 @@ class Request(NamedTuple):
     params: Optional[Dict]
     json: Optional[Dict]
     source: Client
+
+
+PRIORITY_INTERVALS = {
+    Priority.LOW: 60,
+    Priority.MEDIUM: 30,
+    Priority.HIGH: 15,
+    Priority.FORCE: 1
+}
 
 
 def create_limit(interval_seconds: int, max_amount: int, default_weight: int):
@@ -154,13 +161,11 @@ class ExchangeWorker:
                  http_session: aiohttp.ClientSession,
                  db_maker: sessionmaker,
                  messenger: Messenger = None,
-                 rekt_threshold: float = None,
                  execution_dedupe_seconds: float = 5e-3, ):
 
         self.client_id = client.id
         self.exchange = client.exchange
         self.messenger = messenger
-        self.rekt_threshold = rekt_threshold
         self.client: Optional[Client] = client
         self.db_lock = asyncio.Lock()
         self.db_maker = db_maker
@@ -350,7 +355,7 @@ class ExchangeWorker:
 
             all_executions = [e for e in all_executions if e.time > valid_until] if valid_until else all_executions
 
-            executions_by_symbol = utils.groupby(all_executions, lambda e: e.symbol)
+            executions_by_symbol = core.groupby(all_executions, lambda e: e.symbol)
 
             for trade in self.client.trades:
                 if valid_until:
@@ -393,7 +398,7 @@ class ExchangeWorker:
 
             # Note that we iterate through the executions reversed because we have to reconstruct
             # the history from the only known point (which is the present)
-            for prev_balance, execution, next_exec in utils.prev_now_next(reversed(all_executions)):
+            for prev_balance, execution, next_exec in core.prev_now_next(reversed(all_executions)):
 
                 new_balance = db_balance.Balance(
                     realized=current_balance.realized,
@@ -442,7 +447,7 @@ class ExchangeWorker:
 
             def get_time(b: Balance): return b.time
 
-            balance_by_time = utils.groupby_unique(balances, get_time)
+            balance_by_time = core.groupby_unique(balances, get_time)
 
             if executions_by_symbol:
                 for symbol, executions in executions_by_symbol.items():
@@ -509,7 +514,7 @@ class ExchangeWorker:
             cur_pnl = next(pnl_iter, None)
 
             # Afterwards the pnl data has been fetched, update the unrealized field of the balances
-            for prev_exec, execution, next_exec in utils.prev_now_next(reversed(all_executions)):
+            for prev_exec, execution, next_exec in core.prev_now_next(reversed(all_executions)):
 
                 pnl_by_trade = {}
 
@@ -530,7 +535,7 @@ class ExchangeWorker:
                     for tr_id, pnl_data in pnl_by_trade.items()
                 )
 
-            client.last_execution_sync = client.last_transfer_sync = utils.utc_now()
+            client.last_execution_sync = client.last_transfer_sync = core.utc_now()
             client.state = ClientState.OK
 
             await db.commit()

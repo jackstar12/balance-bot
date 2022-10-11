@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.utils import get_client_history
 from database.models import OrmBaseModel
 from database.dbmodels.discord.discorduser import get_display_name
-from utils import join_args
+from core.utils import join_args
 from database.dbmodels.score import EventScore, EventRank
 from database.models.discord.guild import GuildRequest
 from database.redis import rpc

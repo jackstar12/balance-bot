@@ -9,4 +9,4 @@ RUN ~/.local/bin/poetry install --without dev
 
 EXPOSE 5000
 
-CMD [ "python3", "-m", "__main__" ]
+CMD [ "python3", "__main__.py" ]

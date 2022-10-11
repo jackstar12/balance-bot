@@ -14,8 +14,8 @@ from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import object_session
 from sqlalchemy.orm.util import identity_key
 
-import utils as utils
-from utils import json as customjson
+import core
+from core import json as customjson
 from database.dbmodels import Client, Balance, Chapter, Event, EventScore
 from database.dbmodels.alert import Alert
 from database.dbmodels.editing import Journal
@@ -93,7 +93,7 @@ class MessengerNameSpace(Generic[TTable]):
         return self.fill()
 
     def fill(self, *add):
-        return utils.join_args(self.parent, self.name, *add, '{' + self.id + '}')
+        return core.join_args(self.parent, self.name, *add, '{' + self.id + '}')
 
 
 class TradeSpace(MessengerNameSpace):
@@ -132,7 +132,7 @@ JOURNAL = MessengerNameSpace.from_table(Journal, parent=USER)
 CHAPTER = MessengerNameSpace.from_table(Chapter, parent=JOURNAL)
 
 
-by_names = utils.groupby_unique(
+by_names = core.groupby_unique(
     [USER, CLIENT, BALANCE, TRADE, PNL_DATA, ALERT, EVENT, JOURNAL, CHAPTER, TRANSFER],
     lambda space: space.name
 )
@@ -181,7 +181,7 @@ class Messenger:
             else:
                 data = customjson.loads(event['data'])
             asyncio.create_task(
-                utils.call_unknown_function(coro, data, *args, **kwargs)
+                core.call_unknown_function(coro, data, *args, **kwargs)
             )
 
         return wrapper

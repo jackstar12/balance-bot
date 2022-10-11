@@ -3,7 +3,7 @@ from typing import Dict
 
 from collector.errors import InvalidExchangeError
 from collector.services.baseservice import BaseService
-import utils
+import core
 from common.exchanges import EXCHANGE_TICKERS
 from common.exchanges.exchangeticker import ExchangeTicker, Channel
 from common.messenger import TableNames
@@ -84,7 +84,7 @@ class DataService(BaseService, Observer):
         while True:
             for ticker in self._tickers.values():
                 await self._redis.set(
-                    utils.join_args(TableNames.TICKER, ticker.exchange, ticker.symbol),
+                    core.join_args(TableNames.TICKER, ticker.exchange, ticker.symbol),
                     str(ticker.price)
                 )
             await asyncio.sleep(1)

@@ -18,7 +18,7 @@ import pytz
 from aiohttp import ClientResponse
 
 import database.dbmodels.balance as balance
-import utils
+import core
 from database.dbmodels.execution import Execution
 from database.dbmodels.transfer import RawTransfer
 from database.enums import Side, ExecType
@@ -26,7 +26,7 @@ from common.exchanges.binance.futures_websocket_client import FuturesWebsocketCl
 from common.exchanges.exchangeworker import ExchangeWorker, create_limit
 from database.models.miscincome import MiscIncome
 from database.models.ohlc import OHLC
-from utils import utc_now
+from core.utils import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -123,10 +123,10 @@ def tf_helper(tf: str, factor_seconds: int, ns: List[int]):
 
 
 _interval_map = {
-    **tf_helper('m', utils.MINUTE, [1, 3, 5, 15, 30]),
-    **tf_helper('h', utils.HOUR, [1, 2, 4, 6, 8, 12]),
-    **tf_helper('d', utils.DAY, [1, 3]),
-    **tf_helper('w', utils.WEEK, [1])
+    **tf_helper('m', core.MINUTE, [1, 3, 5, 15, 30]),
+    **tf_helper('h', core.HOUR, [1, 2, 4, 6, 8, 12]),
+    **tf_helper('d', core.DAY, [1, 3]),
+    **tf_helper('w', core.WEEK, [1])
 }
 
 

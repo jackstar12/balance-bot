@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, object_session
 
-from utils import weighted_avg
+from core.utils import weighted_avg
 from database.dbmodels.types import Document
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.execution import Execution
 from database.enums import Side, ExecType, Status, TradeSession
 
-import utils
+import core
 from database.dbmodels.symbol import CurrencyMixin
 
 trade_association = Table('trade_association', Base.metadata,
@@ -135,7 +135,7 @@ class Trade(Base, Serializer, CurrencyMixin):
     @orm.reconstructor
     def init_on_load(self):
         self.live_pnl: Optional[PnlData] = None
-        self.latest_pnl: PnlData = utils.list_last(self.pnl_data, None)
+        self.latest_pnl: PnlData = core.list_last(self.pnl_data, None)
 
     def __init__(self, upnl: Decimal = None, *args, **kwargs):
         self.live_pnl: PnlData = PnlData(
@@ -143,7 +143,7 @@ class Trade(Base, Serializer, CurrencyMixin):
             realized=self.realized_pnl,
             time=datetime.now(pytz.utc)
         )
-        self.latest_pnl: PnlData = utils.list_last(self.pnl_data, None)
+        self.latest_pnl: PnlData = core.list_last(self.pnl_data, None)
         super().__init__(*args, **kwargs)
 
     @hybrid_property
@@ -200,7 +200,7 @@ class Trade(Base, Serializer, CurrencyMixin):
 
     @hybrid_property
     def close_time(self):
-        return utils.list_last(self.executions).time
+        return core.list_last(self.executions).time
 
     @hybrid_property
     def is_open(self):

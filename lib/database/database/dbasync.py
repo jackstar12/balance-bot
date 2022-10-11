@@ -17,37 +17,26 @@ from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedA
 from sqlalchemy.sql import Select
 from sqlalchemy.util import symbol
 
-from utils import json as customjson
+from core import json as customjson
 from database.dbsync import Base
+from database.env import environment
 from database.models import BaseModel
 
-dotenv.load_dotenv()
-
-SA_DATABASE_URI = os.environ.get('DATABASE_URI')
-assert SA_DATABASE_URI
 
 engine = create_async_engine(
-    f'postgresql+asyncpg://{SA_DATABASE_URI}',
+    f'postgresql+asyncpg://{environment.DATABASE_URI}',
     json_serializer=customjson.dumps_no_bytes,
     json_deserializer=customjson.loads,
 )
 async_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=asyncio.current_task)
 
-REDIS_URI = os.environ.get('REDIS_URI')
-assert REDIS_URI
 
-redis = aioredis.from_url(REDIS_URI)
+redis = aioredis.from_url(environment.REDIS_URI)
 
 
 async def db_exec(stmt: Any, session: AsyncSession = None) -> Any:
     return await (session or async_session).execute(stmt)
-
-
-
-
-
-
 
 
 Table = TypeVar('Table', bound=Base)

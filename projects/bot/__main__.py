@@ -15,6 +15,7 @@ from sqlalchemy import select, update, insert, literal, delete
 
 from bot.cogs import *
 from bot.config import *
+from bot.env import environment
 from database.dbasync import async_session, db_all, redis, db_select
 from database.dbmodels.client import Client
 from database.dbmodels.discord.discorduser import DiscordUser
@@ -25,9 +26,8 @@ from database.enums import Tier
 from common.messenger import Messenger
 from database.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest
 from database.redis.rpc import Server
-from utils import setup_logger
+from core.utils import setup_logger
 
-dotenv.load_dotenv()
 intents = discord.Intents().default()
 intents.members = True
 intents.guilds = True
@@ -264,9 +264,6 @@ args = parser.parse_known_args()
 
 messenger = Messenger(redis)
 
-KEY = os.environ.get('BOT_KEY')
-assert KEY, 'BOT_KEY missing'
-
 cog_instances = [
     cog.setup(bot, redis, messenger, slash)
     for cog in [
@@ -282,4 +279,4 @@ cog_instances = [
 
 if __name__ == '__main__':
     setup_logger()
-    bot.run(KEY)
+    bot.run(environment.BOT_KEY.get_secret_value())

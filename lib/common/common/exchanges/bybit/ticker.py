@@ -4,7 +4,7 @@ from typing import Dict
 import aiohttp
 
 from common.exchanges.exchangeticker import ExchangeTicker, Channel
-from common.config import TESTING
+from core.env import TESTING
 from common.exchanges.bybit.websocket import BybitWebsocketClient
 from database.models.async_websocket_manager import WebsocketManager
 from database.models.ticker import Ticker

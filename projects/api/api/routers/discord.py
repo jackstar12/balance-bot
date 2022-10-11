@@ -17,7 +17,7 @@ from database.dbmodels.user import User
 from database.models import BaseModel
 from database.models.discord.guild import UserRequest, Guild as GuildModel, GuildRequest
 from database.redis import rpc
-from utils import groupby_unique
+from core.utils import groupby_unique
 
 router = APIRouter(
     tags=["discord"]

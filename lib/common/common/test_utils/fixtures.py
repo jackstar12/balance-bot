@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from common.test_utils.mockexchange import MockExchange
-from utils import json as customjson
+from core import json as customjson
 from database.dbasync import REDIS_URI
 from database.dbmodels import Event, Client, EventScore, Balance
 from database.dbmodels.trade import Trade

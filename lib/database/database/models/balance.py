@@ -2,11 +2,9 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from database.dbasync import safe_op
-from common import config
 from database.models import OrmBaseModel, OutputID
 from database.models.gain import Gain
-from utils import calc_percentage_diff, safe_cmp
+from core.utils import calc_percentage_diff, safe_cmp, round_ccy
 
 
 class AmountBase(OrmBaseModel):
@@ -67,7 +65,7 @@ class Balance(Amount):
 
     def to_string(self, display_extras=False):
         ccy = self.currency
-        string = f'{round(self.unrealized, ndigits=config.CURRENCY_PRECISION.get(ccy, 3))}{ccy}'
+        string = f'{round_ccy(self.unrealized, ccy)}{ccy}'
 
         if self.extra_currencies and display_extras:
             currencies = " / ".join(

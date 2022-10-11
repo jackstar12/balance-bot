@@ -11,7 +11,7 @@ from typing import Dict, List, Tuple, Optional, Type
 
 from aiohttp import ClientResponseError, ClientResponse
 
-import utils
+import core
 from database.dbmodels.balance import Balance, Amount
 from database.dbmodels.execution import Execution
 from database.dbmodels.transfer import RawTransfer
@@ -46,16 +46,16 @@ class Direction(Enum):
 
 def tf_helper(tf: str, factor_seconds: int, ns: List[int]):
     return {
-        factor_seconds * n: f'{int(n * factor_seconds / 60) if n < utils.DAY else tf}' for n in ns
+        factor_seconds * n: f'{int(n * factor_seconds / 60) if n < core.DAY else tf}' for n in ns
     }
 
 
 _interval_map = {
-    **tf_helper('m', utils.MINUTE, [1, 3, 5, 15, 30]),
-    **tf_helper('h', utils.HOUR, [1, 2, 4, 6, 8, 12]),
-    **tf_helper('D', utils.DAY, [1]),
-    **tf_helper('W', utils.WEEK, [1]),
-    **tf_helper('M', utils.WEEK * 4, [1]),
+    **tf_helper('m', core.MINUTE, [1, 3, 5, 15, 30]),
+    **tf_helper('h', core.HOUR, [1, 2, 4, 6, 8, 12]),
+    **tf_helper('D', core.DAY, [1]),
+    **tf_helper('W', core.WEEK, [1]),
+    **tf_helper('M', core.WEEK * 4, [1]),
 }
 
 

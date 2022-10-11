@@ -9,7 +9,7 @@ from sqlalchemy.orm import relationship, backref
 import database.dbmodels.client as db_client
 from database.dbasync import async_session, db_select
 from database.dbmodels.user import OAuthAccount
-from utils import join_args
+from core.utils import join_args
 
 if TYPE_CHECKING:
     from database.dbmodels import Client, GuildAssociation

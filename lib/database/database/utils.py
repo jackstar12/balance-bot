@@ -114,8 +114,7 @@ async def get_event(location: LocationModel | dict,
     event = await db_first(stmt, *eager_loads, session=db)
 
     if not event and throw_exceptions:
-        raise UserInputError(
-            f'There is no {"event you can register for" if state == "registration" else "active event"}')
+        raise UserInputError(f'There is no {"event you can register for" if state == "registration" else "active event"}')
     return event
 
 

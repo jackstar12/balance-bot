@@ -6,12 +6,12 @@ from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime, orm
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, object_session, Session
 
-import common.config as config
 import database.dbmodels as dbmodels
 from database.dbmodels.mixins.querymixin import QueryMixin
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbsync import Base
 from database.models.balance import Amount as AmountModel, Balance as BalanceModel
+from core.utils import round_ccy
 
 if TYPE_CHECKING:
     from database.dbmodels import Client
@@ -113,7 +113,7 @@ class Balance(Base, _Common, Serializer, QueryMixin):
 
     def to_string(self, display_extras=False):
         ccy = self.client_save.currency
-        string = f'{round(self.unrealized, ndigits=config.CURRENCY_PRECISION.get(ccy, 3))}{ccy}'
+        string = f'{round_ccy(self.unrealized, ccy)}{ccy}'
 
         if self.extra_currencies and display_extras:
             currencies = " / ".join(

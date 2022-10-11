@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from database.dbmodels.editing.template import Template
-import utils
+import core
 from database.dbsync import Base, BaseMixin
 from database.dbmodels.types import Document
 from database.models.document import DocumentModel
@@ -143,7 +143,7 @@ class Journal(Base, BaseMixin):
                 content=[
                     DocumentModel(
                         type="text",
-                        text=utils.date_string(date.today())
+                        text=core.date_string(date.today())
                     )
                 ]
             )

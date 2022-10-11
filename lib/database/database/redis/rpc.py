@@ -6,7 +6,7 @@ import logging
 
 from aioredis import Redis
 
-import utils
+import core
 from database.models import BaseModel
 
 logger = logging.getLogger('rpc')
@@ -117,7 +117,7 @@ class Server:
         '''
         method = self.methods[method_name]
         try:
-            val = await utils.call_unknown_function(
+            val = await core.call_unknown_function(
                 method.fn,
                 method.model(**params)
             )

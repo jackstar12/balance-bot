@@ -9,7 +9,7 @@ from sqlalchemy import select, delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
-import utils
+import core
 import api.utils.client as client_utils
 from api.routers.template import query_templates
 from database.models.document import DocumentModel
@@ -96,7 +96,7 @@ def create_trade_endpoint(path: str,
         data: list[model]
 
     TradeCache = client_utils.ClientCacheDependency(
-        utils.join_args(ClientCacheKeys.TRADE, path),
+        core.join_args(ClientCacheKeys.TRADE, path),
         Trades
     )
 

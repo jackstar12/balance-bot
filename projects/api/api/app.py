@@ -19,7 +19,7 @@ from api.dependencies import messenger
 from api.models.user import UserRead, UserCreate
 from api.users import fastapi_users, auth_backend
 from database.dbmodels import Event, Client, EventScore
-from utils import setup_logger
+from core.utils import setup_logger
 
 VERSION = 1
 PREFIX = f'/api/v{VERSION}'

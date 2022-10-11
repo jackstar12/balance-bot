@@ -8,8 +8,8 @@ import aiohttp
 from aiohttp import WSMessage
 from typing_extensions import Self
 
-import utils
-import utils.json
+import core
+import core.json
 
 class MissingMessageError(Exception):
     pass
@@ -61,7 +61,7 @@ class WebsocketManager:
                 raise MissingMessageError()
 
     def send_json(self, data: dict, msg_id: Any = None):
-        return self.send(utils.json.dumps(data), msg_id=msg_id)
+        return self.send(core.json.dumps(data), msg_id=msg_id)
 
     async def close(self):
         if self.connected:
@@ -96,7 +96,7 @@ class WebsocketManager:
             self._ws = ws
             self._logger.info(f'Connected to {url}')
             asyncio.create_task(self._ping_forever())
-            await utils.call_unknown_function(self._on_connect, self)
+            await core.call_unknown_function(self._on_connect, self)
             async for msg in ws:
                 msg: WSMessage
 
@@ -106,7 +106,7 @@ class WebsocketManager:
                 if msg.type == aiohttp.WSMsgType.PONG:
                     continue
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    message = utils.json.loads(msg.data)
+                    message = core.json.loads(msg.data)
                     try:
                         msg_id = self._get_message_id(message)
                         waiter = self._waiting.get(msg_id)

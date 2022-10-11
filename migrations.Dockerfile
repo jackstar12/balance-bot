@@ -6,5 +6,4 @@ WORKDIR /app/lib/database
 
 RUN ~/.local/bin/poetry install --without dev
 
-
 CMD ["alembic", "upgrade", "head"]

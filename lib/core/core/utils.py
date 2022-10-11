@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import pytz
 
-import common.config as config
+import core.env as config
 
 if TYPE_CHECKING:
     pass
@@ -34,8 +34,18 @@ def date_string(d: date | datetime):
     return d.strftime('%Y-%m-%d')
 
 
+CURRENCY_PRECISION = {
+    '$': 2,
+    'USD': 2,
+    '%': 2,
+    'BTC': 6,
+    'XBT': 6,
+    'ETH': 4
+}
+
+
 def round_ccy(amount: typing.SupportsRound, ccy: str):
-    return round(amount, ndigits=config.CURRENCY_PRECISION.get(ccy, 3))
+    return round(amount, ndigits=CURRENCY_PRECISION.get(ccy, 3))
 
 
 def weighted_avg(values: tuple[Decimal, Decimal], weights: tuple[Decimal, Decimal]):

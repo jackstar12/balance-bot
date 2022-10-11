@@ -5,7 +5,7 @@ from typing import Callable, TYPE_CHECKING
 
 import aiohttp
 
-import utils
+import core
 from database.models.async_websocket_manager import WebsocketManager
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ class FuturesWebsocketClient(WebsocketManager):
         if event == 'listenKeyExpired':
             await self._renew_listen_key()
         elif callable(self._on_message):
-            await utils.call_unknown_function(self._on_message, message)
+            await core.call_unknown_function(self._on_message, message)
 
     async def start(self):
         await self._renew_listen_key()

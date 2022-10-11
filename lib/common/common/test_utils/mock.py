@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from utils import utc_now
+from core.utils import utc_now
 from database.models.document import DocumentModel
 from database.models.eventinfo import EventCreate
 

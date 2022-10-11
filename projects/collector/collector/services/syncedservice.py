@@ -9,7 +9,7 @@ from database.dbasync import db_unique
 from database.dbsync import Base
 from common.messenger import Category
 from common.messenger import Messenger, MessengerNameSpace
-from utils import CoroOrCallable
+from core.utils import CoroOrCallable
 
 TTable = TypeVar('TTable', bound=Base)
 

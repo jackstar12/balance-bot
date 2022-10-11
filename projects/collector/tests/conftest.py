@@ -17,7 +17,7 @@ from database.dbmodels.client import Client
 from database.dbmodels.user import User
 from common.exchanges import CCXT_CLIENTS
 from common.messenger import TableNames, Category
-from utils import setup_logger
+from core.utils import setup_logger
 
 
 pytestmark = pytest.mark.anyio

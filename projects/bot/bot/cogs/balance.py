@@ -8,7 +8,7 @@ from discord_slash.utils.manage_commands import create_option
 from prettytable import PrettyTable
 
 from database.dbmodels.event import EventState
-from utils import date_string
+from core.utils import date_string
 from database.dbasync import async_session
 from database.dbmodels.client import Client
 from database.dbmodels.discord.discorduser import DiscordUser

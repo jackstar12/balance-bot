@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import NamedTuple, Optional, TYPE_CHECKING
 
-from utils import round_ccy
+from core.utils import round_ccy
 from database.models import BaseModel
 
 if TYPE_CHECKING:

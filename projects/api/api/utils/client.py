@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_user_id
 from api.models.client import get_query_params
 from api.models.websocket import ClientConfig
-from utils import json as customjson
+from core import json as customjson
 from database.calc import calc_daily
 from database.dbasync import redis, db_all, redis_bulk, RedisKey, db_first, time_range
 from database.dbmodels import TradeDB

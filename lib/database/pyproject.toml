@@ -14,8 +14,10 @@ psycopg2-binary = "2.9.3"
 fastapi_users_db_sqlalchemy = "4.0.3"
 alembic = "1.7.6"
 discord-py = "1.7.1"
-utils = { path = "../utils", develop = true}
-python-dotenv = "0.19.0"
+aioredis = "2.0.1"
+core = { path = "../core", develop = true}
+python-dateutil = "2.8.2"
+numpy = "1.22.4"
 
 [tool.poetry.dev-dependencies]
 pytest = "7.1.2"

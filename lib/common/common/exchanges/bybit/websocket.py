@@ -5,7 +5,7 @@ import urllib.parse
 import aiohttp
 from typing_extensions import Self
 
-import utils
+import core
 from database.models.async_websocket_manager import WebsocketManager
 from typing import Callable, Dict, Awaitable, Any
 
@@ -71,6 +71,6 @@ class BybitWebsocketClient(WebsocketManager):
             if op == "auth":
                 return
         else:
-            await utils.call_unknown_function(
+            await core.call_unknown_function(
                 self._on_data_message, self, message
             )

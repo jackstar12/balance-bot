@@ -9,7 +9,7 @@ import traceback
 from asyncio import Future
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import List, Tuple, Callable, Optional, Union, Dict, Any, Literal
+from typing import List, Tuple, Callable, Optional, Union, Dict, Literal
 from typing import TYPE_CHECKING
 
 import discord
@@ -28,10 +28,10 @@ from scipy import interpolate
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import common.config as config
+import core.env as config
 import database.dbmodels as dbmodels
 from database import utils as dbutils
-import utils
+import core
 from database.calc import transfer_gen
 from database.dbasync import async_session, db_all, async_maker, time_range
 from database.dbmodels.balance import Balance
@@ -44,7 +44,7 @@ from database.errors import UserInputError, InternalError
 from database.models.eventinfo import EventScore, EventRank
 from database.models.history import History
 from database.models.selectionoption import SelectionOption
-from utils import calc_percentage, call_unknown_function, groupby, utc_now
+from core.utils import calc_percentage, call_unknown_function, groupby, utc_now
 
 if TYPE_CHECKING:
     from database.dbmodels.client import Client
@@ -157,7 +157,6 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
             except UserInputError as e:
                 # If the exception is raised after components have been used, the component ctx should be used
                 # (old might be invalid)
-                ctx = e.ctx or ctx
                 if e.user_id:
                     if ctx.guild:
                         e.reason = e.reason.replace('{name}', ctx.guild.get_member(e.user_id).display_name)
@@ -169,7 +168,6 @@ def log_and_catch_errors(*, log_args=True, type: str = "command", cog=True):
             except TimeoutError:
                 logging.info(f'{type} {coro.__name__} timed out')
             except InternalError as e:
-                ctx = e.ctx or ctx
                 await ctx.send(f'This is a bug in the bot. Please contact jacksn#9149. ({e.reason})', hidden=True)
                 logging.error(
                     f'{type} {coro.__name__} failed because of InternalError: {e.reason}\n{traceback.format_exc()}')
@@ -667,8 +665,8 @@ def calc_xs_ys(history: History,
         upnl_by_trade = {}
         offsets = {}
         amount = None
-        for prev_item, item, next_item in utils.prev_now_next(
-                utils.combine_time_series(history.data, pnl_data)
+        for prev_item, item, next_item in core.prev_now_next(
+                core.combine_time_series(history.data, pnl_data)
         ):
             if isinstance(item, PnlData):
                 upnl_by_trade[item.trade_id] = item.unrealized_ccy(ccy)

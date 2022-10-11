@@ -8,7 +8,7 @@ from typing import List, Literal
 
 import pytz
 
-import utils
+import core
 from database.dbmodels.execution import Execution
 from database.dbmodels.transfer import RawTransfer
 from common.exchanges.exchangeworker import ExchangeWorker
@@ -188,7 +188,7 @@ class KuCoinFuturesWorker(_KuCoinClient):
 
         [
             Execution(
-                **utils.mask_dict(fills, "symbol", "price", Decimal)
+                **core.mask_dict(fills, "symbol", "price", Decimal)
             )
             for fill in fills
         ]

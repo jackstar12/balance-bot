@@ -1,19 +1,14 @@
-import os
 from typing import Optional
 
-import dotenv
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker, scoped_session, Session, declarative_base
 
+from database.env import environment
 from database.models import BaseModel
 
-dotenv.load_dotenv()
-
-SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI')
-assert SQLALCHEMY_DATABASE_URI
 
 engine = create_engine(
-    f'postgresql://{SQLALCHEMY_DATABASE_URI}'
+    f'postgresql://{environment.DATABASE_URI}'
 )
 maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 session: Session = scoped_session(maker)

@@ -8,7 +8,6 @@ from apscheduler.job import Job
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select, and_, or_
 
-from common.config import DATA_PATH, REKT_THRESHOLD
 from common.exchanges import EXCHANGES
 from collector.services.baseservice import BaseService
 from collector.services.dataservice import DataService, Channel
@@ -46,9 +45,6 @@ class _BalanceServiceBase(BaseService):
         super().__init__(*args, **kwargs)
 
         # Public parameters
-        self.rekt_threshold = REKT_THRESHOLD
-        self.data_path = DATA_PATH
-        self.backup_path = self.data_path + 'backup/'
 
         self.data_service = data_service
         self._exchanges = EXCHANGES
@@ -144,8 +140,7 @@ class _BalanceServiceBase(BaseService):
                 worker = exchange_cls(client,
                                       http_session=self._http_session,
                                       db_maker=self._db_maker,
-                                      messenger=self._messenger,
-                                      rekt_threshold=self.rekt_threshold)
+                                      messenger=self._messenger)
                 await self._add_worker(worker)
                 await self._messenger.pub_instance(client, Category.ADDED)
                 return worker

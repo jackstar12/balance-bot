@@ -22,13 +22,14 @@ import os
 import dotenv
 
 import database.dbmodels as dbmodels
-import utils as utils
+import core
+from database.env import environment
 from database.errors import UserInputError
 from database.dbmodels.transfer import Transfer
 
 from database.dbmodels.mixins.querymixin import QueryMixin
 from database.dbmodels.mixins.editsmixin import EditsMixin
-from utils import json as customjson
+from core import json as customjson
 from database.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey, db_unique, \
     time_range
 from database.dbmodels.editing.chapter import Chapter
@@ -45,10 +46,7 @@ from database.redis.client import ClientSpace
 if TYPE_CHECKING:
     from database.dbmodels import BalanceDB as Balance, Event
 
-dotenv.load_dotenv()
 
-_key = os.environ.get('ENCRYPTION_SECRET')
-assert _key, 'Missing ENCRYPTION_SECRET in env'
 from pydantic import BaseModel as PydanticBaseModel
 
 
@@ -109,12 +107,12 @@ class ClientRedis:
 
     @property
     def normal_hash(self):
-        return utils.join_args(TableNames.USER, self.user_id, TableNames.CLIENT, self.client_id or '*')
+        return core.join_args(TableNames.USER, self.user_id, TableNames.CLIENT, self.client_id or '*')
 
     @property
     def cache_hash(self):
-        return utils.join_args(TableNames.USER, self.user_id, TableNames.CLIENT, TableNames.CACHE,
-                               self.client_id or '*')
+        return core.join_args(TableNames.USER, self.user_id, TableNames.CLIENT, TableNames.CACHE,
+                              self.client_id or '*')
 
     def __repr__(self):
         return f'<ClientRedis {self.client_id=} {self.user_id=}>'
@@ -148,7 +146,10 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
     # Properties
     api_key = Column(String(), nullable=False)
-    api_secret = Column(StringEncryptedType(String(), _key.encode('utf-8'), FernetEngine), nullable=False)
+    api_secret = Column(
+        StringEncryptedType(String(), environment.encryption.get_secret_value().encode('utf-8'), FernetEngine),
+        nullable=False
+    )
     exchange = Column(String, nullable=False)
     subaccount = Column(String, nullable=True)
     extra_kwargs = Column(PickleType, nullable=True)
@@ -234,7 +235,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                            amount: int = None,
                            since: datetime = None,
                            to: datetime = None):
-        now = utils.utc_now()
+        now = core.utc_now()
 
         since = since or datetime.fromtimestamp(0, pytz.utc)
         to = to or now
@@ -316,7 +317,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             if journal.current_chapter:
                 end = getattr(journal.current_chapter, 'end_date', date.fromtimestamp(0))
                 if today >= end:
-                    latest = utils.list_last(self.recent_history)
+                    latest = core.list_last(self.recent_history)
                     if latest:
                         journal.current_chapter.end_balance = latest
                         new_chapter = Chapter(
