@@ -24,7 +24,7 @@ from sqlalchemy import select, desc, asc, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, sessionmaker, joinedload
 
-import core as utils
+import core
 from core import json as customjson
 from database.dbasync import db_unique, db_all, db_select
 from database.dbmodels.client import Client, ClientState

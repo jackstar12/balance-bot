@@ -12,12 +12,12 @@ from sqlalchemy.orm import sessionmaker
 
 from common.test_utils.mockexchange import MockExchange
 from core import json as customjson
-from database.dbasync import REDIS_URI
 from database.dbmodels import Event, Client, EventScore, Balance
 from database.dbmodels.trade import Trade
 from database.dbsync import Base
 from common.exchanges import EXCHANGES
 from common.messenger import Messenger, NameSpaceInput
+from database.env import environment
 
 pytestmark = pytest.mark.anyio
 
@@ -32,7 +32,7 @@ EXCHANGES['mock'] = MockExchange
 @pytest.fixture(scope='session')
 def engine():
     return create_async_engine(
-        f'postgresql+asyncpg://{SA_DATABASE_TESTING_URI}',
+        f'postgresql+asyncpg://{environment.DATABASE_TESTING_URI}',
         json_serializer=customjson.dumps_no_bytes,
         json_deserializer=customjson.loads,
     )
@@ -58,7 +58,7 @@ async def db(tables, engine, session_maker) -> AsyncSession:
 
 @pytest.fixture(scope='session')
 def redis() -> Redis:
-    return aioredis.from_url(REDIS_URI)
+    return aioredis.from_url(environment.REDIS_URI)
 
 
 @pytest.fixture(scope='session')
