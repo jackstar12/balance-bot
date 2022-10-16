@@ -17,8 +17,9 @@ import api.routers.trade as trade
 import api.routers.user as user
 from api.dependencies import messenger
 from api.models.user import UserRead, UserCreate
+from api.routers import labelgroup
 from api.users import fastapi_users, auth_backend
-from database.dbmodels import Event, Client, EventScore
+from database.dbmodels import Event, Client, EventEntry
 from core.utils import setup_logger
 
 VERSION = 1
@@ -93,6 +94,7 @@ app.include_router(
 for module in (
         # auth,
         discord,
+        labelgroup,
         label,
         analytics,
         journal,
@@ -135,7 +137,6 @@ async def on_start():
     setup_logger()
     messenger.listen_class_all(Event)
     messenger.listen_class_all(Client)
-    messenger.listen_class_all(EventScore)
 
 
 def run():

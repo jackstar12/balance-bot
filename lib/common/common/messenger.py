@@ -16,7 +16,7 @@ from sqlalchemy.orm.util import identity_key
 
 import core
 from core import json as customjson
-from database.dbmodels import Client, Balance, Chapter, Event, EventScore
+from database.dbmodels import Client, Balance, Chapter, Event, EventEntry
 from database.dbmodels.alert import Alert
 from database.dbmodels.editing import Journal
 from database.dbmodels.mixins.serializer import Serializer
@@ -126,14 +126,14 @@ PNL_DATA = MessengerNameSpace.from_table(PnlData, parent=TRADE)
 ALERT = MessengerNameSpace.from_table(Alert, parent=USER)
 
 EVENT = EventSpace.from_table(Event, parent=USER)
-EVENT_SCORE = MessengerNameSpace.from_table(EventScore, parent=EVENT)
+EVENT_SCORE = MessengerNameSpace.from_table(EventEntry, parent=EVENT)
 
 JOURNAL = MessengerNameSpace.from_table(Journal, parent=USER)
 CHAPTER = MessengerNameSpace.from_table(Chapter, parent=JOURNAL)
 
 
 by_names = core.groupby_unique(
-    [USER, CLIENT, BALANCE, TRADE, PNL_DATA, ALERT, EVENT, JOURNAL, CHAPTER, TRANSFER],
+    [USER, CLIENT, BALANCE, TRADE, PNL_DATA, ALERT, EVENT, EVENT_SCORE, JOURNAL, CHAPTER, TRANSFER],
     lambda space: space.name
 )
 

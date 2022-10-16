@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import Column, Integer, ForeignKey, String
 from sqlalchemy.orm import relationship, declared_attr
 
@@ -21,7 +23,7 @@ class LabelGroup(Group, Base, Serializer):
 
 class Label(Base, Serializer):
     __tablename__ = 'label'
-    id = Column(Integer, primary_key=True)
+    id: Any = Column(Integer, primary_key=True)
     group_id = Column(ForeignKey(LabelGroup.id, ondelete="CASCADE"), nullable=False)
 
     name: str = Column(String, nullable=False)

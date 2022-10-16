@@ -4,7 +4,7 @@ from typing import Optional
 
 from database.models import OrmBaseModel, OutputID
 from database.models.gain import Gain
-from core.utils import calc_percentage_diff, safe_cmp, round_ccy
+from core.utils import calc_percentage_diff, safe_cmp_default, round_ccy
 
 
 class AmountBase(OrmBaseModel):
@@ -19,7 +19,7 @@ class AmountBase(OrmBaseModel):
     def gain_since(self, other: 'AmountBase', offset: Decimal) -> Gain:
         self._assert_equal(other)
         gain = (self.realized - other.realized) - (offset or 0)
-        return Gain(
+        return Gain.construct(
             absolute=gain,
             relative=calc_percentage_diff(other.realized, gain)
         )
@@ -46,7 +46,7 @@ class Amount(AmountBase):
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
             currency=self.currency,
-            time=safe_cmp(max, self.time, other.time)
+            time=safe_cmp_default(max, self.time, other.time)
         )
 
 
@@ -58,7 +58,7 @@ class Balance(Amount):
         return Balance(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
-            time=safe_cmp(max, self.time, other.time),
+            time=safe_cmp_default(max, self.time, other.time),
             extra_currencies=(self.extra_currencies or []) + (other.extra_currencies or []),
             currency=self.currency
         )
@@ -75,7 +75,6 @@ class Balance(Amount):
             string += f'({currencies})'
 
         return string
-
 
     def get_currency(self, currency: str):
         if currency == self.currency:

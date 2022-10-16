@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from core.utils import utc_now
 from database.models.document import DocumentModel
-from database.models.eventinfo import EventCreate
+from database.models.eventinfo import EventCreate, WebLocation
 
 
 def event_mock(now: datetime = None):
@@ -15,6 +15,6 @@ def event_mock(now: datetime = None):
         registration_end=now + timedelta(seconds=6),
         end=now + timedelta(seconds=8),
         public=True,
-        location={'platform': 'web', 'data': {}},
+        location=WebLocation(platform='web', data={}),
         max_registrations=100,
     )

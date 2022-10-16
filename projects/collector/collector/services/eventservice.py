@@ -6,9 +6,10 @@ from apscheduler.triggers.date import DateTrigger
 from sqlalchemy import select, and_
 
 from collector.services.baseservice import BaseService
-from database.dbasync import db_all
+from database.dbasync import db_all, db_select
+from database.dbmodels import Client
 from database.dbmodels.event import Event, EventState
-from database.dbmodels.score import EventScore
+from database.dbmodels.score import EventEntry
 from common.messenger import Category, TableNames, EVENT
 from database.models.balance import Balance
 
@@ -53,6 +54,14 @@ class EventService(BaseService):
         await self._messenger.sub_channel(TableNames.TRANSFER, Category.NEW, self._on_transfer)
         await self._messenger.sub_channel(TableNames.EVENT, EVENT.START, self._on_event_start)
 
+    async def _get_event(self, event_id: int):
+        return await db_select(Event,
+                               Event.id == event_id,
+                               eager=[(Event.entries, [
+                                   EventEntry.client,
+                                   EventEntry.init_balance
+                               ])])
+
     async def _on_event(self, data: dict):
         self._schedule(
             await self._db.get(Event, data['id'])
@@ -61,76 +70,36 @@ class EventService(BaseService):
     async def _on_transfer(self, data: dict):
         async with self._db_lock:
             event_entries = await db_all(
-                select(EventScore).where(
-                    EventScore.client_id == data['client_id'],
+                select(EventEntry).where(
+                    EventEntry.client_id == data['client_id'],
                     ~Event.allow_transfers
-                ).join(EventScore.event),
+                ).join(EventEntry.event),
                 session=self._db
             )
 
     async def _on_balance(self, data: dict):
         async with self._db_lock:
-            scores: list[EventScore] = await db_all(
-                select(EventScore).where(
-                    EventScore.client_id == data['client_id']
+            scores: list[EventEntry] = await db_all(
+                select(EventEntry).where(
+                    EventEntry.client_id == data['client_id']
                 ).join(Event, and_(
-                    Event.id == EventScore.event_id,
+                    Event.id == EventEntry.event_id,
                     Event.is_expr(EventState.ACTIVE)
                 )),
-                EventScore.init_balance,
-                EventScore.client,
+                EventEntry.init_balance,
+                EventEntry.client,
                 session=self._db
             )
             balance = Balance(**data)
 
-            for score in scores:
-                event: Event = await self._db.get(Event, score.event_id)
-
-                if score.init_balance is None:
-                    score.init_balance = await score.client.get_balance_at_time(
-                        event.start,
-                        db=self._db
-                    )
-
-                offset = await score.client.get_total_transfered(
-                    db=self._db, since=event.start, to=event.end
-                )
-                score.update(balance, offset)
-                if score.rel_value < event.rekt_threshold:
-                    score.rekt_on = balance.time
-                    await self._messenger.pub_instance(score, Category.REKT)
-                await self._db.flush()
-                await Event.save_leaderboard(event.id, self._db)
-            await self._db.commit()
-
     async def _on_event_end(self, event_id: int):
-        scores: list[EventScore] = await db_all(
-            select(EventScore).filter(
-                EventScore.event_id == event_id
-            ),
-            EventScore.init_balance,
-            EventScore.client,
-            session=self._db
-        )
-
-        event: Event = await self._db.get(Event, event_id)
-        for score in scores:
-            if score.init_balance is None:
-                score.init_balance = await score.client.get_balance_at_time(
-                    event.start,
-                    db=self._db
-                )
-            balance = await score.client.get_balance_at_time(event.end, db=self._db)
-
-            offset = await score.client.get_total_transfered(
-                db=self._db, since=event.start, to=event.end
-            )
-            score.update(balance.get_currency(), offset)
-        await Event.save_leaderboard(event.id, self._db)
+        event: Event = await self._get_event(event_id)
+        await event.save_leaderboard()
         await self._db.commit()
 
     async def _on_event_start(self, event_id: int):
-        await Event.save_leaderboard(event_id, self._db)
+        event: Event = await self._db.get(Event, event_id)
+        await event.save_leaderboard()
         await self._db.commit()
 
     def _on_event_delete(self, data: dict):

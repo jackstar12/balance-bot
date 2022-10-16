@@ -51,7 +51,7 @@ class BalanceCog(CogBase):
 
             await ctx.defer()
 
-            usr_balance = await registered_user.get_latest_balance(self.redis, async_session, currency)
+            usr_balance = await registered_user.get_latest_balance(self.redis, currency)
             if not usr_balance:
                 await ctx.send(f'There are no records about {user.display_name}\'s balance')
             else:
@@ -65,7 +65,7 @@ class BalanceCog(CogBase):
             await ctx.defer()
 
             for user_client in user.clients:
-                usr_balance = await user_client.get_latest_balance(self.redis, async_session, currency)
+                usr_balance = await user_client.get_latest_balance(self.redis, currency)
                 balance_message = f'Your balance ({user.get_events_and_guilds_string(self.bot, user_client)}): '
                 if not usr_balance:
                     await ctx.send('There are no records about your balance')
@@ -135,7 +135,6 @@ class BalanceCog(CogBase):
             event=await dbutils.get_discord_event(ctx.guild_id, throw_exceptions=False),
             search=time,
             currency=currency,
-            db=async_session
         )
 
         for client, gain in user_gains.items():

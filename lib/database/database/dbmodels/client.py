@@ -203,10 +203,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     def archived(self):
         return self.state == ClientState.ARCHIVED
 
-    @hybrid_property
-    def discord_user(self):
-        return self.user.discord_user if self.user else None
-
     def as_redis(self, redis_instance=None) -> ClientRedis:
         return ClientRedis(self.user_id, self.id, redis_instance=redis_instance)
 
@@ -215,17 +211,19 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
     async def calc_gain(self,
                         event: Event,
-                        since: datetime,
-                        db: AsyncSession,
+                        since: datetime | Balance,
                         currency: str = None):
-        if event:
-            since = max(since, event.start)
+        if isinstance(since, datetime):
+            if event:
+                since = max(since, event.start)
+            balance_then = await self.get_exact_balance_at_time(since)
+        else:
+            balance_then = since
 
-        balance_then = await self.get_exact_balance_at_time(since, db=db)
-        balance_now = await self.get_latest_balance(redis=redis, db=db)
-        transfered = await self.get_total_transfered(db=db, since=since, ccy=currency)
+        balance_now = await self.get_latest_balance(redis=redis)
 
         if balance_then and balance_now:
+            transfered = await self.get_total_transfered(since=since, ccy=currency)
             return balance_now.get_currency(currency).gain_since(
                 balance_then.get_currency(currency),
                 transfered
@@ -277,7 +275,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         )
 
     async def get_total_transfered(self,
-                                   db: AsyncSession,
                                    ccy=None,
                                    since: datetime = None,
                                    to: datetime = None):
@@ -289,14 +286,15 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             Transfer.client_id == self.id,
             time_range(Transfer.time, since, to)
         )
-        return await db_unique(stmt, session=db)
+        return await db_unique(stmt, session=self.async_session)
 
-    async def get_latest_balance(self, redis: Redis, db: AsyncSession, currency=None) -> BalanceModel:
+    async def get_latest_balance(self, redis: Redis, currency=None) -> BalanceModel | None:
         live = await self.as_redis(redis).get_balance()
         if live:
             return live
         else:
-            return BalanceModel.from_orm(await self.latest(db))
+            latest = await self.latest()
+            return BalanceModel.from_orm(latest) if latest else None
 
     def evaluate_balance(self):
         if not self.currently_realized:
@@ -339,7 +337,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
         await db_session.commit()
 
-    async def latest(self, db: AsyncSession):
+    async def latest(self):
         try:
             balance = dbmodels.Balance
 
@@ -349,7 +347,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                 ).order_by(
                     desc(dbmodels.Balance.time)
                 ),
-                session=db
+                session=self.async_session
             )
         except ValueError:
             return None
@@ -366,7 +364,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         elif self.user_id:
             return True
 
-    async def get_balance_at_time(self, time: datetime, db: AsyncSession) -> Balance:
+    async def get_balance_at_time(self, time: datetime) -> Balance:
         DbBalance = dbmodels.Balance
         balance = None
         if time:
@@ -376,14 +374,13 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             ).order_by(
                 desc(DbBalance.time)
             )
-            balance = await db_first(stmt, session=db)
+            balance = await db_first(stmt, session=self.async_session)
         if not balance:
-            balance = await self.initial(db)
+            balance = await self.initial()
         return balance
 
-    async def get_exact_balance_at_time(self, time: datetime, currency: str = None,
-                                        db: AsyncSession = None) -> BalanceModel:
-        balance = await self.get_balance_at_time(time, db)
+    async def get_exact_balance_at_time(self, time: datetime, currency: str = None) -> BalanceModel:
+        balance = await self.get_balance_at_time(time)
 
         if self.is_full and balance and time:
             # Probably the most beautiful query I've ever written
@@ -409,7 +406,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
                 subq.c.row_number <= 1
             )
 
-            pnl_data: list[PnlData] = await db_all(full_stmt, session=db)
+            pnl_data: list[PnlData] = await db_all(full_stmt, session=self.async_session)
 
             return dbmodels.Balance(
                 client_id=self.id,
@@ -439,7 +436,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     def is_full(self):
         return self.type == ClientType.FULL
 
-    async def initial(self, db: AsyncSession):
+    async def initial(self):
         b = dbmodels.Balance
         return await db_first(
             select(b).where(
@@ -447,7 +444,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
             ).order_by(
                 b.time
             ),
-            session=db
+            session=self.async_session
         )
 
     def get_event_string(self):

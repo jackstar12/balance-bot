@@ -34,8 +34,8 @@ Balance = balance.Balance
 Chapter = chapter.Chapter
 Execution = execution.Execution
 TradeDB = trade.Trade
+EventEntry = score.EventEntry
 EventScore = score.EventScore
-EventRank = score.EventRank
 Event = event.Event
 GuildAssociation = ga.GuildAssociation
 
@@ -101,18 +101,13 @@ chapter.Chapter.trades = relationship('Trade',
 #)
 
 
-equ = and_(
-    EventScore.client_id == foreign(EventRank.client_id),
-    EventScore.event_id == foreign(EventRank.event_id)
-)
-
 current = select(
-    EventRank
+    EventScore
 ).order_by(
-    desc(EventRank.time)
+    desc(EventScore.time)
 ).limit(1).alias()
 
-latest = aliased(EventRank, current)
+latest = aliased(EventScore, current)
 
 
 #EventScore.current_rank = relationship(EventRank,
@@ -122,10 +117,6 @@ latest = aliased(EventRank, current)
 #EventScore.current_rank = relationship(latest, lazy='noload', uselist=False)
 
 
-EventScore.rank_history = relationship(EventRank,
-                                       lazy='noload',
-                                       primaryjoin=equ,
-                                       order_by=asc(EventRank.time))
 
 
 

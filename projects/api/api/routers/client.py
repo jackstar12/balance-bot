@@ -3,7 +3,7 @@ import itertools
 import logging
 import operator
 import time
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import Optional, Iterable
 
@@ -76,9 +76,12 @@ async def new_client(request: Request, body: ClientCreateBody,
                     else:
                         payload = jsonable_encoder(body)
                         payload['api_secret'] = client.api_secret
+                        payload['exp'] = init_balance.time + timedelta(minutes=5)
 
                         return ClientCreateResponse(
-                            token=jwt.encode(payload, settings.authjwt_secret_key, algorithm='HS256'),
+                            token=jwt.encode(payload,
+                                             settings.JWT_SECRET,
+                                             algorithm='HS256'),
                             balance=Balance.from_orm(init_balance)
                         )
                 else:
@@ -104,16 +107,19 @@ async def new_client(request: Request, body: ClientCreateBody,
 async def confirm_client(body: ClientConfirm,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
-    client_data = ClientCreateBody(
-        **jwt.decode(body.token, settings.authjwt_secret_key, algorithms=['HS256'])
-    )
     try:
+        client_data = ClientCreateBody(
+            **jwt.decode(body.token, settings.JWT_SECRET, algorithms=['HS256'])
+        )
         client = client_data.get(user)
-        db.add(client)
-        await db.commit()
-        return ClientInfo.from_orm(client)
-    except TypeError:
+    except jwt.ExpiredSignatureError:
+        return BadRequest(detail='Token expired')
+    except (jwt.InvalidTokenError, TypeError):
         return BadRequest(detail='Invalid token')
+
+    db.add(client)
+    await db.commit()
+    return ClientInfo.from_orm(client)
 
 
 OverviewCache = client_utils.ClientCacheDependency(
@@ -156,12 +162,12 @@ async def get_client_overview(background_tasks: BackgroundTasks,
             overview = ClientOverviewCache(
                 id=client.id,
                 initial_balance=(
-                    await client.get_exact_balance_at_time(query_params.since, db=db)
+                    await client.get_exact_balance_at_time(query_params.since)
                 ),
                 current_balance=(
-                    await client.get_exact_balance_at_time(query_params.to, db=db)
+                    await client.get_exact_balance_at_time(query_params.to)
                     if query_params.to else
-                    await client.get_latest_balance(redis=redis, db=db)
+                    await client.get_latest_balance(redis=redis)
                 ),
                 daily=daily,
                 transfers=client.transfers,

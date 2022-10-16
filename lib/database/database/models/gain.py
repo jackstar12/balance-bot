@@ -11,15 +11,14 @@ if TYPE_CHECKING:
 
 
 class Gain(BaseModel):
-    relative: Optional[Decimal]
-    absolute: Optional[Decimal]
+    relative: Decimal
+    absolute: Decimal
 
     def to_string(self, ccy: str):
-        if self.relative is not None and self.absolute is not None:
-            return f'{round_ccy(self.relative, "%")}% ({round_ccy(self.absolute, ccy)}{ccy})'
+        return f'{round_ccy(self.relative, "%")}% ({round_ccy(self.absolute, ccy)}{ccy})'
 
 
 class ClientGain(NamedTuple):
     client: Client
-    relative: Optional[Decimal]
-    absolute: Optional[Decimal]
+    relative: Decimal
+    absolute: Decimal

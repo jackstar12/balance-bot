@@ -1,7 +1,8 @@
+from __future__ import annotations
 import enum
-from typing import Optional, TypedDict
-
 import sqlalchemy as sa
+
+from typing import Optional, TypedDict, TYPE_CHECKING
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID, SQLAlchemyBaseOAuthAccountTableUUID
 from sqlalchemy import Column
@@ -11,8 +12,10 @@ from sqlalchemy.orm import relationship
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbsync import Base
-from database.models.discord.guild import UserRequest
-from database.redis import rpc
+
+
+if TYPE_CHECKING:
+    from database.dbmodels.discord.discorduser import DiscordUser
 
 
 class Subscription(enum.Enum):
@@ -28,21 +31,14 @@ class OAuthData(TypedDict):
 
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
     account_id: str = Column(sa.String(length=320), index=True, nullable=False, unique=True)
-
     data: Optional[OAuthData] = Column(JSONB, nullable=True)
 
+    __mapper_args__ = {
+        "polymorphic_on": "oauth_name",
+    }
+
     async def populate_oauth_data(self, redis: Redis) -> Optional[OAuthData]:
-        if self.oauth_name == "discord":
-            client = rpc.Client('discord', redis)
-            try:
-                self.data = await client(
-                    'user_info', UserRequest(user_id=self.account_id)
-                )
-            except rpc.Error:
-                pass
-
         return self.data
-
 
 
 class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
@@ -93,13 +89,13 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
                              cascade="all, delete",
                              lazy='noload')
 
-    def get_oauth(self, name: str):
+    def get_oauth(self, name: str) -> Optional[OAuthAccount]:
         for account in self.oauth_accounts:
             if account.oauth_name == name:
                 return account
 
     @property
-    def discord_user(self):
+    def discord(self) -> Optional[DiscordUser]:
         return self.get_oauth('discord')
 
     @classmethod

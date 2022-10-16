@@ -1,11 +1,11 @@
 from datetime import timedelta
 import os
-from pydantic import BaseSettings
-
+from pydantic import BaseSettings, SecretStr
 
 
 class Settings(BaseSettings):
-    authjwt_secret_key: str = os.environ.get('JWT_SECRET')
+    JWT_SECRET: str
+
     authjwt_token_location: set = {"cookies"}
     authjwt_cookie_secure: bool = False
     authjwt_cookie_csrf_protect: bool = True

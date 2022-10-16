@@ -39,6 +39,7 @@ def create_crud_router(prefix: str,
     router = APIRouter(
         tags=[prefix],
         dependencies=dependencies,
+        prefix=prefix
     )
 
     def read_one(entity_id: int, user: User, db: AsyncSession, **kwargs):
@@ -61,7 +62,7 @@ def create_crud_router(prefix: str,
             session=db
         )
 
-    @router.post(prefix, response_model=read_schema)
+    @router.post('', response_model=read_schema)
     async def create(body: create_schema,
                      user: User = Depends(CurrentUser),
                      db: AsyncSession = Depends(get_db)):
@@ -72,7 +73,7 @@ def create_crud_router(prefix: str,
         await db.commit()
         return read_schema.from_orm(instance)
 
-    @router.delete(prefix + '/{entity_id}')
+    @router.delete('/{entity_id}')
     async def delete_one(entity_id: int,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
@@ -84,18 +85,7 @@ def create_crud_router(prefix: str,
         else:
             return NotFound('Invalid id')
 
-    @router.get(prefix + '/{entity_id}', response_model=read_schema)
-    async def get_one(entity_id: int,
-                      user: User = Depends(CurrentUser),
-                      db: AsyncSession = Depends(get_db)):
-        entity = await read_one(entity_id, user, db)
-
-        if entity:
-            return read_schema.from_orm(entity)
-        else:
-            return NotFound('Invalid id')
-
-    @router.get(prefix, response_model=list[read_schema])
+    @router.get('', response_model=list[read_schema])
     async def get_all(user: User = Depends(CurrentUser),
                       db: AsyncSession = Depends(get_db)):
         results = await read_all(user, db)
@@ -108,7 +98,18 @@ def create_crud_router(prefix: str,
             ]
         )
 
-    @router.patch(prefix + '/{entity_id}', response_model=read_schema)
+    @router.get('/{entity_id}', response_model=read_schema)
+    async def get_one(entity_id: int,
+                      user: User = Depends(CurrentUser),
+                      db: AsyncSession = Depends(get_db)):
+        entity = await read_one(entity_id, user, db)
+
+        if entity:
+            return read_schema.from_orm(entity)
+        else:
+            return NotFound('Invalid id')
+
+    @router.patch('/{entity_id}', response_model=read_schema)
     async def update_one(entity_id: int,
                          body: update_schema,
                          user: User = Depends(CurrentUser),

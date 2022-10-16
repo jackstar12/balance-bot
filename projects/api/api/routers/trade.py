@@ -17,7 +17,6 @@ from api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
 from api.models.client import get_query_params
 from api.models.trade import Trade, BasicTrade, DetailledTrade, UpdateTrade
-from api.routers.label import add_trade_filters
 from api.users import CurrentUser
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, ResponseModel
 from database.dbasync import db_first, db_all
@@ -39,6 +38,15 @@ router = APIRouter(
         400: {'detail': "Email is already used"}
     }
 )
+
+
+def add_trade_filters(stmt, user: User, trade_id: int):
+    return add_client_filters(
+        stmt.filter(
+            TradeDB.id == trade_id,
+        ).join(TradeDB.client),
+        user
+    )
 
 
 @router.patch('/trade/{trade_id}', response_model=DetailledTrade)

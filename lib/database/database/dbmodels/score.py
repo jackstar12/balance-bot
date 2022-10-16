@@ -9,78 +9,64 @@ from sqlalchemy import Column, ForeignKey, Numeric, Integer, DateTime, and_, asc
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, foreign
 
+from database.dbmodels.mixins.serializer import Serializer
 from database.models.gain import Gain
 
 if TYPE_CHECKING:
     from database.dbmodels.balance import Balance as BalanceDB
     from database.models.balance import Amount as AmountModel
+
 from database.dbsync import Base, BaseMixin
 
 
-class EventRank(Base, BaseMixin):
-    __tablename__ = 'eventrank'
-    client_id = Column(ForeignKey('client.id', ondelete='CASCADE'), primary_key=True)
-    event_id = Column(ForeignKey('event.id', ondelete='CASCADE'), primary_key=True)
-    time = Column(DateTime(timezone=True), primary_key=True, default=lambda: datetime.now(pytz.utc))
-    value = Column(Integer, nullable=False)
-
-
-class EventScore(Base, BaseMixin):
+class EventScore(Base, Serializer):
     __tablename__ = 'eventscore'
 
     client_id = Column(ForeignKey('client.id', ondelete='CASCADE'), primary_key=True)
     event_id = Column(ForeignKey('event.id', ondelete='CASCADE'), primary_key=True)
+    time = Column(DateTime(timezone=True), primary_key=True, default=lambda: datetime.now(pytz.utc))
 
+    rank = Column(Integer)
     abs_value = Column(Numeric, nullable=True)
     rel_value = Column(Numeric, nullable=True)
-    init_balance_id = Column(ForeignKey('balance.id', ondelete='CASCADE'), nullable=True)
-    last_rank_update = Column(DateTime(timezone=True), nullable=True)
-
-    # disqualified = Column()
-    rekt_on = Column(DateTime(timezone=True), nullable=True)
-
-    init_balance: BalanceDB = relationship('Balance', lazy='noload')
-    client = relationship('Client', lazy='noload')
-    event = relationship('Event', lazy='noload')
-
-    current_rank = relationship('EventRank',
-                                lazy='joined',
-                                uselist=False)
-
-    rank_history: list[EventRank]
-
-    __table_args__ = (ForeignKeyConstraint((client_id, event_id, last_rank_update),
-                                           ('eventrank.client_id', 'eventrank.event_id', 'eventrank.time')),
-                      {})
-
-    @hybrid_property
-    def user_id(self):
-        return getattr(self.client, 'user_id')
 
     @hybrid_property
     def gain(self):
-        return Gain(
-            relative=self.rel_value,
-            absolute=self.abs_value
-        )
+        if self.rel_value and self.abs_value:
+            return Gain.construct(
+                relative=self.rel_value,
+                absolute=self.abs_value
+            )
 
     @gain.setter
     def gain(self, val: Gain):
         self.rel_value = val.relative
         self.abs_value = val.absolute
 
-    def update(self, amount: 'AmountModel', offset: Decimal):
-        self.gain = amount.gain_since(
-            self.init_balance.get_currency(ccy=amount.currency), offset
-        )
+
+class EventEntry(Base, Serializer):
+    __tablename__ = 'evententry'
+
+    client_id = Column(ForeignKey('client.id', ondelete='CASCADE'), primary_key=True)
+    event_id = Column(ForeignKey('event.id', ondelete='CASCADE'), primary_key=True)
+    init_balance_id = Column(ForeignKey('balance.id', ondelete='CASCADE'), nullable=True)
+    rekt_on = Column(DateTime(timezone=True), nullable=True)
+
+    init_balance: BalanceDB = relationship('Balance', lazy='noload')
+    client = relationship('Client', lazy='noload')
+    event = relationship('Event', lazy='noload')
+
+    rank_history: list[EventScore]
+
+    @hybrid_property
+    def user_id(self):
+        return getattr(self.client, 'user_id')
 
 
-equ = and_(
-    EventScore.client_id == foreign(EventRank.client_id),
-    EventScore.event_id == foreign(EventRank.event_id)
-)
-
-EventScore.rank_history = relationship(EventRank,
+EventEntry.rank_history = relationship(EventScore,
                                        lazy='noload',
-                                       primaryjoin=equ,
-                                       order_by=asc(EventRank.time))
+                                       primaryjoin=and_(
+                                           EventEntry.client_id == foreign(EventScore.client_id),
+                                           EventEntry.event_id == foreign(EventScore.event_id)
+                                       ),
+                                       order_by=asc(EventScore.time))

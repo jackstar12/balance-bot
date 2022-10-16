@@ -35,13 +35,13 @@ import core
 from database.calc import transfer_gen
 from database.dbasync import async_session, db_all, async_maker, time_range
 from database.dbmodels.balance import Balance
-from database.dbmodels.discord.discorduser import DiscordUser, get_display_name, get_client_display_name
+from database.dbmodels.discord.discorduser import DiscordUser
 from database.dbmodels.pnldata import PnlData
 from database.dbmodels.trade import Trade
 from database.dbmodels.transfer import Transfer
 from database.dbmodels.user import User
 from database.errors import UserInputError, InternalError
-from database.models.eventinfo import EventScore, EventRank
+from database.models.eventinfo import EventEntry, EventScore, Leaderboard
 from database.models.history import History
 from database.models.selectionoption import SelectionOption
 from core.utils import calc_percentage, call_unknown_function, groupby, utc_now
@@ -325,8 +325,8 @@ async def get_summary_embed(event: dbmodels.Event, dc_client: discord.Client):
         ('Still HODLing :sleeping:', summary.volatility.worst),
     ]:
         user: User = await async_session.get(User, user_id)
-        member_id = int(user.discord_user.account_id)
-        embed.add_field(name=name, value=get_display_name(dc_client, member_id, int(event.guild_id)), inline=False)
+        member_id = int(user.discord.account_id)
+        embed.add_field(name=name, value=user.discord.get_display_name(dc_client, event.guild_id), inline=False)
 
     description += f'\nIn total you {"made" if summary.total >= 0.0 else "lost"} {round(summary.total, ndigits=3)}$' \
                    f'\nCumulative % performance: {round(summary.avg_percent, ndigits=3)}%'
@@ -342,7 +342,7 @@ async def create_complete_history(dc: discord.Client, event: dbmodels.Event):
     await create_history(
         custom_title=f'Complete history for {event.name}',
         to_graph=[
-            (client, get_client_display_name(dc, client, event.guild_id))
+            (client, client.user.discord.get_display_name(dc, event.guild_id))
             for client in event.all_clients
         ],
         event=event,
@@ -470,30 +470,39 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
 async def get_leaderboard_embed(event: dbmodels.Event,
                                 guild: discord.Guild,
-                                scores: list[EventScore],
+                                leaderboard: Leaderboard,
                                 db: AsyncSession):
     footer = ''
     description = ''
 
-    async def display_name(score: EventScore):
+    async def display_name(score: EventEntry):
         user = await db.get(dbmodels.User, score.user_id)
-        member = guild.get_member(int(user.discord_user.account_id))
+        member = guild.get_member(int(user.discord.account_id))
         return member.display_name if member else None
 
-    grouped = groupby(scores, key=lambda score: score.rekt_on is None)
+    grouped = groupby(leaderboard.valid, key=lambda score: score.rekt_on is None)
 
-    for current in grouped.get(True, []):
+    live = grouped.get(True, [])
+    for current in live:
         name = await display_name(current)
         if name:
             value = current.gain.to_string(event.currency)
-            description += f'{current.current_rank.value}. **{name}** {value}\n'
+            description += f'{current.current.rank}. **{name}** {value}\n'
 
-    if False in grouped:
+    rekt = grouped.get(False)
+    if rekt:
         description += f'\n**Rekt**\n'
-        for current in grouped[False]:
+        for current in rekt:
             name = await display_name(current)
             if name:
-                description += f'{name} since {current.rekt_on.replace(microsecond=0)}'
+                description += f'{name} since {current.rekt_on.replace(microsecond=0)}\n'
+
+    if leaderboard.unknown:
+        description += f'\n**Missing**\n'
+        for current in leaderboard.unknown:
+            name = await display_name(current)
+            if name:
+                description += f'{name}\n'
 
     description += f'\n{footer}'
 
@@ -509,7 +518,8 @@ async def get_leaderboard_embed(event: dbmodels.Event,
 async def get_leaderboard(dc_client: discord.Client,
                           guild_id: int,
                           channel_id: int,
-                          since: datetime = None) -> discord.Embed:
+                          since: datetime = None,
+                          db: AsyncSession = None) -> discord.Embed:
     guild = dc_client.get_guild(guild_id)
     if not guild:
         raise InternalError(f'Provided guild_id is not valid!')
@@ -517,40 +527,17 @@ async def get_leaderboard(dc_client: discord.Client,
     event = await dbutils.get_discord_event(guild_id, channel_id,
                                             throw_exceptions=True,
                                             eager_loads=[
-                                                dbmodels.Event.registrations
+                                                dbmodels.Event.clients
                                                 if since else
-                                                (dbmodels.Event.leaderboard, (
-                                                    dbmodels.EventScore.client, dbmodels.Client.user
+                                                (dbmodels.Event.entries, (
+                                                    dbmodels.EventEntry.client, dbmodels.Client.user
                                                 ))
-                                            ])
+                                            ],
+                                            db=db)
 
-    if since and since != event.start:
-        now = utc_now()
-        scores = [
-            EventScore(
-                user_id=client.user_id,
-                client_id=client.id,
-                gain=await client.calc_gain(event, since=since, db=async_session, currency=event.currency),
-                current_rank=EventRank(
-                    value=1,
-                    time=now
-                )
-            )
-            for client in event.registrations
-        ]
-        scores.sort(key=lambda s: s.gain.relative)
+    leaderboard = await event.get_leaderboard(since)
 
-        prev_score = None
-        rank = 1
-        for index, score in enumerate(scores):
-            if prev_score is not None and score < prev_score:
-                rank = index + 1
-            score.current_rank.value = rank
-            prev_score = score
-    else:
-        scores = event.leaderboard
-
-    return await get_leaderboard_embed(event, guild, scores, db=async_session)
+    return await get_leaderboard_embed(event, guild, leaderboard, db=async_session)
 
 
 def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[datetime]:

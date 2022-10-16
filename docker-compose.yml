@@ -48,14 +48,14 @@ services:
     image: "redis:latest"
     container_name: redis-server
     ports:
-      - "6380:6379"
+      - "6379:6379"
     env_file:
       - .env
   pg-server:
     image: "postgres"
     container_name: pg-server
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
     environment:

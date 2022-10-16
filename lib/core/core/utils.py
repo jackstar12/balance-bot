@@ -203,8 +203,13 @@ def join_args(*args, denominator=':'):
 T = typing.TypeVar('T')
 
 
-def safe_cmp(fnc: Callable[[T, T], T], a: T, b: T):
+def safe_cmp_default(fnc: Callable[[T, T], T], a: T, b: T):
     return fnc(a, b) if a and b else a or b
+
+
+def safe_cmp(fnc: Callable[[T, T], T], a: T, b: T):
+    return fnc(a, b) if a and b else None
+
 
 
 def sum_iter(iterator: typing.Iterable[T]):

@@ -13,12 +13,12 @@ from api.utils.responses import ResponseModel
 from common.exchanges import SANDBOX_CLIENTS
 from common.test_utils.mock import event_mock
 from database.models import BaseModel
-from database.models.eventinfo import EventInfo, EventDetailed
+from database.models.eventinfo import EventInfo, EventDetailed, EventEntry, Leaderboard
 
-T = TypeVar('T', bound=BaseModel)
+T = TypeVar('T')
 
 
-def parse_response(resp: Response, model: Type[T]) -> tuple[Response, T]:
+def parse_response(resp: Response, model: Type[T] = None) -> tuple[Response, T]:
     result = resp.json().get('result')
     try:
         return resp, (model(**result) if result else None)
@@ -84,18 +84,42 @@ def test_register_event(event, api_client_logged_in, confirmed_clients):
         assert resp.ok
 
     resp, result = parse_response(
-        api_client_logged_in.get(f'/api/v1/event/{event.id}'),
-        EventDetailed
+        api_client_logged_in.get(f'/api/v1/event/{event.id}/leaderboard'),
+        Leaderboard
     )
 
-    assert len(result.leaderboard) == len(confirmed_clients)
-    for score in result.leaderboard:
-        assert score.current_rank.value == 1
+    assert len(result.unknown) == len(confirmed_clients)
 
     for client in confirmed_clients:
         url = f'/api/v1/event/{event.id}/registrations/{client.id}'
         resp = api_client_logged_in.delete(url)
         assert resp.ok
+
+
+@pytest.mark.parametrize(
+    'confirmed_clients',
+    [[SANDBOX_CLIENTS[0], SANDBOX_CLIENTS[0]]],
+    indirect=True
+)
+def test_register_event(event, api_client_logged_in, confirmed_clients):
+
+    for client in confirmed_clients:
+        url = f'/api/v1/event/{event.id}/registrations/{client.id}'
+        resp = api_client_logged_in.post(url)
+        assert resp.ok
+
+    resp, result = parse_response(
+        api_client_logged_in.get(f'/api/v1/event/{event.id}/leaderboard'),
+        Leaderboard
+    )
+
+    assert len(result.unknown) == len(confirmed_clients)
+
+    for client in confirmed_clients:
+        url = f'/api/v1/event/{event.id}/registrations/{client.id}'
+        resp = api_client_logged_in.delete(url)
+        assert resp.ok
+
 
 
 def test_get_single(event, api_client_logged_in):

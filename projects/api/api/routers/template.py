@@ -52,7 +52,8 @@ async def create_template(body: TemplateCreate,
                           user: User = Depends(CurrentUser),
                           db: AsyncSession = Depends(get_db)):
     template = DbTemplate(
-        user=user
+        user_id=user.id,
+        type=body.type
     )
 
     db.add(template)
@@ -116,7 +117,7 @@ async def update_template(template_id: int,
                           user: User = Depends(CurrentUser),
                           db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        update(DbTemplate.title).where(
+        update(DbTemplate).where(
             DbTemplate.id == template_id,
             DbTemplate.user_id == user.id
         ).values(

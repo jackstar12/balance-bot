@@ -12,12 +12,13 @@ import pytz
 import sqlalchemy.exc
 from aioredis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy_utils import get_mapper
 
+import database.models.eventinfo as eventmodels
 from database.utils import get_client_history
 from database.models import OrmBaseModel
-from database.dbmodels.discord.discorduser import get_display_name
-from core.utils import join_args
-from database.dbmodels.score import EventScore, EventRank
+from core.utils import join_args, utc_now
+from database.dbmodels.score import EventEntry, EventScore
 from database.models.discord.guild import GuildRequest
 from database.redis import rpc
 from database.dbmodels.types import Document
@@ -29,6 +30,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 import discord
 
 from database.dbsync import Base
+from database.models.eventinfo import EventState, LocationModel
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
     select, insert, literal, and_, update, Numeric
@@ -37,27 +39,13 @@ if TYPE_CHECKING:
     from database.dbmodels.user import User
     from database.dbmodels.client import Client
 
-event_association = 'eventscore'
-
-
-class LocationModel(OrmBaseModel):
-    platform: str
-    data: dict
-
-
-class EventState(Enum):
-    UPCOMING = "upcoming"
-    ACTIVE = "active"
-    REGISTRATION = "registration"
-    ARCHIVED = "archived"
-
 
 class Stat(OrmBaseModel):
     best: UUID
     worst: UUID
 
     @classmethod
-    def from_sorted(cls, sorted_clients: list[EventScore]):
+    def from_sorted(cls, sorted_clients: list[EventEntry]):
         return cls(
             best=sorted_clients[0].client.user_id,
             worst=sorted_clients[-1].client.user_id,
@@ -80,12 +68,13 @@ class Event(Base, Serializer):
     __serializer_forbidden__ = ['archive']
 
     id = Column(Integer, primary_key=True)
-
     owner_id = Column(ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+
     registration_start = Column(DateTime(timezone=True), nullable=False)
     registration_end = Column(DateTime(timezone=True), nullable=False)
     start = Column(DateTime(timezone=True), nullable=False)
     end = Column(DateTime(timezone=True), nullable=False)
+
     max_registrations = Column(Integer, nullable=False, default=100)
     allow_transfers = Column(Boolean, default=False)
 
@@ -98,15 +87,14 @@ class Event(Base, Serializer):
 
     owner: User = relationship('User', lazy='noload')
 
-    registrations: list[Client] = relationship('Client',
-                                               lazy='raise',
-                                               secondary=event_association,
-                                               backref=backref('events', lazy='noload'))
+    clients: list[Client] = relationship('Client',
+                                         lazy='raise',
+                                         secondary='evententry',
+                                         backref=backref('events', lazy='raise'))
 
-    leaderboard: list[EventScore] = relationship('EventScore',
-                                                 lazy='raise',
-                                                 back_populates='event',
-                                                 order_by="and_(desc(EventScore.rel_value), EventScore.rekt_on)")
+    entries: list[EventEntry] = relationship('EventEntry',
+                                             lazy='raise',
+                                             back_populates='event',)
 
     archive = relationship('Archive',
                            backref=backref('event', lazy='noload'),
@@ -121,9 +109,9 @@ class Event(Base, Serializer):
     @hybrid_property
     def all_clients(self):
         try:
-            return self.registrations
+            return self.clients
         except sqlalchemy.exc.InvalidRequestError:
-            return [score.client for score in self.leaderboard]
+            return [score.client for score in self.entries]
 
     def validate_time_range(self, since: datetime = None, to: datetime = None):
         since = max(self.start, since) if since else self.start
@@ -173,6 +161,65 @@ class Event(Base, Serializer):
         if self.max_registrations < len(self.all_clients):
             raise ValueError("Max Registrations can not be less than current registration count")
 
+    async def get_leaderboard(self, since: datetime = None) -> eventmodels.Leaderboard:
+
+        unknown = []
+        valid = []
+
+        now = utc_now()
+
+        since, now = self.validate_time_range(since, now)
+
+        for entry in self.entries:
+            score = None
+            if self.is_(EventState.ACTIVE):
+
+                if entry.init_balance is None:
+                    entry.init_balance = await entry.client.get_balance_at_time(
+                        self.start,
+                    )
+
+                gain = await entry.client.calc_gain(
+                    self,
+                    since=entry.init_balance if since == self.start else since,
+                    currency=self.currency
+                )
+                if gain:
+                    if gain.relative < self.rekt_threshold:
+                        pass
+                    score = eventmodels.EventScore.construct(
+                        rank=1,  # Ranks are evaluated lazy
+                        time=now,
+                        gain=gain
+                    )
+
+            entry = eventmodels.EventEntry(
+                user_id=entry.client.user_id,
+                client_id=entry.client_id,
+                rekt_on=entry.rekt_on,
+                current=score
+            )
+
+            if score:
+                valid.append(entry)
+            else:
+                unknown.append(entry)
+
+        valid.sort(reverse=True)
+
+        prev = None
+        rank = 1
+        for index, score in enumerate(valid):
+            if prev is not None and score < prev:
+                rank = index + 1
+            score.current.rank = rank
+            prev = score
+
+        return eventmodels.Leaderboard.construct(
+            valid=valid,
+            unknown=unknown
+        )
+
     async def validate_location(self, redis: Redis):
         self.location: 'LocationModel'
         if self.location.platform == 'discord':
@@ -198,55 +245,27 @@ class Event(Base, Serializer):
     def leaderboard_key(self):
         return join_args(self.key, 'leaderboard')
 
-    @classmethod
-    async def save_leaderboard(cls, event_id: int, db: AsyncSession):
+    async def save_leaderboard(self):
+        leaderboard = await self.get_leaderboard()
 
-        ranks = select(
-            EventScore.client_id,
-            func.rank().over(
-                order_by=desc(EventScore.rel_value)
-            ).label('value')
-        ).where(
-            EventScore.event_id == event_id
-        ).subquery()
-
-        now = datetime.now(pytz.utc)
-
-        stmt = select(
-            literal(event_id).label('event_id'),
-            literal(now).label('time'),
-            ranks.c.client_id,
-            ranks.c.value
-        )
-        # .join(
-        #     EventRank, and_(
-        #     )
-        #     EventScore.current_rank
-        # ).where(
-        #     or_(
-        #         ~EventScore.last_rank_update,
-        #         EventRank.value != ranks.c.values
-        #     )
-        # )
-
-        result = await db.execute(
-            insert(EventRank).from_select(
-                ["event_id", "time", "client_id", "value"],
-                stmt
-            ).returning(
-                EventRank.client_id
+        await self.async_session.run_sync(
+            lambda: self.sync_session.bulk_insert_mappings(
+                get_mapper(EventScore),
+                [
+                    {
+                        'client_id': int(entry.client_id),
+                        'event_id': self.id,
+                        "time": entry.current.time,
+                        "rank": entry.current.rank,
+                        "abs_value": entry.current.gain.absolute,
+                        "rel_value": entry.current.gain.relative
+                    }
+                    for entry in leaderboard.valid
+                ]
             )
         )
 
-        await db.flush()
-
-        await db.execute(
-            update(EventScore).values(
-                last_rank_update=now
-            ).where(
-                EventScore.client_id.in_(row[0] for row in result)
-            )
-        )
+        await self.async_session.commit()
 
     @hybrid_property
     def guild_id(self):
@@ -273,7 +292,7 @@ class Event(Base, Serializer):
 
     @hybrid_property
     def is_full(self):
-        return len(self.registrations) < self.max_registrations
+        return len(self.clients) < self.max_registrations
 
     def get_discord_embed(self, title: str, dc_client: discord.Client, registrations=False):
         embed = discord.Embed(title=title)
@@ -286,8 +305,8 @@ class Event(Base, Serializer):
 
         if registrations:
             value = '\n'.join(
-                f'{get_display_name(dc_client, int(score.client.user.discord_user.account_id), self.guild_id)}'
-                for score in self.leaderboard
+                f'{client.user.discord.get_display_name(dc_client, self.guild_id)}'
+                for client in self.all_clients
             )
 
             embed.add_field(name="Registrations", value=value if value else 'Be the first!', inline=False)
@@ -298,8 +317,10 @@ class Event(Base, Serializer):
 
     async def get_summary(self) -> Summary:
 
-        gain = Stat.from_sorted(self.leaderboard)
-        stakes = Stat.from_sorted(sorted(self.leaderboard, key=lambda x: x.init_balance.realized, reverse=True))
+        leaderboard = await self.get_leaderboard()
+
+        gain = Stat.from_sorted(leaderboard.valid)
+        stakes = Stat.from_sorted(sorted(leaderboard, key=lambda x: x.init_balance.realized, reverse=True))
 
         async def vola(client: Client):
             history = await get_client_history(client, self.start, self.start, self.end)
@@ -321,11 +342,11 @@ class Event(Base, Serializer):
 
         cum_percent = Decimal(0)
         cum_dollar = Decimal(0)
-        for score in self.leaderboard:
-            cum_percent += score.rel_value
-            cum_dollar += score.abs_value
+        for entry in leaderboard.valid:
+            cum_percent += entry.current.gain.relative
+            cum_dollar += entry.current.gain.absolute
 
-        cum_percent /= len(self.leaderboard) or 1  # Avoid division by zero
+        cum_percent /= len(self.entries) or 1  # Avoid division by zero
 
         return Summary(
             gain=gain, stakes=stakes, volatility=volatili, avg_percent=cum_percent, total=cum_dollar

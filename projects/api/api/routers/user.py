@@ -35,9 +35,7 @@ user_info_dep = get_current_user(
     User.oauth_accounts,
     (User.label_groups, LabelGroup.labels),
     User.alerts,
-    (
-        User.all_clients, Client.events
-    ),
+    User.all_clients
 )
 
 

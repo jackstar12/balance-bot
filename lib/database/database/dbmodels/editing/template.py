@@ -26,3 +26,19 @@ class Template(Base, EditsMixin, PageMixin):
                                 foreign_keys='Journal.default_template_id',
                                 back_populates='default_template',
                                 lazy='noload')
+
+    __mapper_args__ = {
+        "polymorphic_on": type
+    }
+
+
+class TradeTemplate(Template):
+    __mapper_args__ = {
+        "polymorphic_identity": TemplateType.TRADE
+    }
+
+
+class ChapterTemplate(Template):
+    __mapper_args__ = {
+        "polymorphic_identity": TemplateType.CHAPTER
+    }

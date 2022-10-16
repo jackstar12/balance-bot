@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 import pytz
+import sqlalchemy.exc
 from fastapi import APIRouter, Depends
 from pydantic import validator
 from sqlalchemy import select, or_, insert, delete
@@ -14,12 +15,12 @@ from database import utils as dbutils
 from database.dbasync import db_first, redis, db_unique
 from database.dbmodels import Client
 from database.dbmodels.event import Event as EventDB, EventState
-from database.dbmodels.score import EventScore as EventScoreDB
+from database.dbmodels.score import EventEntry as EventEntryDB
 from database.dbmodels.user import User
 from database.utils import add_client_filters
 from database.models import BaseModel
 from database.models.document import DocumentModel
-from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventScore
+from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventEntry, Leaderboard
 
 router = APIRouter(
     tags=["event"],
@@ -74,7 +75,7 @@ def query_event(event_id: int,
         owner=owner,
     )
 
-    return db_first(stmt, *eager, EventDB.registrations, session=db)
+    return db_first(stmt, *eager, EventDB.clients, session=db)
 
 
 def create_event_dep(*eager, owner=False):
@@ -153,16 +154,8 @@ async def get_events(user: User = Depends(EventUserDep)):
 async def get_event(event_id: int,
                     user: User = Depends(CurrentUser),
                     db: AsyncSession = Depends(get_db)):
-    await EventDB.save_leaderboard(event_id, db)
-    await db.commit()
-
     event = await query_event(event_id,
                               user,
-                              EventDB.registrations,
-                              (EventDB.leaderboard, [
-                                  EventScoreDB.current_rank,
-                                  EventScoreDB.client
-                              ]),
                               db=db, owner=False)
 
     if event:
@@ -173,24 +166,46 @@ async def get_event(event_id: int,
         return BadRequest('Invalid event id')
 
 
-@router.get('/{event_id}/registrations/{client_id}', response_model=ResponseModel[EventScore])
+@router.get('/{event_id}/leaderboard', response_model=ResponseModel[Leaderboard])
+async def get_event(event_id: int,
+                    user: User = Depends(CurrentUser),
+                    db: AsyncSession = Depends(get_db)):
+    event = await query_event(event_id,
+                              user,
+                              (EventDB.entries, [
+                                  EventEntryDB.client,
+                                  EventEntryDB.init_balance
+                              ]),
+                              db=db, owner=False)
+
+    leaderboard = await event.get_leaderboard()
+
+    if event:
+        return OK(
+            result=leaderboard
+        )
+    else:
+        return BadRequest('Invalid event id')
+
+
+@router.get('/{event_id}/registrations/{client_id}', response_model=ResponseModel[EventEntry])
 async def get_event_registration(event_id: int,
                                  client_id: int,
                                  user: User = Depends(CurrentUser),
                                  db: AsyncSession = Depends(get_db)):
     score = await db_unique(
         add_event_filters(
-            select(EventScoreDB
+            select(EventEntryDB
                    ).filter_by(
                 client_id=client_id, event_id=event_id
             ), user=user, owner=False
         ),
-        (EventScoreDB.client, Client.history),
+        (EventEntryDB.client, Client.history),
         session=db
     )
 
     if score:
-        return OK(result=EventScore.from_orm(score))
+        return OK(result=EventEntry.from_orm(score))
     else:
         return BadRequest('Invalid event or client id. You might miss authorization')
 
@@ -213,14 +228,13 @@ class EventUpdate(BaseModel):
         return v
 
 
-owner_event = create_event_dep(EventDB.registrations, owner=True)
+owner_event = create_event_dep(EventDB.clients, owner=True)
 
 
 @router.patch('/{event_id}', response_model=ResponseModel[EventInfo])
 async def update_event(body: EventUpdate,
                        event: EventDB = Depends(owner_event),
                        db: AsyncSession = Depends(get_db)):
-
     # dark magic
     for key, value in body.dict(exclude_none=True).items():
         setattr(event, key, value)
@@ -263,12 +277,14 @@ async def register_event(client_id: int,
         session=db
     )
     if client_id:
-        result = await db.execute(
-            insert(EventScoreDB
-                   ).values(
-                event_id=event.id, client_id=client_id
+        try:
+            result = await db.execute(
+                insert(EventEntryDB).values(
+                    event_id=event.id, client_id=client_id
+                )
             )
-        )
+        except sqlalchemy.exc.IntegrityError:
+            return BadRequest('Already signed up')
         # db.add(
         #     EventScoreDB
         #     ()
@@ -295,7 +311,7 @@ async def unregister_event(client_id: int,
     )
     if client_id:
         result = await db.execute(
-            delete(EventScoreDB
+            delete(EventEntryDB
                    ).filter_by(
                 event_id=event.id, client_id=client_id
             )

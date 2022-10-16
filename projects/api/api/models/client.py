@@ -84,7 +84,7 @@ class ClientDetailed(ClientInfo):
     extra_kwargs: Optional[Dict]
 
     # Relations
-    trade_template: TemplateInfo
+    trade_template: Optional[TemplateInfo]
     events: Optional[list[EventInfo]]
 
 

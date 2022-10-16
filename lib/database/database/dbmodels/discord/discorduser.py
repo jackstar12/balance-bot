@@ -1,29 +1,22 @@
 from __future__ import annotations
 
-from typing import List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Optional
 
 import discord
+from aioredis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, backref
 
 import database.dbmodels.client as db_client
 from database.dbasync import async_session, db_select
-from database.dbmodels.user import OAuthAccount
+from database.dbmodels.user import OAuthAccount, OAuthData
 from core.utils import join_args
+from database.models.discord.guild import UserRequest
+from database.redis import rpc
 
 if TYPE_CHECKING:
     from database.dbmodels import Client, GuildAssociation
-
-
-def get_display_name(dc_client: discord.Client, member_id: int, guild_id: int):
-    try:
-        return dc_client.get_guild(guild_id).get_member(member_id).display_name
-    except AttributeError:
-        return None
-
-
-def get_client_display_name(dc: discord.Client, client: Client, guild_id: int):
-    return get_display_name(dc, int(client.user.discord_user.account_id), int(guild_id))
 
 
 class DiscordUser(OAuthAccount):
@@ -45,6 +38,20 @@ class DiscordUser(OAuthAccount):
         lazy='noload',
         cascade='all, delete'
     )
+
+    __mapper_args__ = {
+        "polymorphic_identity": "discord"
+    }
+
+    @hybrid_property
+    def discord_id(self):
+        return int(self.account_id)
+
+    def get_display_name(self, dc: discord.Client, guild_id: int):
+        try:
+            return dc.get_guild(guild_id).get_member(self.discord_id).display_name
+        except AttributeError:
+            return None
 
     async def get_guild_client(self, guild_id, *eager, db: AsyncSession):
         association = self.get_guild_association(guild_id)
@@ -79,7 +86,7 @@ class DiscordUser(OAuthAccount):
             for extra in client.extra_kwargs:
                 embed.add_field(name=extra, value=client.extra_kwargs[extra])
 
-        initial = await client.initial(async_session)
+        initial = await client.initial()
         if initial:
             embed.add_field(name='Initial Balance', value=initial.to_string())
 
@@ -107,3 +114,14 @@ class DiscordUser(OAuthAccount):
             f'_{dc.get_guild(association.guild_id).name}_'
             for association in self.global_associations if association.client_id == client_id
         )
+
+    async def populate_oauth_data(self, redis: Redis) -> Optional[OAuthData]:
+        client = rpc.Client('discord', redis)
+        try:
+            self.data = await client(
+                'user_info', UserRequest(user_id=self.account_id)
+            )
+        except rpc.Error:
+            pass
+
+        return self.data

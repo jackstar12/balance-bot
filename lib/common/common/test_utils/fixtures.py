@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 from common.test_utils.mockexchange import MockExchange
 from core import json as customjson
-from database.dbmodels import Event, Client, EventScore, Balance
+from database.dbmodels import Event, Client, EventEntry, Balance
 from database.dbmodels.trade import Trade
 from database.dbsync import Base
 from common.exchanges import EXCHANGES
@@ -66,9 +66,9 @@ def messenger(redis) -> Messenger:
     messenger = Messenger(redis=redis)
     messenger.listen_class_all(Event)
     messenger.listen_class_all(Client)
-    messenger.listen_class_all(EventScore)
     messenger.listen_class_all(Trade)
     messenger.listen_class_all(Balance)
+    messenger.listen_class_all(EventEntry)
     return messenger
 
 

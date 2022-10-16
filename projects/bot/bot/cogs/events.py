@@ -16,7 +16,7 @@ from bot.utils import create_complete_history, get_summary_embed, get_leaderboar
 from database import utils as dbutils
 from database.dbasync import db_all, db_select
 from database.dbasync import db_select_all
-from database.dbmodels import EventScore, Client
+from database.dbmodels import EventEntry, Client
 from database.dbmodels.discord.discorduser import DiscordUser
 from database.dbmodels.event import Event
 from database.dbmodels.event import EventState
@@ -92,11 +92,11 @@ class EventsCog(CogBase):
             Event.guild_id == str(ctx.guild_id),
             ~Event.is_expr(EventState.ARCHIVED),
             eager=[
-                (Event.leaderboard, [
-                    (EventScore.client, (
+                (Event.entries, [
+                    (EventEntry.client, (
                         Client.user, User.oauth_accounts
                     )),
-                    EventScore.init_balance
+                    EventEntry.init_balance
                 ])
             ]
         )
@@ -115,7 +115,7 @@ class EventsCog(CogBase):
     @classmethod
     async def join_event(cls, ctx, event: Event, client: Client, db: AsyncSession):
         await db.execute(
-            insert(EventScore).values(event_id=event.id, client_id=client.id)
+            insert(EventEntry).values(event_id=event.id, client_id=client.id)
         )
         await db.commit()
         await ctx.send(f'You are now registered for _{event.name}_!', hidden=True)
@@ -134,12 +134,12 @@ class EventsCog(CogBase):
         event = await dbutils.get_discord_event(guild_id=ctx.guild_id,
                                                 channel_id=ctx.channel_id,
                                                 state=EventState.REGISTRATION,
-                                                eager_loads=[Event.registrations])
+                                                eager_loads=[Event.clients])
 
         if event.is_(EventState.REGISTRATION):
 
-            for client in event.registrations:
-                if client.discord_user.account_id == ctx.author_id:
+            for client in event.clients:
+                if client.discord.account_id == ctx.author_id:
                     raise UserInputError('You are already registered for this event!')
 
             user = await dbutils.get_discord_user(ctx.author_id,
@@ -148,7 +148,7 @@ class EventsCog(CogBase):
                                                   db=db)
             global_client = await user.get_guild_client(ctx.guild_id, db=db)
             if global_client and False:
-                if global_client not in event.registrations:
+                if global_client not in event.clients:
                     await self.join_event(ctx, event, global_client, db)
                 else:
                     raise UserInputError('You are already registered for this event!')
@@ -193,7 +193,7 @@ class EventsCog(CogBase):
 
                 info = archive.db_event.get_discord_embed(
                     self.bot, registrations=False
-                ).add_field(name="Registrations", value=archive.registrations, inline=False)
+                ).add_field(name="Registrations", value=archive.clients, inline=False)
 
                 summary = discord.Embed(
                     title="Summary",
@@ -202,7 +202,7 @@ class EventsCog(CogBase):
 
                 leaderboard = discord.Embed(
                     title="Leaderboard :medal:",
-                    description=archive.leaderboard
+                    description=archive.registrations
                 )
 
                 await ctx.send(
@@ -240,9 +240,9 @@ class EventsCog(CogBase):
         event = await dbutils.get_discord_event(ctx.guild_id,
                                                 ctx.channel_id,
                                                 eager_loads=[
-                                                    (Event.leaderboard, [
-                                                        (EventScore.client, Client.user),
-                                                        EventScore.init_balance
+                                                    (Event.entries, [
+                                                        (EventEntry.client, Client.user),
+                                                        EventEntry.init_balance
                                                     ])
                                                 ])
         await ctx.defer()

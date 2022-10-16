@@ -238,7 +238,7 @@ async def on_member_leave(member: discord.Member):
 
 async def on_rekt_async(data: Dict):
     client = await async_session.get(Client, data.get('id'))
-    logging.info(f'Use {client.discord_user} is rekt')
+    logging.info(f'Use {client.discord} is rekt')
 
     message = random.Random().choice(seq=REKT_MESSAGES)
 

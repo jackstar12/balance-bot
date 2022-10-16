@@ -38,7 +38,7 @@ async def get_client_history(client: db_client.Client,
     ))
 
     if init_time and init_time != since:
-        initial = await client.get_balance_at_time(init_time, async_session)
+        initial = await client.get_balance_at_time(init_time)
 
     if not initial:
         try:
@@ -74,9 +74,9 @@ async def get_discord_client(user_id: int,
             event = await get_discord_event(guild_id,
                                             state=db_event.EventState.REGISTRATION if registration else db_event.EventState.ACTIVE,
                                             throw_exceptions=False,
-                                            eager_loads=[db_event.Event.registrations])
+                                            eager_loads=[db_event.Event.clients])
             if event:
-                for client in event.registrations:
+                for client in event.clients:
                     if client.discord_user_id == user_id:
                         return client
                 if throw_exceptions:
@@ -122,7 +122,8 @@ def get_discord_event(guild_id: int,
                       channel_id: int = None,
                       state: EventState = None,
                       throw_exceptions=True,
-                      eager_loads=None):
+                      eager_loads=None,
+                      db: AsyncSession = None):
     return get_event(
         {
             'platform': 'discord',
@@ -131,10 +132,11 @@ def get_discord_event(guild_id: int,
                 'channel_id': str(channel_id)
             }
         },
-        state=state, throw_exceptions=throw_exceptions, eager_loads=eager_loads
+        state=state,
+        throw_exceptions=throw_exceptions,
+        eager_loads=eager_loads,
+        db=db
     )
-
-
 
 
 def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: list[int] = None) -> Union[

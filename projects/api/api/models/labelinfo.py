@@ -1,11 +1,16 @@
-from database.models import BaseModel, OutputID, InputID
+from database.dbmodels import User
+from database.dbmodels.label import Label, Group, LabelGroup
+from database.models import BaseModel, OutputID, InputID, CreateableModel
 from database.models import OrmBaseModel
 
 
-class CreateLabel(BaseModel):
+class CreateLabel(CreateableModel):
     name: str
     color: str
     group_id: InputID
+
+    def get(self, user: User):
+        return Label(**self.dict())
 
 
 class LabelInfo(OrmBaseModel, CreateLabel):
@@ -13,11 +18,14 @@ class LabelInfo(OrmBaseModel, CreateLabel):
     group_id: OutputID
 
 
-class LabelGroupCreate(OrmBaseModel):
+class LabelGroupCreate(CreateableModel):
     name: str
 
+    def get(self, user: User):
+        return LabelGroup(name=self.name, labels=[], user_id=user.id)
 
-class LabelGroupInfo(LabelGroupCreate):
+
+class LabelGroupInfo(OrmBaseModel, LabelGroupCreate):
     id: OutputID
     labels: list[LabelInfo]
 

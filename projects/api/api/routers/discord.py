@@ -32,7 +32,7 @@ router = APIRouter(
 async def get_discord_info(user: User = Depends(CurrentUser),
                            db: AsyncSession = Depends(get_db),
                            dc_rpc: rpc.Client = Depends(get_dc_rpc_client)):
-    if not user.discord_user:
+    if not user.discord:
         return BadRequest('No discord account connected')
     try:
         data_by_id = groupby_unique(
@@ -43,7 +43,7 @@ async def get_discord_info(user: User = Depends(CurrentUser),
             lambda g: int(g['id'])
         )
 
-        discord_info = await user.discord_user.populate_oauth_data(dc_rpc.redis)
+        discord_info = await user.discord.populate_oauth_data(dc_rpc.redis)
     except rpc.TimeoutError:
         return InternalError('Discord data is currently not available')
 
@@ -61,7 +61,7 @@ async def get_discord_info(user: User = Depends(CurrentUser),
                 GuildModel.from_association(
                     data=data_by_id[guild.id],
                     guild=guild,
-                    association=await db.get(GuildAssociationDB, (user.discord_user.account_id, guild.id)),
+                    association=await db.get(GuildAssociationDB, (user.discord.account_id, guild.id)),
                 )
                 for guild in guilds
             ]
@@ -77,19 +77,19 @@ async def get_guild_info(guild_id: int,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db),
                          dc_rpc: rpc.Client = Depends(get_dc_rpc_client)):
-    if not user.discord_user:
+    if not user.discord:
         return BadRequest('No discord account connected')
 
     data = await dc_rpc(
         'guild',
-        GuildRequest(user_id=user.discord_user.account_id, guild_id=guild_id)
+        GuildRequest(user_id=user.discord.account_id, guild_id=guild_id)
     )
 
     GA = GuildAssociationDB
     association = await db_select(
         GA,
         GA.guild_id == data['id'],
-        GA.discord_user_id == user.discord_user.account_id,
+        GA.discord_user_id == user.discord.account_id,
         eager=[GuildAssociationDB.guild],
         session=db,
     )
@@ -109,12 +109,12 @@ async def update_guild(guild_id: int,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db),
                        dc_rpc: rpc.Client = Depends(get_dc_rpc_client)):
-    if not user.discord_user:
+    if not user.discord:
         return BadRequest('No discord account connected')
     try:
         data = await dc_rpc.call(
             'guild',
-            GuildRequest(user_id=user.discord_user.account_id, guild_id=guild_id)
+            GuildRequest(user_id=user.discord.account_id, guild_id=guild_id)
         )
     except rpc.BadRequest:
         return BadRequest('Invalid guild id')
@@ -131,7 +131,7 @@ async def update_guild(guild_id: int,
             insertpg(GuildAssociationDB).values(
                 guild_id=int(data['id']),
                 client_id=client.id,
-                discord_user_id=user.discord_user.account_id
+                discord_user_id=user.discord.account_id
             ).on_conflict_do_update(
                 index_elements=[GuildAssociationDB.guild_id, GuildAssociationDB.discord_user_id],
                 set_={

@@ -127,7 +127,6 @@ def transfer_gen(transfers: list[Transfer],
 async def calc_gains(clients: List[Client],
                      event: Event,
                      search: datetime,
-                     db: AsyncSession,
                      currency: str = None) -> dict[Client, Gain]:
     """
     :param event:
@@ -137,6 +136,6 @@ async def calc_gains(clients: List[Client],
     :return:
     """
     return {
-        client: await client.calc_gain(event, search, db=db, currency=currency)
+        client: await client.calc_gain(event, search, currency=currency)
         for client in clients
     }

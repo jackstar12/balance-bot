@@ -33,7 +33,7 @@ size = Decimal('0.01')
 async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger, redis):
     db_client: Client
 
-    prev_balance = await db_client.get_latest_balance(redis, db=db)
+    prev_balance = await db_client.get_latest_balance(redis)
 
     async with Messages.create(
             Channel(TableNames.TRADE, Category.NEW),
@@ -45,7 +45,7 @@ async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger
 
     await asyncio.sleep(2.5)
 
-    first_balance = await db_client.get_latest_balance(redis, db=db)
+    first_balance = await db_client.get_latest_balance(redis)
 
     assert prev_balance.realized != first_balance.realized
 
@@ -57,7 +57,7 @@ async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger
         ccxt_client.create_market_sell_order(symbol, float(size / 2))
         await listener.wait(15)
 
-    second_balance = await db_client.get_latest_balance(redis, db=db)
+    second_balance = await db_client.get_latest_balance(redis)
     assert first_balance.realized != second_balance.realized
 
     async with Messages.create(
