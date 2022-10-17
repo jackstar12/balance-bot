@@ -57,8 +57,7 @@ class _BalanceServiceBase(BaseService):
                 ~Client.state.in_([ClientState.ARCHIVED, ClientState.INVALID])
             ),
             Client.currently_realized,
-            (Client.open_trades, [Trade.max_pnl, Trade.min_pnl]),
-            (Client.journals, Journal.current_chapter)
+            (Client.open_trades, [Trade.max_pnl, Trade.min_pnl, Trade.init_balance]),
         )
         self._active_client_stmt = self._all_client_stmt.join(
             Trade,

@@ -55,7 +55,7 @@ class Trade(Base, Serializer, CurrencyMixin):
     init_balance_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=False)
     init_balance = relationship(
         'Balance',
-        lazy='noload',
+        lazy='raise',
         foreign_keys=init_balance_id,
         uselist=False
     )
@@ -387,7 +387,7 @@ class Trade(Base, Serializer, CurrencyMixin):
         :param db: database session
         :return:
         """
-        if self.executions[-1].time < date:
+        if self.executions[-1].time > date:
             self.__realtime__ = False
             await db.delete(self)
 
@@ -441,7 +441,8 @@ class Trade(Base, Serializer, CurrencyMixin):
             inverse=execution.inverse,
             settle=execution.settle,
             client_id=client_id,
-            init_balance=current_balance
+            init_balance=current_balance,
+            realized_pnl=0
         )
         execution.trade = trade
 

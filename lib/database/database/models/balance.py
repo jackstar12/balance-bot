@@ -18,7 +18,7 @@ class AmountBase(OrmBaseModel):
 
     def gain_since(self, other: 'AmountBase', offset: Decimal) -> Gain:
         self._assert_equal(other)
-        gain = (self.realized - other.realized) - (offset or 0)
+        gain = (self.unrealized - other.realized) - (offset or 0)
         return Gain.construct(
             absolute=gain,
             relative=calc_percentage_diff(other.realized, gain)

@@ -610,11 +610,7 @@ class ExchangeWorker:
 
                 stmt = select(Trade).where(
                     Trade.symbol == execution.symbol,
-                    Trade.client_id == self.client_id,
-                    Trade.init_balance
-                ).options(
-                    selectinload(Trade.executions),
-                    joinedload(Trade.initial),
+                    Trade.client_id == self.client_id
                 )
 
                 # The distiunguashion here is pretty important because Liquidation Execs can happen
@@ -629,8 +625,11 @@ class ExchangeWorker:
                         desc(Trade.open_time)
                     )
 
-                active_trade = await db_unique(stmt, session=db)
-
+                active_trade = await db_unique(stmt,
+                                               Trade.executions,
+                                               Trade.init_balance,
+                                               Trade.initial,
+                                               session=db)
 
                 if active_trade:
                     # Update existing trade

@@ -223,7 +223,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         balance_now = await self.get_latest_balance(redis=redis)
 
         if balance_then and balance_now:
-            transfered = await self.get_total_transfered(since=since, ccy=currency)
+            transfered = await self.get_total_transfered(since=balance_then.time, ccy=currency)
             return balance_now.get_currency(currency).gain_since(
                 balance_then.get_currency(currency),
                 transfered

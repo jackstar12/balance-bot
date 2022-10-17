@@ -483,24 +483,24 @@ async def get_leaderboard_embed(event: dbmodels.Event,
     grouped = groupby(leaderboard.valid, key=lambda score: score.rekt_on is None)
 
     live = grouped.get(True, [])
-    for current in live:
-        name = await display_name(current)
+    for entry in live:
+        name = await display_name(entry)
         if name:
-            value = current.gain.to_string(event.currency)
-            description += f'{current.current.rank}. **{name}** {value}\n'
+            value = entry.current.gain.to_string(event.currency)
+            description += f'{entry.current.rank}. **{name}** {value}\n'
 
     rekt = grouped.get(False)
     if rekt:
         description += f'\n**Rekt**\n'
-        for current in rekt:
-            name = await display_name(current)
+        for entry in rekt:
+            name = await display_name(entry)
             if name:
-                description += f'{name} since {current.rekt_on.replace(microsecond=0)}\n'
+                description += f'{name} since {entry.rekt_on.replace(microsecond=0)}\n'
 
     if leaderboard.unknown:
         description += f'\n**Missing**\n'
-        for current in leaderboard.unknown:
-            name = await display_name(current)
+        for entry in leaderboard.unknown:
+            name = await display_name(entry)
             if name:
                 description += f'{name}\n'
 
