@@ -183,7 +183,10 @@ def combine_time_series(*time_series: typing.Iterable):
     )
 
 
-def prev_now_next(iterable, skip: Callable = None):
+T = typing.TypeVar('T')
+
+
+def prev_now_next(iterable: typing.Iterable[T], skip: Callable = None):
     i = iter(iterable)
     prev = None
     now = next(i, None)
@@ -200,7 +203,7 @@ def join_args(*args, denominator=':'):
     return denominator.join([str(arg.value if isinstance(arg, Enum) else arg) for arg in args if arg])
 
 
-T = typing.TypeVar('T')
+
 
 
 def safe_cmp_default(fnc: Callable[[T, T], T], a: T, b: T):

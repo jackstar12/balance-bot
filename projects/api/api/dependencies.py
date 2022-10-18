@@ -81,6 +81,8 @@ class CurrentUserDep:
         return user
 
 
+
+
 CurrentUser = CurrentUserDep()
 
 

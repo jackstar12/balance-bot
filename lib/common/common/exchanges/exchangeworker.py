@@ -373,81 +373,9 @@ class ExchangeWorker:
 
             await db.flush()
 
-            # Start Balance:
-            # 11.4. 100
-            # Executions
-            # 10.4. +10
-            # 8.4.  -20
-            # 7.4.  NONE <- required because otherwise the last ones won't be accurate
-            # PnlData
-            # 9.4. 5U
-            # New Balances
-            # 10.4. 100
-            # 8.4. 90
-            # 7.4. 110
-
-            current_balance = await self._update_realized_balance(db)
-
-            transfer_iter = reversed(transfers)
-            misc_iter = reversed(misc)
-
-            current_transfer = next(transfer_iter, None)
-            current_misc = next(misc_iter, None)
-
-            balances = []
-
-            # Note that we iterate through the executions reversed because we have to reconstruct
-            # the history from the only known point (which is the present)
-            for prev_balance, execution, next_exec in core.prev_now_next(reversed(all_executions)):
-
-                new_balance = db_balance.Balance(
-                    realized=current_balance.realized,
-                    unrealized=current_balance.unrealized,
-                    time=execution.time,
-                    client=self.client
-                )
-                new_balance.__realtime__ = False
-
-                while current_transfer and execution.time <= current_transfer.time:
-                    new_balance.realized -= current_transfer.amount
-                    current_transfer = next(transfer_iter, None)
-
-                while current_misc and execution.time <= current_misc.time:
-                    new_balance.realized -= current_misc.amount
-                    current_misc = next(misc_iter, None)
-
-                if prev_balance:
-                    if prev_balance.realized_pnl:
-                        new_balance.realized -= prev_balance.realized_pnl
-                    if prev_balance.commission:
-                        new_balance.realized += prev_balance.commission
-
-                    # Unrealized will be set later
-                    new_balance.unrealized = new_balance.realized
-
-                # Don't bother adding multiple balances for executions happening as a direct series of events
-                if not prev_balance or prev_balance.time != execution.time:
-                    balances.append(new_balance)
-                current_balance = new_balance
-
-            if all_executions:
-                first_execution = all_executions[0]
-                balances.append(
-                    db_balance.Balance(
-                        realized=current_balance.realized + (first_execution.commission or 0),
-                        unrealized=current_balance.unrealized + (first_execution.commission or 0),
-                        time=first_execution.time - timedelta(seconds=1),
-                        client=self.client
-                    )
-                )
-
-            db.add_all(balances)
-            db.add_all(transfers)
-            await db.flush()
-
             def get_time(b: Balance): return b.time
 
-            balance_by_time = core.groupby_unique(balances, get_time)
+            current_balance = await self._update_realized_balance(db)
 
             if executions_by_symbol:
                 for symbol, executions in executions_by_symbol.items():
@@ -492,15 +420,34 @@ class ExchangeWorker:
                             if isinstance(item, Execution):
                                 current_trade = await self._add_executions(db,
                                                                            [item],
-                                                                           realtime=False,
-                                                                           current_balance=balance_by_time[item.time])
+                                                                           realtime=False)
                             elif isinstance(item, OHLC) and current_trade:
                                 current_trade.update_pnl(
                                     current_trade.calc_upnl(item.open),
                                     now=item.time,
                                 )
-                        await db.flush()
                         to_exec = next(exec_iter, None)
+
+            # Start Balance:
+            # 11.4. 100
+            # Executions
+            # 10.4. +10
+            # 8.4.  -20
+            # 7.4.  NONE <- required because otherwise the last ones won't be accurate
+            # PnlData
+            # 9.4. 5U
+            # New Balances
+            # 10.4. 100
+            # 8.4. 90
+            # 7.4. 110
+
+            transfer_iter = reversed(transfers)
+            misc_iter = reversed(misc)
+
+            current_transfer = next(transfer_iter, None)
+            current_misc = next(misc_iter, None)
+
+            balances = []
 
             pnl_data = await db_all(
                 select(PnlData).filter(
@@ -510,11 +457,32 @@ class ExchangeWorker:
                 ),
                 session=db
             )
+
             pnl_iter = iter(pnl_data)
             cur_pnl = next(pnl_iter, None)
 
-            # Afterwards the pnl data has been fetched, update the unrealized field of the balances
+            # Note that we iterate through the executions reversed because we have to reconstruct
+            # the history from the only known point (which is the present)
             for prev_exec, execution, next_exec in core.prev_now_next(reversed(all_executions)):
+                execution: Execution
+                prev_exec: Execution
+                next_exec: Execution
+
+                new_balance = db_balance.Balance(
+                    realized=current_balance.realized,
+                    unrealized=current_balance.unrealized,
+                    time=execution.time,
+                    client=self.client
+                )
+                new_balance.__realtime__ = False
+
+                while current_transfer and execution.time <= current_transfer.time:
+                    new_balance.realized -= current_transfer.amount
+                    current_transfer = next(transfer_iter, None)
+
+                while current_misc and execution.time <= current_misc.time:
+                    new_balance.realized -= current_misc.amount
+                    current_misc = next(misc_iter, None)
 
                 pnl_by_trade = {}
 
@@ -524,16 +492,44 @@ class ExchangeWorker:
                         if cur_pnl.time < execution.time and cur_pnl.trade_id not in pnl_by_trade:
                             pnl_by_trade[cur_pnl.trade_id] = cur_pnl
                         cur_pnl = next(pnl_iter, None)
-                current_balance = balance_by_time[execution.time]
 
-                current_balance.unrealized = current_balance.realized + sum(
-                    # Note that when upnl of the current execution is included the rpnl that was realized
-                    # can't be included anymore
-                    pnl_data.unrealized
-                    if tr_id != execution.trade_id
-                    else pnl_data.unrealized - (execution.realized_pnl or 0)
-                    for tr_id, pnl_data in pnl_by_trade.items()
+                if prev_exec:
+                    if prev_exec.realized_pnl:
+                        new_balance.realized -= prev_exec.realized_pnl
+                    if prev_exec.commission:
+                        new_balance.realized += prev_exec.commission
+
+                    current_balance.unrealized = current_balance.realized + sum(
+                        # Note that when upnl of the current execution is included the rpnl that was realized
+                        # can't be included anymore
+                        pnl_data.unrealized
+                        if tr_id != execution.trade_id
+                        else pnl_data.unrealized - (execution.realized_pnl or 0)
+                        for tr_id, pnl_data in pnl_by_trade.items()
+                    )
+
+                if execution.trade.initial_execution_id == execution.id:
+                    execution.trade.init_balance = new_balance
+
+                # Don't bother adding multiple balances for executions happening as a direct series of events
+                if not prev_exec or prev_exec.time != execution.time:
+                    balances.append(new_balance)
+                current_balance = new_balance
+
+            if all_executions:
+                first_execution = all_executions[0]
+                balances.append(
+                    db_balance.Balance(
+                        realized=current_balance.realized + (first_execution.commission or 0),
+                        unrealized=current_balance.unrealized + (first_execution.commission or 0),
+                        time=first_execution.time - timedelta(seconds=1),
+                        client=self.client
+                    )
                 )
+
+            db.add_all(balances)
+            db.add_all(transfers)
+            await db.flush()
 
             client.last_execution_sync = client.last_transfer_sync = core.utc_now()
             client.state = ClientState.OK
@@ -560,7 +556,6 @@ class ExchangeWorker:
             client = await self.get_client(db)
             client.currently_realized = balance
             db.add(balance)
-            await db.flush()
             return balance
 
     async def _on_execution(self, execution: Execution):
@@ -590,13 +585,10 @@ class ExchangeWorker:
                               executions: list[Execution],
                               realtime=True,
                               current_balance: Balance = None):
-        if realtime:
+        if not current_balance:
             client = await self.get_client(db)
             current_balance = client.currently_realized
-        elif not current_balance:
-            raise ValueError('Current balance if required if realtime is set to False')
 
-        publish = []
         if executions:
             active_trade: Optional[Trade] = None
             if realtime:
@@ -647,7 +639,6 @@ class ExchangeWorker:
                     active_trade = Trade.from_execution(execution, self.client_id, current_balance)
                     active_trade.__realtime__ = realtime
                     db.add(active_trade)
-                await db.flush()
             return active_trade
 
     def pub_trade(self, category: Category, trade: Trade):
@@ -894,7 +885,7 @@ class ExchangeWorker:
             if self.client_id:
                 async with self.db_maker() as db:
                     await db.execute(
-                        update(Client).where(Client.id == self.client_id).values(invalid=True)
+                        update(Client).where(Client.id == self.client_id).values(state=ClientState.INVALID)
                     )
             raise
 

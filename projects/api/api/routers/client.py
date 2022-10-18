@@ -122,6 +122,7 @@ async def confirm_client(body: ClientConfirm,
     return ClientInfo.from_orm(client)
 
 
+
 OverviewCache = client_utils.ClientCacheDependency(
     ClientCacheKeys.OVERVIEW,
     ClientOverviewCache
@@ -344,12 +345,12 @@ async def get_client(client_id: int,
         return NotFound('Invalid id')
 
 
-@router.delete('/client/{id}')
-async def delete_client(id: int,
+@router.delete('/client/{client_id}')
+async def delete_client(client_id: int,
                         user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        add_client_filters(delete(Client), user, {id}),
+        add_client_filters(delete(Client), user, {client_id}),
     )
     await db.commit()
     if result.rowcount == 1:
@@ -358,7 +359,7 @@ async def delete_client(id: int,
         return NotFound(detail='Invalid ID')
 
 
-@router.patch('/client/{client_id}', response_model=ClientDetailed)
+@router.patch('/client/{client_id}/clear', response_model=ClientDetailed)
 async def update_client(client_id: int, body: ClientEdit,
                         user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):

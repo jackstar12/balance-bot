@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
 
 import pytz
+import sqlalchemy.exc
 from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -63,7 +64,7 @@ class Trade(Base, Serializer, CurrencyMixin):
     max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
     max_pnl: Optional[PnlData] = relationship(
         'PnlData',
-        lazy='noload',
+        lazy='raise',
         foreign_keys=max_pnl_id,
         post_update=True
     )
@@ -84,18 +85,16 @@ class Trade(Base, Serializer, CurrencyMixin):
     executions: list[Execution] = relationship('Execution',
                                                foreign_keys='[Execution.trade_id]',
                                                back_populates='trade',
-                                               lazy='noload',
-                                               cascade='all, delete',
+                                               lazy='raise',
                                                order_by="Execution.time")
 
     pnl_data: list[PnlData] = relationship('PnlData',
-                                           lazy='noload',
-                                           cascade="all, delete",
+                                           lazy='raise',
                                            back_populates='trade',
                                            foreign_keys="PnlData.trade_id",
                                            order_by="PnlData.time")
 
-    initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete="SET NULL"), nullable=True)
+    initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete='SET NULL'), nullable=True)
     initial: Execution = relationship(
         'Execution',
         lazy='joined',
@@ -135,7 +134,10 @@ class Trade(Base, Serializer, CurrencyMixin):
     @orm.reconstructor
     def init_on_load(self):
         self.live_pnl: Optional[PnlData] = None
-        self.latest_pnl: PnlData = core.list_last(self.pnl_data, None)
+        try:
+            self.latest_pnl: PnlData = core.list_last(self.pnl_data, None)
+        except sqlalchemy.exc.InvalidRequestError:
+            self.latest_pnl = None
 
     def __init__(self, upnl: Decimal = None, *args, **kwargs):
         self.live_pnl: PnlData = PnlData(
@@ -300,7 +302,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                 not self.latest_pnl
                 or force
                 or self.max_pnl.total == self.min_pnl.total
-                or abs((live - self.latest_pnl.total) / self.init_balance.realized) > Decimal(.2)
+                or abs((live - self.latest_pnl.total) / self.size) > Decimal(.2)
         ):
             object_session(self).add(self.live_pnl)
             self.latest_pnl = self.live_pnl
@@ -387,9 +389,11 @@ class Trade(Base, Serializer, CurrencyMixin):
         :param db: database session
         :return:
         """
-        if self.executions[-1].time > date:
+        if not self.executions or self.close_time > date:
             self.__realtime__ = False
-            await db.delete(self)
+            await db.execute(
+                delete(Trade).where(Trade.id == self.id)
+            )
 
             if date > self.open_time:
                 # First, create a new copy based on the same initial execution

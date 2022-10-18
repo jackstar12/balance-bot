@@ -52,16 +52,21 @@ def user_info(request: UserRequest):
 
 @redis_server.method(input_model=UserRequest)
 def guilds(request: UserRequest):
-    return jsonable_encoder([
-        GuildData(
-            id=guild.id,
-            name=guild.name,
-            icon_url=str(guild.icon_url),
-            text_channels=guild.text_channels,
-            is_admin=guild.get_member(request.user_id).guild_permissions.administrator
+    guild: discord.Guild
+    member: discord.Member
+    res = []
+    for guild in bot.get_user(request.user_id).mutual_guilds:
+        member = guild.get_member(request.user_id)
+        res.append(
+            GuildData(
+                id=guild.id,
+                name=guild.name,
+                icon_url=str(guild.icon_url),
+                text_channels=guild.text_channels,
+                is_admin=member.guild_permissions.administrator
+            )
         )
-        for guild in bot.get_user(request.user_id).mutual_guilds
-    ])
+    return jsonable_encoder(res)
 
 
 async def send_dm(self, user_id: int, message: str, embed: discord.Embed = None):
