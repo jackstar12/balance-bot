@@ -40,25 +40,6 @@ if TYPE_CHECKING:
     from database.dbmodels.client import Client
 
 
-class Stat(OrmBaseModel):
-    best: UUID
-    worst: UUID
-
-    @classmethod
-    def from_sorted(cls, sorted_clients: list[EventEntry]):
-        return cls(
-            best=sorted_clients[0].client.user_id,
-            worst=sorted_clients[-1].client.user_id,
-        )
-
-
-class Summary(OrmBaseModel):
-    gain: Stat
-    stakes: Stat
-    volatility: Stat
-    avg_percent: Decimal
-    total: Decimal
-
 
 Location = LocationModel.get_sa_type()
 
@@ -315,12 +296,12 @@ class Event(Base, Serializer):
 
         return embed
 
-    async def get_summary(self) -> Summary:
+    async def get_summary(self) -> eventmodels.Summary:
 
         leaderboard = await self.get_leaderboard()
 
-        gain = Stat.from_sorted(leaderboard.valid)
-        stakes = Stat.from_sorted(sorted(leaderboard, key=lambda x: x.init_balance.realized, reverse=True))
+        gain = eventmodels.Stat.from_sorted(leaderboard.valid)
+        stakes = eventmodels.Stat.from_sorted(sorted(leaderboard, key=lambda x: x.init_balance.realized, reverse=True))
 
         async def vola(client: Client):
             history = await get_client_history(client, self.start, self.start, self.end)
@@ -335,7 +316,7 @@ class Event(Base, Serializer):
         ]
         client_vola.sort(key=lambda x: x[1], reverse=True)
 
-        volatili = Stat(
+        volatili = eventmodels.Stat(
             best=client_vola[0][0].user_id,
             worst=client_vola[-1][0].user_id,
         )
@@ -348,7 +329,7 @@ class Event(Base, Serializer):
 
         cum_percent /= len(self.entries) or 1  # Avoid division by zero
 
-        return Summary(
+        return eventmodels.Summary(
             gain=gain, stakes=stakes, volatility=volatili, avg_percent=cum_percent, total=cum_dollar
         )
 

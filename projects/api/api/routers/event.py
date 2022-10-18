@@ -181,9 +181,27 @@ async def get_event(event_id: int,
     leaderboard = await event.get_leaderboard()
 
     if event:
-        return OK(
-            result=leaderboard
-        )
+        return OK(result=leaderboard)
+    else:
+        return BadRequest('Invalid event id')
+
+
+@router.get('/{event_id}/summary', response_model=ResponseModel[Leaderboard])
+async def get_summary(event_id: int,
+                      user: User = Depends(CurrentUser),
+                      db: AsyncSession = Depends(get_db)):
+    event = await query_event(event_id,
+                              user,
+                              (EventDB.entries, [
+                                  EventEntryDB.client,
+                                  EventEntryDB.init_balance
+                              ]),
+                              db=db, owner=False)
+
+    leaderboard = await event.get_summary()
+
+    if event:
+        return OK(result=leaderboard)
     else:
         return BadRequest('Invalid event id')
 

@@ -114,6 +114,26 @@ class EventDetailed(EventInfo):
     # leaderboard
 
 
+class Stat(OrmBaseModel):
+    best: UUID
+    worst: UUID
+
+    @classmethod
+    def from_sorted(cls, sorted_clients: list[EventEntry]):
+        return cls(
+            best=sorted_clients[0].client.user_id,
+            worst=sorted_clients[-1].client.user_id,
+        )
+
+
+class Summary(OrmBaseModel):
+    gain: Stat
+    stakes: Stat
+    volatility: Stat
+    avg_percent: Decimal
+    total: Decimal
+
+
 class Leaderboard(BaseModel):
     valid: list[EventEntry]
     unknown: list[EventEntry]
