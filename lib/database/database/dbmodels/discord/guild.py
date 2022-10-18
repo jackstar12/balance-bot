@@ -19,7 +19,7 @@ class Guild(Base, Serializer):
                           lazy='raise',
                           backref=backref('guild', lazy='raise'),
                           viewonly=True,
-                          primaryjoin='Guild.id == foreign(Event.guild_id.astext.cast(BigInteger))')
+                          primaryjoin='Guild.id == foreign(Event.guild_id)')
 
     users = relationship('DiscordUser',
                          secondary='guild_association',

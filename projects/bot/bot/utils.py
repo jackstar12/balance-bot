@@ -325,7 +325,6 @@ async def get_summary_embed(event: dbmodels.Event, dc_client: discord.Client):
         ('Still HODLing :sleeping:', summary.volatility.worst),
     ]:
         user: User = await async_session.get(User, user_id)
-        member_id = int(user.discord.account_id)
         embed.add_field(name=name, value=user.discord.get_display_name(dc_client, event.guild_id), inline=False)
 
     description += f'\nIn total you {"made" if summary.total >= 0.0 else "lost"} {round(summary.total, ndigits=3)}$' \

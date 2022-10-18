@@ -12,6 +12,7 @@ from pydantic import Field, condecimal
 from core import safe_cmp_default, safe_cmp
 from database import dbmodels
 from database.models import OrmBaseModel, BaseModel, OutputID, CreateableModel
+from database.models.balance import Balance
 from database.models.document import DocumentModel
 from database.models.gain import Gain
 
@@ -99,6 +100,7 @@ class EventEntry(OrmBaseModel):
     client_id: OutputID
     current: Optional[EventScore]
     rekt_on: Optional[datetime]
+    init_balance: Optional[Balance]
 
     def __gt__(self, other):
         return safe_cmp(operator.gt, self.current, other.current) or safe_cmp(operator.gt, self.rekt_on, other.rekt_on)
@@ -121,8 +123,8 @@ class Stat(OrmBaseModel):
     @classmethod
     def from_sorted(cls, sorted_clients: list[EventEntry]):
         return cls(
-            best=sorted_clients[0].client.user_id,
-            worst=sorted_clients[-1].client.user_id,
+            best=sorted_clients[0].user_id,
+            worst=sorted_clients[-1].user_id,
         )
 
 

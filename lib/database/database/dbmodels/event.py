@@ -33,7 +33,7 @@ from database.dbsync import Base
 from database.models.eventinfo import EventState, LocationModel
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
-    select, insert, literal, and_, update, Numeric
+    select, insert, literal, and_, update, Numeric, BigInteger
 
 if TYPE_CHECKING:
     from database.dbmodels.user import User
@@ -250,19 +250,19 @@ class Event(Base, Serializer):
 
     @hybrid_property
     def guild_id(self):
-        return self.location.data['guild_id']
+        return int(self.location.data['guild_id'])
 
     @guild_id.expression
     def guild_id(self):
-        return self.location['data']['guild_id']
+        return self.location['data']['guild_id'].astext.cast(BigInteger)
 
     @hybrid_property
     def channel_id(self):
-        return self.location.data['channel_id']
+        return int(self.location.data['channel_id'])
 
     @channel_id.expression
     def channel_id(self):
-        return self.location['data']['channel_id']
+        return self.location['data']['channel_id'].astext.cast(BigInteger)
 
     @hybrid_property
     def is_active(self):
@@ -301,7 +301,10 @@ class Event(Base, Serializer):
         leaderboard = await self.get_leaderboard()
 
         gain = eventmodels.Stat.from_sorted(leaderboard.valid)
-        stakes = eventmodels.Stat.from_sorted(sorted(leaderboard, key=lambda x: x.init_balance.realized, reverse=True))
+        def init(self: eventmodels.EventEntry):
+            return self.init_balance.realized if self.init_balance else None
+
+        stakes = eventmodels.Stat.from_sorted(sorted(leaderboard.valid, key=init, reverse=True))
 
         async def vola(client: Client):
             history = await get_client_history(client, self.start, self.start, self.end)
