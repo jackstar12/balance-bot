@@ -58,6 +58,7 @@ class Trade(Base, Serializer, CurrencyMixin):
         'Balance',
         lazy='raise',
         foreign_keys=init_balance_id,
+        passive_deletes=True,
         uselist=False
     )
 
@@ -66,6 +67,7 @@ class Trade(Base, Serializer, CurrencyMixin):
         'PnlData',
         lazy='raise',
         foreign_keys=max_pnl_id,
+        passive_deletes=True,
         post_update=True
     )
 
@@ -74,6 +76,7 @@ class Trade(Base, Serializer, CurrencyMixin):
         'PnlData',
         lazy='noload',
         foreign_keys=min_pnl_id,
+        passive_deletes=True,
         post_update=True
     )
 
@@ -86,12 +89,14 @@ class Trade(Base, Serializer, CurrencyMixin):
                                                foreign_keys='[Execution.trade_id]',
                                                back_populates='trade',
                                                lazy='raise',
+                                               passive_deletes=True,
                                                order_by="Execution.time")
 
     pnl_data: list[PnlData] = relationship('PnlData',
                                            lazy='raise',
                                            back_populates='trade',
                                            foreign_keys="PnlData.trade_id",
+                                           passive_deletes=True,
                                            order_by="PnlData.time")
 
     initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete='SET NULL'), nullable=True)
@@ -100,6 +105,7 @@ class Trade(Base, Serializer, CurrencyMixin):
         lazy='joined',
         foreign_keys=initial_execution_id,
         post_update=True,
+        passive_deletes=True,
         primaryjoin='Execution.id == Trade.initial_execution_id'
     )
 
