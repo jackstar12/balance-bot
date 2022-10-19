@@ -197,22 +197,12 @@ class EventsCog(CogBase):
                     self.bot, registrations=False
                 ).add_field(name="Registrations", value=archive.clients, inline=False)
 
-                get_summary_embed()
-
-                summary = discord.Embed(
-                    title="Summary",
-                    description=archive.summary,
-                ).set_image(url='attachment://history.png')
-
-                leaderboard = discord.Embed(
-                    title="Leaderboard :medal:",
-                    description=archive.registrations
-                )
+                summary = await get_summary_embed(event, self.bot)
 
                 await ctx.send(
                     content=f'Archived results for {archive.db_event.name}',
                     embeds=[
-                        info, leaderboard, summary
+                        info, await event.get_leaderboard(), summary.set_image(url='attachment://history.png')
                     ],
                     file=history
                 )

@@ -469,13 +469,12 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
 async def get_leaderboard_embed(event: dbmodels.Event,
                                 guild: discord.Guild,
-                                leaderboard: Leaderboard,
-                                db: AsyncSession):
+                                leaderboard: Leaderboard):
     footer = ''
     description = ''
 
     async def display_name(score: EventEntry):
-        user = await db.get(dbmodels.User, score.user_id)
+        user = await event.async_session.get(dbmodels.User, score.user_id)
         member = guild.get_member(int(user.discord.account_id))
         return member.display_name if member else None
 
@@ -536,7 +535,7 @@ async def get_leaderboard(dc_client: discord.Client,
 
     leaderboard = await event.get_leaderboard(since)
 
-    return await get_leaderboard_embed(event, guild, leaderboard, db=async_session)
+    return await get_leaderboard_embed(event, guild, leaderboard)
 
 
 def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[datetime]:
