@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot import config
 from bot import utils
 from bot.cogs.cogbase import CogBase
-from bot.utils import create_complete_history, get_summary_embed, get_leaderboard
+from bot.utils import create_complete_history, get_summary_embed, get_leaderboard, get_leaderboard_embed
 from database import utils as dbutils
 from database.dbasync import db_all, db_select
 from database.dbasync import db_select_all
@@ -51,7 +51,9 @@ class EventsCog(CogBase):
     async def _event_end(self, event: Event):
         await self._get_channel(event).send(
             content=f'Event **{event.name}** just ended! Final standings:',
-            embed=await get_leaderboard(self.bot, event.guild_id, event.channel_id, since=event.start)
+            embed=await get_leaderboard_embed(
+                event, self.bot.get_guild(event.guild_id), leaderboard=await event.get_leaderboard()
+            )
         )
 
         complete_history = await create_complete_history(self.bot, event)
@@ -75,8 +77,8 @@ class EventsCog(CogBase):
                                     Event.id == data['id'])
             if event:
                 return await coro(event)
-        return wrapper
 
+        return wrapper
 
     @cog_ext.cog_subcommand(
         base='event',
@@ -89,16 +91,16 @@ class EventsCog(CogBase):
 
         events = await db_select_all(
             Event,
-            Event.guild_id == str(ctx.guild_id),
+            Event.guild_id == ctx.guild_id,
             ~Event.is_expr(EventState.ARCHIVED),
-            eager=[
-                (Event.entries, [
+            eager=[(
+                Event.entries, [
                     (EventEntry.client, (
                         Client.user, User.oauth_accounts
                     )),
                     EventEntry.init_balance
-                ])
-            ]
+                ]
+            )]
         )
 
         if len(events) == 0:
@@ -194,6 +196,8 @@ class EventsCog(CogBase):
                 info = archive.db_event.get_discord_embed(
                     self.bot, registrations=False
                 ).add_field(name="Registrations", value=archive.clients, inline=False)
+
+                get_summary_embed()
 
                 summary = discord.Embed(
                     title="Summary",

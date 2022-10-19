@@ -46,9 +46,12 @@ class FtxWorker(ExchangeWorker):
                 'FTX-SUBACCOUNT': self._subaccount
             }
 
-    async def _connect(self):
+    async def startup(self):
         await self.ws.connect()
         await self.ws.get_fills()
+
+    async def cleanup(self):
+        await self.ws.close()
 
     async def _on_message(self, message):
         logging.info(f'FTX MESSAGE! {message}')

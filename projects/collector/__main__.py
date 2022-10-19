@@ -26,20 +26,13 @@ async def run_service(service: BaseService):
 async def run(session: aiohttp.ClientSession):
     setup_logger(debug=True)
 
-    messenger = Messenger(redis)
-
-    messenger.listen_class_all(BALANCE.table, namespace=BALANCE)
-    messenger.listen_class_all(CLIENT.table, namespace=CLIENT)
-    messenger.listen_class_all(EVENT.table, namespace=EVENT)
-    messenger.listen_class_all(TRADE.table, namespace=TRADE)
-
     scheduler = AsyncIOScheduler(
         executors={
             'default': AsyncIOExecutor()
         }
     )
 
-    service_args = (session, messenger, redis, scheduler, async_maker)
+    service_args = (session, redis, scheduler, async_maker)
 
     data_service = DataService(*service_args)
     alert_service = AlertService(*service_args, data_service=data_service)

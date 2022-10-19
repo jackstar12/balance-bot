@@ -9,6 +9,7 @@ from sqlalchemy.sql import Select, Delete, Update
 
 import database.dbmodels.client as db_client
 import database.dbmodels.event as db_event
+from database import dbmodels
 from database.dbasync import db_first, db_all, \
     db_select, async_session, time_range
 from database.dbmodels.balance import Balance
@@ -152,11 +153,12 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
     # if user.discord_user_id:
     #    user_checks.append(Client.discord_user_id == user.discord_user_id)
     return stmt.filter(
-        db_client.Client.id.in_(client_ids) if client_ids else True,
+        dbmodels.Client.id.in_(client_ids) if client_ids else True,
         or_(
-            db_client.Client.user_id == user.id,
-            # db_client.Client.discord_user_id == user.discord_user_id if user.discord_user_id else False
-        )
+            dbmodels.Client.user_id == user.id,
+        ),
+        dbmodels.Client.type == dbmodels.client.ClientType.FULL,
+        dbmodels.Client.state == dbmodels.client.ClientState.INVALID
     )
 
 

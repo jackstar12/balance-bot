@@ -40,8 +40,8 @@ if TYPE_CHECKING:
     from database.dbmodels.client import Client
 
 
-
 Location = LocationModel.get_sa_type()
+SummaryType = eventmodels.Summary.get_sa_type(validate=True)
 
 
 class Event(Base, Serializer):
@@ -65,6 +65,7 @@ class Event(Base, Serializer):
     location = Column(Location, nullable=False)
     currency = Column(String(10), nullable=False, server_default='USD')
     rekt_threshold = Column(Numeric, nullable=False, server_default='-99')
+    final_summary = Column(SummaryType, nullable=True)
 
     owner: User = relationship('User', lazy='noload')
 
@@ -75,7 +76,7 @@ class Event(Base, Serializer):
 
     entries: list[EventEntry] = relationship('EventEntry',
                                              lazy='raise',
-                                             back_populates='event',)
+                                             back_populates='event')
 
     archive = relationship('Archive',
                            backref=backref('event', lazy='noload'),
@@ -296,11 +297,18 @@ class Event(Base, Serializer):
 
         return embed
 
+    async def finalize(self):
+        pass
+
     async def get_summary(self) -> eventmodels.Summary:
+
+        if self.is_(EventState.ARCHIVED) and self.final_summary:
+            return self.final_summary
 
         leaderboard = await self.get_leaderboard()
 
         gain = eventmodels.Stat.from_sorted(leaderboard.valid)
+
         def init(self: eventmodels.EventEntry):
             return self.init_balance.realized if self.init_balance else None
 
@@ -332,9 +340,11 @@ class Event(Base, Serializer):
 
         cum_percent /= len(self.entries) or 1  # Avoid division by zero
 
-        return eventmodels.Summary(
+        result = eventmodels.Summary(
             gain=gain, stakes=stakes, volatility=volatili, avg_percent=cum_percent, total=cum_dollar
         )
+
+        return result
 
     @property
     def _archive(self):

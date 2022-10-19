@@ -148,7 +148,7 @@ async def get_client_overview(background_tasks: BackgroundTasks,
             user,
             None if any_client else non_cached,
             Client.transfers,
-            Client.open_trades,
+            (Client.open_trades, TradeDB.executions),
             db=db
         )
         for client in clients:
@@ -359,7 +359,7 @@ async def delete_client(client_id: int,
         return NotFound(detail='Invalid ID')
 
 
-@router.patch('/client/{client_id}/clear', response_model=ClientDetailed)
+@router.patch('/client/{client_id}', response_model=ClientDetailed)
 async def update_client(client_id: int, body: ClientEdit,
                         user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):

@@ -338,7 +338,7 @@ class BinanceFutures(_BinanceBaseClient):
             time=time if time else datetime.now(pytz.utc)
         )
 
-    async def _connect(self):
+    async def startup(self):
         await self._ws.start()
 
     async def cleanup(self):

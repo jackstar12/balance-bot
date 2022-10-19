@@ -17,7 +17,7 @@ from database.dbmodels import Client
 from database.dbmodels.event import Event as EventDB, EventState
 from database.dbmodels.score import EventEntry as EventEntryDB
 from database.dbmodels.user import User
-from database.utils import add_client_filters
+from database.dbmodels.client import add_client_filters
 from database.models import BaseModel
 from database.models.document import DocumentModel
 from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventEntry, Leaderboard

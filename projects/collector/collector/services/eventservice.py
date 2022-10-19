@@ -31,6 +31,8 @@ class EventService(BaseService):
         #                                 cleanup=self._on_event_delete)
 
     async def init(self):
+        self._messenger.listen_class_all(EVENT.table, namespace=EVENT)
+
         for event in await db_all(
             select(Event).where(Event.is_expr(EventState.ACTIVE))
         ):
@@ -54,7 +56,7 @@ class EventService(BaseService):
         await self._messenger.sub_channel(TableNames.TRANSFER, Category.NEW, self._on_transfer)
         await self._messenger.sub_channel(TableNames.EVENT, EVENT.START, self._on_event_start)
 
-    async def _get_event(self, event_id: int):
+    async def _get_event(self, event_id: int) -> Event:
         return await db_select(Event,
                                Event.id == event_id,
                                eager=[(Event.entries, [
@@ -92,15 +94,12 @@ class EventService(BaseService):
             )
             balance = Balance(**data)
 
-    async def _on_event_end(self, event_id: int):
-        event: Event = await self._get_event(event_id)
+    async def _on_event_end(self, event: Event):
         await event.save_leaderboard()
-        await self._db.commit()
+        event.final_summary = await event.get_summary()
 
-    async def _on_event_start(self, event_id: int):
-        event: Event = await self._db.get(Event, event_id)
+    async def _on_event_start(self, event: Event):
         await event.save_leaderboard()
-        await self._db.commit()
 
     def _on_event_delete(self, data: dict):
         self._unregister(data['id'])
@@ -108,7 +107,8 @@ class EventService(BaseService):
     def _schedule(self, event: Event):
 
         def schedule_job(run_date: datetime, category: Category):
-            job_id = self.job_id(event.id, category)
+            event_id = event.id
+            job_id = self.job_id(event_id, category)
 
             if self._scheduler.get_job(job_id):
                 self._scheduler.reschedule_job(
@@ -117,10 +117,13 @@ class EventService(BaseService):
                 )
             else:
                 async def fn():
+                    event = await self._get_event(event_id)
                     if category == EVENT.END:
-                        await self._on_event_end(event.id)
+                        await self._on_event_end(event)
+                        await self._db.commit()
                     elif category == EVENT.START:
-                        await self._on_event_start(event.id)
+                        await self._on_event_start(event)
+                        await self._db.commit()
                     return await self._messenger.pub_instance(event, category)
 
                 self._scheduler.add_job(

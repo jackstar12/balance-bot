@@ -14,13 +14,12 @@ class BaseService:
 
     def __init__(self,
                  http_session: aiohttp.ClientSession,
-                 messenger: Messenger,
                  redis: Redis,
                  scheduler: AsyncIOScheduler,
                  session_maker: sessionmaker,
                  **kwargs):
         self._http_session = http_session
-        self._messenger = messenger
+        self._messenger = Messenger(redis)
         self._redis = redis
         self._scheduler = scheduler
         self._db: AsyncSession = None

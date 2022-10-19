@@ -183,12 +183,7 @@ class HistoryCog(CogBase):
                     Balance.time <= end if end else True
                 )
             )
-            history_record = await db_first(client.history.statement)
-            if not history_record:
-                client.rekt_on = None
-                # asyncio.create_task(self.get_client_balance(client, force_fetch=True))
         await async_session.commit()
-
 
     @cog_ext.cog_slash(
         name="clear",

@@ -76,7 +76,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                                         on_connect=self._on_connect)
         # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
 
-    async def _connect(self):
+    async def startup(self):
         self._logger.info('Connecting')
         await self._ws.connect()
         resp = await self._ws.authenticate(self._api_key, self._api_secret)

@@ -207,8 +207,7 @@ class ExchangeWorker:
                           upnl=True) -> Optional[Balance]:
         if not date:
             date = datetime.now(tz=pytz.UTC)
-        if force or (
-                date - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]) and not self.client.rekt_on):
+        if force or date - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]):
             self._last_fetch = date
             try:
                 balance = await self._get_balance(date, upnl=upnl)
@@ -220,11 +219,7 @@ class ExchangeWorker:
             if not balance.time:
                 balance.time = date
             balance.client_id = self.client_id
-            # TODO
-            # await self.client.update_journals(balance, date.date(), self.db)
             return balance
-        elif self.client.rekt_on:
-            return db_balance.Balance(amount=0.0, error=None, time=date)
         else:
             return None
 
@@ -277,7 +272,10 @@ class ExchangeWorker:
                             return None
                     if result.error:
                         logger.error(f'Error while fetching {client.id=} balance: {result.error}')
-
+                    else:
+                        await client.as_redis().set_balance(result)
+            else:
+                raise InvalidClientError
             return result
 
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
@@ -690,14 +688,6 @@ class ExchangeWorker:
         pass
 
     async def startup(self):
-        # self.client = await db_select(
-        #    Client,
-        #    eager=[Client.trades], session=self.db,
-        #    id=self.client_id
-        # )
-        await self._connect()
-
-    async def _connect(self):
         pass
 
     async def _get_transfers(self,

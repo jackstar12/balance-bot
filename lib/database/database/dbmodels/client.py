@@ -158,7 +158,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
     # Data
     name = Column(String, nullable=True)
-    rekt_on = Column(DateTime(timezone=True), nullable=True)
     type = Column(sa.Enum(ClientType), nullable=False, default=ClientType.BASIC)
     state = Column(sa.Enum(ClientState), nullable=False, default=ClientState.OK)
 
@@ -382,7 +381,7 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     async def get_exact_balance_at_time(self, time: datetime, currency: str = None) -> BalanceModel:
         balance = await self.get_balance_at_time(time)
 
-        if self.is_full and balance and time:
+        if self.type == ClientType.FULL and balance and time:
             # Probably the most beautiful query I've ever written
             subq = select(
                 PnlData.id.label('pnl_id'),
@@ -432,9 +431,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
     def is_active(self):
         return not all(not event.is_active for event in self.events)
 
-    @hybrid_property
-    def is_full(self):
-        return self.type == ClientType.FULL
 
     async def initial(self):
         b = dbmodels.Balance
@@ -474,5 +470,7 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
         or_(
             Client.user_id == user.id,
             # Client.oauth_account_id == user.discord_user_id if user.discord_user_id else False
-        )
+        ),
+        Client.type == ClientType.FULL,
+        Client.state == ClientState.INVALID
     )

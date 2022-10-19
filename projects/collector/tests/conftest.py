@@ -54,12 +54,12 @@ async def http_session():
 
 
 @pytest.fixture(scope='session')
-async def service_args(messenger, redis, session_maker, http_session):
+async def service_args(redis, session_maker, http_session):
     scheduler = AsyncIOScheduler(
         executors={'default': AsyncIOExecutor()}
     )
     scheduler.start()
-    return http_session, messenger, redis, scheduler, session_maker
+    return http_session, redis, scheduler, session_maker
 
 
 @pytest.fixture(scope='session')

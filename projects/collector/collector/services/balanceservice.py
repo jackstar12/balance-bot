@@ -17,7 +17,7 @@ from database.dbmodels.editing import Journal
 from database.dbmodels.trade import Trade
 from database.errors import InvalidClientError
 from common.exchanges.exchangeworker import ExchangeWorker
-from common.messenger import CLIENT, TRADE
+from common.messenger import CLIENT, TRADE, BALANCE
 from common.messenger import TableNames, Category
 from database.models.market import Market
 
@@ -37,6 +37,8 @@ class Lock:
 
 
 class _BalanceServiceBase(BaseService):
+
+    client_type: ClientType
 
     def __init__(self,
                  *args,
@@ -75,24 +77,40 @@ class _BalanceServiceBase(BaseService):
             return True
 
     async def _sub_client(self):
+
+        self._messenger.listen_class_all(BALANCE.table, namespace=BALANCE)
+        self._messenger.listen_class_all(CLIENT.table, namespace=CLIENT)
+        self._messenger.listen_class_all(TRADE.table, namespace=TRADE)
+
+        async def _on_client_delete(data: Dict):
+            await self._remove_worker_by_id(data['id'])
+            await self._messenger.pub_channel(CLIENT,
+                                              Category.REMOVED,
+                                              data,
+                                              client_id=data['id'])
+
+        async def _on_client_update(data: dict):
+            worker = self._get_existing_worker(data['id'])
+            state = data['state']
+            if worker:
+                async with self._db_lock:
+                    await self._refresh_worker(worker)
+                if state in ('archived', 'invalid') or data['type'] != self.client_type.value:
+                    await self._remove_worker(worker)
+            elif state != 'synchronizing' and data['type'] == self.client_type.value:
+                await self.add_client_by_id(data['id'])
+
+        async def _on_client_add(data: Dict):
+            await self.add_client_by_id(data['id'])
+
         await self._messenger.bulk_sub(
             TableNames.CLIENT,
             {
-                Category.NEW: self._on_client_add,
-                Category.UPDATE: self._on_client_update,
-                Category.DELETE: self._on_client_delete,
+                Category.NEW: _on_client_add,
+                Category.UPDATE: _on_client_update,
+                Category.DELETE: _on_client_delete,
             }
         )
-
-    async def _on_client_delete(self, data: Dict):
-        await self._remove_worker_by_id(data['id'])
-        await self._messenger.pub_channel(CLIENT,
-                                          Category.REMOVED,
-                                          data,
-                                          client_id=data['id'])
-
-    async def _on_client_add(self, data: Dict):
-        await self.add_client_by_id(data['id'])
 
     async def _refresh_worker(self, worker: ExchangeWorker):
         return await db_unique(
@@ -101,17 +119,6 @@ class _BalanceServiceBase(BaseService):
             .execution_options(populate_existing=True),
             session=self._db
         )
-
-    async def _on_client_update(self, data: dict):
-        worker = self._get_existing_worker(data['id'])
-        if worker:
-            async with self._db_lock:
-                await self._refresh_worker(worker)
-        state = data['state']
-        if state in ('archived', 'invalid') and worker:
-            await self._remove_worker(worker)
-        elif state != 'synchronizing' and not worker:
-            await self.add_client_by_id(data['id'])
 
     async def _remove_worker_by_id(self, client_id: int):
         worker = self._get_existing_worker(client_id)
@@ -162,7 +169,7 @@ class _BalanceServiceBase(BaseService):
 
 
 class BasicBalanceService(_BalanceServiceBase):
-    client_sub_category = "basic"
+    client_type = ClientType.BASIC
 
     def __init__(self,
                  *args,
@@ -248,7 +255,7 @@ class BasicBalanceService(_BalanceServiceBase):
 
 
 class ExtendedBalanceService(_BalanceServiceBase):
-    client_sub_category = "advanced"
+    client_type = ClientType.FULL
 
     async def init(self):
         await self._sub_client()
@@ -263,7 +270,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
         )
         clients = await db_all(
             self._all_client_stmt.filter(
-                Client.is_full,
+                Client.type == ClientType.FULL,
                 Client.exchange.in_([
                     ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
                     if ExchangeCls.supports_extended_data
@@ -311,7 +318,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 unsubscribe_symbol = all(
                     trade.symbol != symbol
                     for cur_worker in self._workers_by_id.values()
-                    if client.exchange == client.exchange
+                    if client.exchange == cur_worker.exchange
                     for trade in client.open_trades
                 )
                 if unsubscribe_symbol:

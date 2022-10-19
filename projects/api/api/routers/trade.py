@@ -160,6 +160,7 @@ def create_trade_endpoint(path: str,
 create_trade_endpoint(
     'trade-overview',
     BasicTrade,
+    TradeDB.executions
 )
 create_trade_endpoint(
     'trade',
