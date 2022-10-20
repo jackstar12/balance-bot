@@ -468,11 +468,11 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
 
 async def get_leaderboard_embed(event: dbmodels.Event,
-                                guild: discord.Guild,
-                                leaderboard: Leaderboard):
+                                leaderboard: Leaderboard,
+                                dc_client: discord.Client):
     footer = ''
     description = ''
-
+    guild = dc_client.get_guild(event.guild_id)
     async def display_name(score: EventEntry):
         user = await event.async_session.get(dbmodels.User, score.user_id)
         member = guild.get_member(int(user.discord.account_id))
@@ -518,9 +518,6 @@ async def get_leaderboard(dc_client: discord.Client,
                           channel_id: int,
                           since: datetime = None,
                           db: AsyncSession = None) -> discord.Embed:
-    guild = dc_client.get_guild(guild_id)
-    if not guild:
-        raise InternalError(f'Provided guild_id is not valid!')
 
     event = await dbutils.get_discord_event(guild_id, channel_id,
                                             throw_exceptions=True,
@@ -535,7 +532,7 @@ async def get_leaderboard(dc_client: discord.Client,
 
     leaderboard = await event.get_leaderboard(since)
 
-    return await get_leaderboard_embed(event, guild, leaderboard)
+    return await get_leaderboard_embed(event, leaderboard, dc_client)
 
 
 def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[datetime]:

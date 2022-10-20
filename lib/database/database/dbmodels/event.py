@@ -24,7 +24,6 @@ from database.models.discord.guild import GuildRequest
 from database.redis import rpc
 from database.dbmodels.types import Document
 import numpy
-from database.dbmodels.archive import Archive
 from database.dbmodels.mixins.serializer import Serializer
 from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -43,14 +42,12 @@ if TYPE_CHECKING:
     from database.dbmodels.user import User
     from database.dbmodels.client import Client
 
-
 Location = LocationModel.get_sa_type()
 SummaryType = eventmodels.Summary.get_sa_type(validate=True)
 
 
 class Event(Base, Serializer):
     __tablename__ = 'event'
-    __serializer_forbidden__ = ['archive']
 
     id = Column(Integer, primary_key=True)
     owner_id = Column(ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
@@ -81,10 +78,6 @@ class Event(Base, Serializer):
     entries: list[EventEntry] = relationship('EventEntry',
                                              lazy='raise',
                                              back_populates='event')
-
-    archive = relationship('Archive',
-                           backref=backref('event', lazy='noload'),
-                           uselist=False)
 
     actions = relationship('Action',
                            lazy='raise',
@@ -147,7 +140,7 @@ class Event(Base, Serializer):
         if self.max_registrations < len(self.all_clients):
             raise ValueError("Max Registrations can not be less than current registration count")
 
-    async def get_archived_leaderboard(self, date: datetime = None):
+    async def get_saved_leaderboard(self, date: datetime = None):
         sub = select(
             func.row_number.over(
                 order_by=desc(EventScore.time), partition_by=EventScore.client_id
@@ -163,15 +156,18 @@ class Event(Base, Serializer):
             ),
             (EventScore.entry, EventEntry.client)
         )
-        return [
-            eventmodels.EventEntry(
-                user_id=score.entry.user_id,
-                client_id=score.client_id,
-                rekt_on=safe_cmp(operator.lt, score.entry.rekt_on, date),
-                current=score
-            )
-            for score in scores
-        ]
+        return eventmodels.Leaderboard(
+            valid=[
+                eventmodels.EventEntry(
+                    user_id=score.entry.user_id,
+                    client_id=score.client_id,
+                    rekt_on=safe_cmp(operator.lt, score.entry.rekt_on, date),
+                    current=score
+                )
+                for score in scores
+            ],
+            unknown=[]
+        )
 
     async def get_leaderboard(self, since: datetime = None) -> eventmodels.Leaderboard:
 
@@ -375,13 +371,6 @@ class Event(Base, Serializer):
         )
 
         return result
-
-    @property
-    def _archive(self):
-        if not self.archive:
-            self.archive = Archive(event_id=self.id)
-            inspect(self).session.add(self.archive)
-        return self.archive
 
     def __hash__(self):
         return self.id.__hash__()

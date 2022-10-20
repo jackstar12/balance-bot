@@ -4,7 +4,6 @@ from sqlalchemy import desc, select, func, Date, join, or_, asc
 from sqlalchemy.orm import relationship, aliased, foreign
 
 import database.dbmodels.alert
-import database.dbmodels.archive
 import database.dbmodels.balance
 import database.dbmodels.client
 import database.dbmodels.coin

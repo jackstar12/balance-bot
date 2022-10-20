@@ -52,7 +52,7 @@ class EventsCog(CogBase):
         await self._get_channel(event).send(
             content=f'Event **{event.name}** just ended! Final standings:',
             embed=await get_leaderboard_embed(
-                event, self.bot.get_guild(event.guild_id), leaderboard=await event.get_leaderboard()
+                event, leaderboard=await event.get_leaderboard(), dc_client=self.bot
             )
         )
 
@@ -187,24 +187,18 @@ class EventsCog(CogBase):
 
         async def show_events(ctx, selection: List[Event]):
             for event in selection:
-                archive = event.archive
-
-                history = None
-                if os.path.exists:
-                    history = discord.File(config.DATA_PATH + archive.history_path, "history.png")
-
-                info = archive.db_event.get_discord_embed(
-                    self.bot, registrations=False
-                ).add_field(name="Registrations", value=archive.clients, inline=False)
-
+                info = event.get_discord_embed(
+                    self.bot, registrations=True
+                )
                 summary = await get_summary_embed(event, self.bot)
 
+                leaderboard = get_leaderboard_embed(event, await event.get_saved_leaderboard(), self.bot)
+
                 await ctx.send(
-                    content=f'Archived results for {archive.db_event.name}',
+                    content=f'Archived results for {event.name}',
                     embeds=[
-                        info, await event.get_leaderboard(), summary.set_image(url='attachment://history.png')
-                    ],
-                    file=history
+                        info, leaderboard, summary.set_image(url='attachment://history.png')
+                    ]
                 )
 
         selection_row = utils.create_selection(
