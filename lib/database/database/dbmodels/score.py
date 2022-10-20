@@ -31,11 +31,8 @@ class EventScore(Base, Serializer):
     abs_value = Column(Numeric, nullable=True)
     rel_value = Column(Numeric, nullable=True)
 
-    entry = relationship('EventEntry', lazy='raise')
-
-    __table_args__ = (
-        ForeignKeyConstraint(["client_id", "event_id"], ["evententry.client_id, evententry.event_id"]),
-    )
+    async def get_entry(self):
+        return self.async_session.get(EventEntry, (self.client_id, self.event_id))
 
     @hybrid_property
     def gain(self):

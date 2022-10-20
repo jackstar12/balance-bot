@@ -150,22 +150,24 @@ class Event(Base, Serializer):
             EventScore.event_id == self.id
         ).subquery()
 
-        scores = await db_all(
+        scores: list[EventScore] = await db_all(
             select(EventScore, sub).where(
                 sub.c.rank == 1
-            ),
-            (EventScore.entry, EventEntry.client)
+            )
         )
-        return eventmodels.Leaderboard(
-            valid=[
+        result = []
+        for score in scores:
+            entry = await score.get_entry()
+            result.append(
                 eventmodels.EventEntry(
-                    user_id=score.entry.user_id,
-                    client_id=score.client_id,
-                    rekt_on=safe_cmp(operator.lt, score.entry.rekt_on, date),
+                    user_id=entry.user_id,
+                    client_id=entry.client_id,
+                    rekt_on=safe_cmp(operator.lt, entry.rekt_on, date),
                     current=score
                 )
-                for score in scores
-            ],
+            )
+        return eventmodels.Leaderboard(
+            valid=result,
             unknown=[]
         )
 
