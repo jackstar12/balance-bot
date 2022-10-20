@@ -69,7 +69,7 @@ async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger
                             Trade.symbol == symbol,
                             Trade.open_qty == size / 2,
                             Trade.qty == size,
-                            eager=[Trade.min_pnl, Trade.max_pnl])
+                            eager=[Trade.min_pnl, Trade.max_pnl, Trade.pnl_data])
     assert trade
     assert trade.max_pnl.total != trade.min_pnl.total
     second_balance = await db_client.get_latest_balance(redis)

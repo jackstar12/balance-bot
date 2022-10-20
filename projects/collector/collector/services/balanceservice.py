@@ -116,7 +116,7 @@ class _BalanceServiceBase(BaseService):
         available = set(self._updates)
         self._updates.clear()
         if available:
-            return db_all(
+            return await db_all(
                 self._all_client_stmt.where(
                     Client.id.in_(available)
                 )
