@@ -316,19 +316,22 @@ async def get_summary_embed(event: dbmodels.Event, dc_client: discord.Client):
 
     summary = await event.get_summary()
 
-    for name, user_id in [
-        ('Best Trader :crown:', summary.gain.best),
-        ('Worst Trader :disappointed_relieved:', summary.gain.worst),
-        ('Highest Stakes :moneybag:', summary.stakes.best),
-        ('Lowest Stakes :moneybag:', summary.stakes.worst),
-        ('Most Degen Trader :grimacing:', summary.volatility.best),
-        ('Still HODLing :sleeping:', summary.volatility.worst),
-    ]:
-        user: User = await async_session.get(User, user_id)
-        embed.add_field(name=name, value=user.discord.get_display_name(dc_client, event.guild_id), inline=False)
+    if summary:
+        for name, user_id in [
+            ('Best Trader :crown:', summary.gain.best),
+            ('Worst Trader :disappointed_relieved:', summary.gain.worst),
+            ('Highest Stakes :moneybag:', summary.stakes.best),
+            ('Lowest Stakes :moneybag:', summary.stakes.worst),
+            ('Most Degen Trader :grimacing:', summary.volatility.best),
+            ('Still HODLing :sleeping:', summary.volatility.worst),
+        ]:
+            user: User = await async_session.get(User, user_id)
+            embed.add_field(name=name, value=user.discord.get_display_name(dc_client, event.guild_id), inline=False)
 
-    description += f'\nIn total you {"made" if summary.total >= 0.0 else "lost"} {round(summary.total, ndigits=3)}$' \
-                   f'\nCumulative % performance: {round(summary.avg_percent, ndigits=3)}%'
+        description += f'\nIn total you {"made" if summary.total >= 0.0 else "lost"} {round(summary.total, ndigits=3)}$' \
+                       f'\nCumulative % performance: {round(summary.avg_percent, ndigits=3)}%'
+    else:
+        description += 'Pretty empty'
 
     description += '\n'
     embed.description = description

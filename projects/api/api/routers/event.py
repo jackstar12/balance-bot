@@ -20,7 +20,7 @@ from database.dbmodels.user import User
 from database.dbmodels.client import add_client_filters
 from database.models import BaseModel
 from database.models.document import DocumentModel
-from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventEntry, Leaderboard
+from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventEntry, Leaderboard, Summary
 
 router = APIRouter(
     tags=["event"],
@@ -186,7 +186,7 @@ async def get_event(event_id: int,
         return BadRequest('Invalid event id')
 
 
-@router.get('/{event_id}/summary', response_model=ResponseModel[Leaderboard])
+@router.get('/{event_id}/summary', response_model=ResponseModel[Summary])
 async def get_summary(event_id: int,
                       user: User = Depends(CurrentUser),
                       db: AsyncSession = Depends(get_db)):

@@ -54,7 +54,6 @@ class EventService(BaseService):
         )
 
         await self._messenger.sub_channel(TableNames.TRANSFER, Category.NEW, self._on_transfer)
-        await self._messenger.sub_channel(TableNames.EVENT, EVENT.START, self._on_event_start)
 
     async def _get_event(self, event_id: int) -> Event:
         return await db_select(Event,
@@ -94,13 +93,6 @@ class EventService(BaseService):
             )
             balance = Balance(**data)
 
-    async def _on_event_end(self, event: Event):
-        await event.save_leaderboard()
-        event.final_summary = await event.get_summary()
-
-    async def _on_event_start(self, event: Event):
-        await event.save_leaderboard()
-
     def _on_event_delete(self, data: dict):
         self._unregister(data['id'])
 
@@ -118,11 +110,12 @@ class EventService(BaseService):
             else:
                 async def fn():
                     event = await self._get_event(event_id)
-                    if category == EVENT.END:
-                        await self._on_event_end(event)
-                        await self._db.commit()
-                    elif category == EVENT.START:
-                        await self._on_event_start(event)
+                    if category in (EVENT.END, EVENT.START):
+                        await event.save_leaderboard()
+
+                        if category == EVENT.END:
+                            event.final_summary = await event.get_summary()
+
                         await self._db.commit()
                     return await self._messenger.pub_instance(event, category)
 

@@ -259,7 +259,7 @@ class Event(Base, Serializer):
         leaderboard = await self.get_leaderboard()
 
         await self.async_session.run_sync(
-            lambda: self.sync_session.bulk_insert_mappings(
+            lambda session: session.bulk_insert_mappings(
                 get_mapper(EventScore),
                 [
                     {
@@ -328,12 +328,15 @@ class Event(Base, Serializer):
     async def finalize(self):
         pass
 
-    async def get_summary(self) -> eventmodels.Summary:
+    async def get_summary(self):
 
         if self.is_(EventState.ARCHIVED) and self.final_summary:
             return self.final_summary
 
         leaderboard = await self.get_leaderboard()
+
+        if not leaderboard.valid:
+            return None
 
         gain = eventmodels.Stat.from_sorted(leaderboard.valid)
 

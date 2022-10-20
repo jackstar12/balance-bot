@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 
 from common.test_utils.fixtures import Channel, Messages
@@ -16,8 +18,8 @@ async def test_event_messages(event_service, test_user, messenger, db):
         Channel(TableNames.EVENT, EVENT.END),
         messenger=messenger
     ) as listener:
-        event = event_mock().get(test_user)
+        event = event_mock(interval=timedelta(seconds=.5)).get(test_user)
         db.add(event)
         await db.commit()
-        await listener.wait(10)
+        await listener.wait(5)
         pass
