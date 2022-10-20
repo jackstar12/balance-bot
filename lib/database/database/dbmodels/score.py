@@ -24,11 +24,18 @@ class EventScore(Base, Serializer):
 
     client_id = Column(ForeignKey('client.id', ondelete='CASCADE'), primary_key=True)
     event_id = Column(ForeignKey('event.id', ondelete='CASCADE'), primary_key=True)
+
     time = Column(DateTime(timezone=True), primary_key=True, default=lambda: datetime.now(pytz.utc))
 
     rank = Column(Integer)
     abs_value = Column(Numeric, nullable=True)
     rel_value = Column(Numeric, nullable=True)
+
+    entry = relationship('EventEntry', lazy='raise')
+
+    __table_args__ = (
+        ForeignKeyConstraint(["client_id", "event_id"], ["evententry.client_id, evententry.event_id"]),
+    )
 
     @hybrid_property
     def gain(self):

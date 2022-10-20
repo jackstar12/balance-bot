@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -34,6 +35,9 @@ from database.models.eventinfo import EventState, LocationModel
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
     select, insert, literal, and_, update, Numeric, BigInteger
+
+from core.utils import safe_cmp
+from database.dbasync import db_all, safe_op
 
 if TYPE_CHECKING:
     from database.dbmodels.user import User
@@ -142,6 +146,32 @@ class Event(Base, Serializer):
             raise ValueError("Registration start should be before event start.")
         if self.max_registrations < len(self.all_clients):
             raise ValueError("Max Registrations can not be less than current registration count")
+
+    async def get_archived_leaderboard(self, date: datetime = None):
+        sub = select(
+            func.row_number.over(
+                order_by=desc(EventScore.time), partition_by=EventScore.client_id
+            ).label('rank')
+        ).where(
+            safe_op(EventScore.time, date, operator.lt),
+            EventScore.event_id == self.id
+        ).subquery()
+
+        scores = await db_all(
+            select(EventScore, sub).where(
+                sub.c.rank == 1
+            ),
+            (EventScore.entry, EventEntry.client)
+        )
+        return [
+            eventmodels.EventEntry(
+                user_id=score.entry.user_id,
+                client_id=score.client_id,
+                rekt_on=safe_cmp(operator.lt, score.entry.rekt_on, date),
+                current=score
+            )
+            for score in scores
+        ]
 
     async def get_leaderboard(self, since: datetime = None) -> eventmodels.Leaderboard:
 
