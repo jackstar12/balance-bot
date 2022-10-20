@@ -74,7 +74,7 @@ class Trade(Base, Serializer, CurrencyMixin):
     min_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
     min_pnl: Optional[PnlData] = relationship(
         'PnlData',
-        lazy='noload',
+        lazy='raise',
         foreign_keys=min_pnl_id,
         passive_deletes=True,
         post_update=True
@@ -310,7 +310,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                 or self.max_pnl.total == self.min_pnl.total
                 or abs((live - self.latest_pnl.total) / self.size) > Decimal(.2)
         ):
-            object_session(self).add(self.live_pnl)
+            self.async_session.add(self.live_pnl)
             self.latest_pnl = self.live_pnl
             latest = self.latest_pnl.total
             if latest:
@@ -405,6 +405,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                 # First, create a new copy based on the same initial execution
                 new_trade = Trade.from_execution(self.initial, self.client_id, self.init_balance)
                 new_trade.__realtime__ = False
+                self.async_session.add(new_trade)
 
                 # Then reapply the executions that are not due for deletion
                 # (important that initial is excluded in this case)

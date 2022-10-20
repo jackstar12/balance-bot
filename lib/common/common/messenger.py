@@ -280,7 +280,7 @@ class Messenger:
                      sub: Category | str,
                      condition: Callable[[Serializer], bool] = None):
         @event.listens_for(target_cls, identifier)
-        def on_insert(mapper, connection, target: target_cls):
+        def handler(mapper, connection, target: target_cls):
             realtime = getattr(target, '__realtime__', True)
             if realtime and (not condition or condition(target)):
                 asyncio.create_task(
