@@ -1,4 +1,4 @@
-FROM python:3.10.3-bullseye
+FROM python:3.10.3
 
 COPY lib /app/lib/
 COPY projects/api /app/projects/api/
