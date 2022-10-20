@@ -20,6 +20,9 @@ fastapi-users = { extras = ["sqlalchemy"], version = "10.1.5"}
 [tool.poetry.dev-dependencies]
 pytest = "7.1.2"
 
+[tool.trade-alpha.docker]
+include = "EXPOSE 5000"
+command = "CMD [\"uvicorn\", \"api.app:app\", \"--host\", \"0.0.0.0\", \"--port\", \"5000\"]"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

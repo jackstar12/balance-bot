@@ -10,6 +10,7 @@ python = "3.10.3"
 api = {path = "projects/api", develop = true}
 collector = {path = "projects/collector", develop = true}
 bot = {path = "projects/bot", develop = true}
+toml = "^0.10.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "7.1.2"

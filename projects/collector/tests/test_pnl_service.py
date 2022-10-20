@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from database.dbmodels import Client, Execution
-from database.dbasync import db_select_all, db_all
+from database.dbasync import db_select_all, db_all, db_unique, db_select
 from database.dbmodels.trade import Trade
 from common.messenger import TableNames, Category
 from common.test_utils.fixtures import Channel, Messages
@@ -43,8 +43,15 @@ async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger
 
         await listener.wait(5)
 
+
     await asyncio.sleep(2.5)
 
+    trade = await db_select(Trade,
+                            Trade.client_id == db_client.id,
+                            Trade.symbol == symbol,
+                            Trade.open_qty == size,
+                            Trade.qty == size)
+    assert trade
     first_balance = await db_client.get_latest_balance(redis)
 
     assert prev_balance.realized != first_balance.realized
@@ -57,6 +64,12 @@ async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger
         ccxt_client.create_market_sell_order(symbol, float(size / 2))
         await listener.wait(15)
 
+    trade = await db_select(Trade,
+                            Trade.client_id == db_client.id,
+                            Trade.symbol == symbol,
+                            Trade.open_qty == size / 2,
+                            Trade.qty == size)
+    assert trade
     second_balance = await db_client.get_latest_balance(redis)
     assert first_balance.realized != second_balance.realized
 
@@ -64,8 +77,19 @@ async def test_realtime(pnl_service, time, db_client, db, ccxt_client, messenger
             Channel(TableNames.TRADE, Category.FINISHED),
             messenger=messenger
     ) as listener:
+        await asyncio.sleep(1)
         ccxt_client.create_market_sell_order(symbol, float(size / 2))
         await listener.wait(5)
+
+    trade = await db_select(Trade,
+                            Trade.client_id == db_client.id,
+                            Trade.symbol == symbol,
+                            Trade.open_qty == 0,
+                            Trade.qty == size)
+    assert trade
+    second_balance = await db_client.get_latest_balance(redis)
+    assert first_balance.realized != second_balance.realized
+
 
     trades = await db_select_all(
         Trade,

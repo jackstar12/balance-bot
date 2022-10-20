@@ -187,17 +187,20 @@ class Messenger:
         return wrapper
 
     async def listen(self):
+        self._listening = True
         self._logger.info('Started Listening.')
         async for msg in self._pubsub.listen():
             self._logger.debug(msg)
+        self._logger.info('Stopped Listening.')
+        self._listening = False
 
     async def sub(self, pattern=False, **kwargs):
+        self._logger.debug(f'Subscribing {pattern=} {kwargs=}')
         if pattern:
             await self._pubsub.psubscribe(**kwargs)
         else:
             await self._pubsub.subscribe(**kwargs)
         if not self._listening:
-            self._listening = True
             asyncio.create_task(self.listen())
 
     async def unsub(self, channel: str, is_pattern=False):
@@ -232,7 +235,7 @@ class Messenger:
 
     async def pub_channel(self, namespace: NameSpaceInput, topic: Any, obj: object, **ids):
         channel, pattern = self.get_namespace(namespace).format(topic, **ids)
-        logging.debug(f'Pub: {channel=} {obj=}')
+        logging.debug(f'Pub: {channel=}')
         ret = await self._redis.publish(channel, customjson.dumps(obj))
         return ret
 

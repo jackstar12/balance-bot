@@ -4,7 +4,7 @@ services:
     depends_on:
       - pg-server
     build:
-      dockerfile: migrations.Dockerfile
+      dockerfile: lib/database/Dockerfile
       context: .
     env_file:
       - .env
@@ -37,22 +37,15 @@ services:
       context: .
     env_file:
       - .env
-  web:
-    image: "nginx:latest"
-    volumes:
-      - ./nginx.confg:/etc/nginx/nginx.confg
-    ports:
-      - "80:80"
-      - "443:443"
   redis-server:
-    image: "redis:latest"
+    image: "redis:6.2.4"
     container_name: redis-server
     ports:
       - "6379:6379"
     env_file:
       - .env
   pg-server:
-    image: "postgres"
+    image: "postgres:14.5"
     container_name: pg-server
     ports:
       - "5432:5432"

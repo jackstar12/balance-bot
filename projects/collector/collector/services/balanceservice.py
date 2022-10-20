@@ -52,6 +52,7 @@ class _BalanceServiceBase(BaseService):
         self._exchanges = EXCHANGES
         self._workers_by_id: Dict[int, ExchangeWorker] = {}
         self._worker_lock = asyncio.Lock()
+        self._updates = set()
         # self._worker_lock = Lock()
 
         self._all_client_stmt = db_eager(
@@ -93,8 +94,7 @@ class _BalanceServiceBase(BaseService):
             worker = self._get_existing_worker(data['id'])
             state = data['state']
             if worker:
-                async with self._db_lock:
-                    await self._refresh_worker(worker)
+                self._refresh_worker(worker)
                 if state in ('archived', 'invalid') or data['type'] != self.client_type.value:
                     await self._remove_worker(worker)
             elif state != 'synchronizing' and data['type'] == self.client_type.value:
@@ -112,13 +112,29 @@ class _BalanceServiceBase(BaseService):
             }
         )
 
-    async def _refresh_worker(self, worker: ExchangeWorker):
+    async def _refresh(self):
+        available = set(self._updates)
+        self._updates.clear()
+        if available:
+            return db_all(
+                self._all_client_stmt.where(
+                    Client.id.in_(available)
+                )
+                .execution_options(populate_existing=True),
+                session=self._db
+            )
+        return []
+
+    async def _get_client(self, worker: ExchangeWorker):
         return await db_unique(
-            self._all_client_stmt
-            .filter_by(id=worker.client_id)
-            .execution_options(populate_existing=True),
+            self._all_client_stmt.where(
+                Client.id == worker.client_id
+            ).execution_options(populate_existing=True),
             session=self._db
         )
+
+    def _refresh_worker(self, worker: ExchangeWorker):
+        self._updates.add(worker.client_id)
 
     async def _remove_worker_by_id(self, client_id: int):
         worker = self._get_existing_worker(client_id)
@@ -297,7 +313,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
     async def _on_trade_new(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=True)
         if worker:
-            await self._refresh_worker(worker)
+            self._refresh_worker(worker)
             await self.data_service.subscribe(worker.client.exchange, Channel.TICKER, symbol=data['symbol'])
 
     async def _on_trade_update(self, data: Dict):
@@ -305,12 +321,13 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
         worker = await self.get_worker(client_id, create_if_missing=True)
         if worker:
-            await self._refresh_worker(worker)
+            self._refresh_worker(worker)
 
     async def _on_trade_finished(self, data: Dict):
         worker = await self.get_worker(data['client_id'], create_if_missing=False)
         if worker:
-            client = await self._refresh_worker(worker)
+            async with self._db_lock:
+                client = await self._get_client(worker)
             if len(client.open_trades) == 0:
                 symbol = data['symbol']
                 # If there are no trades on the same exchange matching the deleted symbol,
@@ -360,12 +377,13 @@ class ExtendedBalanceService(_BalanceServiceBase):
             balances = []
     
             async with self._worker_lock, self._db_lock:
+                await self._refresh()
                 for worker in self._workers_by_id.values():
                     client = self._db.identity_map.get(
                         self._db.identity_key(Client, worker.client_id)
                     )
                     if not client:
-                        client = await self._refresh_worker(worker)
+                        client = await self._get_client(worker)
 
                     if not client:
                         await self._messenger.pub_channel(

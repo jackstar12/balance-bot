@@ -64,11 +64,11 @@ def redis() -> Redis:
 @pytest.fixture(scope='session')
 def messenger(redis) -> Messenger:
     messenger = Messenger(redis=redis)
-    messenger.listen_class_all(Event)
-    messenger.listen_class_all(Client)
-    messenger.listen_class_all(Trade)
-    messenger.listen_class_all(Balance)
-    messenger.listen_class_all(EventEntry)
+    #messenger.listen_class_all(Event)
+    #messenger.listen_class_all(Client)
+    #messenger.listen_class_all(Trade)
+    #messenger.listen_class_all(Balance)
+    #messenger.listen_class_all(EventEntry)
     return messenger
 
 
@@ -87,12 +87,12 @@ class Messages:
 
     async def wait(self, timeout: float = 1):
         waiter = asyncio.gather(*self.results.values())
+        waiter.cancelled()
         try:
             result = await asyncio.wait_for(waiter, timeout)
             return result
         except asyncio.exceptions.TimeoutError:
-            pytest.fail(f'Missed following messages:')
-            #pytest.fail(f'Missed following messages:' + '\n\t'.join(name for name, fut in self.results.values() if not fut.done()))
+            pytest.fail(f'Missed following messages:' + '\n\t'.join(name for name, fut in self.results.values() if fut.cancelled()))
 
     @classmethod
     def create(cls, *channels: Channel, messenger: Messenger):
