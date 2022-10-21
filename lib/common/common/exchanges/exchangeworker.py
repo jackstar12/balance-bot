@@ -619,6 +619,8 @@ class ExchangeWorker:
                                                Trade.executions,
                                                Trade.init_balance,
                                                Trade.initial,
+                                               Trade.max_pnl,
+                                               Trade.min_pnl,
                                                session=db)
 
                 if active_trade:
