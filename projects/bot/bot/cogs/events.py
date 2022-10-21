@@ -133,6 +133,8 @@ class EventsCog(CogBase):
     @utils.with_db
     async def event_join(self, ctx: SlashContext, db: AsyncSession):
 
+        await ctx.defer()
+
         event = await dbutils.get_discord_event(guild_id=ctx.guild_id,
                                                 channel_id=ctx.channel_id,
                                                 state=EventState.REGISTRATION,
