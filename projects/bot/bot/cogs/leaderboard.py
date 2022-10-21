@@ -2,6 +2,7 @@ from datetime import datetime
 
 from discord_slash import cog_ext, SlashContext, SlashCommandOptionType
 from discord_slash.utils.manage_commands import create_option
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import utils
 from bot.cogs.cogbase import CogBase
@@ -39,9 +40,10 @@ class LeaderboardCog(CogBase):
     )
     @utils.log_and_catch_errors()
     @utils.time_args(('time', None))
+    @utils.with_db
     @utils.server_only
-    async def leaderboard_gain(self, ctx: SlashContext, time: datetime = None):
+    async def leaderboard_gain(self, ctx: SlashContext, db: AsyncSession, time: datetime = None):
         await ctx.defer()
         await ctx.send(
-            embed=await utils.get_leaderboard(self.bot, ctx.guild_id, ctx.channel_id, since=time)
+            embed=await utils.get_leaderboard(self.bot, ctx.guild_id, ctx.channel_id, since=time, db=db)
         )
