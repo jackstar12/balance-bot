@@ -36,6 +36,7 @@ from database.dbmodels.discord.guildassociation import GuildAssociation
 from database.dbmodels.pnldata import PnlData
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.user import User
+from database.models import BaseModel
 from database.models.balance import Balance as BalanceModel, Amount
 from database.dbsync import Base
 from database.redis import TableNames
@@ -46,7 +47,7 @@ if TYPE_CHECKING:
     from database.dbmodels import BalanceDB as Balance, Event
 
 
-from pydantic import BaseModel as PydanticBaseModel
+from pydantic import BaseModel as PydanticBaseModel, Field
 
 
 class ClientRedis:
@@ -129,7 +130,52 @@ class ClientState(Enum):
     INVALID = "invalid"
 
 
-class Client(Base, Serializer, EditsMixin, QueryMixin):
+class QueryParams(BaseModel):
+    client_ids: set[int]
+    currency: str
+    since: Optional[datetime] = Field(default_factory=lambda: datetime.fromtimestamp(0, pytz.utc))
+    to: Optional[datetime]
+    limit: Optional[int]
+
+    def within(self, other: QueryParams):
+        return (
+                (not other.since or (self.since and self.since >= other.since))
+                and
+                (not other.to or (self.to and self.to < other.to))
+        )
+
+
+class ClientQueryMixin:
+    time_col: Column
+
+    @classmethod
+    async def query(cls,
+                    *eager,
+                    time_col: Column,
+                    user: User,
+                    ids: list[int],
+                    params: QueryParams,
+                    db: AsyncSession) -> list:
+        return await db_all(
+            add_client_filters(
+                select(cls).filter(
+                    cls.id.in_(ids) if ids else True,
+                    time_range(time_col, params.since, params.to)
+                ).join(
+                    cls.client
+                ).limit(
+                    params.limit
+                ),
+                user=user,
+                client_ids=params.client_ids
+            ),
+            *eager,
+            session=db
+        )
+
+
+
+class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
     __tablename__ = TableNames.CLIENT.value
     __serializer_forbidden__ = ['api_secret']
     __serializer_data_forbidden__ = ['api_secret', 'discorduser']
@@ -449,52 +495,6 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
 
     def __hash__(self):
         return self.id.__hash__()
-
-
-class QueryParams(BaseModel):
-    client_ids: set[int]
-    currency: str
-    since: Optional[datetime] = Field(default_factory=lambda: datetime.fromtimestamp(0, pytz.utc))
-    to: Optional[datetime]
-    limit: Optional[int]
-
-    def within(self, other: QueryParams):
-        return (
-                (not other.since or (self.since and self.since >= other.since))
-                and
-                (not other.to or (self.to and self.to < other.to))
-        )
-
-
-class ClientQueryMixin:
-    time_col: Column
-
-    @classmethod
-    async def query(cls,
-                    *eager,
-                    time_col: Column,
-                    user: User,
-                    ids: list[int],
-                    params: QueryParams,
-                    db: AsyncSession) -> list:
-        return await db_all(
-            add_client_filters(
-                select(cls).filter(
-                    cls.id.in_(ids) if ids else True,
-                    time_col >= params.since if params.since else True,
-                    time_col <= params.to if params.to else True
-                ).join(
-                    cls.client
-                ).limit(
-                    params.limit
-                ),
-                user=user,
-                client_ids=params.client_ids
-            ),
-            *eager,
-            session=db
-        )
-
 
 
 def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: set[int] | list[int] = None) -> \

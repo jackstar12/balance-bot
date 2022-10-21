@@ -7,7 +7,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, object_session, Session
 
 import database.dbmodels as dbmodels
-from database.dbmodels.client import QueryMixin
+from database.dbmodels.client import ClientQueryMixin
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbsync import Base
 from database.models.balance import Amount as AmountModel, Balance as BalanceModel
@@ -22,7 +22,7 @@ class _Common:
     unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
 
 
-class Amount(Base, QueryMixin, Serializer, _Common):
+class Amount(Base, ClientQueryMixin, Serializer, _Common):
     __tablename__ = 'amount'
 
     balance_id = Column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
@@ -30,7 +30,7 @@ class Amount(Base, QueryMixin, Serializer, _Common):
     currency: str = Column(sa.String(length=3), primary_key=True)
 
 
-class Balance(Base, _Common, Serializer, QueryMixin):
+class Balance(Base, _Common, Serializer, ClientQueryMixin):
     """
     Represents the balance of a client at a given time.
 
