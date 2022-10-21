@@ -14,7 +14,7 @@ from bot import utils
 from bot.cogs.cogbase import CogBase
 from bot.utils import create_complete_history, get_summary_embed, get_leaderboard, get_leaderboard_embed
 from database import utils as dbutils
-from database.dbasync import db_all, db_select
+from database.dbasync import db_all, db_select, db_unique
 from database.dbasync import db_select_all
 from database.dbmodels import EventEntry, Client
 from database.dbmodels.discord.discorduser import DiscordUser
@@ -137,31 +137,38 @@ class EventsCog(CogBase):
 
         event = await dbutils.get_discord_event(guild_id=ctx.guild_id,
                                                 channel_id=ctx.channel_id,
-                                                state=EventState.REGISTRATION,
-                                                eager_loads=[Event.clients])
+                                                state=EventState.REGISTRATION)
 
         if event.is_(EventState.REGISTRATION):
 
-            for client in event.clients:
-                if client.discord.account_id == ctx.author_id:
-                    raise UserInputError('You are already registered for this event!')
+            dc_user = await dbutils.get_discord_user(ctx.author_id,
+                                                     eager_loads=[(DiscordUser.clients, Client.events),
+                                                                  DiscordUser.global_associations],
+                                                     db=db)
 
-            user = await dbutils.get_discord_user(ctx.author_id,
-                                                  eager_loads=[(DiscordUser.clients, Client.events),
-                                                               DiscordUser.global_associations],
-                                                  db=db)
-            global_client = await user.get_guild_client(ctx.guild_id, db=db)
+            existing = await db_unique(
+                select(EventEntry).where(
+                    EventEntry.event_id == event.id,
+                    User.id == dc_user.user_id
+                ).join(
+                    EventEntry.client
+                ).join(
+                    Client.user
+                ),
+                session=db
+            )
+            if existing:
+                raise UserInputError('You are already registered for this event!')
+
+            global_client = await dc_user.get_guild_client(ctx.guild_id, db=db)
             if global_client and False:
-                if global_client not in event.clients:
-                    await self.join_event(ctx, event, global_client, db)
-                else:
-                    raise UserInputError('You are already registered for this event!')
+                await self.join_event(ctx, event, global_client, db)
             else:
                 ctx, clients = await utils.select_client(
                     ctx=ctx,
                     dc=self.bot,
                     slash=self.slash_cmd_handler,
-                    user=user,
+                    user=dc_user,
                     max_values=1
                 )
                 await self.join_event(ctx, event, clients[0], db)
