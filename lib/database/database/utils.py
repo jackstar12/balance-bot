@@ -140,28 +140,6 @@ def get_discord_event(guild_id: int,
     )
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: list[int] = None) -> Union[
-    Select, Delete, Update]:
-    """
-    Commonly used utility to add filters that ensure authorized client access
-    :param stmt: stmt to add filters to
-    :param user: desired user
-    :param client_ids: possible client ids. If None, all clients will be used
-    :return:
-    """
-    # user_checks = [Client.user_id == user.id]
-    # if user.discord_user_id:
-    #    user_checks.append(Client.discord_user_id == user.discord_user_id)
-    return stmt.filter(
-        dbmodels.Client.id.in_(client_ids) if client_ids else True,
-        or_(
-            dbmodels.Client.user_id == user.id,
-        ),
-        dbmodels.Client.type == dbmodels.client.ClientType.FULL,
-        dbmodels.Client.state == dbmodels.client.ClientState.INVALID
-    )
-
-
 def get_all_events(guild_id: int, channel_id):
     pass
 

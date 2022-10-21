@@ -32,7 +32,7 @@ from database.calc import calc_daily, create_daily
 from database.dbasync import db_first, redis, async_maker, time_range, db_all
 from database.dbmodels import TradeDB, BalanceDB
 from database.dbmodels.client import Client, add_client_filters
-from database.dbmodels.mixins.querymixin import QueryParams
+from database.dbmodels.client import QueryParams
 from database.dbmodels.user import User
 from database.enums import IntervalType
 from common.exchanges import EXCHANGES

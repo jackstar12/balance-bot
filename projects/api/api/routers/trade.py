@@ -23,7 +23,7 @@ from database.dbasync import db_first, db_all
 from database.dbmodels import TradeDB as TradeDB
 from database.dbmodels.client import add_client_filters
 from database.dbmodels.label import Label as LabelDB
-from database.dbmodels.mixins.querymixin import QueryParams
+from database.dbmodels.client import QueryParams
 from database.dbmodels.pnldata import PnlData
 from database.dbmodels.trade import trade_association
 from database.dbmodels.user import User

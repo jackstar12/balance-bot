@@ -21,7 +21,7 @@ from database.dbasync import redis, db_all, redis_bulk, RedisKey, db_first, time
 from database.dbmodels import TradeDB
 from database.dbmodels.balance import Balance
 from database.dbmodels.client import Client, add_client_filters, ClientRedis
-from database.dbmodels.mixins.querymixin import QueryParams
+from database.dbmodels.client import QueryParams
 from database.dbmodels.user import User
 from database.models import BaseModel
 from database.redis.client import ClientSpace, ClientCacheKeys

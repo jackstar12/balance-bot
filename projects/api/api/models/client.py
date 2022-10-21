@@ -4,7 +4,7 @@ from typing import Dict, Optional, TypedDict
 from fastapi import Query
 from pydantic import UUID4
 
-import database.dbmodels.mixins.querymixin as qmxin
+import database.dbmodels.client as qmxin
 from api.models.trade import Trade, BasicTrade
 from api.models.template import TemplateInfo
 from database.models.eventinfo import EventInfo

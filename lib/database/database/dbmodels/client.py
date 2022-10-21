@@ -27,7 +27,6 @@ from database.env import environment
 from database.errors import UserInputError
 from database.dbmodels.transfer import Transfer
 
-from database.dbmodels.mixins.querymixin import QueryMixin
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from core import json as customjson
 from database.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey, db_unique, \
@@ -452,6 +451,52 @@ class Client(Base, Serializer, EditsMixin, QueryMixin):
         return self.id.__hash__()
 
 
+class QueryParams(BaseModel):
+    client_ids: set[int]
+    currency: str
+    since: Optional[datetime] = Field(default_factory=lambda: datetime.fromtimestamp(0, pytz.utc))
+    to: Optional[datetime]
+    limit: Optional[int]
+
+    def within(self, other: QueryParams):
+        return (
+                (not other.since or (self.since and self.since >= other.since))
+                and
+                (not other.to or (self.to and self.to < other.to))
+        )
+
+
+class ClientQueryMixin:
+    time_col: Column
+
+    @classmethod
+    async def query(cls,
+                    *eager,
+                    time_col: Column,
+                    user: User,
+                    ids: list[int],
+                    params: QueryParams,
+                    db: AsyncSession) -> list:
+        return await db_all(
+            add_client_filters(
+                select(cls).filter(
+                    cls.id.in_(ids) if ids else True,
+                    time_col >= params.since if params.since else True,
+                    time_col <= params.to if params.to else True
+                ).join(
+                    cls.client
+                ).limit(
+                    params.limit
+                ),
+                user=user,
+                client_ids=params.client_ids
+            ),
+            *eager,
+            session=db
+        )
+
+
+
 def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: set[int] | list[int] = None) -> \
         Union[
             Select, Delete, Update]:
@@ -472,5 +517,5 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
             # Client.oauth_account_id == user.discord_user_id if user.discord_user_id else False
         ),
         Client.type == ClientType.FULL,
-        Client.state == ClientState.INVALID
+        Client.state != ClientState.INVALID
     )
