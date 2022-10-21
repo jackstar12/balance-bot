@@ -112,7 +112,10 @@ class HistoryCog(CogBase):
             registrations = [(registered_client, user.display_name)]
         else:
             registered_user = await dbutils.get_discord_user(
-                user.id, eager_loads=[DiscordUser.clients, DiscordUser.global_associations]
+                user.id, eager_loads=[
+                    (DiscordUser.clients, Client.events),
+                    DiscordUser.global_associations
+                ]
             )
             registrations = [
                 (client, registered_user.get_events_and_guilds_string(self.bot, client)) for client in registered_user.clients
