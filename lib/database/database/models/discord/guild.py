@@ -18,6 +18,7 @@ class GuildAssociation(OrmBaseModel):
 class TextChannel(OrmBaseModel):
     id: OutputID
     name: str
+    category: str
 
 
 class UserRequest(BaseModel):

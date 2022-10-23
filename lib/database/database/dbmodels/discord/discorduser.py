@@ -4,6 +4,7 @@ from typing import List, TYPE_CHECKING, Optional
 
 import discord
 from aioredis import Redis
+from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, backref
@@ -46,6 +47,11 @@ class DiscordUser(OAuthAccount):
     @hybrid_property
     def discord_id(self):
         return int(self.account_id)
+
+    @discord_id.expression
+    def discord_id(self):
+        return self.account_id.cast(BigInteger)
+
 
     def get_display_name(self, dc: discord.Client, guild_id: int):
         try:

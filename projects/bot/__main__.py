@@ -24,7 +24,7 @@ from database.dbmodels.discord.guildassociation import GuildAssociation
 from database.dbmodels.user import OAuthData
 from database.enums import Tier
 from common.messenger import Messenger
-from database.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest
+from database.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest, TextChannel
 from database.redis.rpc import Server
 from core.utils import setup_logger
 
@@ -80,15 +80,22 @@ async def send_dm(self, user_id: int, message: str, embed: discord.Embed = None)
 
 @redis_server.method(input_model=GuildRequest)
 def guild(request: GuildRequest):
-    g: discord.Guild = bot.get_guild(request.guild_id)
-    m: discord.Member = g.get_member(request.user_id)
+    data: discord.Guild = bot.get_guild(request.guild_id)
+    member: discord.Member = data.get_member(request.user_id)
     return jsonable_encoder(
         GuildData(
-            id=g.id,
-            name=g.name,
-            icon_url=str(g.icon_url),
-            text_channels=[tc for tc in g.text_channels if tc.permissions_for(m).read_messages],
-            is_admin=m.guild_permissions.administrator
+            id=data.id,
+            name=data.name,
+            icon_url=str(data.icon_url),
+            text_channels=[
+                TextChannel(
+                    id=tc.id,
+                    name=tc.name,
+                    category=tc.category.name
+                )
+                for tc in data.text_channels if tc.permissions_for(member).read_messages
+            ],
+            is_admin=member.guild_permissions.administrator
         )
     )
 

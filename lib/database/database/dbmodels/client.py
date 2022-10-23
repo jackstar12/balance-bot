@@ -516,6 +516,6 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
             Client.user_id == user.id,
             # Client.oauth_account_id == user.discord_user_id if user.discord_user_id else False
         ),
-        Client.type == ClientType.FULL,
+        #Client.type == ClientType.FULL,
         Client.state != ClientState.INVALID
     )

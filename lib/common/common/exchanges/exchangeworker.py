@@ -46,7 +46,6 @@ if TYPE_CHECKING:
 
 import database.dbmodels.balance as db_balance
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -227,18 +226,21 @@ class ExchangeWorker:
                              since: datetime) -> tuple[List[Transfer], List[Execution], List[MiscIncome]]:
         transfers = await self.get_transfers(since)
         execs, misc = await self._get_executions(since, init=self.client.last_execution_sync is None)
+        # for transfer in transfers:
+        #     if transfer.coin:
+        #         raw_amount = transfer.extra_currencies.get(transfer.coin, transfer.amount)
+        #         transfer.execution = Execution(
+        #             symbol=self._symbol(transfer.coin),
+        #             qty=abs(raw_amount),
+        #             price=transfer.amount / raw_amount,
+        #             side=Side.BUY if transfer.amount > 0 else Side.SELL,
+        #             time=transfer.time,
+        #             type=ExecType.TRANSFER,
+        #             commission=transfer.commission
+        #         )
+        #         execs.append(transfer.execution)
         for transfer in transfers:
-            if not self._usd_like(transfer.coin) and transfer.coin:
-                raw_amount = transfer.extra_currencies[transfer.coin]
-                transfer.execution = Execution(
-                    symbol=self._symbol(transfer.coin),
-                    qty=abs(raw_amount),
-                    price=transfer.amount / raw_amount,
-                    side=Side.BUY if transfer.amount > 0 else Side.SELL,
-                    time=transfer.time,
-                    type=ExecType.TRANSFER,
-                    commission=transfer.commission
-                )
+            if transfer.execution:
                 execs.append(transfer.execution)
         execs.sort(key=lambda e: e.time)
         return transfers, execs, misc
@@ -284,19 +286,26 @@ class ExchangeWorker:
         raw_transfers = await self._get_transfers(since)
         if raw_transfers:
             raw_transfers.sort(key=lambda transfer: transfer.time)
-            return [
-                Transfer(
-                    amount=await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time),
-                    time=raw_transfer.time,
-                    extra_currencies=(
-                        {raw_transfer.coin: raw_transfer.amount}
-                        if not self._usd_like(raw_transfer.coin) else None
-                    ),
-                    coin=raw_transfer.coin,
-                    client_id=self.client_id
-                )
-                for raw_transfer in raw_transfers
-            ]
+
+            result = []
+            for raw_transfer in raw_transfers:
+                amount = await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time)
+                if amount:
+                    transfer = Transfer(
+                        client_id=self.client_id
+                    )
+
+                    transfer.execution = Execution(
+                        symbol=self._symbol(raw_transfer.coin),
+                        qty=abs(raw_transfer.amount),
+                        price=raw_transfer.amount / amount,
+                        side=Side.BUY if raw_transfer.amount > 0 else Side.SELL,
+                        time=raw_transfer.time,
+                        type=ExecType.TRANSFER,
+                        commission=None
+                    )
+                    result.append(transfer)
+            return result
         else:
             return []
 
@@ -371,7 +380,8 @@ class ExchangeWorker:
 
             await db.flush()
 
-            def get_time(b: Balance): return b.time
+            def get_time(b: Balance):
+                return b.time
 
             current_balance = await self._update_realized_balance(db)
 
@@ -475,7 +485,7 @@ class ExchangeWorker:
                 new_balance.__realtime__ = False
 
                 while current_transfer and execution.time <= current_transfer.time:
-                    new_balance.realized -= current_transfer.amount
+                    new_balance.realized -= current_transfer.size
                     current_transfer = next(transfer_iter, None)
 
                 while current_misc and execution.time <= current_misc.time:
@@ -575,8 +585,12 @@ class ExchangeWorker:
         while self._pending_execs:
             execs.append(self._pending_execs.popleft())
         async with self.db_maker() as db:
-            await self._add_executions(db, execs, realtime=True)
+            try:
+                trade = await self._add_executions(db, execs, realtime=True)
+            except Exception as e:
+                self._logger.error('Error while adding executions')
             await db.commit()
+            self._logger.debug(f'Added executions {execs} {trade}')
 
     async def _add_executions(self,
                               db: AsyncSession,
@@ -598,30 +612,42 @@ class ExchangeWorker:
 
             for execution in executions:
 
-                stmt = select(Trade).where(
-                    Trade.symbol == execution.symbol,
-                    Trade.client_id == self.client_id
-                )
+                async def get_trade(symbol: str):
 
-                # The distiunguashion here is pretty important because Liquidation Execs can happen
-                # after a trade has been closed on paper (e.g. insurance fund on binance). These still have to be
-                # attributed to the corresponding trade.
-                if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
-                    stmt = stmt.where(
-                        Trade.open_qty > 0.0
-                    )
-                elif execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
-                    stmt = stmt.order_by(
-                        desc(Trade.open_time)
+                    stmt = select(Trade).where(
+
+                        Trade.symbol.like(f'{symbol}%'),
+                        Trade.symbol == execution.symbol,
+                        Trade.client_id == self.client_id
                     )
 
-                active_trade = await db_unique(stmt,
-                                               Trade.executions,
-                                               Trade.init_balance,
-                                               Trade.initial,
-                                               Trade.max_pnl,
-                                               Trade.min_pnl,
-                                               session=db)
+                    # The distinguishing here is pretty important because Liquidation Execs can happen
+                    # after a trade has been closed on paper (e.g. insurance fund on binance). These still have to be
+                    # attributed to the corresponding trade.
+                    if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
+                        stmt = stmt.where(
+                            Trade.is_open
+                        )
+                    elif execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
+                        stmt = stmt.order_by(
+                            desc(Trade.open_time)
+                        )
+                    return await db_unique(stmt,
+                                           Trade.executions,
+                                           Trade.init_balance,
+                                           Trade.initial,
+                                           Trade.max_pnl,
+                                           Trade.min_pnl,
+                                           session=db)
+
+                active_trade = await get_trade(execution.symbol)
+
+                try:
+                    market = self.get_market(execution.symbol)
+                    # other = await get_trade(market.base)
+                    # other = await get_trade(market.quote)
+                except NotImplementedError:
+                    pass
 
                 if active_trade:
                     # Update existing trade
@@ -640,9 +666,6 @@ class ExchangeWorker:
                     active_trade.__realtime__ = realtime
                     db.add(active_trade)
             return active_trade
-
-    def pub_trade(self, category: Category, trade: Trade):
-        return self.messenger.pub_instance(trade, category)
 
     async def _convert(self, amount: Decimal, to: str, from_ccy: str, date: datetime):
         pass
@@ -763,7 +786,6 @@ class ExchangeWorker:
     def get_symbol(cls, market: Market) -> str:
         return market.base + market.quote
 
-
     @classmethod
     def set_weights(cls, weight: int, response: ClientResponse):
         for limit in cls._limits:
@@ -782,7 +804,6 @@ class ExchangeWorker:
         """
         while True:
             try:
-
 
                 item = await cls._request_queue.get()
                 request = item.request
@@ -895,7 +916,7 @@ class ExchangeWorker:
 
     @classmethod
     def _usd_like(cls, coin: str):
-        return coin in ('USD', 'USDT', 'USDC', 'BUSD', 'USTC', 'UST')
+        return coin in ('USD', 'USDT', 'USDC', 'BUSD')
 
     @classmethod
     def _query_string(cls, params: Dict):

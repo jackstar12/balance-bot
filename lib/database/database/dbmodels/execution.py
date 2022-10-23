@@ -28,8 +28,12 @@ class Execution(Base, Serializer, CurrencyMixin):
     commission: Decimal = Column(Numeric, nullable=True)
 
     @hybrid_property
+    def size(self):
+        return self.price * self.qty
+
+    @hybrid_property
     def effective_qty(self):
-        return self.qty * self.side.value if self.side else 0
+        return self.qty * -1 if self.side == Side.SELL else self.qty
 
     def __repr__(self):
         return f'<{self.__class__.__name__} {self.side} {self.symbol}@{self.price} {self.qty}'

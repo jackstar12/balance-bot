@@ -18,7 +18,11 @@ class Group:
 
 class LabelGroup(Group, Base, Serializer):
     __tablename__ = 'labelgroup'
-    labels = relationship('Label', back_populates='group', lazy='raise')
+    labels = relationship('Label',
+                          back_populates='group',
+                          passive_deletes=True,
+                          cascade="all, delete",
+                          lazy='raise')
 
 
 class Label(Base, Serializer):

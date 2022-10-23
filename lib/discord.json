@@ -1,0 +1,48 @@
+{
+  "data": {
+    "account_name": "jacksn",
+    "avatar_url": "https://cdn.discordapp.com/avatars/466706956158107649/34b238d512f65440065e553183aa3ad3.webp?size=1024"
+  },
+  "guilds": [
+    {
+      "id": "715507174167806042",
+      "name": "bot server",
+      "icon_url": "https://cdn.discordapp.com/icons/715507174167806042/163d4e035b36c5bea65b6d010666bc51.webp?size=1024",
+      "text_channels": [
+        {
+          "id": "715507174167806045",
+          "name": "【🍺】dafreibier"
+        },
+        {
+          "id": "942176153727287346",
+          "name": "logs"
+        }
+      ],
+      "is_admin": true
+    },
+    {
+      "id": "798957933135790091",
+      "name": "hirti du wichsa",
+      "icon_url": "https://cdn.discordapp.com/icons/798957933135790091/157ec17d9de73cc5567428df70e9ea67.webp?size=1024",
+      "text_channels": [
+        {
+          "id": "922146693653344286",
+          "name": "chad"
+        },
+        {
+          "id": "922157432120147998",
+          "name": "bot-control"
+        },
+        {
+          "id": "922745018446389300",
+          "name": "alert-test"
+        },
+        {
+          "id": "942495607015227502",
+          "name": "testnet"
+        }
+      ],
+      "is_admin": true
+    }
+  ]
+}

@@ -128,6 +128,7 @@ async def db_client(pnl_service, request, time, db, test_user, messenger) -> Cli
         await db.commit()
 
 
+
 @pytest.fixture
 def ccxt_client(db_client, session):
     ccxt_class = CCXT_CLIENTS[db_client.exchange]

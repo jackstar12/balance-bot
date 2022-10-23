@@ -11,7 +11,7 @@ class Transfer(OrmBaseModel):
     id: OutputID
     note: Optional[str]
     coin: str
-    amount: Decimal
+    size: Decimal
     time: datetime
     commission: Optional[Decimal]
     type: TransferType

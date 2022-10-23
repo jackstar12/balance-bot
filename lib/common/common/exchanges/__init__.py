@@ -2,6 +2,7 @@ from typing import Type
 
 from ccxt import Exchange
 
+from common.exchanges.exchangeworker import ExchangeWorker
 from database.models.client import ClientCreate
 from common.exchanges.binance.worker import BinanceFutures, BinanceSpot
 from common.exchanges.binance.ticker import BinanceFuturesTicker
@@ -14,7 +15,7 @@ from common.exchanges.kucoin.kucoin import KuCoinFuturesWorker
 from common.exchanges.okx.okx import OkxWorker
 import ccxt
 
-EXCHANGES = {
+EXCHANGES: dict[str, Type[ExchangeWorker]] = {
     worker.exchange: worker
     for worker in [
         BinanceFutures,

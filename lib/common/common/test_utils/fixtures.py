@@ -10,12 +10,12 @@ from aioredis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from common.test_utils.mockexchange import MockExchange
+from common.test_utils.mockexchange import MockExchange, MockTicker
 from core import json as customjson
 from database.dbmodels import Event, Client, EventEntry, Balance
 from database.dbmodels.trade import Trade
 from database.dbsync import Base
-from common.exchanges import EXCHANGES
+from common.exchanges import EXCHANGES, EXCHANGE_TICKERS
 from common.messenger import Messenger, NameSpaceInput
 from database.env import environment
 
@@ -27,7 +27,7 @@ assert SA_DATABASE_TESTING_URI
 
 
 EXCHANGES['mock'] = MockExchange
-
+EXCHANGE_TICKERS['mock'] = MockTicker
 
 @pytest.fixture(scope='session')
 def engine():
@@ -64,11 +64,6 @@ def redis() -> Redis:
 @pytest.fixture(scope='session')
 def messenger(redis) -> Messenger:
     messenger = Messenger(redis=redis)
-    #messenger.listen_class_all(Event)
-    #messenger.listen_class_all(Client)
-    #messenger.listen_class_all(Trade)
-    #messenger.listen_class_all(Balance)
-    #messenger.listen_class_all(EventEntry)
     return messenger
 
 

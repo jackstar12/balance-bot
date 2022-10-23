@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 from typing import Optional, TYPE_CHECKING
 
 import pytz
@@ -28,8 +29,13 @@ from database.dbmodels.symbol import CurrencyMixin
 
 trade_association = Table('trade_association', Base.metadata,
                           Column('trade_id', ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
-                          Column('label_id', ForeignKey('label.id', ondelete="CASCADE"), primary_key=True)
-                          )
+                          Column('label_id', ForeignKey('label.id', ondelete="CASCADE"), primary_key=True))
+
+
+# class TradeType(Enum):
+#     SPOT = "spot"
+#     FUTURES = "futures"
+#     TRANSFER = "transfer"
 
 
 class Trade(Base, Serializer, CurrencyMixin):
@@ -256,7 +262,7 @@ class Trade(Base, Serializer, CurrencyMixin):
     def calc_rpnl(self, qty: Decimal, exit: Decimal):
         diff = exit - self.entry
         raw = diff / qty if self.inverse else diff * qty
-        return raw * self.initial.side.value
+        return raw * -1 if self.initial.side == Side.SELL else raw
 
     def calc_upnl(self, price: Decimal):
         diff = price - self.entry

@@ -110,14 +110,15 @@ class EventService(BaseService):
             else:
                 async def fn():
                     event = await self._get_event(event_id)
-                    if category in (EVENT.END, EVENT.START):
-                        await event.save_leaderboard()
+                    if event:
+                        if category in (EVENT.END, EVENT.START):
+                            await event.save_leaderboard()
 
-                        if category == EVENT.END:
-                            event.final_summary = await event.get_summary()
+                            if category == EVENT.END:
+                                event.final_summary = await event.get_summary()
 
-                        await self._db.commit()
-                    return await self._messenger.pub_instance(event, category)
+                            await self._db.commit()
+                        return await self._messenger.pub_instance(event, category)
 
                 self._scheduler.add_job(
                     func=fn,

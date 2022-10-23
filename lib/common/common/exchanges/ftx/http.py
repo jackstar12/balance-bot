@@ -16,6 +16,8 @@ from database.dbmodels.transfer import RawTransfer
 from database.enums import Side, ExecType
 from common.exchanges.exchangeworker import ExchangeWorker
 from common.exchanges.ftx.websocket import FtxWebsocketClient
+from database.errors import ResponseError
+from database.models.market import Market
 from database.models.ohlc import OHLC
 
 
@@ -53,6 +55,20 @@ class FtxWorker(ExchangeWorker):
     async def cleanup(self):
         await self.ws.close()
 
+    @classmethod
+    def get_market(cls, raw: str) -> Market:
+        if raw.endswith('-PERP'):
+            return Market(
+                base=raw[:-5],
+                quote='USD'
+            )
+        else:
+            split = raw.split('/')
+            return Market(
+                base=split[0],
+                quote=split[1]
+            )
+
     async def _on_message(self, message):
         logging.info(f'FTX MESSAGE! {message}')
         if message['channel'] == 'fills':
@@ -61,8 +77,8 @@ class FtxWorker(ExchangeWorker):
                 execution=Execution(
                     symbol=data['market'],
                     side=data['side'].upper(),
-                    price=float(data['price']),
-                    qty=float(data['size']),
+                    price=Decimal(data['price']),
+                    qty=Decimal(data['size']),
                     time=datetime.now(pytz.utc),
                     type=ExecType.TRADE
                 )
@@ -120,11 +136,21 @@ class FtxWorker(ExchangeWorker):
     async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
         if self._usd_like(coin):
             return amount
-        ticker = await self._get_ohlc(f'{coin}/USD', since=date, limit=1)
-        return amount * (ticker[0].open + ticker[0].close) / 2
+        try:
+            ticker = await self._get_ohlc(f'{coin}/USD', since=date, limit=1)
+            return amount * (ticker[0].open + ticker[0].close) / 2
+        except ResponseError:
+            return amount
 
     async def _get_ohlc(self, market: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
+
+        # try:
+        #     market = self.get_market(execution.symbol)
+        #     if self._usd_like(market.base):
+        #         continue
+        # except NotImplementedError:
+        #     pass
 
         resolution_s = resolution_s or 15
         params = {'resolution': resolution_s}
@@ -158,7 +184,7 @@ class FtxWorker(ExchangeWorker):
             RawTransfer(
                 -transfer['size'] if withdrawal else transfer['size'],
                 datetime.fromisoformat(transfer['time']),
-                transfer['coin'],
+                transfer['coin'] if not cls._usd_like(transfer['coin']) else 'USD',
                 fee=None
             )
             for transfer in transfers

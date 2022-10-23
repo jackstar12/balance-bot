@@ -12,6 +12,7 @@ from common.exchanges import EXCHANGES
 from collector.services.baseservice import BaseService
 from collector.services.dataservice import DataService, Channel
 from database.dbasync import db_all, db_unique, db_eager
+from database.dbmodels import Balance
 from database.dbmodels.client import Client, ClientState, ClientType
 from database.dbmodels.editing import Journal
 from database.dbmodels.trade import Trade
@@ -79,9 +80,9 @@ class _BalanceServiceBase(BaseService):
 
     async def _sub_client(self):
 
-        self._messenger.listen_class_all(BALANCE.table, namespace=BALANCE)
-        self._messenger.listen_class_all(CLIENT.table, namespace=CLIENT)
-        self._messenger.listen_class_all(TRADE.table, namespace=TRADE)
+        self._messenger.listen_class_all(Balance)
+        self._messenger.listen_class_all(Client)
+        self._messenger.listen_class_all(Trade)
 
         async def _on_client_delete(data: Dict):
             await self._remove_worker_by_id(data['id'])
@@ -100,8 +101,8 @@ class _BalanceServiceBase(BaseService):
             elif state != 'synchronizing' and data['type'] == self.client_type.value:
                 await self.add_client_by_id(data['id'])
 
-        async def _on_client_add(data: Dict):
-            await self.add_client_by_id(data['id'])
+        def _on_client_add(data: Dict):
+            return self.add_client_by_id(data['id'])
 
         await self._messenger.bulk_sub(
             TableNames.CLIENT,
@@ -150,6 +151,8 @@ class _BalanceServiceBase(BaseService):
                 self._all_client_stmt.filter_by(id=client_id),
                 session=self._db
             )
+        # async with self._db_maker() as db:
+        #     client = await db.get(Client, client_id)
         if client:
             return await self.add_client(client)
         else:
@@ -163,8 +166,9 @@ class _BalanceServiceBase(BaseService):
                                       http_session=self._http_session,
                                       db_maker=self._db_maker,
                                       messenger=self._messenger)
-                await self._add_worker(worker)
-                await self._messenger.pub_instance(client, Category.ADDED)
+                worker = await self._add_worker(worker)
+                if worker:
+                    await self._messenger.pub_instance(client, Category.ADDED)
                 return worker
             else:
                 self._logger.error(f'Exchange class {exchange_cls} does NOT subclass ExchangeWorker')
@@ -350,6 +354,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
             try:
                 await worker.synchronize_positions()
                 await worker.startup()
+                return worker
             except InvalidClientError:
                 self._logger.exception(f'Error while adding {worker.client_id=}')
 
@@ -432,4 +437,4 @@ class ExtendedBalanceService(_BalanceServiceBase):
                     for balance in balances:
                         await self._messenger.pub_instance(balance, Category.LIVE)
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(.5)

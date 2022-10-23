@@ -175,7 +175,6 @@ class Messenger:
     def _wrap(self, coro, rcv_event=False):
         @wraps(coro)
         def wrapper(event: dict, *args, **kwargs):
-            self._logger.info(f'Redis Event: {event=} {args=} {kwargs=}')
             if rcv_event:
                 data = event
             else:
@@ -295,7 +294,7 @@ class Messenger:
 
         if namespace is TRADE:
             def is_finished(trade: Trade):
-                return ~trade.is_open
+                return not trade.is_open
 
             self.listen_class(target_cls, "after_update", namespace, TRADE.FINISHED, condition=is_finished)
 

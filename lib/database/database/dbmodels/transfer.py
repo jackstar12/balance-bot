@@ -8,7 +8,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from database.dbsync import Base
-from database.dbmodels.mixins.amountmixin import AmountMixin
+from database.enums import Side
 
 
 class TransferType(enum.Enum):
@@ -23,7 +23,7 @@ class RawTransfer(NamedTuple):
     fee: Optional[Decimal]
 
 
-class Transfer(Base, AmountMixin):
+class Transfer(Base):
     __tablename__ = 'transfer'
 
     id = Column(BigInteger, primary_key=True)
@@ -32,19 +32,29 @@ class Transfer(Base, AmountMixin):
         ForeignKey('client.id', ondelete="CASCADE"),
         nullable=False
     )
-    client = relationship('Client')
+    execution_id = Column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=False)
     note = Column(String, nullable=True)
-    coin = Column(String, nullable=True)
 
-    commission = Column(Numeric, nullable=True)
-    execution_id = Column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=True)
+    client = relationship('Client')
     execution = relationship(
         'Execution',
         foreign_keys=execution_id,
         uselist=False,
         cascade='all, delete',
-        lazy='noload'
+        lazy='joined'
     )
+
+    @hybrid_property
+    def time(self):
+        return self.execution.time
+
+    @hybrid_property
+    def commission(self):
+        return self.execution.commission
+
+    @hybrid_property
+    def size(self):
+        return self.execution.size
 
     #balance = relationship(
     #    'Balance',
@@ -55,7 +65,7 @@ class Transfer(Base, AmountMixin):
 
     @hybrid_property
     def type(self) -> TransferType:
-        return TransferType.DEPOSIT if self.amount > 0 else TransferType.WITHDRAW
+        return TransferType.DEPOSIT if self.execution.side == Side.BUY else TransferType.WITHDRAW
 
     def __repr__(self):
         return f'{self.type.value} {self.amount}USD ({self.coin})'
