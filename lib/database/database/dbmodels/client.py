@@ -322,9 +322,10 @@ class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
                                    ccy=None,
                                    since: datetime = None,
                                    to: datetime = None):
+
         stmt = select(
             func.sum(
-                Transfer.size if not ccy or ccy == self.currency else Transfer.extra_currencies[ccy]
+                dbmodels.Execution.size if not ccy or ccy == self.currency else Transfer.extra_currencies[ccy]
             ).over(order_by=Transfer.id).label('total_transfered')
         ).join(Transfer.execution).where(
             Transfer.client_id == self.id,
