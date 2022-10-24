@@ -38,7 +38,6 @@ class Trade(BasicTrade):
     #initial_execution_id: int
 
 
-
 class DetailledTrade(Trade):
     tp: Optional[Decimal]
     sl: Optional[Decimal]
@@ -71,3 +70,9 @@ class UpdateTrade(BaseModel):
     labels: Optional[LabelUpdate]
     notes: Optional[DocumentModel]
     template_id: Optional[InputID]
+
+
+class UpdateTradeResponse(BaseModel):
+    label_ids: Optional[list[str]]
+    notes: Optional[DocumentModel]
+

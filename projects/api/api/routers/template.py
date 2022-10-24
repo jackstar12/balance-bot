@@ -92,7 +92,6 @@ async def get_template(template_id: int,
                                      safe_op(DbTemplate.type, template_type, operator.eq),
                                      user=user,
                                      session=db)
-
     return TemplateInfo.from_orm(template)
 
 

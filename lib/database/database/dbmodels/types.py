@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from database.models.document import DocumentModel
 
-Document = DocumentModel.get_sa_type(exclude_none=True)
+Document = DocumentModel.get_sa_type(exclude_none=True, validate=True)
 
 
 class Data(TypeDecorator):

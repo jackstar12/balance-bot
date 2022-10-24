@@ -615,8 +615,8 @@ class ExchangeWorker:
                 async def get_trade(symbol: str):
 
                     stmt = select(Trade).where(
-
-                        Trade.symbol.like(f'{symbol}%'),
+                        #Trade.symbol.like(f'{symbol}%'),
+                        Trade.symbol == symbol,
                         Trade.symbol == execution.symbol,
                         Trade.client_id == self.client_id
                     )

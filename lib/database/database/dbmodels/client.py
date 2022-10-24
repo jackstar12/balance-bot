@@ -324,11 +324,11 @@ class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
                                    to: datetime = None):
         stmt = select(
             func.sum(
-                Transfer.amount if not ccy or ccy == self.currency else Transfer.extra_currencies[ccy]
+                Transfer.size if not ccy or ccy == self.currency else Transfer.extra_currencies[ccy]
             ).over(order_by=Transfer.id).label('total_transfered')
-        ).where(
+        ).join(Transfer.execution).where(
             Transfer.client_id == self.id,
-            time_range(Transfer.time, since, to)
+            time_range(dbmodels.Execution.time, since, to)
         )
         return await db_unique(stmt, session=self.async_session)
 

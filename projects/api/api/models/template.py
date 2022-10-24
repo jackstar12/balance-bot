@@ -17,6 +17,7 @@ class TemplateUpdate(BaseModel):
 
 class TemplateInfo(TemplateCreate):
     id: OutputID
+    title: Optional[str]
     doc: Optional[dict]
     type: TemplateType
 

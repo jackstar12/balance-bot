@@ -16,7 +16,7 @@ from database.models.document import DocumentModel
 from api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
 from api.models.client import get_query_params
-from api.models.trade import Trade, BasicTrade, DetailledTrade, UpdateTrade
+from api.models.trade import Trade, BasicTrade, DetailledTrade, UpdateTrade, UpdateTradeResponse
 from api.users import CurrentUser
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, ResponseModel
 from database.dbasync import db_first, db_all
@@ -49,7 +49,7 @@ def add_trade_filters(stmt, user: User, trade_id: int):
     )
 
 
-@router.patch('/trade/{trade_id}', response_model=DetailledTrade)
+@router.patch('/trade/{trade_id}', response_model=UpdateTradeResponse)
 async def update_trade(trade_id: int,
                        body: UpdateTrade,
                        user: User = Depends(CurrentUser),
@@ -92,7 +92,10 @@ async def update_trade(trade_id: int,
         )
 
     await db.commit()
-    return DetailledTrade.from_orm(trade)
+    return UpdateTradeResponse(
+        label_ids=body.labels and trade.label_ids,
+        notes=body.template_id and trade.notes
+    )
 
 
 def create_trade_endpoint(path: str,
