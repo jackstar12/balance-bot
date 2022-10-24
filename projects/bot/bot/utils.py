@@ -419,9 +419,9 @@ async def create_history(to_graph: List[Tuple[Client, str]],
 
             transfers = await db_all(
                 select(Transfer).where(
-                    time_range(Transfer.time, start, end),
+                    time_range(dbmodels.Execution.time, start, end),
                     Transfer.client_id == registered_client.id
-                ).order_by(Transfer.time)
+                ).order_by(dbmodels.Execution.time)
             )
 
             if len(history.data) == 0:
