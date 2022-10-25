@@ -33,7 +33,9 @@ class Transfer(Base):
         nullable=False
     )
     execution_id = Column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=False)
+
     note = Column(String, nullable=True)
+    coin = Column(String, nullable=True)
 
     client = relationship('Client')
     execution = relationship(
