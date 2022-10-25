@@ -414,7 +414,7 @@ class Trade(Base, Serializer, CurrencyMixin):
         """
         if not self.executions or self.close_time > date:
             self.__realtime__ = False
-            await db.delete(Trade)
+            await db.delete(self)
 
             if date > self.open_time:
                 # First, create a new copy based on the same initial execution
