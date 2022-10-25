@@ -778,12 +778,12 @@ class ExchangeWorker:
             return response_json
 
     @classmethod
-    def get_market(cls, raw: str) -> Market:
+    def get_market(cls, raw: str) -> Optional[Market]:
         raise NotImplementedError
 
     @classmethod
     def get_symbol(cls, market: Market) -> str:
-        return market.base + market.quote
+        raise NotImplementedError
 
     @classmethod
     def set_weights(cls, weight: int, response: ClientResponse):

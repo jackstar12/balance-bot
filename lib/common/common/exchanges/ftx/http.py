@@ -56,7 +56,11 @@ class FtxWorker(ExchangeWorker):
         await self.ws.close()
 
     @classmethod
-    def get_market(cls, raw: str) -> Market:
+    def get_symbol(cls, market: Market) -> str:
+        return f'{market.base}/{market.quote}'
+
+    @classmethod
+    def get_market(cls, raw: str) -> Optional[Market]:
         if raw.endswith('-PERP'):
             return Market(
                 base=raw[:-5],

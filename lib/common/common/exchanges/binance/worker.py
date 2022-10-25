@@ -11,7 +11,7 @@ from abc import ABC
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import List, Iterator
+from typing import List, Iterator, Optional
 
 import ccxt.async_support as ccxt
 import pytz
@@ -151,6 +151,32 @@ class BinanceFutures(_BinanceBaseClient):
             'secret': self._api_secret
         })
         self._ccxt.set_sandbox_mode(True)
+
+    @classmethod
+    def get_market(cls, raw: str) -> Optional[Market]:
+        if raw.endswith('USDT'):
+            return Market(
+                base=raw[:-4],
+                quote='USDT'
+            )
+
+    @classmethod
+    def get_symbol(cls, market: Market) -> str:
+        return market.base + market.quote
+
+    @classmethod
+    def _exclude_from_trade(cls, execution: Execution):
+        return execution.symbol in ('BUSDUSDT', 'BUSDUSD', 'USDTUSD', 'USDTUSDT')
+
+    @classmethod
+    def set_weights(cls, weight: int, response: ClientResponse):
+        limit = cls._limits[0]
+        used = response.headers.get('X-MBX-USED-WEIGHT-1M')
+        logger.info(f'Weight used: {used}')
+        if used:
+            limit.amount = limit.max_amount - int(used)
+        else:
+            limit.amount -= weight or limit.default_weight
 
     async def _get_transfers(self,
                              since: datetime,
@@ -339,10 +365,6 @@ class BinanceFutures(_BinanceBaseClient):
             time=time if time else datetime.now(pytz.utc)
         )
 
-    @classmethod
-    def _exclude_from_trade(cls, execution: Execution):
-        return execution.symbol in ('BUSDUSDT', 'USDTUSDT')
-
     async def startup(self):
         await self._ws.start()
 
@@ -442,16 +464,6 @@ class BinanceFutures(_BinanceBaseClient):
                     )
                 )
 
-    @classmethod
-    def set_weights(cls, weight: int, response: ClientResponse):
-        limit = cls._limits[0]
-        used = response.headers.get('X-MBX-USED-WEIGHT-1M')
-        logger.info(f'Weight used: {used}')
-        if used:
-            limit.amount = limit.max_amount - int(used)
-        else:
-            limit.amount -= weight or limit.default_weight
-
 
 class BinanceSpot(_BinanceBaseClient):
     _ENDPOINT = 'https://api.binance.com'
@@ -460,7 +472,7 @@ class BinanceSpot(_BinanceBaseClient):
     supports_extended_data = False
 
     @classmethod
-    def get_market(cls, raw: str) -> Market:
+    def get_market(cls, raw: str) -> Optional[Market]:
         split = raw.split('/')
         return Market(
             base=split[0],
@@ -471,7 +483,6 @@ class BinanceSpot(_BinanceBaseClient):
     def _exclude_from_trade(cls, execution: Execution):
         market = cls.get_market(execution.symbol)
         return market.base == market.quote or cls._usd_like(market.base)
-
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
     async def _get_balance(self, time: datetime, upnl=True):
