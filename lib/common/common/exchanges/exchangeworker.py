@@ -292,7 +292,8 @@ class ExchangeWorker:
                 amount = await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time)
                 if amount:
                     transfer = Transfer(
-                        client_id=self.client_id
+                        client_id=self.client_id,
+                        coin=raw_transfer.coin
                     )
 
                     transfer.execution = Execution(
