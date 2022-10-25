@@ -116,9 +116,9 @@ def transfer_gen(transfers: list[Transfer],
             if reset:
                 offsets = {}
         _add_safe(offsets, default_ccy, transfer.size)
-        if transfer.extra_currencies:
-            for ccy, amount in transfer.extra_currencies.items():
-                _add_safe(offsets, ccy, Decimal(amount))
+        #if transfer.extra_currencies:
+        #    for ccy, amount in transfer.extra_currencies.items():
+        #        _add_safe(offsets, ccy, Decimal(amount))
 
     # One last yield in case the next_time was beyond the last transfer
     yield offsets
