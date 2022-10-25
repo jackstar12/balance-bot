@@ -331,7 +331,7 @@ class ExchangeWorker:
             client: Client = await db_select(
                 Client, Client.id == self.client_id,
                 eager=[
-                    (Client.trades, Trade.executions),
+                    (Client.trades, [Trade.executions, Trade.init_balance]),
                     Client.currently_realized
                 ],
                 session=db
@@ -368,7 +368,7 @@ class ExchangeWorker:
 
             executions_by_symbol = core.groupby(all_executions, lambda e: e.symbol)
 
-            for trade in self.client.trades:
+            for trade in client.trades:
                 if valid_until:
                     await trade.reverse_to(valid_until, db=db)
                 else:
