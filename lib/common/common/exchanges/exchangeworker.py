@@ -296,7 +296,10 @@ class ExchangeWorker:
                     )
 
                     transfer.execution = Execution(
-                        symbol=self._symbol(raw_transfer.coin),
+                        symbol=self.get_symbol(Market(
+                            base=transfer.coin,
+                            quote=self.client.currency
+                        )),
                         qty=abs(raw_transfer.amount),
                         price=raw_transfer.amount / amount,
                         side=Side.BUY if raw_transfer.amount > 0 else Side.SELL,
@@ -906,9 +909,6 @@ class ExchangeWorker:
 
     def put(self, path: str, **kwargs):
         return self._request('PUT', path, **kwargs)
-
-    def _symbol(self, coin: str):
-        return f'{coin}/{self.client.currency or "USD"}'
 
     @classmethod
     def _usd_like(cls, coin: str):

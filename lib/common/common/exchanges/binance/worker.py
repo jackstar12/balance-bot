@@ -24,6 +24,7 @@ from database.dbmodels.transfer import RawTransfer
 from database.enums import Side, ExecType
 from common.exchanges.binance.futures_websocket_client import FuturesWebsocketClient
 from common.exchanges.exchangeworker import ExchangeWorker, create_limit
+from database.models.market import Market
 from database.models.miscincome import MiscIncome
 from database.models.ohlc import OHLC
 from core.utils import utc_now
@@ -338,6 +339,10 @@ class BinanceFutures(_BinanceBaseClient):
             time=time if time else datetime.now(pytz.utc)
         )
 
+    @classmethod
+    def _exclude_from_trade(cls, execution: Execution):
+        return execution.symbol in ('BUSDUSDT', 'USDTUSDT')
+
     async def startup(self):
         await self._ws.start()
 
@@ -453,6 +458,20 @@ class BinanceSpot(_BinanceBaseClient):
     _SANDBOX_ENDPOINT = 'https://testnet.binance.vision'
     exchange = 'binance-spot'
     supports_extended_data = False
+
+    @classmethod
+    def get_market(cls, raw: str) -> Market:
+        split = raw.split('/')
+        return Market(
+            base=split[0],
+            quote=split[1]
+        )
+
+    @classmethod
+    def _exclude_from_trade(cls, execution: Execution):
+        market = cls.get_market(execution.symbol)
+        return market.base == market.quote or cls._usd_like(market.base)
+
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
     async def _get_balance(self, time: datetime, upnl=True):
