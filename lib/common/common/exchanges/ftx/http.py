@@ -142,6 +142,11 @@ class FtxWorker(ExchangeWorker):
         except ResponseError:
             return amount
 
+    @classmethod
+    def _exclude_from_trade(cls, execution: Execution):
+        market = cls.get_market(execution.symbol)
+        return market.base == market.quote or cls._usd_like(market.base)
+
     async def _get_ohlc(self, market: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
 
@@ -184,7 +189,7 @@ class FtxWorker(ExchangeWorker):
             RawTransfer(
                 -transfer['size'] if withdrawal else transfer['size'],
                 datetime.fromisoformat(transfer['time']),
-                transfer['coin'] if not cls._usd_like(transfer['coin']) else 'USD',
+                transfer['coin'],
                 fee=None
             )
             for transfer in transfers

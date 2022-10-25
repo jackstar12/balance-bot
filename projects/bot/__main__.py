@@ -62,7 +62,14 @@ def guilds(request: UserRequest):
                 id=guild.id,
                 name=guild.name,
                 icon_url=str(guild.icon_url),
-                text_channels=guild.text_channels,
+                text_channels=[
+                    TextChannel(
+                        id=tc.id,
+                        name=tc.name,
+                        category=tc.category.name
+                    )
+                    for tc in guild.text_channels if tc.permissions_for(member).read_messages
+                ],
                 is_admin=member.guild_permissions.administrator
             )
         )

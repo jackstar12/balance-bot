@@ -449,10 +449,7 @@ class ExchangeWorker:
             # 8.4. 90
             # 7.4. 110
 
-            transfer_iter = reversed(transfers)
             misc_iter = reversed(misc)
-
-            current_transfer = next(transfer_iter, None)
             current_misc = next(misc_iter, None)
 
             balances = []
@@ -484,9 +481,8 @@ class ExchangeWorker:
                 )
                 new_balance.__realtime__ = False
 
-                while current_transfer and execution.time <= current_transfer.time:
-                    new_balance.realized -= current_transfer.size
-                    current_transfer = next(transfer_iter, None)
+                if execution.type == ExecType.TRANSFER:
+                    new_balance.realized -= execution.size
 
                 while current_misc and execution.time <= current_misc.time:
                     new_balance.realized -= current_misc.amount
@@ -516,7 +512,7 @@ class ExchangeWorker:
                         for tr_id, pnl_data in pnl_by_trade.items()
                     )
 
-                if execution.trade.initial_execution_id == execution.id:
+                if execution.trade and execution.trade.initial_execution_id == execution.id:
                     execution.trade.init_balance = new_balance
 
                 # Don't bother adding multiple balances for executions happening as a direct series of events
@@ -640,14 +636,10 @@ class ExchangeWorker:
                                            Trade.min_pnl,
                                            session=db)
 
-                active_trade = await get_trade(execution.symbol)
+                if self._exclude_from_trade(execution):
+                    continue
 
-                try:
-                    market = self.get_market(execution.symbol)
-                    # other = await get_trade(market.base)
-                    # other = await get_trade(market.quote)
-                except NotImplementedError:
-                    pass
+                active_trade = await get_trade(execution.symbol)
 
                 if active_trade:
                     # Update existing trade
@@ -683,6 +675,10 @@ class ExchangeWorker:
                               since: datetime,
                               init=False) -> tuple[List[Execution], List[MiscIncome]]:
         raise NotImplementedError
+
+    @classmethod
+    def _exclude_from_trade(cls, execution: Execution):
+        return False
 
     @classmethod
     def _calc_resolution(cls,
