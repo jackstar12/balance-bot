@@ -31,21 +31,16 @@ TTable = TypeVar('TTable', bound=BaseMixin)
 
 
 @dataclass
-class MessengerNameSpace(Generic[TTable]):
-    parent: 'Optional[MessengerNameSpace]'
+class RedisNameSpace(Generic[TTable]):
+    parent: 'Optional[RedisNameSpace]'
     name: 'str'
     table: 'Type[TTable]'
     id: Optional[str]
 
-    class Category(Enum):
-        NEW = "new"
-        DELETE = "delete"
-        UPDATE = "update"
-
     @classmethod
     def from_table(cls,
                    table: Type[TTable],
-                   parent: 'Optional[MessengerNameSpace]' = None):
+                   parent: 'Optional[RedisNameSpace]' = None):
         return cls(
             parent=parent,
             name=table.__tablename__,
@@ -96,11 +91,11 @@ class MessengerNameSpace(Generic[TTable]):
         return core.join_args(self.parent, self.name, *add, '{' + self.id + '}')
 
 
-class TradeSpace(MessengerNameSpace):
+class TradeSpace(RedisNameSpace):
     FINISHED = "finished"
 
 
-class EventSpace(MessengerNameSpace[Event]):
+class EventSpace(RedisNameSpace[Event]):
     def get_ids(self, instance: Event):
         return {
             'user_id': instance.owner_id,
@@ -113,23 +108,23 @@ class EventSpace(MessengerNameSpace[Event]):
     REGISTRATION_END = "registration-end"
 
 
-USER = MessengerNameSpace.from_table(User)
+USER = RedisNameSpace.from_table(User)
 
-CLIENT = MessengerNameSpace.from_table(Client, parent=USER)
+CLIENT = RedisNameSpace.from_table(Client, parent=USER)
 
-BALANCE = MessengerNameSpace.from_table(Balance, parent=CLIENT)
+BALANCE = RedisNameSpace.from_table(Balance, parent=CLIENT)
 TRADE = TradeSpace.from_table(Trade, parent=CLIENT)
-TRANSFER = MessengerNameSpace.from_table(Transfer, parent=CLIENT)
+TRANSFER = RedisNameSpace.from_table(Transfer, parent=CLIENT)
 
-PNL_DATA = MessengerNameSpace.from_table(PnlData, parent=TRADE)
+PNL_DATA = RedisNameSpace.from_table(PnlData, parent=TRADE)
 
-ALERT = MessengerNameSpace.from_table(Alert, parent=USER)
+ALERT = RedisNameSpace.from_table(Alert, parent=USER)
 
 EVENT = EventSpace.from_table(Event, parent=USER)
-EVENT_SCORE = MessengerNameSpace.from_table(EventEntry, parent=EVENT)
+EVENT_SCORE = RedisNameSpace.from_table(EventEntry, parent=EVENT)
 
-JOURNAL = MessengerNameSpace.from_table(Journal, parent=USER)
-CHAPTER = MessengerNameSpace.from_table(Chapter, parent=JOURNAL)
+JOURNAL = RedisNameSpace.from_table(Journal, parent=USER)
+CHAPTER = RedisNameSpace.from_table(Chapter, parent=JOURNAL)
 
 
 by_names = core.groupby_unique(
@@ -161,7 +156,7 @@ class ClientUpdate(BaseModel):
     premium: Optional[bool]
 
 
-NameSpaceInput = MessengerNameSpace | TableNames | Type[BaseMixin] | Any
+NameSpaceInput = RedisNameSpace | TableNames | Type[BaseMixin] | Any
 
 
 class Messenger:
@@ -213,7 +208,7 @@ class Messenger:
 
     @classmethod
     def get_namespace(cls, name: NameSpaceInput):
-        if isinstance(name, MessengerNameSpace):
+        if isinstance(name, RedisNameSpace):
             return name
         elif isinstance(name, Enum):
             return by_names.get(name.value)
@@ -275,7 +270,7 @@ class Messenger:
     def listen_class(self,
                      target_cls: Type[Serializer],
                      identifier: str,
-                     namespace: MessengerNameSpace[Type[Serializer]],
+                     namespace: RedisNameSpace[Type[Serializer]],
                      sub: Category | str,
                      condition: Callable[[Serializer], bool] = None):
         @event.listens_for(target_cls, identifier)
@@ -288,7 +283,7 @@ class Messenger:
                                      **namespace.get_ids(target))
                 )
 
-    def listen_class_all(self, target_cls: Type[Serializer], namespace: MessengerNameSpace = None):
+    def listen_class_all(self, target_cls: Type[Serializer], namespace: RedisNameSpace = None):
         if not namespace:
             namespace = self.get_namespace(target_cls.__tablename__)
 

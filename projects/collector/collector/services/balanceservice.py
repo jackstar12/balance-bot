@@ -380,61 +380,62 @@ class ExtendedBalanceService(_BalanceServiceBase):
         while True:
 
             balances = []
-    
-            async with self._worker_lock, self._db_lock:
-                await self._refresh()
-                for worker in self._workers_by_id.values():
-                    client = self._db.identity_map.get(
-                        self._db.identity_key(Client, worker.client_id)
-                    )
-                    if not client:
-                        client = await self._get_client(worker)
+            async with self._redis.pipeline(transaction=True) as pipe:
 
-                    if not client:
-                        await self._messenger.pub_channel(
-                            TableNames.CLIENT, Category.DELETE, obj={'id': worker.client_id}, id=worker.client_id
+                async with self._worker_lock, self._db_lock:
+                    await self._refresh()
+                    for worker in self._workers_by_id.values():
+                        client = self._db.identity_map.get(
+                            self._db.identity_key(Client, worker.client_id)
                         )
-                        continue
+                        if not client:
+                            client = await self._get_client(worker)
 
-                    if client.state == ClientState.SYNCHRONIZING:
-                        continue
+                        if not client:
+                            await self._messenger.pub_channel(
+                                TableNames.CLIENT, Category.DELETE, obj={'id': worker.client_id}, id=worker.client_id
+                            )
+                            continue
 
-                    if client and client.open_trades:
-                        for trade in client.open_trades:
-                            ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
-                            extra_ticker = ticker
-                            try:
-                                market = worker.get_market(trade.symbol)
-                                if market.quote != client.currency:
-                                    extra_ticker = await self.data_service.get_ticker(
-                                        worker.get_symbol(
-                                            Market(base=market.base, quote=client.currency)
-                                        ),
-                                        client.exchange
+                        if client.state == ClientState.SYNCHRONIZING:
+                            continue
+
+                        if client and client.open_trades:
+                            for trade in client.open_trades:
+                                ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
+                                extra_ticker = ticker
+                                try:
+                                    market = worker.get_market(trade.symbol)
+                                    if market.quote != client.currency:
+                                        extra_ticker = await self.data_service.get_ticker(
+                                            worker.get_symbol(
+                                                Market(base=market.base, quote=client.currency)
+                                            ),
+                                            client.exchange
+                                        )
+                                except NotImplementedError:
+                                    pass
+
+                                if ticker and extra_ticker:
+                                    trade.update_pnl(
+                                        trade.calc_upnl(ticker.price),
+                                        extra_currencies={client.currency: extra_ticker.price},
                                     )
-                            except NotImplementedError:
-                                pass
+                                    await trade.set_live_pnl(pipe)
+                            balance = client.evaluate_balance()
+                            if balance != client.live_balance:
+                                balances.append(balance)
+                            client.live_balance = balance
 
-                            if ticker and extra_ticker:
-                                trade.update_pnl(
-                                    trade.calc_upnl(ticker.price),
-                                    extra_currencies={client.currency: extra_ticker.price},
-                                )
-                        balance = client.evaluate_balance()
-                        if balance != client.live_balance:
-                            balances.append(balance)
-                        client.live_balance = balance
+                    await self._db.commit()
+                self._logger.debug(balances)
 
-                await self._db.commit()
-            self._logger.debug(balances)
-            if balances:
-                async with self._redis.pipeline(transaction=True) as pipe:
-                    for balance in balances:
-                        await balance.client.as_redis(pipe).set_balance(balance)
+                for balance in balances:
+                    await balance.client.as_redis(pipe).set_balance(balance)
 
-                    await pipe.execute()
+                await pipe.execute()
 
-                    for balance in balances:
-                        await self._messenger.pub_instance(balance, Category.LIVE)
+                for balance in balances:
+                    await self._messenger.pub_instance(balance, Category.LIVE)
 
-            await asyncio.sleep(.5)
+                await asyncio.sleep(.5)

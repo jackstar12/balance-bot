@@ -8,7 +8,7 @@ from sqlalchemy.sql import Select
 from database.dbasync import db_unique
 from database.dbsync import Base
 from common.messenger import Category
-from common.messenger import Messenger, MessengerNameSpace
+from common.messenger import Messenger, RedisNameSpace
 from core.utils import CoroOrCallable
 
 TTable = TypeVar('TTable', bound=Base)
@@ -18,7 +18,7 @@ class SyncedService(Generic[TTable]):
 
     def __init__(self,
                  messenger: Messenger,
-                 namespace: MessengerNameSpace,
+                 namespace: RedisNameSpace,
                  db: AsyncSession,
                  base_stmt: Select,
                  get_stmt: CoroOrCallable,

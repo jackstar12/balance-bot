@@ -7,13 +7,15 @@ from typing import Optional, TYPE_CHECKING
 
 import pytz
 import sqlalchemy.exc
+from aioredis import Redis
 from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, object_session
 
-from core.utils import weighted_avg
+from core.utils import weighted_avg, join_args
 from database.dbmodels.types import Document
+from database.redis import TableNames
 
 if TYPE_CHECKING:
     from database.dbmodels import Balance
@@ -271,6 +273,15 @@ class Trade(Base, Serializer, CurrencyMixin):
                 Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
         else:
             return 0
+
+    @property
+    def redis_key(self):
+        return join_args(TableNames.TRADE, self.id)
+
+    async def set_live_pnl(self, redis: Redis):
+        await redis.hset(
+            self.redis_key, key='upnl', value=float(self.live_pnl.unrealized)
+        )
 
     def update_pnl(self,
                    upnl: int | Decimal,

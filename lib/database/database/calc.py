@@ -115,7 +115,7 @@ def transfer_gen(transfers: list[Transfer],
             next_time = yield offsets
             if reset:
                 offsets = {}
-        _add_safe(offsets, default_ccy, transfer.amount)
+        _add_safe(offsets, default_ccy, transfer.size)
         if transfer.extra_currencies:
             for ccy, amount in transfer.extra_currencies.items():
                 _add_safe(offsets, ccy, Decimal(amount))

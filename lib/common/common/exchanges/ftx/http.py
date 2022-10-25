@@ -91,7 +91,8 @@ class FtxWorker(ExchangeWorker):
     # https://docs.ftx.com/#account
     async def _get_balance(self, time: datetime, upnl=True):
 
-        #response = await self.get('/api/account')
+        responsea = await self.get('/api/account')
+        responseb = await self.get('/api/positions')
 #
         #return balance.Balance(
         #    realized=response['collateral'],
