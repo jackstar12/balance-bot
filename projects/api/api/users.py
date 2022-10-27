@@ -120,10 +120,13 @@ assert OAUTH2_REDIRECT_URI
 #         response.st
 
 
-
 auth_backend = AuthenticationBackend(
     name="cookie",
-    transport=CookieTransport(settings.session_cookie_name, cookie_secure=False),
+    transport=CookieTransport(
+        settings.session_cookie_name,
+        cookie_secure=False,
+        cookie_max_age=settings.session_cookie_max_age
+    ),
     get_strategy=get_redis_strategy
 )
 

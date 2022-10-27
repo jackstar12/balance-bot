@@ -15,6 +15,7 @@ import core as utils
 from database.dbasync import db_all
 from database.dbmodels.balance import Balance
 from database.dbmodels.transfer import Transfer
+from database.enums import IntervalType
 from database.errors import UserInputError
 from database.models.gain import Gain
 from database.models.interval import Interval
@@ -24,27 +25,59 @@ if TYPE_CHECKING:
     from database.dbmodels import Event
 
 
+def is_same(a: datetime, b: datetime, length: IntervalType):
+    result = a.year == b.year and a.month == b.month
+    if length == IntervalType.MONTH:
+        return result
+    result = result and a.isocalendar().week == b.isocalendar().week
+    if length == IntervalType.WEEK:
+        return result
+    return result and a.day == b.day
+
+
 def create_daily(history: list[Balance],
                  transfers: list[Transfer],
-                 ccy: str) -> list[Interval]:
-    results = []
+                 ccy: str):
+    results: dict[IntervalType, list[Interval]] = {}
+    recent: dict[IntervalType, Balance] = {}
+    offsets: dict[IntervalType, Decimal] = {}
 
     # TODO: Optimize transfers
-    offset_gen = transfer_gen(transfers, default_ccy=ccy, reset=True)
+    offset_gen = transfer_gen(transfers, ccy=ccy, reset=True)
 
     # Initialise generator
     offset_gen.send(None)
 
     for prev, current in itertools.pairwise(history):
         try:
-            offsets = offset_gen.send(current.time)
+            cur_offset = offset_gen.send(current.time)
+            for length in IntervalType:
+                offsets[length] = offsets.get(length, 0) + cur_offset
         except StopIteration:
-            offsets = {}
-        results.append(
+            pass
+        for length in IntervalType:
+            if length in recent:
+                if not is_same(current.time, prev.time, length):
+                    results.setdefault(length, []).append(
+                        Interval.create(
+                            prev=recent[length].get_currency(ccy),
+                            current=prev.get_currency(ccy),
+                            offset=offsets.get(length, 0),
+                            length=length
+                        )
+                    )
+                    offsets[length] = Decimal(0)
+                    recent[length] = prev
+            else:
+                recent[length] = prev
+
+    for length, prev in recent.items():
+        results.setdefault(length, []).append(
             Interval.create(
-                prev.get_currency(ccy),
-                current.get_currency(ccy),
-                offsets.get(ccy, 0)
+                prev=prev.get_currency(ccy),
+                current=current.get_currency(ccy),
+                offset=offsets.get(length, 0),
+                length=length
             )
         )
 
@@ -94,11 +127,11 @@ def _add_safe(d: dict[_KT, _VT], key: _KT, val: _VT):
     d[key] = d.get(key, 0) + val
 
 
-TOffset = dict[str, Decimal]
+TOffset = Decimal
 
 
 def transfer_gen(transfers: list[Transfer],
-                 default_ccy: str,
+                 ccy: str,
                  reset=False) -> Generator[TOffset, datetime, None]:
     # transfers = await db_select_all(
     #     Transfer,
@@ -107,15 +140,17 @@ def transfer_gen(transfers: list[Transfer],
     #     Transfer.time < to,
     #     session=db
     # )
-    offsets: TOffset = {}
+    offsets: TOffset = Decimal(0)
 
     next_time: datetime = yield
     for transfer in transfers:
         while next_time < transfer.time:
             next_time = yield offsets
             if reset:
-                offsets = {}
-        _add_safe(offsets, default_ccy, transfer.size)
+                offsets = Decimal(0)
+        offsets += transfer.size
+        #offsets += transfer.amount if ccy == transfer.coin else transfer.size
+        # _add_safe(offsets, ccy, transfer.size)
         #if transfer.extra_currencies:
         #    for ccy, amount in transfer.extra_currencies.items():
         #        _add_safe(offsets, ccy, Decimal(amount))

@@ -26,7 +26,7 @@ class RawTransfer(NamedTuple):
 class Transfer(Base):
     __tablename__ = 'transfer'
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(Integer, primary_key=True)
     client_id = Column(
         Integer,
         ForeignKey('client.id', ondelete="CASCADE"),
@@ -56,7 +56,7 @@ class Transfer(Base):
 
     @hybrid_property
     def size(self):
-        return self.execution.size
+        return self.execution.effective_size
 
     #balance = relationship(
     #    'Balance',

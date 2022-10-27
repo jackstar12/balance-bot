@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
 import api.utils.client as client_utils
+from database.dbmodels.transfer import Transfer as TransferDB
 from api.models.trade import Trade, BasicTrade
 from database.models.interval import Interval
 from api.authenticator import Authenticator
@@ -28,9 +29,9 @@ from api.settings import settings
 from api.users import CurrentUser
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound, ResponseModel
 import core
-from database.calc import calc_daily, create_daily
-from database.dbasync import db_first, redis, async_maker, time_range, db_all
-from database.dbmodels import TradeDB, BalanceDB
+from database.calc import create_daily
+from database.dbasync import db_first, redis, async_maker, time_range, db_all, db_select_all
+from database.dbmodels import TradeDB, BalanceDB, Execution
 from database.dbmodels.client import Client, add_client_filters
 from database.dbmodels.client import QueryParams
 from database.dbmodels.user import User
@@ -147,7 +148,6 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         clients = await client_utils.get_user_clients(
             user,
             None if any_client else non_cached,
-            Client.transfers,
             (Client.open_trades, TradeDB.executions),
             db=db
         )
@@ -159,19 +159,23 @@ async def get_client_overview(background_tasks: BackgroundTasks,
                 ),
                 session=db
             )
+            transfers = await db_all(
+                select(TransferDB).where(
+                    time_range(Execution.time, query_params.since, query_params.to),
+                    TransferDB.client_id == client.id,
+                ).join(TransferDB.execution),
+                session=db
+            )
 
             overview = ClientOverviewCache(
                 id=client.id,
-                initial_balance=(
-                    await client.get_exact_balance_at_time(query_params.since)
+                total=Interval.create(
+                    prev=await client.get_exact_balance_at_time(query_params.since),
+                    current=await client.get_latest_balance(redis=redis),
+                    offset=sum(transfer.size for transfer in transfers)
                 ),
-                current_balance=(
-                    await client.get_exact_balance_at_time(query_params.to)
-                    if query_params.to else
-                    await client.get_latest_balance(redis=redis)
-                ),
-                daily=daily,
-                transfers=client.transfers,
+                daily_balance=daily,
+                transfers=transfers,
                 open_trades=client.open_trades
             )
             background_tasks.add_task(
@@ -189,7 +193,7 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         latest_by_client = {}
 
         by_day = groupby(
-            sorted(itertools.chain.from_iterable(raw.daily for raw in raw_overviews), key=lambda b: b.time),
+            sorted(itertools.chain.from_iterable(raw.daily_balance for raw in raw_overviews), key=lambda b: b.time),
             lambda b: date_string(b.time)
         )
 
@@ -219,8 +223,7 @@ async def get_client_overview(background_tasks: BackgroundTasks,
 
         overview = ClientOverview.construct(
             intervals=intervals,
-            initial_balance=sum_iter(raw.initial_balance for raw in raw_overviews),
-            current_balance=sum_iter(raw.current_balance for raw in raw_overviews if raw.current_balance),
+            total=sum_iter(raw.total for raw in raw_overviews),
             open_trades=sum_iter(o.open_trades for o in raw_overviews),
             transfers=all_transfers
         )

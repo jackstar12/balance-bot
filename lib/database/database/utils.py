@@ -3,17 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, Union, TYPE_CHECKING
 
-from sqlalchemy import select, desc, JSON, or_
+from sqlalchemy import select, desc, JSON, or_, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select, Delete, Update
 
-import database.dbmodels.client as db_client
 import database.dbmodels.event as db_event
 from database import dbmodels
 from database.dbasync import db_first, db_all, \
     db_select, async_session, time_range
 from database.dbmodels.balance import Balance
 from database.dbmodels.discord.discorduser import DiscordUser
+from database.dbmodels.trade import Trade
+from database.dbmodels.transfer import Transfer
 from database.dbmodels.user import User
 from database.errors import UserInputError
 from database.models.history import History
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     from database.dbmodels.event import EventState, LocationModel
 
 
-async def get_client_history(client: db_client.Client,
+async def get_client_history(client: dbmodels.Client,
                              init_time: datetime = None,
                              since: datetime = None,
                              to: datetime = None,
@@ -53,12 +54,40 @@ async def get_client_history(client: db_client.Client,
     )
 
 
+async def reset_client(client_id: int,
+                       db: AsyncSession):
+    await db.execute(
+        update(dbmodels.Client).values(
+            last_execution_sync=None,
+            last_transfer_sync=None
+        ).where(
+            dbmodels.Client.id == client_id
+        )
+    )
+    await db.execute(
+        delete(Trade).where(
+            Trade.client_id == client_id
+        )
+    )
+    await db.execute(
+        delete(Balance).where(
+            Balance.client_id == client_id
+        )
+    )
+    await db.execute(
+        delete(Transfer).where(
+            Transfer.client_id == client_id
+        )
+    )
+    await db.commit()
+
+
 async def get_discord_client(user_id: int,
                              guild_id: int = None,
                              registration=False,
                              throw_exceptions=True,
                              client_eager=None,
-                             discord_user_eager=None) -> Optional[db_client.Client]:
+                             discord_user_eager=None) -> Optional[dbmodels.Client]:
     discord_user_eager = discord_user_eager or []
     client_eager = client_eager or []
 

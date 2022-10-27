@@ -151,6 +151,7 @@ class Journal(Base, BaseMixin):
         return new_chapter
 
     async def update(self, db: AsyncSession, template: Template = None):
+        return
         if self.type == JournalType.INTERVAL:
             template = template or self.default_template
             today = date.today()

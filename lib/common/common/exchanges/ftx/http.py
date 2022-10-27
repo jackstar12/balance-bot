@@ -84,6 +84,7 @@ class FtxWorker(ExchangeWorker):
                     price=Decimal(data['price']),
                     qty=Decimal(data['size']),
                     time=datetime.now(pytz.utc),
+                    commission=Decimal(data['fee']),
                     type=ExecType.TRADE
                 )
             )

@@ -7,6 +7,7 @@ from pydantic import UUID4
 import database.dbmodels.client as qmxin
 from api.models.trade import Trade, BasicTrade
 from api.models.template import TemplateInfo
+from database.enums import IntervalType
 from database.models.eventinfo import EventInfo
 from database.models import BaseModel, OutputID, InputID
 from api.models.transfer import Transfer
@@ -89,16 +90,15 @@ class ClientDetailed(ClientInfo):
 
 
 class _Common(BaseModel):
-    initial_balance: Balance
-    current_balance: Balance
+    total: Interval
     open_trades: list[BasicTrade]
     transfers: list[Transfer]
 
 
 class ClientOverviewCache(_Common):
     id: int
-    daily: list[Balance]
+    daily_balance: list[Balance]
 
 
 class ClientOverview(_Common):
-    intervals: list[Interval]
+    intervals: dict[IntervalType, list[Interval]]

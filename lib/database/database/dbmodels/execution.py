@@ -15,8 +15,8 @@ class Execution(Base, Serializer, CurrencyMixin):
     __tablename__ = 'execution'
 
     id = Column(Integer, primary_key=True)
-    trade_id = Column(Integer, ForeignKey('trade.id', ondelete='CASCADE'))
-    transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='CASCADE'))
+    trade_id = Column(ForeignKey('trade.id', ondelete='CASCADE'))
+    transfer_id = Column(ForeignKey('transfer.id', ondelete='CASCADE'))
 
     symbol = Column(String, nullable=False)
     time = Column(DateTime(timezone=True), nullable=False)
@@ -37,6 +37,10 @@ class Execution(Base, Serializer, CurrencyMixin):
     @hybrid_property
     def size(self):
         return self.price * self.qty
+
+    @hybrid_property
+    def effective_size(self):
+        return self.price * self.effective_qty
 
     @hybrid_property
     def effective_qty(self):

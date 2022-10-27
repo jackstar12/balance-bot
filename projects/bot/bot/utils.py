@@ -644,11 +644,11 @@ def calc_xs_ys(history: History,
         init = history.initial
         relative_to_amount = get_amount(init)
 
-        offset_gen = transfer_gen(transfers, default_ccy=ccy, reset=False)
+        offset_gen = transfer_gen(transfers, ccy=ccy, reset=False)
         offset_gen.send(None)
 
         upnl_by_trade = {}
-        offsets = {}
+        offset = 0
         amount = None
         for prev_item, item, next_item in core.prev_now_next(
                 core.combine_time_series(history.data, pnl_data)
@@ -657,13 +657,13 @@ def calc_xs_ys(history: History,
                 upnl_by_trade[item.trade_id] = item.unrealized_ccy(ccy)
             if isinstance(item, Balance):
                 try:
-                    offsets = offset_gen.send(item.time)
+                    offset = offset_gen.send(item.time)
                 except StopIteration:
                     pass
                 if mode == 'balance':
                     current = get_amount(item)
                 else:
-                    current = get_amount(item) - offsets.get(ccy, 0) - relative_to_amount
+                    current = get_amount(item) - offset - relative_to_amount
 
                 if percentage:
                     if relative_to_amount:

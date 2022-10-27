@@ -362,7 +362,7 @@ class ExchangeWorker:
                 if check:
                     check_sum += abs(check.qty or check.realized_pnl)
                 if exec_sum == check_sum and exec_sum != 0:
-                    valid_until = execution.time if execution else check.time
+                    valid_until = (execution or check).time
 
             all_executions = [e for e in all_executions if e.time > valid_until] if valid_until else all_executions
 
@@ -486,7 +486,7 @@ class ExchangeWorker:
                 new_balance.__realtime__ = False
 
                 if execution.type == ExecType.TRANSFER:
-                    new_balance.realized -= execution.size
+                    new_balance.realized -= execution.effective_size
 
                 while current_misc and execution.time <= current_misc.time:
                     new_balance.realized -= current_misc.amount
