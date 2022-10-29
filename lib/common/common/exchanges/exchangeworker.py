@@ -545,8 +545,11 @@ class ExchangeWorker:
 
             await db.commit()
 
+            redis_client = self.client.as_redis()
+            await redis_client.set_balance(client.currently_realized)
+
             if all_executions:
-                await self.client.as_redis().set_last_exec(all_executions[-1].time)
+                await redis_client.set_last_exec(all_executions[-1].time)
 
     async def get_client(self, db: AsyncSession) -> Client:
         client = await db.get(Client, self.client_id)
