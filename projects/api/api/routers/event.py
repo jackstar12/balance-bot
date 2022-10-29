@@ -20,7 +20,8 @@ from database.dbmodels.user import User
 from database.dbmodels.client import add_client_filters
 from database.models import BaseModel
 from database.models.document import DocumentModel
-from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, EventEntry, Leaderboard, Summary
+from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, Leaderboard, Summary, \
+    EventEntry
 
 router = APIRouter(
     tags=["event"],
@@ -154,8 +155,13 @@ async def get_events(user: User = Depends(EventUserDep)):
 async def get_event(event_id: int,
                     user: User = Depends(CurrentUser),
                     db: AsyncSession = Depends(get_db)):
-    event = await query_event(event_id,
-                              user,
+    event = await query_event(event_id, user,
+                              EventDB.owner,
+                              (EventDB.entries, [
+                                  EventEntryDB.client,
+                                  EventEntryDB.user,
+                                  EventEntryDB.init_balance
+                              ]),
                               db=db, owner=False)
 
     if event:
@@ -179,6 +185,7 @@ async def get_event(event_id: int,
                               db=db, owner=False)
 
     leaderboard = await event.get_leaderboard()
+    await db.commit()
 
     if event:
         return OK(result=leaderboard)
@@ -213,8 +220,7 @@ async def get_event_registration(event_id: int,
                                  db: AsyncSession = Depends(get_db)):
     score = await db_unique(
         add_event_filters(
-            select(EventEntryDB
-                   ).filter_by(
+            select(EventEntryDB).filter_by(
                 client_id=client_id, event_id=event_id
             ), user=user, owner=False
         ),
@@ -298,10 +304,12 @@ async def register_event(client_id: int,
         try:
             result = await db.execute(
                 insert(EventEntryDB).values(
-                    event_id=event.id, client_id=client_id
+                    event_id=event.id,
+                    client_id=client_id,
+                    user_id=user.id
                 )
             )
-        except sqlalchemy.exc.IntegrityError:
+        except sqlalchemy.exc.IntegrityError as e:
             return BadRequest('Already signed up')
         # db.add(
         #     EventScoreDB

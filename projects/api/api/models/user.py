@@ -1,16 +1,16 @@
 import uuid
+from datetime import datetime
 from typing import Optional, List
 
 from fastapi_users import schemas
 
-from api.models.alert import Alert
-from api.models.client import ClientInfo
-from api.models.labelinfo import LabelGroupInfo
-from database.dbmodels.user import OAuthData
+from database.dbmodels.user import ProfileData, UserProfile
+from database.models import BaseModel, OrmBaseModel
+from database.models.document import DocumentModel
 
 
 class OAuthInfo(schemas.BaseOAuthAccount):
-    data: Optional[OAuthData]
+    data: Optional[ProfileData]
 
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
@@ -21,14 +21,8 @@ class UserCreate(schemas.BaseUserCreate):
     pass
 
 
-class UserUpdate(schemas.BaseUserUpdate):
-    pass
-
-
-class UserInfo(UserRead):
-    all_clients: List[ClientInfo]
-    label_groups: List[LabelGroupInfo]
-    alerts: List[Alert]
-
-    class Config:
-        orm_mode = True
+class UserPublicInfo(OrmBaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    profile: UserProfile
+    about_me: Optional[DocumentModel]

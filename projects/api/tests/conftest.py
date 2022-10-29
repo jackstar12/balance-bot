@@ -45,7 +45,7 @@ def api_client_logged_in(api_client):
 
     yield api_client
 
-    resp = api_client.delete('/api/v1/delete')
+    resp = api_client.delete('/api/v1/user')
     assert resp.ok
 
 

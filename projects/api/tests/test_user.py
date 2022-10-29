@@ -16,5 +16,5 @@ async def test_dies():
 
 
 async def test_info(api_client_logged_in):
-    resp = api_client_logged_in.get("/api/v1/info")
+    resp = api_client_logged_in.get("/api/v1/user")
     assert resp.ok

@@ -13,7 +13,7 @@ from api.utils.responses import ResponseModel
 from common.exchanges import SANDBOX_CLIENTS
 from common.test_utils.mock import event_mock
 from database.models import BaseModel
-from database.models.eventinfo import EventInfo, EventDetailed, EventEntry, Leaderboard
+from database.models.eventinfo import EventInfo, EventDetailed, Leaderboard
 
 T = TypeVar('T')
 
@@ -73,62 +73,35 @@ def test_modify_event(event, api_client_logged_in):
 
 @pytest.mark.parametrize(
     'confirmed_clients',
-    [[SANDBOX_CLIENTS[0], SANDBOX_CLIENTS[0]]],
+    [[SANDBOX_CLIENTS[0]]],
     indirect=True
 )
 def test_register_event(event, api_client_logged_in, confirmed_clients):
-
     for client in confirmed_clients:
         url = f'/api/v1/event/{event.id}/registrations/{client.id}'
         resp = api_client_logged_in.post(url)
         assert resp.ok
 
-    resp, result = parse_response(
-        api_client_logged_in.get(f'/api/v1/event/{event.id}/leaderboard'),
-        Leaderboard
-    )
-
-    assert len(result.unknown) == len(confirmed_clients)
-
-    for client in confirmed_clients:
-        url = f'/api/v1/event/{event.id}/registrations/{client.id}'
-        resp = api_client_logged_in.delete(url)
-        assert resp.ok
-
-
-@pytest.mark.parametrize(
-    'confirmed_clients',
-    [[SANDBOX_CLIENTS[0], SANDBOX_CLIENTS[0]]],
-    indirect=True
-)
-def test_register_event(event, api_client_logged_in, confirmed_clients):
-
-    for client in confirmed_clients:
-        url = f'/api/v1/event/{event.id}/registrations/{client.id}'
-        resp = api_client_logged_in.post(url)
-        assert resp.ok
-
-    resp, result = parse_response(
-        api_client_logged_in.get(f'/api/v1/event/{event.id}/leaderboard'),
-        Leaderboard
-    )
-
-    assert len(result.unknown) == len(confirmed_clients)
-
-    for client in confirmed_clients:
-        url = f'/api/v1/event/{event.id}/registrations/{client.id}'
-        resp = api_client_logged_in.delete(url)
-        assert resp.ok
-
-
-
-def test_get_single(event, api_client_logged_in):
     resp, result = parse_response(
         api_client_logged_in.get(f'/api/v1/event/{event.id}'),
         EventDetailed
     )
+
     assert resp.ok
+    assert len(result.entries) == len(confirmed_clients)
     assert result.id == event.id
+
+    resp, result = parse_response(
+        api_client_logged_in.get(f'/api/v1/event/{event.id}/leaderboard'),
+        Leaderboard
+    )
+
+    assert len(result.unknown) == len(confirmed_clients)
+
+    for client in confirmed_clients:
+        url = f'/api/v1/event/{event.id}/registrations/{client.id}'
+        resp = api_client_logged_in.delete(url)
+        assert resp.ok
 
 
 def test_get_all(event, api_client_logged_in):

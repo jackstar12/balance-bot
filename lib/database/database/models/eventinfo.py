@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import Field, condecimal
 
+from api.models.user import UserPublicInfo
 from core import safe_cmp_default, safe_cmp
 from database import dbmodels
 from database.models import OrmBaseModel, BaseModel, OutputID, CreateableModel
@@ -84,9 +85,11 @@ class EventInfo(_Common):
 
 
 class EventScore(OrmBaseModel):
+    entry_id: OutputID
     rank: int
     gain: Gain
     time: datetime
+    rekt_on: Optional[datetime]
 
     def __gt__(self, other):
         return self.gain.relative > other.gain.relative
@@ -96,20 +99,16 @@ class EventScore(OrmBaseModel):
 
 
 class EventEntry(OrmBaseModel):
-    user_id: UUID
-    client_id: OutputID
-    current: Optional[EventScore]
-    rekt_on: Optional[datetime]
+    id: OutputID
+    user: UserPublicInfo
+    nick_name: Optional[str]
+    exchange: str
     init_balance: Optional[Balance]
-
-    def __gt__(self, other):
-        return safe_cmp(operator.gt, self.current, other.current) or safe_cmp(operator.gt, self.rekt_on, other.rekt_on)
-
-    def __lt__(self, other):
-        return safe_cmp(operator.lt, self.current, other.current) or safe_cmp(operator.lt, self.rekt_on, other.rekt_on)
 
 
 class EventDetailed(EventInfo):
+    owner: UserPublicInfo
+    entries: list[EventEntry]
     pass
     # leaderboard: list[EventEntry]
     # registrations: list[ClientInfo]
@@ -117,14 +116,14 @@ class EventDetailed(EventInfo):
 
 
 class Stat(OrmBaseModel):
-    best: UUID
-    worst: UUID
+    best: OutputID
+    worst: OutputID
 
     @classmethod
-    def from_sorted(cls, sorted_clients: list[EventEntry]):
+    def from_sorted(cls, sorted_clients: list[EventScore]):
         return cls(
-            best=sorted_clients[0].user_id,
-            worst=sorted_clients[-1].user_id,
+            best=sorted_clients[0].entry_id,
+            worst=sorted_clients[-1].entry_id,
         )
 
 
@@ -137,5 +136,5 @@ class Summary(OrmBaseModel):
 
 
 class Leaderboard(BaseModel):
-    valid: list[EventEntry]
-    unknown: list[EventEntry]
+    valid: list[EventScore]
+    unknown: list[OutputID]

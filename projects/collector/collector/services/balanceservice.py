@@ -102,7 +102,8 @@ class _BalanceServiceBase(BaseService):
                 await self.add_client_by_id(data['id'])
 
         def _on_client_add(data: Dict):
-            return self.add_client_by_id(data['id'])
+            if data['type'] == self.client_type.value:
+                return self.add_client_by_id(data['id'])
 
         await self._messenger.bulk_sub(
             TableNames.CLIENT,

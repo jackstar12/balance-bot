@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,13 +19,17 @@ Base = declarative_base()
 Meta = MetaData()
 
 
+def fkey(tablename: Any, column_name: str):
+    return f'{tablename}_{column_name}_fkey'
+
+
 class BaseMixin:
     __tablename__: str
     __model__: Optional[BaseModel]
     __realtime__: Optional[bool]
 
     @property
-    def sync_session(self) -> Optional[AsyncSession]:
+    def sync_session(self) -> Optional[Session]:
         return object_session(self)
 
     @property

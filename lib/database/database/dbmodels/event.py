@@ -13,6 +13,7 @@ import pytz
 import sqlalchemy.exc
 from aioredis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.util import identity_key
 from sqlalchemy_utils import get_mapper
 
 import database.models.eventinfo as eventmodels
@@ -159,11 +160,12 @@ class Event(Base, Serializer):
         for score in scores:
             entry = await score.get_entry()
             result.append(
-                eventmodels.EventEntry(
-                    user_id=entry.user_id,
-                    client_id=entry.client_id,
-                    rekt_on=safe_cmp(operator.lt, entry.rekt_on, date),
-                    current=score
+                eventmodels.EventScore.construct(
+                    entry_id=entry.id,
+                    rank=score.rank,
+                    gain=score.gain,
+                    time=score.time,
+                    rekt_on=safe_cmp(operator.lt, entry.rekt_on, score.time),
                 )
             )
         return eventmodels.Leaderboard(
@@ -198,22 +200,17 @@ class Event(Base, Serializer):
                     if gain.relative < self.rekt_threshold:
                         pass
                     score = eventmodels.EventScore.construct(
+                        entry_id=entry.id,
                         rank=1,  # Ranks are evaluated lazy
                         time=now,
-                        gain=gain
+                        gain=gain,
+                        rekt_on=entry.rekt_on
                     )
 
-            entry = eventmodels.EventEntry(
-                user_id=entry.client.user_id,
-                client_id=entry.client_id,
-                rekt_on=entry.rekt_on,
-                current=score
-            )
-
             if score:
-                valid.append(entry)
+                valid.append(score)
             else:
-                unknown.append(entry)
+                unknown.append(entry.id)
 
         valid.sort(reverse=True)
 
@@ -222,7 +219,7 @@ class Event(Base, Serializer):
         for index, score in enumerate(valid):
             if prev is not None and score < prev:
                 rank = index + 1
-            score.current.rank = rank
+            score.rank = rank
             prev = score
 
         return eventmodels.Leaderboard.construct(
@@ -263,14 +260,13 @@ class Event(Base, Serializer):
                 get_mapper(EventScore),
                 [
                     {
-                        'client_id': int(entry.client_id),
-                        'event_id': self.id,
-                        "time": entry.current.time,
-                        "rank": entry.current.rank,
-                        "abs_value": entry.current.gain.absolute,
-                        "rel_value": entry.current.gain.relative
+                        'entry_id': int(score.entry_id),
+                        "time": score.time,
+                        "rank": score.rank,
+                        "abs_value": score.gain.absolute,
+                        "rel_value": score.gain.relative
                     }
-                    for entry in leaderboard.valid
+                    for score in leaderboard.valid
                 ]
             )
         )
@@ -340,8 +336,9 @@ class Event(Base, Serializer):
 
         gain = eventmodels.Stat.from_sorted(leaderboard.valid)
 
-        def init(self: eventmodels.EventEntry):
-            return self.init_balance.realized if self.init_balance else None
+        def init(score: eventmodels.EventScore):
+            entry = self.sync_session.identity_map.get(identity_key(EventEntry, score.entry_id))
+            return entry.init_balance.realized if entry.init_balance else None
 
         stakes = eventmodels.Stat.from_sorted(sorted(leaderboard.valid, key=init, reverse=True))
 
@@ -359,15 +356,15 @@ class Event(Base, Serializer):
         client_vola.sort(key=lambda x: x[1], reverse=True)
 
         volatili = eventmodels.Stat(
-            best=client_vola[0][0].user_id,
-            worst=client_vola[-1][0].user_id,
+            best=str(client_vola[0][0].id),
+            worst=str(client_vola[-1][0].id),
         )
 
         cum_percent = Decimal(0)
         cum_dollar = Decimal(0)
         for entry in leaderboard.valid:
-            cum_percent += entry.current.gain.relative
-            cum_dollar += entry.current.gain.absolute
+            cum_percent += entry.gain.relative
+            cum_dollar += entry.gain.absolute
 
         cum_percent /= len(self.entries) or 1  # Avoid division by zero
 

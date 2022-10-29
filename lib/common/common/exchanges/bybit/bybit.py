@@ -77,11 +77,11 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
 
     async def startup(self):
-        self._logger.info('Connecting')
+        self._logger.profile('Connecting')
         await self._ws.connect()
         resp = await self._ws.authenticate(self._api_key, self._api_secret)
         resp = await self._ws.subscribe("execution")
-        self._logger.info('Connected')
+        self._logger.profile('Connected')
 
     async def cleanup(self):
         await self._ws.close()

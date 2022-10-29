@@ -42,10 +42,10 @@ class DataService(BaseService, Observer):
         :param observer: [Optional] will be notified whenever updates arrive
         :param kwargs: will be passed down to the ``ExchangeTicker`` implementation.
         """
-        self._logger.info(f'Subscribe: {exchange=} {channel=} {kwargs=}')
+        self._logger.profile(f'Subscribe: {exchange=} {channel=} {kwargs=}')
         ticker = self._exchanges.get(exchange)
         if not ticker:
-            self._logger.info(f'Creating ticker for {exchange}')
+            self._logger.profile(f'Creating ticker for {exchange}')
             ticker_cls = EXCHANGE_TICKERS.get(exchange)
             if ticker_cls and issubclass(ticker_cls, ExchangeTicker):
                 ticker = ticker_cls(self._http_session)
@@ -58,7 +58,7 @@ class DataService(BaseService, Observer):
         await ticker.subscribe(channel, observer, **kwargs)
 
     async def unsubscribe(self, exchange: str, channel: Channel, observer: Observer = None, **kwargs):
-        self._logger.info(f'Unsubscribe: {exchange=} {channel=} {kwargs=}')
+        self._logger.profile(f'Unsubscribe: {exchange=} {channel=} {kwargs=}')
 
         ticker = self._exchanges.get(exchange)
         if ticker:

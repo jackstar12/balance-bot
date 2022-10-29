@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional, Union, TYPE_CHECKING
+from typing import Optional, Union, TYPE_CHECKING, Any
 
 from sqlalchemy import select, desc, JSON, or_, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,6 @@ from database.dbmodels.balance import Balance
 from database.dbmodels.discord.discorduser import DiscordUser
 from database.dbmodels.trade import Trade
 from database.dbmodels.transfer import Transfer
-from database.dbmodels.user import User
 from database.errors import UserInputError
 from database.models.history import History
 

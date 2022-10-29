@@ -11,6 +11,7 @@ from sqlalchemy.orm import relationship
 
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbmodels.mixins.serializer import Serializer
+from database.dbmodels.types import Document
 from database.dbsync import Base
 
 
@@ -24,20 +25,24 @@ class Subscription(enum.Enum):
     PREMIUM = 3
 
 
-class OAuthData(TypedDict):
-    account_name: str
+class ProfileData(TypedDict):
+    name: str
     avatar_url: str
+
+
+class UserProfile(ProfileData):
+    src: Optional[str]
 
 
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
     account_id: str = Column(sa.String(length=320), index=True, nullable=False, unique=True)
-    data: Optional[OAuthData] = Column(JSONB, nullable=True)
+    data: Optional[ProfileData] = Column(JSONB, nullable=True)
 
     __mapper_args__ = {
         "polymorphic_on": "oauth_name",
     }
 
-    async def populate_oauth_data(self, redis: Redis) -> Optional[OAuthData]:
+    async def populate_oauth_data(self, redis: Redis) -> Optional[ProfileData]:
         return self.data
 
 
@@ -55,6 +60,9 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
     #                             uselist=False, foreign_keys=discord_user_id)
 
     subscription = Column(sa.Enum(Subscription), default=Subscription.BASIC, nullable=False)
+
+    info: str | ProfileData | None = Column(JSONB, nullable=True)
+    about_me = Column(Document, nullable=True)
     events = relationship('Event',
                           lazy='raise',
                           back_populates='owner')
@@ -93,6 +101,24 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
         for account in self.oauth_accounts:
             if account.oauth_name == name:
                 return account
+
+    @property
+    def profile(self) -> UserProfile:
+        src = None
+        if isinstance(self.info, str):
+            data = self.get_oauth(self.info).data
+            src = self.info
+        else:
+            data = self.info
+        if not data:
+            data = ProfileData(
+                name=self.email,
+                avatar_url='',
+            )
+        return UserProfile(
+            **data,
+            src=src
+        )
 
     @property
     def discord(self) -> Optional[DiscordUser]:

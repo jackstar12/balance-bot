@@ -67,6 +67,7 @@ class RequestItem(NamedTuple):
     cache: bool
     weight: Optional[int]
     request: Request
+    client_id: int
 
     def __gt__(self, other):
         return self.priority.value > other.priority.value
@@ -277,7 +278,7 @@ class ExchangeWorker:
                     else:
                         await client.as_redis().set_balance(result)
             else:
-                raise InvalidClientError
+                raise InvalidClientError(self.client_id)
             return result
 
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
@@ -835,12 +836,9 @@ class ExchangeWorker:
                             )
 
                         item.future.set_result(resp)
-                except InvalidClientError as e:
-                    logger.error(f'Error while executing request: {e.human} {e.root_error}')
-                    item.future.set_exception(e)
                 except ResponseError as e:
                     if e.root_error.status == 401:
-                        e = InvalidClientError(root_error=e.root_error, human=e.human)
+                        e = InvalidClientError(item.client_id)
                     logger.error(f'Error while executing request: {e.human} {e.root_error}')
                     item.future.set_exception(e)
                 except RateLimitExceeded as e:
@@ -889,7 +887,8 @@ class ExchangeWorker:
                 future=future,
                 cache=cache,
                 weight=None,
-                request=request
+                request=request,
+                client_id=self.client_id
             )
         )
         try:

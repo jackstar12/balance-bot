@@ -98,7 +98,7 @@ class MockExchange(ExchangeWorker):
 
     async def wait_queue(self):
         while True:
-            self._logger.info('Mock listening for execs')
+            self._logger.profile('Mock listening for execs')
             new = await self.__class__._queue.get()
             execution = new.to_exec()
             await self._on_execution(execution)

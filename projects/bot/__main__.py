@@ -21,7 +21,7 @@ from database.dbmodels.client import Client
 from database.dbmodels.discord.discorduser import DiscordUser
 from database.dbmodels.discord.guild import Guild as GuildDB
 from database.dbmodels.discord.guildassociation import GuildAssociation
-from database.dbmodels.user import OAuthData
+from database.dbmodels.user import ProfileData
 from database.enums import Tier
 from common.messenger import Messenger
 from database.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest, TextChannel
@@ -43,9 +43,9 @@ def user_info(request: UserRequest):
     test = bot.get_user(request.user_id)
 
     return jsonable_encoder(
-        OAuthData(
+        ProfileData(
             avatar_url=str(test.avatar_url),
-            account_name=test.name
+            name=test.name
         )
     )
 

@@ -24,8 +24,9 @@ class ClientDeletedError(Exception):
     pass
 
 
-class InvalidClientError(ResponseError):
-    pass
+class InvalidClientError(Exception):
+    def __init__(self, client_id: int):
+        self.client_id = client_id
 
 
 class CriticalError(ResponseError):

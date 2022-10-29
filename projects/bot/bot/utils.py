@@ -41,7 +41,7 @@ from database.dbmodels.trade import Trade
 from database.dbmodels.transfer import Transfer
 from database.dbmodels.user import User
 from database.errors import UserInputError, InternalError
-from database.models.eventinfo import EventEntry, EventScore, Leaderboard
+from database.models.eventinfo import EventScore, Leaderboard
 from database.models.history import History
 from database.models.selectionoption import SelectionOption
 from core.utils import calc_percentage, call_unknown_function, groupby, utc_now
@@ -476,32 +476,35 @@ async def get_leaderboard_embed(event: dbmodels.Event,
     footer = ''
     description = ''
     guild = dc_client.get_guild(event.guild_id)
-    async def display_name(score: EventEntry):
-        user = await event.async_session.get(dbmodels.User, score.user_id)
+
+    async def display_name(entry_id: int | str):
+        entry_db = await event.async_session.get(dbmodels.EventEntry, int(entry_id))
+        user = await event.async_session.get(dbmodels.User, entry_db.user_id)
+
         member = guild.get_member(int(user.discord.account_id))
         return member.display_name if member else None
 
     grouped = groupby(leaderboard.valid, key=lambda score: score.rekt_on is None)
 
     live = grouped.get(True, [])
-    for entry in live:
-        name = await display_name(entry)
+    for score in live:
+        name = await display_name(score.entry_id)
         if name:
-            value = entry.current.gain.to_string(event.currency)
-            description += f'{entry.current.rank}. **{name}** {value}\n'
+            value = score.gain.to_string(event.currency)
+            description += f'{score.rank}. **{name}** {value}\n'
 
     rekt = grouped.get(False)
     if rekt:
         description += f'\n**Rekt**\n'
-        for entry in rekt:
-            name = await display_name(entry)
+        for score in rekt:
+            name = await display_name(score.entry_id)
             if name:
-                description += f'{name} since {entry.rekt_on.replace(microsecond=0)}\n'
+                description += f'{name} since {score.rekt_on.replace(microsecond=0)}\n'
 
     if leaderboard.unknown:
         description += f'\n**Missing**\n'
-        for entry in leaderboard.unknown:
-            name = await display_name(entry)
+        for entry_id in leaderboard.unknown:
+            name = await display_name(entry_id)
             if name:
                 description += f'{name}\n'
 
