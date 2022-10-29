@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import Field, condecimal
 
-from api.models.user import UserPublicInfo
+from database.models.user import UserPublicInfo
 from core import safe_cmp_default, safe_cmp
 from database import dbmodels
 from database.models import OrmBaseModel, BaseModel, OutputID, CreateableModel

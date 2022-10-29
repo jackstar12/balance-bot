@@ -13,7 +13,7 @@ from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.types import Document
 from database.dbsync import Base
-
+from database.models.user import ProfileData, UserProfile
 
 if TYPE_CHECKING:
     from database.dbmodels.discord.discorduser import DiscordUser
@@ -24,14 +24,6 @@ class Subscription(enum.Enum):
     BASIC = 2
     PREMIUM = 3
 
-
-class ProfileData(TypedDict):
-    name: str
-    avatar_url: str
-
-
-class UserProfile(ProfileData):
-    src: Optional[str]
 
 
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):

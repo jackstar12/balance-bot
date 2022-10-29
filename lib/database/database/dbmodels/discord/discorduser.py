@@ -11,7 +11,8 @@ from sqlalchemy.orm import relationship, backref
 
 import database.dbmodels.client as db_client
 from database.dbasync import async_session, db_select
-from database.dbmodels.user import OAuthAccount, ProfileData
+from database.models.user import ProfileData
+from database.dbmodels.user import OAuthAccount
 from core.utils import join_args
 from database.models.discord.guild import UserRequest
 from database.redis import rpc

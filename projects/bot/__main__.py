@@ -21,7 +21,7 @@ from database.dbmodels.client import Client
 from database.dbmodels.discord.discorduser import DiscordUser
 from database.dbmodels.discord.guild import Guild as GuildDB
 from database.dbmodels.discord.guildassociation import GuildAssociation
-from database.dbmodels.user import ProfileData
+from database.models.user import ProfileData
 from database.enums import Tier
 from common.messenger import Messenger
 from database.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest, TextChannel
