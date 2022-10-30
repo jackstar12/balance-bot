@@ -530,9 +530,13 @@ async def get_leaderboard(dc_client: discord.Client,
                                             eager_loads=[
                                                 dbmodels.Event.clients
                                                 if since else
-                                                (dbmodels.Event.entries, (
-                                                    dbmodels.EventEntry.client, dbmodels.Client.user
-                                                ))
+                                                (dbmodels.Event.entries, [
+                                                    dbmodels.EventEntry.init_balance,
+                                                    (
+                                                        dbmodels.EventEntry.client,
+                                                        dbmodels.Client.user,
+                                                    )
+                                                ])
                                             ],
                                             db=db)
 

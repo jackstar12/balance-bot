@@ -352,9 +352,9 @@ class ExchangeWorker:
             exec_sum = check_sum = Decimal(0)
             for execution, check in itertools.zip_longest(all_executions, check_executions):
                 if execution:
-                    exec_sum += abs(execution.qty or execution.realized_pnl)
+                    exec_sum += abs(execution.qty if not execution.qty.is_zero() else execution.realized_pnl)
                 if check:
-                    check_sum += abs(check.qty or check.realized_pnl)
+                    check_sum += abs(check.qty if not check.qty.is_zero() else check.realized_pnl)
                 if exec_sum == check_sum and exec_sum != 0:
                     valid_until = (execution or check).time
 

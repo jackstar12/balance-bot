@@ -158,7 +158,10 @@ class _BybitBaseClient(ExchangeWorker, ABC):
             params[key] = val
 
         query_string = urllib.parse.urlencode(params)
-        sign = hmac.new(self._api_secret.encode('utf-8'), query_string.encode('utf-8'), 'sha256').hexdigest()
+        sign = hmac.new(
+            self._api_secret.encode('utf-8'),
+            query_string.encode('utf-8'), 'sha256'
+        ).hexdigest()
         params['sign'] = sign
 
     @classmethod

@@ -7,7 +7,6 @@ from typing import Dict
 
 import discord
 import discord.errors
-import dotenv
 from discord.ext import commands
 from discord_slash import SlashCommand
 from fastapi.encoders import jsonable_encoder
