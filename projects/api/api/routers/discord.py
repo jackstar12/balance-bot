@@ -15,7 +15,7 @@ from database.dbmodels import GuildAssociation as GuildAssociationDB
 from database.dbmodels.discord.guild import Guild as GuildDB
 from database.dbmodels.user import User
 from database.models import BaseModel
-from database.models.discord.guild import UserRequest, Guild as GuildModel, GuildRequest
+from database.models.discord.guild import UserRequest, Guild as GuildModel, GuildRequest, GuildData
 from database.redis import rpc
 from core.utils import groupby_unique
 
@@ -88,15 +88,32 @@ async def get_guild_info(guild_id: int,
     GA = GuildAssociationDB
     association = await db_select(
         GA,
-        GA.guild_id == data['id'],
+        GA.guild_id == int(data['id']),
         GA.discord_user_id == user.discord.account_id,
         eager=[GuildAssociationDB.guild],
         session=db,
     )
 
     return OK(
-        result=GuildModel.from_association(data, association)
+        result=GuildModel.from_association(data, association.guild, association)
     )
+
+
+@router.get(
+    '/discord/guild/{guild_id}/data',
+    response_model=ResponseModel[GuildData]
+)
+async def get_guild_info(guild_id: int,
+                         user: User = Depends(CurrentUser),
+                         dc_rpc: rpc.Client = Depends(get_dc_rpc_client)):
+    if not user.discord:
+        return BadRequest('No discord account connected')
+
+    data = await dc_rpc(
+        'guild',
+        GuildRequest(user_id=user.discord.account_id, guild_id=guild_id)
+    )
+    return OK(result=data)
 
 
 class GuildUpdate(BaseModel):
