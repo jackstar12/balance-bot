@@ -178,9 +178,7 @@ class BinanceFutures(_BinanceBaseClient):
         else:
             limit.amount -= weight or limit.default_weight
 
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> List[RawTransfer]:
+    async def _get_transfers(self, since: datetime = None, to: datetime = None) -> List[RawTransfer]:
         return await self._get_internal_transfers(Type.USDM, since, to)
 
     async def _get_ohlc(self,
@@ -526,7 +524,5 @@ class BinanceSpot(_BinanceBaseClient):
     #                           init=False) -> tuple[List[Execution], List[MiscIncome]]:
     #     result = await self.get('/api/v3/myTrades', )
 
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> List[RawTransfer]:
+    async def _get_transfers(self, since: datetime = None, to: datetime = None) -> List[RawTransfer]:
         return await self._get_internal_transfers(Type.SPOT, since, to)

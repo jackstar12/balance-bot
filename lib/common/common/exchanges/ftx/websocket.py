@@ -116,4 +116,4 @@ class FtxWebsocketClient(WebsocketManager):
             self._handle_orders_message(message)
         if self._on_message_callback:
             if callable(self._on_message_callback):
-                await core.call_unknown_function(self._on_message_callback, message)
+                await core.return_unknown_function(self._on_message_callback, message)

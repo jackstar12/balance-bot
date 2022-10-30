@@ -102,9 +102,7 @@ class KuCoinFuturesWorker(_KuCoinClient):
         return await self.get('/api/v1/transaction-history',
                               params=params)
 
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> List[RawTransfer]:
+    async def _get_transfers(self, since: datetime = None, to: datetime = None) -> List[RawTransfer]:
         transactions = await self._fetch_transaction_history(since, to)
         results = []
         for transfer in transactions["dataList"]:

@@ -117,7 +117,7 @@ class Server:
         '''
         method = self.methods[method_name]
         try:
-            val = await core.call_unknown_function(
+            val = await core.return_unknown_function(
                 method.fn,
                 method.model(**params)
             )

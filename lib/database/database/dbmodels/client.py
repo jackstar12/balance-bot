@@ -9,7 +9,8 @@ import sqlalchemy as sa
 import pytz
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func, Date
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
+    Date, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, reconstructor
 
@@ -174,7 +175,6 @@ class ClientQueryMixin:
         )
 
 
-
 class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
     __tablename__ = TableNames.CLIENT.value
     __serializer_forbidden__ = ['api_secret']
@@ -182,10 +182,10 @@ class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
 
     # Identification
     id = Column(Integer, primary_key=True)
+
     user_id = Column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
     user = relationship('User', lazy='raise')
-    # discord_user_id = Column(BigInteger, ForeignKey('discorduser.id', ondelete="CASCADE"), nullable=True)
-    # discord_user = relationship('DiscordUser', lazy='raise')
+
     oauth_account_id = Column(ForeignKey('oauth_account.account_id', ondelete='SET NULL'), nullable=True)
     oauth_account = relationship('OAuthAccount', lazy='raise')
 
@@ -234,6 +234,10 @@ class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
 
     last_transfer_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
     last_execution_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
+
+    __tableargs__ = (
+        UniqueConstraint(user_id, exchange, api_key),
+    )
 
     @reconstructor
     def reconstructor(self):

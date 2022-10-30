@@ -44,7 +44,7 @@ from database.errors import UserInputError, InternalError
 from database.models.eventinfo import EventScore, Leaderboard
 from database.models.history import History
 from database.models.selectionoption import SelectionOption
-from core.utils import calc_percentage, call_unknown_function, groupby, utc_now
+from core.utils import calc_percentage, return_unknown_function, groupby, utc_now
 
 if TYPE_CHECKING:
     from database.dbmodels.client import Client
@@ -764,7 +764,7 @@ def create_yes_no_button_row(slash: SlashCommand,
                 slash.remove_component_callback(custom_id=button['custom_id'])
 
             await ctx.edit_origin(components=[])
-            await call_unknown_function(callback, ctx)
+            await return_unknown_function(callback, ctx)
             if message:
                 await ctx.send(content=message, hidden=hidden)
 
@@ -845,7 +845,7 @@ def create_selection(slash: SlashCommand,
     async def on_select(ctx: ComponentContext):
         values = ctx.data['values']
         objects = [objects_by_value.get(value) for value in values]
-        await call_unknown_function(callback, ctx, objects)
+        await return_unknown_function(callback, ctx, objects)
 
     return create_actionrow(selection)
 

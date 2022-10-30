@@ -8,7 +8,7 @@ import time
 import urllib.parse
 from asyncio import Future, Task
 from asyncio.queues import PriorityQueue
-from collections import deque
+from collections import deque, OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -149,7 +149,7 @@ class ExchangeWorker:
     _request_queue: PriorityQueue[RequestItem] = None
     _response_error = ''
     _request_task: Task = None
-    _http = None
+    _http: aiohttp.ClientSession = None
 
     # Rate Limiting
     _limits = [
@@ -256,29 +256,22 @@ class ExchangeWorker:
         new balance object
         """
         async with self.db_maker() as db:
-            client: Client = await db.get(
-                Client,
-                self.client_id,
-                options=(selectinload(Client.recent_history),)  # Needs to be an iterable
-            )
+            client = await self.get_client(db, options=(selectinload(Client.recent_history),))
             self.client = client
-            if client:
-                date = date or datetime.now(pytz.utc)
-                result = await self.get_balance(date=date)
+            date = date or datetime.now(pytz.utc)
+            result = await self.get_balance(date=date)
 
-                if result:
-                    history = client.recent_history
-                    if len(history) > 2:
-                        # If balance hasn't changed at all, why bother keeping it?
-                        if result == history[-1] == history[-2]:
-                            history[-1].time = date
-                            return None
-                    if result.error:
-                        logger.error(f'Error while fetching {client.id=} balance: {result.error}')
-                    else:
-                        await client.as_redis().set_balance(result)
-            else:
-                raise InvalidClientError(self.client_id)
+            if result:
+                history = client.recent_history
+                if len(history) > 2:
+                    # If balance hasn't changed at all, why bother keeping it?
+                    if result == history[-1] == history[-2]:
+                        history[-1].time = date
+                        return None
+                if result.error:
+                    logger.error(f'Error while fetching {client.id=} balance: {result.error}')
+                else:
+                    await client.as_redis().set_balance(result)
             return result
 
     async def get_transfers(self, since: datetime = None) -> List[Transfer]:
@@ -551,8 +544,8 @@ class ExchangeWorker:
             if all_executions:
                 await redis_client.set_last_exec(all_executions[-1].time)
 
-    async def get_client(self, db: AsyncSession) -> Client:
-        client = await db.get(Client, self.client_id)
+    async def get_client(self, db: AsyncSession, options=None) -> Client:
+        client = await db.get(Client, self.client_id, options=options)
         if client is None:
             await self.messenger.pub_channel(TableNames.CLIENT, Category.DELETE, obj={'id': self.client_id})
             raise ClientDeletedError()
@@ -720,7 +713,7 @@ class ExchangeWorker:
         pass
 
     async def _get_transfers(self,
-                             since: datetime,
+                             since: datetime = None,
                              to: datetime = None) -> List[RawTransfer]:
         logger.warning(f'Exchange {self.exchange} does not implement get_transfers')
         return []
@@ -841,7 +834,7 @@ class ExchangeWorker:
                         item.future.set_result(resp)
                 except ResponseError as e:
                     if e.root_error.status == 401:
-                        e = InvalidClientError(item.client_id)
+                        e = InvalidClientError(root_error=e.root_error, human=e.human)
                     logger.error(f'Error while executing request: {e.human} {e.root_error}')
                     item.future.set_exception(e)
                 except RateLimitExceeded as e:
@@ -867,21 +860,28 @@ class ExchangeWorker:
                        endpoint=None, dedupe=False, weight=None,
                        **kwargs):
         url = (endpoint or (self._SANDBOX_ENDPOINT if self.client.sandbox else self._ENDPOINT)) + path
-        request = Request(
-            method,
-            url,
-            path,
-            headers or {},
-            params or {},
-            data,
-            source=self.client
-        )
+
+        params = OrderedDict(params or {})
+        headers = headers or {}
+
         if cache:
             cached = ExchangeWorker._cache.get(url)
             if cached and time.time() < cached.expires:
                 return cached.response
         if sign:
-            self._sign_request(request.method, request.path, request.headers, request.params, request.json)
+            self._sign_request(method, path, headers, params, data)
+
+        request = Request(
+            method,
+            url,
+            path,
+            headers,
+            params,
+            data,
+            source=self.client
+        )
+
+
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         await self.__class__._request_queue.put(

@@ -4,6 +4,7 @@ import logging
 import time
 import urllib.parse
 from abc import ABC
+from collections import OrderedDict
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -11,16 +12,17 @@ from typing import Dict, List, Tuple, Optional, Type
 
 from aiohttp import ClientResponseError, ClientResponse
 
-from core import utils
+from core import utils, get_multiple, parse_isoformat
 from database.dbmodels.balance import Balance, Amount
 from database.dbmodels.execution import Execution
 from database.dbmodels.transfer import RawTransfer
 from database.enums import ExecType, Side
-from database.errors import ResponseError, InvalidClientError
+from database.errors import ResponseError, InvalidClientError, RateLimitExceeded, WebsocketError
 from common.exchanges.bybit.websocket import BybitWebsocketClient
 from common.exchanges.exchangeworker import ExchangeWorker, create_limit
 from database.models.async_websocket_manager import WebsocketManager
 from database.models.ohlc import OHLC
+from ccxt.async_support import bybit
 
 
 class Transfer(Enum):
@@ -65,6 +67,9 @@ class _BybitBaseClient(ExchangeWorker, ABC):
     _ENDPOINT = 'https://api.bybit.com'
     _SANDBOX_ENDPOINT = 'https://api-testnet.bybit.com'
 
+    _WS_ENDPOINT: str
+    _WS_SANDBOX_ENDPOINT: str
+
     _response_error = 'ret_msg'
     _response_result = 'result'
 
@@ -72,24 +77,26 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         super().__init__(*args, **kwargs)
         self._ws = BybitWebsocketClient(self._http,
                                         get_url=self._get_ws_url,
-                                        on_message=self._on_message,
-                                        on_connect=self._on_connect)
+                                        on_message=self._on_message)
         # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
 
     async def startup(self):
         self._logger.info('Connecting')
         await self._ws.connect()
-        resp = await self._ws.authenticate(self._api_key, self._api_secret)
-        resp = await self._ws.subscribe("execution")
         self._logger.info('Connected')
+
+        resp = await self._ws.authenticate(self._api_key, self._api_secret)
+        if resp['success']:
+            await self._ws.subscribe("execution")
+            self._logger.info('Authed')
+        else:
+            return WebsocketError(reason='Could not authenticate')
 
     async def cleanup(self):
         await self._ws.close()
 
-    async def _on_connect(self, ws: BybitWebsocketClient):
-        pass
-
     def _get_ws_url(self) -> str:
+        # https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketauthentication
         return self._WS_SANDBOX_ENDPOINT if self.client.sandbox else self._WS_ENDPOINT
 
     @classmethod
@@ -97,7 +104,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         if raw_exec['exec_type'] == "Trade":
             symbol = raw_exec["symbol"]
             commission = Decimal(raw_exec["exec_fee"])
-            price = Decimal(raw_exec["exec_price"])
+            price = Decimal(get_multiple(raw_exec, "exec_price", "price"))
             qty = Decimal(raw_exec["exec_qty"])
 
             # Unify Inverse and Linear
@@ -107,7 +114,11 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 price=price,
                 qty=qty,
                 commission=commission,
-                time=cls.parse_ts(raw_exec["trade_time_ms"] / 1000),
+                time=(
+                    cls.parse_ts(raw_exec["trade_time_ms"] / 1000)
+                    if "trade_time_ms" in raw_exec else
+                    parse_isoformat(raw_exec["trade_time"])
+                ),
                 side=Side.BUY if raw_exec["side"] == "Buy" else Side.SELL,
                 type=ExecType.TRADE,
                 inverse=contract_type == ContractType.INVERSE,
@@ -136,47 +147,68 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 await self._on_execution(self._parse_exec(execution))
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
-    def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
+    def _sign_request(self, method: str, path: str, headers=None, params: OrderedDict = None, data=None, **kwargs):
         ts = int(time.time() * 1000)
         params['api_key'] = self._api_key
         params['timestamp'] = str(ts)
-        query_string = urllib.parse.urlencode(sorted(params.items(), key=lambda kv: kv[0]))
+
+        copy = params.copy()
+        params.clear()
+        for key, val in sorted(copy.items()):
+            params[key] = val
+
+        query_string = urllib.parse.urlencode(params)
         sign = hmac.new(self._api_secret.encode('utf-8'), query_string.encode('utf-8'), 'sha256').hexdigest()
         params['sign'] = sign
 
     @classmethod
     def _check_for_error(cls, response_json: Dict, response: ClientResponse):
         # https://bybit-exchange.github.io/docs/inverse/?console#t-errors
-        code = response_json['ret_code']
+        code = get_multiple(response_json, "ret_code", "retCode")
         if code != 0:
             error: Type[ResponseError] = ResponseError
             if code in (10003, 10005, 33004):  # Invalid api key, Permission denied, Api Key Expired
                 error = InvalidClientError
 
+            if code == 10006:
+                error = RateLimitExceeded
+
             raise error(
                 root_error=ClientResponseError(response.request_info, (response,)),
-                human=f'{response_json["ret_msg"]}, Code: {response_json["ret_code"]}'
+                human=f'{get_multiple(response_json, "ret_msg", "retMsg")}, Code: {code}'
             )
 
     async def _get_internal_transfers(self, since: datetime, wallet: Wallet) -> List[RawTransfer]:
         transfers = []
+        params = {'status': Transfer.SUCCESS.value}
+        if since:
+            params['startTime'] = self._parse_date(since)
 
         res = await self.get('/asset/v1/private/transfer/list',
-                             params={
-                                  'start_time': self._parse_date(since),
-                                  'status': Transfer.SUCCESS.value
-                              })
-        # while res['list']:
-        #     transfers.extend(res['list'])
-        #     res = await self._get('/asset/v1/private/transfer/list',
-        #                           params={
-        #                               'start_time': self._parse_date(since),
-        #                               'status': Transfer.SUCCESS.value,
-        #                               'cursor': res['cursor'],
-        #                               'direction': Direction.NEXT.value
-        #                           })
+                             params=params)
+        while res['list'] and False:
+            transfers.extend(res['list'])
+            if res['cursor']:
+                params['cursor'] = res['cursor']
+                params['direction'] = Direction.NEXT.value
+                res = await self.get('/asset/v1/private/transfer/list',
+                                     params=params)
 
         results = []
+
+        params = {'status': Transfer.SUCCESS.value}
+        if since:
+            params['startTime'] = self._parse_date(since)
+
+        def query_transfers():
+            return self.get('/asset/v3/private/transfer/inter-transfer/list/query',
+                            params=params)
+
+        # res = await query_transfers()
+        # while res['list']:
+        #     transfers.extend(res['list'])
+        #     params['cursor'] = res['nextPageCursor']
+        #     res = await query_transfers()
 
         # {
         #     "transfer_id": "selfTransfer_c5ae452d-43e8-47e6-aa7c-d2bab57c0958",
@@ -214,8 +246,8 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
         return results
 
-    def _parse_date(self, date: datetime):
-        return int(date.timestamp() * 1000)
+    def _parse_date(self, date: datetime = None):
+        return int(date.timestamp() * 1000) if date else None
 
 
 def _get_contract_type(contract: str):
@@ -226,7 +258,6 @@ def _get_contract_type(contract: str):
 
 
 class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
-
     _limits = [
         create_limit(interval_seconds=5, max_amount=5 * 70, default_weight=1),
         create_limit(interval_seconds=5, max_amount=5 * 50, default_weight=1),
@@ -238,12 +269,6 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
         super().__init__(*args, **kwargs)
         self._internal_transfers: Optional[Tuple[datetime, List[RawTransfer]]] = None
         # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
-
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> List[RawTransfer]:
-        self._internal_transfers = (since, await self._get_internal_transfers(since, Wallet.DERIVATIVE))
-        return self._internal_transfers[1]
 
     async def _get_paginated(self,
                              limit: int,
@@ -260,7 +285,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
         params['limit'] = limit
         while result and len(result) == limit or page == page_init:
             # https://bybit-exchange.github.io/docs/inverse/#t-usertraderecords
-            if page_init and page != page_init:
+            if page:
                 params[page_param] = page
             response = await self.get(path, params=params, **kwargs)
             page = response.get(page_response, page + 1 if page_init == 1 else page)
@@ -271,8 +296,8 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
 
     async def _get_internal_executions(self,
                                        contract_type: ContractType,
-                              since: datetime,
-                              init=False) -> List[Execution]:
+                                       since: datetime,
+                                       init=False) -> List[Execution]:
 
         coins_to_fetch = set()
 
@@ -282,8 +307,8 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
 
         asset_records = await self.get('/v2/private/exchange-order/list',
                                        params={
-                                            'limit': 50
-                                        })
+                                           'limit': 50
+                                       })
         # {
         #     "id": 31,
         #     "exchange_rate": 40.57202774,
@@ -304,12 +329,12 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             if self._usd_like(coin):
                 continue
             raw_execs = []
-            params = {
-                'symbol': f'{coin}USD',
-            }
+            params = {}
             if ts:
                 params['start_time'] = ts
             if contract_type == ContractType.INVERSE:
+                params['symbol'] = f'{coin}USD'
+
                 # https://bybit-exchange.github.io/docs/inverse/#t-usertraderecords
                 raw_execs.extend(await self._get_paginated(
                     limit=200,
@@ -330,7 +355,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                     result_path="data",
                     page_init=None
                 ))
-            # https://bybit-exchange.github.io/docs/inverse_futures/#t-usertraderecords
+            # https://bybit-exchange.github.io/docs/futuresV2/linear/#t-userhistorytraderecords
             # raw_execs.extend(await self._get_paginated(
             #    limit=200,
             #    path='/futures/private/execution/list',
@@ -339,7 +364,6 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             #    result_path="trade_list"
             # ))
             # https://bybit-exchange.github.io/docs/linear/#t-userhistorytraderecords
-
 
             # {
             #     "order_id": "55bd3595-938d-4d7f-b1ab-7abd6a3ec1cb",
@@ -364,11 +388,11 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             #     "trade_time_ms": 1650444130065
             # }
 
-            for raw_exec in raw_execs:
+            for raw_exec in reversed(raw_execs):
                 if raw_exec['exec_type'] == "Trade":
                     execs.append(self._parse_exec(raw_exec))
 
-        return execs
+        return list(execs)
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _internal_get_balance(self, contract_type: ContractType, time: datetime, upnl=True):
@@ -397,7 +421,6 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                 extra_currencies.append(
                     Amount(currency=currency, realized=realized, unrealized=unrealized)
                 )
-                extra_currencies[currency] = realized
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {currency}:\n{ticker_prices}')
                     err_msg = 'This is a bug in the ByBit implementation.'
@@ -490,9 +513,7 @@ class BybitInverseWorker(_BybitDerivativesBaseClient):
         create_limit(interval_seconds=120, max_amount=120 * 20, default_weight=1)
     ]
 
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> List[RawTransfer]:
+    async def _get_transfers(self, since: datetime = None, to: datetime = None) -> List[RawTransfer]:
         self._internal_transfers = (since, await self._get_internal_transfers(since, Wallet.DERIVATIVE))
         return self._internal_transfers[1]
 
@@ -507,6 +528,7 @@ class BybitInverseWorker(_BybitDerivativesBaseClient):
 
 
 class BybitLinearWorker(_BybitDerivativesBaseClient):
+
     exchange = 'bybit-linear'
 
     _WS_ENDPOINT = 'wss://stream.bybit.com/realtime_private'
@@ -519,9 +541,7 @@ class BybitLinearWorker(_BybitDerivativesBaseClient):
         create_limit(interval_seconds=120, max_amount=120 * 20, default_weight=1)
     ]
 
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> List[RawTransfer]:
+    async def _get_transfers(self, since: datetime = None, to: datetime = None) -> List[RawTransfer]:
         self._internal_transfers = (since, await self._get_internal_transfers(since, Wallet.DERIVATIVE))
         return self._internal_transfers[1]
 

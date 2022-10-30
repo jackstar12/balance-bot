@@ -20,13 +20,17 @@ class ResponseError(Exception):
         self.human = human
 
 
+class WebsocketError(Exception):
+    def __init__(self, reason: str):
+        self.reason = reason
+
+
 class ClientDeletedError(Exception):
     pass
 
 
-class InvalidClientError(Exception):
-    def __init__(self, client_id: int):
-        self.client_id = client_id
+class InvalidClientError(ResponseError):
+    pass
 
 
 class CriticalError(ResponseError):

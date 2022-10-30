@@ -25,13 +25,7 @@ async def test_invalid_client(create_client, data):
         assert resp.status_code == 400
 
 
-@pytest.mark.parametrize(
-    'redis_messages',
-    [[
-        Channel(TableNames.CLIENT, Category.NEW)
-    ]],
-    indirect=True
-)
+
 @pytest.mark.parametrize(
     'confirmed_client',
     SANDBOX_CLIENTS,

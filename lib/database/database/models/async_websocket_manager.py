@@ -56,7 +56,7 @@ class WebsocketManager:
             self._waiting[msg_id] = fut
 
             try:
-                return await asyncio.wait_for(fut, 5)
+                return await asyncio.wait_for(fut, 10)
             except asyncio.exceptions.CancelledError:
                 raise MissingMessageError()
 
@@ -96,7 +96,7 @@ class WebsocketManager:
             self._ws = ws
             self._logger.info(f'Connected to {url}')
             asyncio.create_task(self._ping_forever())
-            await core.call_unknown_function(self._on_connect, self)
+            core.call_unknown_function(self._on_connect, self)
             async for msg in ws:
                 msg: WSMessage
 
@@ -111,6 +111,8 @@ class WebsocketManager:
                         msg_id = self._get_message_id(message)
                         waiter = self._waiting.get(msg_id)
                         if waiter:
+                            if waiter.cancelled() or waiter.done():
+                                pass
                             waiter.set_result(message)
                     except NotImplementedError:
                         pass

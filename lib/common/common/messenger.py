@@ -175,7 +175,7 @@ class Messenger:
             else:
                 data = customjson.loads(event['data'])
             asyncio.create_task(
-                core.call_unknown_function(coro, data, *args, **kwargs)
+                core.return_unknown_function(coro, data, *args, **kwargs)
             )
 
         return wrapper

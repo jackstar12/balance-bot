@@ -1,6 +1,7 @@
 from http import HTTPStatus
 from typing import Any, TypeVar, Optional, Generic
 
+from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from starlette.responses import JSONResponse
 

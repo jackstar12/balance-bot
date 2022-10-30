@@ -201,9 +201,7 @@ class FtxWorker(ExchangeWorker):
             for transfer in transfers
         ]
 
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> Optional[List[RawTransfer]]:
+    async def _get_transfers(self, since: datetime = None, to: datetime = None) -> Optional[List[RawTransfer]]:
         params = {'start_time': self._parse_date(since)} if since else None
 
         withdrawals = await self.get('/api/wallet/withdrawals', params=params)

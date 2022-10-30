@@ -13,12 +13,14 @@ import pytz
 from fastapi import APIRouter, Depends, Request, Query
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import delete, select, asc, func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
 
 import api.utils.client as client_utils
 from database.dbmodels.transfer import Transfer as TransferDB
 from api.models.trade import Trade, BasicTrade
+from database.errors import InvalidClientError, ResponseError
 from database.models.interval import Interval
 from api.authenticator import Authenticator
 from api.dependencies import get_authenticator, get_messenger, get_db
@@ -27,7 +29,7 @@ from api.models.client import ClientConfirm, ClientEdit, \
     ClientOverviewCache
 from api.settings import settings
 from api.users import CurrentUser
-from api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound, ResponseModel
+from api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound, ResponseModel, InternalError
 import core
 from database.calc import create_daily
 from database.dbasync import db_first, redis, async_maker, time_range, db_all, db_select_all
@@ -53,10 +55,10 @@ router = APIRouter(
 )
 
 
-@router.post('/client', response_model=ClientCreateResponse)
-async def new_client(request: Request, body: ClientCreateBody,
-                     authenticator: Authenticator = Depends(get_authenticator)):
-    await authenticator.verify_id(request)
+@router.post('/client',
+             response_model=ClientCreateResponse,
+             dependencies=[Depends(CurrentUser)])
+async def new_client(body: ClientCreateBody):
     try:
         exchange_cls = EXCHANGES[body.exchange]
         if issubclass(exchange_cls, ExchangeWorker):
@@ -66,7 +68,12 @@ async def new_client(request: Request, body: ClientCreateBody,
 
                 async with aiohttp.ClientSession() as http_session:
                     worker = exchange_cls(client, http_session, db_maker=async_maker)
-                    init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
+                    try:
+                        init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
+                    except InvalidClientError:
+                        return BadRequest('Invalid API credentials')
+                    except ResponseError:
+                        return InternalError()
                     await worker.cleanup()
 
                 if init_balance.error is None:
@@ -113,13 +120,16 @@ async def confirm_client(body: ClientConfirm,
             **jwt.decode(body.token, settings.JWT_SECRET, algorithms=['HS256'])
         )
         client = client_data.get(user)
+
+        db.add(client)
+        await db.commit()
     except jwt.ExpiredSignatureError:
         return BadRequest(detail='Token expired')
     except (jwt.InvalidTokenError, TypeError):
         return BadRequest(detail='Invalid token')
+    except IntegrityError:
+        return BadRequest(detail='This api key is already in use.')
 
-    db.add(client)
-    await db.commit()
     return ClientInfo.from_orm(client)
 
 

@@ -79,11 +79,6 @@ class _BalanceServiceBase(BaseService):
             return True
 
     async def _sub_client(self):
-
-        self._messenger.listen_class_all(Balance)
-        self._messenger.listen_class_all(Client)
-        self._messenger.listen_class_all(Trade)
-
         async def _on_client_delete(data: Dict):
             await self._remove_worker_by_id(data['id'])
             await self._messenger.pub_channel(CLIENT,
@@ -280,6 +275,10 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
     async def init(self):
         await self._sub_client()
+
+        self._messenger.listen_class_all(Client)
+        self._messenger.listen_class_all(Balance)
+        self._messenger.listen_class_all(Trade)
 
         await self._messenger.bulk_sub(
             TRADE,

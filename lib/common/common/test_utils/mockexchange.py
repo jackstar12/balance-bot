@@ -137,9 +137,7 @@ class MockExchange(ExchangeWorker):
             ohlc for ohlc in ohlc_data if since < ohlc.time < to
         ]
 
-    async def _get_transfers(self,
-                             since: datetime,
-                             to: datetime = None) -> list[RawTransfer]:
+    async def _get_transfers(self, since: datetime = None, to: datetime = None) -> list[RawTransfer]:
         return []
         return [
             RawTransfer(

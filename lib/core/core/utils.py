@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import functools
 import inspect
 import itertools
@@ -9,6 +10,7 @@ import os
 import re
 import sys
 import typing
+from asyncio import Task
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
@@ -127,16 +129,12 @@ TOut = typing.TypeVar('TOut')
 CoroOrCallable = Union[Callable[[TIn], TOut], Callable[[TIn], typing.Awaitable[TOut]]]
 
 
-async def call_unknown_function(fn: CoroOrCallable, *args, **kwargs) -> Any:
+def call_unknown_function(fn: CoroOrCallable, *args, **kwargs):
     if callable(fn):
         try:
-            if inspect.iscoroutinefunction(fn):
-                return await fn(*args, **kwargs)
-            else:
-                res = fn(*args, **kwargs)
-                if inspect.isawaitable(res):
-                    return await res
-                return res
+            res = fn(*args, **kwargs)
+            if inspect.isawaitable(res):
+                return asyncio.create_task(res)
         except Exception as e:
             print(
                 f'Exception occured while execution {fn} {args=} {kwargs=}'
@@ -147,8 +145,40 @@ async def call_unknown_function(fn: CoroOrCallable, *args, **kwargs) -> Any:
             raise
 
 
-def validate_kwargs(kwargs: Dict, required: list[str] | set[str]):
+async def return_unknown_function(fn: CoroOrCallable, *args, **kwargs) -> typing.Optional[Task]:
+    if callable(fn):
+        try:
+            res = fn(*args, **kwargs)
+            if inspect.isawaitable(res):
+                return await res
+            return res
+        except Exception as e:
+            print(
+                f'Exception occured while execution {fn} {args=} {kwargs=}'
+            )
+            logger.exception(
+                f'Exception occured while execution {fn} {args=} {kwargs=}'
+            )
+            raise
+
+
+def validate_kwargs(kwargs: dict, required: list[str] | set[str]):
     return len(kwargs.keys()) >= len(required) and all(required_kwarg in kwargs for required_kwarg in required)
+
+
+_KT = typing.TypeVar('_KT')
+_VT = typing.TypeVar('_VT')
+
+
+def get_multiple(d: dict[_KT, _VT], *keys: str) -> typing.Optional[_VT]:
+    for key in keys:
+        if key in d:
+            return d[key]
+
+
+def parse_isoformat(iso: str):
+    return datetime.fromisoformat(iso.replace('Z', '+00:00'))
+
 
 
 def readable_time(time: datetime) -> str:

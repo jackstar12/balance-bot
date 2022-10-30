@@ -1,4 +1,5 @@
 import hmac
+import logging
 import time
 import urllib.parse
 
@@ -16,6 +17,7 @@ class BybitWebsocketClient(WebsocketManager):
                  session: aiohttp.ClientSession,
                  get_url: Callable[..., str],
                  on_message: Callable[[Self, Dict], Awaitable],
+                 sandbox: bool = False,
                  **kwargs):
         super().__init__(session=session, get_url=get_url, ping_forever_seconds=30, **kwargs)
         self._on_data_message = on_message
@@ -24,24 +26,24 @@ class BybitWebsocketClient(WebsocketManager):
         return request['op'] + ''.join(str(arg) for arg in request['args'])
 
     def _get_message_id(self, message: dict) -> Any:
-        return self._get_request_id(message['request'])
+        return self._get_request_id(message['request']) if 'request' in message else None
 
     async def _send_op(self, op: str, *args):
         request = {'op': op, 'args': args}
         return await self.send_json(request, msg_id=self._get_request_id(request))
 
-    # https://bybit-exchange.github.io/docs/inverse/#t-heartbeat
+    # https://bybit-exchange.github.io/docs/futuresV2/inverse/#t-heartbeat
     async def ping(self):
         await self._send_op("ping")
 
-    # https://bybit-exchange.github.io/docs/inverse/#t-subscribe
+    # https://bybit-exchange.github.io/docs/futuresV2/inverse/#t-subscribe
     async def subscribe(self, topic: str, *filters: str):
         filters = '|'.join(filters)
         if filters:
             filters = '.' + filters
         return await self._send_op("subscribe", f"{topic}{filters}")
 
-    # https://bybit-exchange.github.io/docs/inverse/#t-unsubscribe
+    # https://bybit-exchange.github.io/docs/futuresV2/inverse/#t-unsubscribe
     async def unsubscribe(self, topic: str, *filters: str):
         filters = '|'.join(filters)
         if filters:
@@ -50,8 +52,7 @@ class BybitWebsocketClient(WebsocketManager):
 
     async def authenticate(self, api_key: str, api_secret: str):
         expires = int((time.time() + 10) * 1000)
-        scheme, netloc, path, query, fragment = urllib.parse.urlsplit(self._get_url())
-        _val = f'GET{path}{expires}'
+        _val = f'GET/realtime{expires}'
         sign = str(hmac.new(
             api_secret.encode('utf-8'),
             _val.encode('utf-8'),
@@ -71,6 +72,6 @@ class BybitWebsocketClient(WebsocketManager):
             if op == "auth":
                 return
         else:
-            await core.call_unknown_function(
+            await core.return_unknown_function(
                 self._on_data_message, self, message
             )
