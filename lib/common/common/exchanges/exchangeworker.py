@@ -283,20 +283,24 @@ class ExchangeWorker:
 
             result = []
             for raw_transfer in raw_transfers:
-                amount = await self._convert_to_usd(raw_transfer.amount, raw_transfer.coin, raw_transfer.time)
-                if amount:
+
+                if raw_transfer.amount:
+
+                    market = Market(
+                        base=raw_transfer.coin,
+                        quote=self.client.currency
+                    )
+                    rate = await self._conversion_rate(market, raw_transfer.time)
+
                     transfer = Transfer(
                         client_id=self.client_id,
                         coin=raw_transfer.coin
                     )
 
                     transfer.execution = Execution(
-                        symbol=self.get_symbol(Market(
-                            base=transfer.coin,
-                            quote=self.client.currency
-                        )),
+                        symbol=self.get_symbol(market),
                         qty=abs(raw_transfer.amount),
-                        price=raw_transfer.amount / amount,
+                        price=rate,
                         side=Side.BUY if raw_transfer.amount > 0 else Side.SELL,
                         time=raw_transfer.time,
                         type=ExecType.TRANSFER,
@@ -325,7 +329,7 @@ class ExchangeWorker:
             client: Client = await db_select(
                 Client, Client.id == self.client_id,
                 eager=[
-                    (Client.trades, [Trade.executions, Trade.init_balance]),
+                    (Client.trades, [Trade.executions, Trade.init_balance, Trade.initial]),
                     Client.currently_realized
                 ],
                 session=db
@@ -352,9 +356,11 @@ class ExchangeWorker:
             exec_sum = check_sum = Decimal(0)
             for execution, check in itertools.zip_longest(all_executions, check_executions):
                 if execution:
-                    exec_sum += abs(execution.qty if not execution.qty.is_zero() else execution.realized_pnl)
+                    if not execution.qty and not execution.realized_pnl:
+                        pass
+                    exec_sum += abs(execution.qty or execution.realized_pnl)
                 if check:
-                    check_sum += abs(check.qty if not check.qty.is_zero() else check.realized_pnl)
+                    check_sum += abs(check.qty or check.realized_pnl)
                 if exec_sum == check_sum and exec_sum != 0:
                     valid_until = (execution or check).time
 
@@ -414,11 +420,7 @@ class ExchangeWorker:
                         else:
                             to = datetime.now(pytz.utc)
                         try:
-                            ohlc_data = await self._get_ohlc(
-                                symbol,
-                                since=current_executions[0].time,
-                                to=to
-                            )
+                            ohlc_data = await self._get_ohlc(symbol, since=current_executions[0].time, to=to)
                         except ResponseError:
                             ohlc_data = []
                         current_trade = None
@@ -612,7 +614,7 @@ class ExchangeWorker:
                 async def get_trade(symbol: str):
 
                     stmt = select(Trade).where(
-                        #Trade.symbol.like(f'{symbol}%'),
+                        # Trade.symbol.like(f'{symbol}%'),
                         Trade.symbol == symbol,
                         Trade.symbol == execution.symbol,
                         Trade.client_id == self.client_id
@@ -660,15 +662,26 @@ class ExchangeWorker:
                     db.add(active_trade)
             return active_trade
 
-    async def _convert(self, amount: Decimal, to: str, from_ccy: str, date: datetime):
-        pass
+    async def _conversion_rate(self, market: Market, date: datetime):
+        if self._usd_like(market.base):
+            return 1
+        ticker = await self._get_ohlc(
+            self.get_symbol(market),
+            since=date,
+            limit=1
+        )
+        return (ticker[0].open + ticker[0].close) / 2
 
     async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
         if self._usd_like(coin):
             return amount
         # return await self._convert()
 
-    async def _get_ohlc(self, market: str, since: datetime, to: datetime, resolution_s: int = None,
+    async def _get_ohlc(self,
+                        symbol: str,
+                        since: datetime = None,
+                        to: datetime = None,
+                        resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
         raise NotImplementedError
 
@@ -880,7 +893,6 @@ class ExchangeWorker:
             data,
             source=self.client
         )
-
 
         loop = asyncio.get_running_loop()
         future = loop.create_future()

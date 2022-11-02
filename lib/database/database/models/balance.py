@@ -28,6 +28,10 @@ class AmountBase(OrmBaseModel):
     def total_transfers_corrected(self):
         return self.unrealized
 
+    def __repr__(self):
+        return f'{self.realized}{self.currency}'
+
+
     def __add__(self, other: 'AmountBase'):
         self._assert_equal(other)
         return AmountBase(

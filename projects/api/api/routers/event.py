@@ -4,6 +4,7 @@ from typing import Optional
 import pytz
 import sqlalchemy.exc
 from fastapi import APIRouter, Depends
+from fastapi.params import Path
 from pydantic import validator
 from sqlalchemy import select, or_, insert, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +19,7 @@ from database.dbmodels.event import Event as EventDB, EventState
 from database.dbmodels.score import EventEntry as EventEntryDB
 from database.dbmodels.user import User
 from database.dbmodels.client import add_client_filters
-from database.models import BaseModel
+from database.models import BaseModel, InputID
 from database.models.document import DocumentModel
 from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, Leaderboard, Summary, \
     EventEntry
@@ -289,14 +290,18 @@ async def delete_event(event: EventDB = Depends(delete_dep),
         return BadRequest('You can not delete this event')
 
 
-@router.post('/{event_id}/registrations/{client_id}')
-async def register_event(client_id: int,
-                         event: EventDB = Depends(default_event),
-                         db: AsyncSession = Depends(get_db),
-                         user: User = Depends(CurrentUser)):
+class EventJoinBody(BaseModel):
+    client_id: InputID
+
+
+@router.post('/{event_id}/registrations', response_model=EventJoinBody)
+async def join_event(body: EventJoinBody,
+                     event: EventDB = Depends(default_event),
+                     db: AsyncSession = Depends(get_db),
+                     user: User = Depends(CurrentUser)):
     client_id = await db_first(
         add_client_filters(
-            select(Client.id), user=user, client_ids=[client_id]
+            select(Client.id), user=user, client_ids=[body.client_id]
         ),
         session=db
     )
@@ -309,7 +314,7 @@ async def register_event(client_id: int,
                     user_id=user.id
                 )
             )
-        except sqlalchemy.exc.IntegrityError as e:
+        except sqlalchemy.exc.IntegrityError:
             return BadRequest('Already signed up')
         # db.add(
         #     EventScoreDB
@@ -324,32 +329,17 @@ async def register_event(client_id: int,
         return BadRequest('Invalid client ID')
 
 
-@router.delete('/{event_id}/registrations/{client_id}')
-async def unregister_event(client_id: int,
-                           event: EventDB = Depends(default_event),
+@router.delete('/{event_id}/registrations/{entry_id}')
+async def unregister_event(event_id: int,
+                           entry_id: int = None,
                            db: AsyncSession = Depends(get_db),
                            user: User = Depends(CurrentUser)):
-    client_id = await db_first(
-        add_client_filters(
-            select(Client.id), user=user, client_ids=[client_id]
-        ),
-        session=db
+    stmt = delete(EventEntryDB).filter_by(event_id=event_id, user_id=user.id)
+    result = await db.execute(
+        stmt.filter_by(id=entry_id) if entry_id else stmt
     )
-    if client_id:
-        result = await db.execute(
-            delete(EventEntryDB
-                   ).filter_by(
-                event_id=event.id, client_id=client_id
-            )
-        )
-        # db.add(
-        #     EventScoreDB
-        #     ()
-        # )
-        await db.commit()
-        if result.rowcount == 1:
-            return OK('Unregistered form the Event')
-        else:
-            return NotFound('Invalid event id')
+    await db.commit()
+    if result.rowcount == 1:
+        return OK('Unregistered form the Event')
     else:
-        return NotFound('Invalid client id')
+        return NotFound('Invalid entry id')

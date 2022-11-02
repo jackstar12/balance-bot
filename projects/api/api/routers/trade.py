@@ -23,7 +23,7 @@ from database.dbasync import db_first, db_all
 from database.dbmodels import TradeDB as TradeDB
 from database.dbmodels.client import add_client_filters
 from database.dbmodels.label import Label as LabelDB
-from database.dbmodels.client import QueryParams
+from database.dbmodels.client import ClientQueryParams
 from database.dbmodels.pnldata import PnlData
 from database.dbmodels.trade import trade_association
 from database.dbmodels.user import User
@@ -102,7 +102,6 @@ def create_trade_endpoint(path: str,
                           model: Type[OrmBaseModel],
                           *eager,
                           **kwargs):
-
     class Trades(BaseModel):
         data: list[model]
 
@@ -117,12 +116,13 @@ def create_trade_endpoint(path: str,
     async def get_trades(background_tasks: BackgroundTasks,
                          trade_id: list[int] = Query(None, alias='trade-id'),
                          cache: client_utils.ClientCache = Depends(TradeCache),
-                         query_params: QueryParams = Depends(get_query_params),
+                         query_params: ClientQueryParams = Depends(get_query_params),
                          filter_params: FilterQueryParams = Depends(FilterQueryParams),
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
         ts1 = time.perf_counter()
         hits, misses = await cache.read(db)
+        #misses = query_params.client_ids
         ts2 = time.perf_counter()
         if misses:
             query_params.client_ids = misses
@@ -134,6 +134,7 @@ def create_trade_endpoint(path: str,
                 trade_id=trade_id,
                 db=db
             )
+
             trades_by_client = {}
 
             for trade_db in trades_db:
@@ -213,4 +214,3 @@ async def get_pnl_data(trade_id: list[int] = Query(default=[], alias='trade-id')
         result.setdefault(str(pnl_data.trade_id), []).append(pnl_data.compact)
 
     return CustomJSONResponse(content={'by_trade': jsonable_encoder(result)})
-

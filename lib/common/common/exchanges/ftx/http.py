@@ -153,7 +153,7 @@ class FtxWorker(ExchangeWorker):
         market = cls.get_market(execution.symbol)
         return market.base == market.quote or cls._usd_like(market.base)
 
-    async def _get_ohlc(self, market: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
+    async def _get_ohlc(self, symbol: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
 
         # try:
@@ -175,7 +175,7 @@ class FtxWorker(ExchangeWorker):
             if not since:
                 params['start_time'] = params['end_time'] - resolution_s * limit
 
-        res = await self.get(f'/api/markets/{market}/candles', params=params)
+        res = await self.get(f'/api/markets/{symbol}/candles', params=params)
 
         return [
             OHLC(

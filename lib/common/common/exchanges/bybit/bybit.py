@@ -157,7 +157,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         for key, val in sorted(copy.items()):
             params[key] = val
 
-        query_string = urllib.parse.urlencode(params)
+        query_string = urllib.parse.urlencode(sorted(params.items()))
         sign = hmac.new(
             self._api_secret.encode('utf-8'),
             query_string.encode('utf-8'), 'sha256'
@@ -438,12 +438,8 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             error=err_msg
         )
 
-    async def _get_ohlc(self,
-                        market: str,
-                        since: datetime,
-                        to: datetime,
-                        resolution_s: int = None,
-                        limit: int = None, ) -> List[OHLC]:
+    async def _get_ohlc(self, symbol: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
+                        limit: int = None) -> List[OHLC]:
 
         limit = limit or 200
 
@@ -456,14 +452,14 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             )
 
         params = {
-            'symbol': market,
+            'symbol': symbol,
             'interval': _interval_map[resolution_s],
             'from': int(since.timestamp())
         }
         if limit:
             params['limit'] = limit
 
-        contract_type = _get_contract_type(market)
+        contract_type = _get_contract_type(symbol)
         # Different endpoints, but they both use the exact same repsonse
         if contract_type == ContractType.INVERSE:
             # https://bybit-exchange.github.io/docs/inverse/#t-markpricekline

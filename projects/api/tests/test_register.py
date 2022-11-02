@@ -25,14 +25,13 @@ async def test_invalid_client(create_client, data):
         assert resp.status_code == 400
 
 
-
 @pytest.mark.parametrize(
     'confirmed_client',
     SANDBOX_CLIENTS,
     indirect=True
 )
-async def test_valid_client(redis_messages, create_client, confirmed_client):
-    await redis_messages.wait(0.5)
+async def test_valid_client(confirmed_client):
+    pass
 
 
 @pytest.mark.parametrize(

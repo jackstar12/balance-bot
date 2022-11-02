@@ -23,17 +23,20 @@ class BasicTrade(OrmBaseModel):
     status: Status
     transferred_qty: Decimal
     total_commissions: Optional[Decimal]
-    qty: Decimal
-    open_qty: Decimal
+    size: Decimal
     realized_pnl: Decimal
+    net_pnl: Decimal
     open_time: datetime
-    close_time: Optional[datetime]
+    settle: str
     weekday: int
 
 
 class Trade(BasicTrade):
+    qty: Decimal
+    open_qty: Decimal
     executions: List[Execution]
     label_ids: List[str]
+    close_time: Optional[datetime]
     #initial: Execution
     #initial_execution_id: int
 

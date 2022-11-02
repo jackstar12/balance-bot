@@ -21,13 +21,15 @@ def get_query_params(id: set[InputID] = Query(default=[]),
                      currency: str = Query(default='USD'),
                      since: datetime = Query(default=None),
                      to: datetime = Query(default=None),
-                     limit: int = Query(default=None)):
-    return qmxin.QueryParams(
+                     limit: int = Query(default=None),
+                     order: str = Query(default='asc')):
+    return qmxin.ClientQueryParams(
         client_ids=id,
         currency=currency,
         since=since,
         to=to,
-        limit=limit
+        limit=limit,
+        order=order
     )
 
 
@@ -91,7 +93,6 @@ class ClientDetailed(ClientInfo):
 
 class _Common(BaseModel):
     total: Interval
-    open_trades: list[BasicTrade]
     transfers: list[Transfer]
 
 
@@ -101,4 +102,5 @@ class ClientOverviewCache(_Common):
 
 
 class ClientOverview(_Common):
+    recent_trades: list[BasicTrade]
     intervals: dict[IntervalType, list[Interval]]

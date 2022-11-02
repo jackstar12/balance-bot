@@ -95,7 +95,7 @@ class Messages:
         return cls(
             channels=list(channels),
             results={
-                c.ns.name + str(c.topic): loop.create_future()
+                str(c.ns) + str(c.topic): loop.create_future()
                 for c in channels
             },
             messenger=messenger
@@ -106,7 +106,7 @@ class Messages:
         async def register_channel(channel: Channel):
             def callback(data):
                 if not channel.validate or channel.validate(data):
-                    fut = self.results[channel.ns.name + str(channel.topic)]
+                    fut = self.results[str(channel.ns) + str(channel.topic)]
                     if not fut.done():
                         fut.set_result(data)
 

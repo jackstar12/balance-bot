@@ -113,7 +113,7 @@ class MockExchange(ExchangeWorker):
     def _sign_request(self, method: str, path: str, headers=None, params=None, data=None, **kwargs):
         pass
 
-    async def _get_ohlc(self, market: str, since: datetime, to: datetime, resolution_s: int = None,
+    async def _get_ohlc(self, symbol: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
                         limit: int = None) -> list[OHLC]:
         data = [
             Decimal(10000),

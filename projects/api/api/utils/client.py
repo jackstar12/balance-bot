@@ -9,7 +9,7 @@ from uuid import UUID
 
 import pytz
 from fastapi import Depends
-from sqlalchemy import select, Column
+from sqlalchemy import select, Column, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_user_id
@@ -21,7 +21,7 @@ from database.dbasync import redis, db_all, redis_bulk, RedisKey, db_first, time
 from database.dbmodels import TradeDB
 from database.dbmodels.balance import Balance
 from database.dbmodels.client import Client, add_client_filters, ClientRedis
-from database.dbmodels.client import QueryParams
+from database.dbmodels.client import ClientQueryParams
 from database.dbmodels.user import User
 from database.models import BaseModel
 from database.redis.client import ClientSpace, ClientCacheKeys
@@ -204,7 +204,7 @@ def _parse_date(val: bytes) -> datetime:
 class ClientCache(Generic[T]):
     cache_data_key: ClientCacheKeys
     data_model: Type[T]
-    query_params: QueryParams
+    query_params: ClientQueryParams
     user_id: UUID
     client_last_exec: dict[int, datetime] = dataclasses.field(default_factory=lambda: {})
 
@@ -226,7 +226,7 @@ class ClientCache(Generic[T]):
             ]
             pairs[client.cache_hash] = [
                 RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC, parse=_parse_date),
-                RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS, model=QueryParams)
+                RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS, model=ClientQueryParams)
             ]
 
         data = await redis_bulk(pairs, redis_instance=redis)
@@ -239,14 +239,14 @@ class ClientCache(Generic[T]):
 
             last_exec = data[client.normal_hash][0]
             cached_last_exec = data[client.cache_hash][0]
-            cached_query_params: QueryParams = data[client.cache_hash][1]
+            cached_query_params: ClientQueryParams = data[client.cache_hash][1]
 
-            if last_exec and False:
+            if last_exec:
                 self.client_last_exec[client_id] = last_exec
-
                 if (
                         cached_last_exec and cached_last_exec >= last_exec
-                        and self.query_params.within(cached_query_params)
+                        and
+                        self.query_params.within(cached_query_params)
                 ):
                     ts1 = time.perf_counter()
                     raw_overview, = await client.read_cache(
@@ -256,12 +256,9 @@ class ClientCache(Generic[T]):
                     print('Reading Cache', ts2 - ts1)
                     if raw_overview:
                         hits.append(raw_overview)
-                    else:
-                        misses.append(client_id)
-                else:
-                    misses.append(client_id)
-            else:
-                misses.append(client_id)
+                        continue
+
+            misses.append(client_id)
 
         return hits, misses
 
@@ -285,7 +282,7 @@ class ClientCacheDependency:
         self.cache_data_key = cache_data_key
         self.data_model = data_model
 
-    def __call__(self, query_params: QueryParams = Depends(get_query_params),
+    def __call__(self, query_params: ClientQueryParams = Depends(get_query_params),
                  user_id: UUID = Depends(get_user_id)):
         return ClientCache(
             cache_data_key=self.cache_data_key,
@@ -303,7 +300,7 @@ async def query_table(*eager,
                       time_col: Column,
                       user: User,
                       ids: List[int],
-                      query_params: QueryParams,
+                      query_params: ClientQueryParams,
                       db: AsyncSession) -> list[TTable]:
     return await db_all(
         add_client_filters(
@@ -312,6 +309,8 @@ async def query_table(*eager,
                 time_range(time_col, query_params.since, query_params.to)
             ).join(
                 table.client
+            ).order_by(
+                desc(time_col) if query_params.order == 'desc' else asc(time_col)
             ).limit(
                 query_params.limit
             ),
@@ -325,8 +324,8 @@ async def query_table(*eager,
 
 def query_trades(*eager,
                  user: User,
-                 trade_id: List[int],
-                 query_params: QueryParams,
+                 query_params: ClientQueryParams,
+                 trade_id: list[int] = None,
                  db: AsyncSession):
     return query_table(
         *eager,
@@ -360,7 +359,7 @@ def query_trades(*eager,
 def query_balance(*eager,
                   user: User,
                   balance_id: List[int],
-                  query_params: QueryParams,
+                  query_params: ClientQueryParams,
                   db: AsyncSession):
     return query_table(*eager,
                        table=Balance, time_col=Balance.time, user=user,

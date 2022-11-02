@@ -2,9 +2,10 @@ import asyncio
 import logging
 import time
 from http import HTTPStatus
-from typing import Type
+from typing import Type, Optional
 from uuid import UUID
 
+import aiohttp
 from fastapi import Depends
 from fastapi import Request, HTTPException
 from sqlalchemy import select
@@ -36,6 +37,18 @@ def get_authenticator() -> Authenticator:
 
 def get_dc_rpc_client():
     return rpc.Client('discord', redis, timeout=10)
+
+
+_http_session: Optional[aiohttp.ClientSession] = None
+
+
+def get_http_session():
+    return _http_session
+
+
+def set_http_session(http_session: aiohttp.ClientSession):
+    global _http_session
+    _http_session = http_session
 
 
 async def get_db() -> AsyncSession:

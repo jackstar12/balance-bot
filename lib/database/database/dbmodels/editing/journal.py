@@ -121,32 +121,51 @@ class Journal(Base, BaseMixin):
             )
 
         if template:
-            new_chapter.doc = template.doc
-            new_chapter.doc.content = template.doc.content[0:]
-
-            data = {
-                'clientIds': [str(id) for id in self.client_ids]
-            }
-
-            if new_chapter.data:
-                data['dates'] = {
-                    'since': new_chapter.data.start_date,
-                    'to': new_chapter.data.end_date,
-                }
-
+            new_chapter.doc = template.doc.copy()
             new_chapter.doc[0] = DocumentModel(
                 type="title",
                 attrs={
                     'level': 1,
-                    'data': data
                 },
+                # content=[
+                #    DocumentModel(
+                #        type="text",
+                #        text=core.date_string(date.today())
+                #    )
+                # ]
+            )
+        else:
+            new_chapter.doc = DocumentModel(
                 content=[
                     DocumentModel(
-                        type="text",
-                        text=core.date_string(date.today())
+                        type="title",
+                        attrs={
+                            'level': 1,
+                        },
+                        # content=[
+                        #    DocumentModel(
+                        #        type="text",
+                        #        text=core.date_string(date.today())
+                        #    )
+                        # ]
                     )
-                ]
+                ],
+                type='doc'
             )
+
+        data = {
+            'clientIds': [str(id) for id in self.client_ids]
+        }
+
+        if new_chapter.data:
+            data['dates'] = {
+                'since': new_chapter.data.start_date,
+                'to': new_chapter.data.end_date,
+            }
+
+        new_chapter.doc[0].attrs['data'] = data
+        new_chapter.doc[0].type = "title"
+
         self.chapters.append(new_chapter)
         return new_chapter
 

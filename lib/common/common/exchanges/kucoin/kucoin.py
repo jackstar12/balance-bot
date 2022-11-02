@@ -138,10 +138,7 @@ class KuCoinFuturesWorker(_KuCoinClient):
 
         return results
 
-    async def _get_ohlc(self, market: str,
-                        since: datetime,
-                        to: datetime,
-                        resolution_s: int = None,
+    async def _get_ohlc(self, symbol: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
         # https://docs.kucoin.com/futures/#k-chart
         limit = limit or 200  # Maximum amount of data points

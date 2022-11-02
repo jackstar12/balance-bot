@@ -1,5 +1,6 @@
 import os
 
+import aiohttp
 import uvicorn
 from fastapi import FastAPI, Depends, APIRouter, HTTPException
 from httpx_oauth.clients.discord import DiscordOAuth2
@@ -15,7 +16,7 @@ import api.routers.template as template
 import api.routers.test as test
 import api.routers.trade as trade
 import api.routers.user as user
-from api.dependencies import messenger
+from api.dependencies import messenger, set_http_session, get_http_session
 from api.models.user import UserRead, UserCreate
 from api.routers import labelgroup
 from api.users import fastapi_users, auth_backend
@@ -135,8 +136,14 @@ async def some_other_route():
 @app.on_event("startup")
 async def on_start():
     setup_logger()
+    set_http_session(aiohttp.ClientSession())
     messenger.listen_class_all(Event)
     messenger.listen_class_all(Client)
+
+
+@app.on_event("shutdown")
+async def on_start():
+    await (get_http_session().close())
 
 
 def run():

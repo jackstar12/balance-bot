@@ -181,11 +181,7 @@ class BinanceFutures(_BinanceBaseClient):
     async def _get_transfers(self, since: datetime = None, to: datetime = None) -> List[RawTransfer]:
         return await self._get_internal_transfers(Type.USDM, since, to)
 
-    async def _get_ohlc(self,
-                        market: str,
-                        since: datetime,
-                        to: datetime,
-                        resolution_s: int = None,
+    async def _get_ohlc(self, symbol: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
         # https://binance-docs.github.io/apidocs/futures/en/#mark-price-kline-candlestick-data
 
@@ -198,7 +194,7 @@ class BinanceFutures(_BinanceBaseClient):
                                                     to=to)
 
         params = {
-            'symbol': market,
+            'symbol': symbol,
             'interval': _interval_map.get(resolution_s),
             'startTime': self._parse_datetime(since),
             'endTime': self._parse_datetime(to),
@@ -208,7 +204,7 @@ class BinanceFutures(_BinanceBaseClient):
         data = await self.get(
             '/fapi/v1/markPriceKlines',
             params={
-                'symbol': market,
+                'symbol': symbol,
                 'interval': _interval_map.get(resolution_s),
                 'startTime': self._parse_datetime(since),
                 'endTime': self._parse_datetime(to)

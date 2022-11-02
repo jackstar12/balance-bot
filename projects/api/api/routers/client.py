@@ -23,7 +23,7 @@ from api.models.trade import Trade, BasicTrade
 from database.errors import InvalidClientError, ResponseError
 from database.models.interval import Interval
 from api.authenticator import Authenticator
-from api.dependencies import get_authenticator, get_messenger, get_db
+from api.dependencies import get_authenticator, get_messenger, get_db, get_http_session
 from api.models.client import ClientConfirm, ClientEdit, \
     ClientOverview, Transfer, ClientCreateBody, ClientInfo, ClientCreateResponse, get_query_params, ClientDetailed, \
     ClientOverviewCache
@@ -35,7 +35,7 @@ from database.calc import create_daily
 from database.dbasync import db_first, redis, async_maker, time_range, db_all, db_select_all
 from database.dbmodels import TradeDB, BalanceDB, Execution
 from database.dbmodels.client import Client, add_client_filters
-from database.dbmodels.client import QueryParams
+from database.dbmodels.client import ClientQueryParams
 from database.dbmodels.user import User
 from database.enums import IntervalType
 from common.exchanges import EXCHANGES
@@ -58,7 +58,8 @@ router = APIRouter(
 @router.post('/client',
              response_model=ClientCreateResponse,
              dependencies=[Depends(CurrentUser)])
-async def new_client(body: ClientCreateBody):
+async def new_client(body: ClientCreateBody,
+                     http_session: aiohttp.ClientSession = Depends(get_http_session)):
     try:
         exchange_cls = EXCHANGES[body.exchange]
         if issubclass(exchange_cls, ExchangeWorker):
@@ -66,15 +67,14 @@ async def new_client(body: ClientCreateBody):
             if validate_kwargs(body.extra_kwargs or {}, exchange_cls.required_extra_args):
                 client = body.get()
 
-                async with aiohttp.ClientSession() as http_session:
+                try:
                     worker = exchange_cls(client, http_session, db_maker=async_maker)
-                    try:
-                        init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
-                    except InvalidClientError:
-                        return BadRequest('Invalid API credentials')
-                    except ResponseError:
-                        return InternalError()
-                    await worker.cleanup()
+                    init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
+                except InvalidClientError:
+                    return BadRequest('Invalid API credentials')
+                except ResponseError:
+                    return InternalError()
+                await worker.cleanup()
 
                 if init_balance.error is None:
                     if init_balance.realized.is_zero():
@@ -133,7 +133,6 @@ async def confirm_client(body: ClientConfirm,
     return ClientInfo.from_orm(client)
 
 
-
 OverviewCache = client_utils.ClientCacheDependency(
     ClientCacheKeys.OVERVIEW,
     ClientOverviewCache
@@ -143,7 +142,7 @@ OverviewCache = client_utils.ClientCacheDependency(
 @router.get('/client/overview', response_model=ClientOverview)
 async def get_client_overview(background_tasks: BackgroundTasks,
                               cache: client_utils.ClientCache[ClientOverviewCache] = Depends(OverviewCache),
-                              query_params: QueryParams = Depends(get_query_params),
+                              query_params: ClientQueryParams = Depends(get_query_params),
                               user: User = Depends(CurrentUser),
                               db: AsyncSession = Depends(get_db)):
     any_client = False
@@ -158,7 +157,6 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         clients = await client_utils.get_user_clients(
             user,
             None if any_client else non_cached,
-            (Client.open_trades, TradeDB.executions),
             db=db
         )
         for client in clients:
@@ -186,7 +184,6 @@ async def get_client_overview(background_tasks: BackgroundTasks,
                 ),
                 daily_balance=daily,
                 transfers=transfers,
-                open_trades=client.open_trades
             )
             background_tasks.add_task(
                 cache.write,
@@ -223,7 +220,10 @@ async def get_client_overview(background_tasks: BackgroundTasks,
             for balance in balances:
                 latest_by_client[balance.client_id] = balance
 
-        all_transfers = sum_iter(overview.transfers for overview in raw_overviews)
+        all_transfers = sorted(
+            sum_iter(overview.transfers for overview in raw_overviews),
+            key=lambda transfer: transfer.time
+        )
 
         intervals = create_daily(
             all_daily,
@@ -231,11 +231,17 @@ async def get_client_overview(background_tasks: BackgroundTasks,
             query_params.currency
         )
 
+        query_params.limit = 5
+        query_params.order = 'desc'
+        recent_trades = await client_utils.query_trades(TradeDB.initial,
+                                                        user=user,
+                                                        query_params=query_params,
+                                                        db=db)
         overview = ClientOverview.construct(
             intervals=intervals,
             total=sum_iter(raw.total for raw in raw_overviews),
-            open_trades=sum_iter(o.open_trades for o in raw_overviews),
-            transfers=all_transfers
+            transfers=all_transfers,
+            recent_trades=[BasicTrade.from_orm(trade) for trade in recent_trades]
         )
 
         encoded = jsonable_encoder(overview)
@@ -272,7 +278,7 @@ performance_base_select = select(
 @router.get('/client/performance', response_model=ResponseModel[list[PnlStats]])
 async def get_client_performance(interval: IntervalType = Query(default=None),
                                  trade_id: list[int] = Query(default=None),
-                                 query_params: QueryParams = Depends(get_query_params),
+                                 query_params: ClientQueryParams = Depends(get_query_params),
                                  user: User = Depends(CurrentUser),
                                  db: AsyncSession = Depends(get_db)):
     ts1 = time.perf_counter()
@@ -329,7 +335,7 @@ async def get_client_performance(interval: IntervalType = Query(default=None),
 
 @router.get('/client/balance')
 async def get_client_balance(balance_id: list[int] = Query(None, alias='balance-id'),
-                             query_params: QueryParams = Depends(get_query_params),
+                             query_params: ClientQueryParams = Depends(get_query_params),
                              user: User = Depends(CurrentUser),
                              db: AsyncSession = Depends(get_db)):
     balance = await BalanceDB.query(

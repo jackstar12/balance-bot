@@ -51,7 +51,6 @@ def api_client_logged_in(api_client):
 
 @pytest.fixture  #
 def create_client(api_client_logged_in):
-
     def _register(data: ClientCreate):
         return api_client_logged_in.post("/api/v1/client",
                                          json=jsonable_encoder(data))
@@ -60,36 +59,45 @@ def create_client(api_client_logged_in):
 
 
 @pytest.fixture
-def confirm_clients(api_client, create_client):
-    @contextlib.contextmanager
-    def _confirm_clients(clients: list[ClientCreate]):
+def confirm_clients(api_client, create_client, messenger):
+    @contextlib.asynccontextmanager
+    async def _confirm_clients(clients: list[ClientCreate]):
         results = []
 
         for data in clients:
             resp = create_client(data)
             assert resp.status_code == 200
-
-            resp = api_client.post('/api/v1/client/confirm', json={**resp.json()})
-            assert resp.status_code == 200
+            async with Messages.create(
+                    Channel('client', 'new'),
+                    messenger=messenger
+            ) as messages:
+                resp = api_client.post('/api/v1/client/confirm', json={**resp.json()})
+                assert resp.status_code == 200
+                await messages.wait(.5)
 
             results.append(ClientInfo(**resp.json()))
 
         yield results
 
         for result in results:
-            resp = api_client.delete(f'/api/v1/client/{result.id}')
-            assert resp.status_code == 200
+            async with Messages.create(
+                    Channel('client', 'delete'),
+                    messenger=messenger
+            ) as messages:
+                resp = api_client.delete(f'/api/v1/client/{result.id}')
+                assert resp.status_code == 200
+                await messages.wait(.5)
 
     return _confirm_clients
 
 
 @pytest.fixture
-def confirmed_clients(api_client, create_client, request, confirm_clients):
-    with confirm_clients(request.param) as clients:
+async def confirmed_clients(api_client, create_client, request, confirm_clients):
+    async with confirm_clients(request.param) as clients:
         yield clients
 
 
 @pytest.fixture
-def confirmed_client(request, confirm_clients):
-    with confirm_clients([request.param]) as clients:
+async def confirmed_client(request, confirm_clients):
+    async with confirm_clients([request.param]) as clients:
         yield clients[0]

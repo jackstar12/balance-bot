@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from requests import Response
 
 
-from api.routers.event import EventUpdate
+from api.routers.event import EventUpdate, EventJoinBody
 from api.utils.responses import ResponseModel
 from common.exchanges import SANDBOX_CLIENTS
 from common.test_utils.mock import event_mock
@@ -77,13 +77,14 @@ def test_modify_event(event, api_client_logged_in):
     indirect=True
 )
 def test_register_event(event, api_client_logged_in, confirmed_clients):
+    event_url = f'/api/v1/event/{event.id}'
     for client in confirmed_clients:
-        url = f'/api/v1/event/{event.id}/registrations/{client.id}'
-        resp = api_client_logged_in.post(url)
+        resp = api_client_logged_in.post(event_url + '/registrations',
+                                         json=EventJoinBody(client_id=client.id).dict())
         assert resp.ok
 
     resp, result = parse_response(
-        api_client_logged_in.get(f'/api/v1/event/{event.id}'),
+        api_client_logged_in.get(event_url),
         EventDetailed
     )
 
@@ -92,15 +93,14 @@ def test_register_event(event, api_client_logged_in, confirmed_clients):
     assert result.id == event.id
 
     resp, result = parse_response(
-        api_client_logged_in.get(f'/api/v1/event/{event.id}/leaderboard'),
+        api_client_logged_in.get(event_url + '/leaderboard'),
         Leaderboard
     )
 
     assert len(result.unknown) == len(confirmed_clients)
 
     for client in confirmed_clients:
-        url = f'/api/v1/event/{event.id}/registrations/{client.id}'
-        resp = api_client_logged_in.delete(url)
+        resp = api_client_logged_in.delete(event_url + '/registrations')
         assert resp.ok
 
 

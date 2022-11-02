@@ -365,7 +365,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
     async def _remove_worker(self, worker: ExchangeWorker):
         async with self._worker_lock:
-            self._workers_by_id.pop(worker.client.id, None)
+            self._workers_by_id.pop(worker.client_id, None)
         await worker.cleanup()
 
     async def get_worker(self, client_id: int, create_if_missing=True) -> ExchangeWorker:

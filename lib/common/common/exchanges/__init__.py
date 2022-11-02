@@ -45,8 +45,8 @@ SANDBOX_CLIENTS = [
     ),
     ClientCreate(
         exchange=BybitLinearWorker.exchange,
-        api_key="nbEnjpQ3f4dwipubjG",
-        api_secret="4wrgmmFoOrWcwREYGa5FJxRPaldzVG1oGMR1",
+        api_key="82UvSdVteZHLWMI9sm",
+        api_secret="XA8mFgINADoMWLHxnOTVcRyubSGCGoJXQAyX",
         sandbox=True,
     ),
     ClientCreate(

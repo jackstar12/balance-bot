@@ -12,7 +12,7 @@ from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
     Date, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship, reconstructor
+from sqlalchemy.orm import relationship, reconstructor, RelationshipProperty
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -132,13 +132,13 @@ class ClientState(Enum):
 
 
 class QueryParams(BaseModel):
-    client_ids: set[int]
-    currency: str
     since: Optional[datetime] = Field(default_factory=lambda: datetime.fromtimestamp(0, pytz.utc))
     to: Optional[datetime]
     limit: Optional[int]
+    offset: Optional[int]
+    order: Optional[Literal['desc', 'asc']]
 
-    def within(self, other: QueryParams):
+    def within(self, other: ClientQueryParams):
         return (
                 (not other.since or (self.since and self.since >= other.since))
                 and
@@ -146,16 +146,21 @@ class QueryParams(BaseModel):
         )
 
 
+class ClientQueryParams(QueryParams):
+    client_ids: set[int]
+    currency: str
+
+
 class ClientQueryMixin:
-    time_col: Column
+    client: RelationshipProperty
 
     @classmethod
     async def query(cls,
                     *eager,
                     time_col: Column,
                     user: User,
-                    ids: list[int],
-                    params: QueryParams,
+                    ids: list[int] | None,
+                    params: ClientQueryParams,
                     db: AsyncSession) -> list:
         return await db_all(
             add_client_filters(

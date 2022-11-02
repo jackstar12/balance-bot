@@ -32,7 +32,7 @@ class BaseModel(PydanticBaseModel):
                 if values[key] is None and not field.required:
                     fields_values[name] = field.get_default()
                 else:
-                    if issubclass(field.type_, BaseModel):
+                    if issubclass(field.type_.__class__, BaseModel):
                         if isinstance(values[key], field.type_):
                             fields_values[name] = values[key]
                         elif field.shape == 2:

@@ -171,8 +171,12 @@ class Trade(Base, Serializer, CurrencyMixin):
         return (self.initial or self.executions[0]).side
 
     @hybrid_property
+    def net_pnl(self):
+        return self.realized_pnl - self.total_commissions
+
+    @hybrid_property
     def size(self):
-        return self.entry * self.qty
+        return self.qty / self.entry if self.inverse else self.entry * self.qty
 
     @property
     def sessions(self):
@@ -200,7 +204,7 @@ class Trade(Base, Serializer, CurrencyMixin):
 
     @hybrid_property
     def net_pnl(self):
-        return self.realized_pnl - self.total_commisions
+        return self.realized_pnl - self.total_commissions
 
     @hybrid_property
     def compact_pnl_data(self):
@@ -261,18 +265,13 @@ class Trade(Base, Serializer, CurrencyMixin):
         # "trades" which were initiated by a transfer should not provide any pnl.
         return self.qty - self.open_qty - self.transferred_qty
 
-    def calc_rpnl(self, qty: Decimal, exit: Decimal):
-        diff = exit - self.entry
-        raw = diff / qty if self.inverse else diff * qty
+    def calc_pnl(self, qty: Decimal, exit: Decimal):
+        diff = 1 / self.entry - 1 / exit if self.inverse else exit - self.entry
+        raw = diff * qty
         return raw * -1 if self.initial.side == Side.SELL else raw
 
     def calc_upnl(self, price: Decimal):
-        diff = price - self.entry
-        if self.open_qty != 0:
-            return (diff / self.open_qty if self.inverse else diff * self.open_qty) * (
-                Decimal(1) if self.initial.side == Side.BUY else Decimal(-1))
-        else:
-            return 0
+        return self.calc_pnl(self.open_qty, price)
 
     @property
     def redis_key(self):
@@ -387,7 +386,7 @@ class Trade(Base, Serializer, CurrencyMixin):
                                                  (realized_qty, execution.qty))
 
                     if execution.realized_pnl is None:
-                        execution.realized_pnl = self.calc_rpnl(execution.qty, execution.price)
+                        execution.realized_pnl = self.calc_pnl(execution.qty, execution.price)
 
                     self.open_qty -= execution.qty
                     self.realized_pnl += execution.realized_pnl

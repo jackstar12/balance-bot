@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from operator import and_
+from time import perf_counter
 from typing import List, Tuple, Union, Any, TypeVar, Type, Optional, Callable
 
 import aioredis
