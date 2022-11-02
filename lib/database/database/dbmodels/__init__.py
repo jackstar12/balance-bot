@@ -25,6 +25,7 @@ import database.dbmodels.editing.journal as journal
 import database.dbmodels.discord.discorduser
 import database.dbmodels.discord.guild as guild
 import database.dbmodels.discord.guildassociation as ga
+import database.dbmodels.authgrant
 
 Client = client.Client
 User = user.User
@@ -52,39 +53,6 @@ client.Client.recent_history = relationship(
     lazy='noload',
     primaryjoin=and_(client.Client.id == partioned_history.client_id, partioned_balance.c.index <= 3)
 )
-
-journal_assoc = journal.journal_association
-chapter_trade_assoc = chapter.chapter_trade_association
-
-sub = select(
-    Client.id
-).join(
-    journal_assoc,
-    and_(
-        journal_assoc.c.client_id == Client.id,
-        journal_assoc.c.journal_id == Chapter.journal_id
-    )
-)
-
-chapter.Chapter.trades = relationship('Trade',
-                                      lazy='noload',
-                                      primaryjoin=and_(
-                                          and_(
-                                              TradeDB.open_time.cast(Date) >= Chapter.data['start_date'],
-                                              TradeDB.open_time.cast(Date) <= Chapter.data['end_date']
-                                          ),
-                                          or_(
-                                              TradeDB.client_id.in_(sub),
-                                              TradeDB.id == chapter_trade_assoc.c.trade_id
-                                          )
-                                      ),
-                                      secondary=join(Chapter, chapter_trade_assoc, chapter_trade_assoc.c.chapter_id == Chapter.id),
-                                      secondaryjoin=chapter_trade_assoc.c.chapter_id == Chapter.id,
-                                      viewonly=True,
-                                      uselist=True
-                                      )
-
-
 
 #ChildChapter = aliased(Chapter)
 #child_ids = select(ChildChapter.id)

@@ -1,13 +1,13 @@
 from typing import Optional, Any
 
 from sqlalchemy import create_engine, MetaData
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, scoped_session, Session, declarative_base, object_session
 import sqlalchemy.orm as orm
 
 from database.env import environment
 from database.models import BaseModel
-
 
 engine = create_engine(
     f'postgresql://{environment.DATABASE_URI}'
@@ -19,7 +19,16 @@ Base = declarative_base()
 Meta = MetaData()
 
 
-def fkey(tablename: Any, column_name: str):
+def FKey(column: str,
+         onupdate=None,
+         ondelete=None,
+         **kw):
+    split = column.split('.')
+    print(column, split)
+    return sa.ForeignKey(column, onupdate=onupdate, ondelete=ondelete, name=fkey_name(split[0], split[1]), **kw)
+
+
+def fkey_name(tablename: Any, column_name: str):
     return f'{tablename}_{column_name}_fkey'
 
 

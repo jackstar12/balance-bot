@@ -12,7 +12,7 @@ from database.dbmodels.user import User
 SECRET = "SECRET"
 
 
-class UserManager(UUIDIDMixin, BaseUserManager[UserCreate, uuid.UUID]):
+class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = SECRET
     verification_token_secret = SECRET
 

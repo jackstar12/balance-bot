@@ -11,7 +11,7 @@ from sqlalchemy.orm import relationship, foreign
 
 from database.dbmodels.mixins.serializer import Serializer
 from database.models.gain import Gain
-from database.dbsync import fkey
+from database.dbsync import fkey_name
 
 if TYPE_CHECKING:
     from database.dbmodels.balance import Balance as BalanceDB
@@ -23,7 +23,7 @@ from database.dbsync import Base, BaseMixin
 class EventScore(Base, Serializer):
     __tablename__ = 'eventscore'
 
-    entry_id = Column(ForeignKey('evententry.id', name=fkey('eventscore', 'entry_id'), ondelete='CASCADE'), primary_key=True)
+    entry_id = Column(ForeignKey('evententry.id', name=fkey_name('eventscore', 'entry_id'), ondelete='CASCADE'), primary_key=True)
     time = Column(DateTime(timezone=True), primary_key=True, default=lambda: datetime.now(pytz.utc))
     rank = Column(Integer)
     abs_value = Column(Numeric, nullable=True)
@@ -50,13 +50,13 @@ class EventEntry(Base, Serializer):
     __tablename__ = 'evententry'
 
     id = Column(Integer, primary_key=True, unique=True)
-    user_id = Column(ForeignKey('user.id', name=fkey('evententry', 'user_id'), ondelete='CASCADE'),
+    user_id = Column(ForeignKey('user.id', name=fkey_name('evententry', 'user_id'), ondelete='CASCADE'),
                      nullable=False)
-    client_id = Column(ForeignKey('client.id', name=fkey('evententry', 'client_id'), ondelete='SET NULL'),
+    client_id = Column(ForeignKey('client.id', name=fkey_name('evententry', 'client_id'), ondelete='SET NULL'),
                        nullable=True)
-    event_id = Column(ForeignKey('event.id', name=fkey('evententry', 'client_id'), ondelete='CASCADE'),
+    event_id = Column(ForeignKey('event.id', name=fkey_name('evententry', 'client_id'), ondelete='CASCADE'),
                       nullable=False)
-    init_balance_id = Column(ForeignKey('balance.id', name=fkey('evententry', 'init_balance_id'), ondelete='CASCADE'),
+    init_balance_id = Column(ForeignKey('balance.id', name=fkey_name('evententry', 'init_balance_id'), ondelete='CASCADE'),
                              nullable=True)
     rekt_on = Column(DateTime(timezone=True), nullable=True)
 

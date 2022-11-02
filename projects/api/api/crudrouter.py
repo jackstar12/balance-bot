@@ -1,6 +1,9 @@
-from typing import Type, Callable
+from dataclasses import dataclass, field
+from typing import Type, Callable, Optional
 
 from fastapi import APIRouter, Depends
+from fastapi_users.types import DependencyCallable
+from pydantic.fields import Undefined
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select, Update, Delete
@@ -16,114 +19,136 @@ from database.models import BaseModel, OrmBaseModel, CreateableModel
 TStmt = Select | Update | Delete
 
 
+@dataclass
+class Route:
+    add_filters: Callable[[TStmt, User], Select | Update | Delete] = None
+    eager_loads: list[TEager] = field(default_factory=lambda: [])
+    user_dependency: DependencyCallable = CurrentUser
+    dependencies: list[Depends] = field(default_factory=lambda: [])
+
+
 def create_crud_router(prefix: str,
                        table: Type[Base],
                        read_schema: Type[OrmBaseModel],
                        create_schema: Type[CreateableModel],
                        update_schema: Type[BaseModel] = None,
-                       add_filters: Callable[[TStmt, User], Select | Update | Delete] = None,
-                       eager_loads: list[TEager] = None,
-                       dependencies: list = None):
+                       default_route: Route = None,
+                       **routes: dict[str, Route]):
+
     def default_filter(stmt: TStmt, user: User) -> Select:
         return stmt.where(
             table.user_id == user.id
         )
 
-    eager = eager_loads or []
+    if not default_route:
+        default_route = Route()
 
-    if not add_filters:
-        add_filters = default_filter
+    if not default_route.add_filters:
+        default_route.add_filters = default_filter
 
     update_schema = update_schema or create_schema
 
     router = APIRouter(
         tags=[prefix],
-        dependencies=dependencies,
+        dependencies=default_route.dependencies,
         prefix=prefix
     )
 
+    create_route = routes.get('create', default_route)
+    if create_route != Undefined:
+        @router.post('', response_model=read_schema, dependencies=create_route.dependencies)
+        async def create(body: create_schema,
+                         user: User = Depends(create_route.user_dependency),
+                         db: AsyncSession = Depends(get_db)):
+            instance = body.get(user)
+            if hasattr(instance, 'user'):
+                instance.user = user
+            db.add(instance)
+            await db.commit()
+            return read_schema.from_orm(instance)
+
+    get_one_route = routes.get('get_one', default_route)
+
     def read_one(entity_id: int, user: User, db: AsyncSession, **kwargs):
         return db_unique(
-            add_filters(
+            get_one_route.add_filters(
                 select(table).where(
                     table.id == entity_id
                 ),
                 user,
                 **kwargs
             ),
-            *eager,
+            *get_one.eager_loads,
             session=db
         )
+
+    if get_one_route != Undefined:
+        @router.get('/{entity_id}', response_model=read_schema, dependencies=get_one_route.dependencies)
+        async def get_one(entity_id: int,
+                          user: User = Depends(get_one_route.user_dependency),
+                          db: AsyncSession = Depends(get_db)):
+            entity = await read_one(entity_id, user, db)
+
+            if entity:
+                return read_schema.from_orm(entity)
+            else:
+                return NotFound('Invalid id')
+
+    delete_one_route = routes.get('delete_one', default_route)
+
+    if delete_one_route != Undefined:
+        @router.delete('/{entity_id}', dependencies=delete_one_route.dependencies)
+        async def delete_one(entity_id: int,
+                             user: User = Depends(delete_one_route.user_dependency),
+                             db: AsyncSession = Depends(get_db)):
+            entity = await read_one(entity_id, user, db)
+            if entity:
+                await db.delete(entity)
+                await db.commit()
+                return OK('Deleted')
+            else:
+                return NotFound('Invalid id')
+
+    all_route = routes.get('get_all', default_route)
 
     def read_all(user: User, db: AsyncSession, **kwargs):
         return db_all(
-            add_filters(select(table), user, **kwargs),
-            *eager,
+            all_route.add_filters(select(table), user, **kwargs),
+            *all_route.eager_loads,
             session=db
         )
 
-    @router.post('', response_model=read_schema)
-    async def create(body: create_schema,
-                     user: User = Depends(CurrentUser),
-                     db: AsyncSession = Depends(get_db)):
-        instance = body.get(user)
-        if hasattr(instance, 'user'):
-            instance.user = user
-        db.add(instance)
-        await db.commit()
-        return read_schema.from_orm(instance)
+    if all_route != Undefined:
+        @router.get('', response_model=list[read_schema], dependencies=all_route.dependencies)
+        async def get_all(user: User = Depends(all_route.user_dependency),
+                          db: AsyncSession = Depends(get_db)):
+            results = await read_all(user, db)
 
-    @router.delete('/{entity_id}')
-    async def delete_one(entity_id: int,
-                         user: User = Depends(CurrentUser),
-                         db: AsyncSession = Depends(get_db)):
-        entity = await read_one(entity_id, user, db)
-        if entity:
-            await db.delete(entity)
-            await db.commit()
-            return OK('Deleted')
-        else:
-            return NotFound('Invalid id')
+            return OK(
+                detail='OK',
+                result=[
+                    read_schema.from_orm(entity)
+                    for entity in results
+                ]
+            )
 
-    @router.get('', response_model=list[read_schema])
-    async def get_all(user: User = Depends(CurrentUser),
-                      db: AsyncSession = Depends(get_db)):
-        results = await read_all(user, db)
+    update_one_route = routes.get('update_one', default_route)
+    if update_one_route != Undefined:
+        @router.patch('/{entity_id}', response_model=read_schema, dependencies=update_one_route.dependencies)
+        async def update_one(entity_id: int,
+                             body: update_schema,
+                             user: User = Depends(update_one_route.user_dependency),
+                             db: AsyncSession = Depends(get_db)):
+            entity = await read_one(entity_id, user, db)
 
-        return OK(
-            detail='OK',
-            result=[
-                read_schema.from_orm(entity)
-                for entity in results
-            ]
-        )
+            if entity:
+                for key, value in body.dict(exclude_none=True).items():
+                    setattr(entity, key, value)
 
-    @router.get('/{entity_id}', response_model=read_schema)
-    async def get_one(entity_id: int,
-                      user: User = Depends(CurrentUser),
-                      db: AsyncSession = Depends(get_db)):
-        entity = await read_one(entity_id, user, db)
+                await db.commit()
 
-        if entity:
-            return read_schema.from_orm(entity)
-        else:
-            return NotFound('Invalid id')
-
-    @router.patch('/{entity_id}', response_model=read_schema)
-    async def update_one(entity_id: int,
-                         body: update_schema,
-                         user: User = Depends(CurrentUser),
-                         db: AsyncSession = Depends(get_db)):
-        entity = await read_one(entity_id, user, db)
-
-        if entity:
-            for key, value in body.dict(exclude_none=True).items():
-                setattr(entity, key, value)
-
-            await db.commit()
-
-            return read_schema.from_orm(entity)
-        else:
-            return NotFound('Invalid id')
+                return read_schema.from_orm(entity)
+            else:
+                return NotFound('Invalid id')
 
     return router

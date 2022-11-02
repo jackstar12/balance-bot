@@ -7,13 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routers.template import query_templates
 from api.dependencies import get_messenger, get_db
-from api.users import CurrentUser, get_current_user
+from api.users import CurrentUser, get_current_user, get_token_backend
 from api.models.completejournal import (
     JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
     ChapterCreate, ChapterUpdate, JournalDetailedInfo
 )
 from api.utils.responses import BadRequest, OK, CustomJSONResponse
 from database.dbasync import db_unique, db_all
+from database.dbmodels.authgrant import JournalGrant
 from database.dbmodels.editing.chapter import Chapter as DbChapter
 from database.dbmodels.client import add_client_filters, Client
 from database.dbmodels.editing.journal import Journal, JournalType
@@ -21,7 +22,7 @@ from database.dbmodels.user import User
 
 router = APIRouter(
     tags=["journal"],
-    dependencies=[Depends(CurrentUser), Depends(get_messenger)],
+    dependencies=[Depends(get_messenger)],
     responses={
         401: {'detail': 'Wrong Email or Password'},
         400: {'detail': "Email is already used"}
@@ -30,14 +31,14 @@ router = APIRouter(
 )
 
 
-async def query_chapter(journal_id: int,
+async def query_chapter(chapter_id: int,
                         user: User,
                         *eager,
                         session: AsyncSession,
                         **filters):
     chapter = await db_unique(
         select(DbChapter).filter(
-            DbChapter.journal_id == journal_id,
+            DbChapter.id == chapter_id,
             Journal.user_id == user.id
         ).filter_by(
             **filters
@@ -105,6 +106,7 @@ async def create_journal(body: JournalCreate,
     await db.commit()
     return JournalInfo.from_orm(journal)
 
+JournalTokenBackend = get_token_backend(JournalGrant)
 
 
 @router.get(
@@ -112,7 +114,9 @@ async def create_journal(body: JournalCreate,
     description="Query all the users journals",
     response_model=List[JournalInfo]
 )
-async def get_journals(user: User = Depends(get_current_user(User.journals))):
+async def get_journals(user: User = Depends(
+    get_current_user(User.journals, auth_backends=[JournalTokenBackend]))
+):
     return CustomJSONResponse(
         content=jsonable_encoder(
             [
@@ -123,9 +127,12 @@ async def get_journals(user: User = Depends(get_current_user(User.journals))):
     )
 
 
+UserDep = get_current_user(auth_backends=[JournalTokenBackend])
+
+
 @router.get('/{journal_id}', response_model=JournalDetailedInfo)
 async def get_journal(journal_id: int,
-                      user: User = Depends(CurrentUser),
+                      user: User = Depends(UserDep),
                       db: AsyncSession = Depends(get_db)):
     journal = await query_journal(
         journal_id, user,
@@ -170,7 +177,9 @@ async def update_journal(journal_id: int,
 
 
 @router.delete('/{journal_id}')
-async def delete_journal(journal_id: int, user: User = Depends(CurrentUser), db: AsyncSession = Depends(get_db)):
+async def delete_journal(journal_id: int,
+                         user: User = Depends(CurrentUser),
+                         db: AsyncSession = Depends(get_db)):
     journal = await query_journal(journal_id, user, session=db)
     if journal:
         await db.delete(journal)
@@ -179,29 +188,27 @@ async def delete_journal(journal_id: int, user: User = Depends(CurrentUser), db:
 
 
 @router.get('/{journal_id}/chapter/{chapter_id}')
-async def get_chapter(journal_id: int, chapter_id: int, user: User = Depends(CurrentUser),
+async def get_chapter(chapter_id: int, user: User = Depends(CurrentUser),
                       db: AsyncSession = Depends(get_db)):
     chapter = await query_chapter(
-        journal_id,
+        chapter_id,
         user,
         # DbChapter.trades,
-        session=db,
-        id=chapter_id
+        session=db
     )
 
     return DetailedChapter.from_orm(chapter)
 
 
 @router.get('/{journal_id}/chapter/{chapter_id}/data')
-async def get_chapter_data(journal_id: int, chapter_id: int, user: User = Depends(CurrentUser),
-                      db: AsyncSession = Depends(get_db)):
+async def get_chapter_data(chapter_id: int, user: User = Depends(CurrentUser),
+                           db: AsyncSession = Depends(get_db)):
     chapter = await query_chapter(
-        journal_id,
+        chapter_id,
         user,
         # DbChapter.trades,
         DbChapter.balances,
         session=db,
-        id=chapter_id
     )
 
     await DbChapter.all_childs(chapter.id, db)
@@ -209,18 +216,15 @@ async def get_chapter_data(journal_id: int, chapter_id: int, user: User = Depend
     return DetailedChapter.from_orm(chapter)
 
 
-
 @router.patch('/{journal_id}/chapter/{chapter_id}')
-async def update_chapter(journal_id: int,
-                         chapter_id: int,
+async def update_chapter(chapter_id: int,
                          body: ChapterUpdate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
     chapter = await query_chapter(
-        journal_id,
+        chapter_id,
         user,
-        session=db,
-        id=chapter_id
+        session=db
     )
     if body.doc is not None:
         chapter.doc = body.doc
@@ -265,15 +269,13 @@ async def get_journal_trades(journal_id: int,
 
 
 @router.delete('/{journal_id}/chapter/{chapter_id}')
-async def delete_chapter(journal_id: int,
-                         chapter_id: int,
+async def delete_chapter(chapter_id: int,
                          user: User = Depends(CurrentUser),
                          db=Depends(get_db)):
     chapter = await query_chapter(
-        journal_id,
+        chapter_id,
         user,
-        session=db,
-        id=chapter_id
+        session=db
     )
     await db.delete(chapter)
     await db.commit()

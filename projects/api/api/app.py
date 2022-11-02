@@ -16,6 +16,7 @@ import api.routers.template as template
 import api.routers.test as test
 import api.routers.trade as trade
 import api.routers.user as user
+import api.routers.authgrant as authgrant
 from api.dependencies import messenger, set_http_session, get_http_session
 from api.models.user import UserRead, UserCreate
 from api.routers import labelgroup
@@ -79,7 +80,6 @@ app.include_router(
     prefix=PREFIX + OAUTH_PREFIX
 )
 
-
 ASSOC_PREFIX = OAUTH_PREFIX + '/associate'
 
 app.include_router(
@@ -94,6 +94,7 @@ app.include_router(
 
 for module in (
         # auth,
+        authgrant,
         discord,
         labelgroup,
         label,
@@ -108,7 +109,6 @@ for module in (
         client,
 ):
     app.include_router(module.router, prefix='/api/v1')
-
 
 db_permission_flag = False
 

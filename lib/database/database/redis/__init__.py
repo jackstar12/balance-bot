@@ -9,11 +9,8 @@ class TableNames(Enum):
     TRADE = "trade"
     EVENT = "event"
     TRANSFER = "transfer"
-    COIN_STATS = "coinstats"
     TICKER = "ticker"
-    PNL = "pnl"
-    PNL_DATA = "pnl_data"
-    KEYSPACE = "__keyspace@0__"
+    PNL_DATA = "pnldata"
     CACHE = "cache"
 
 

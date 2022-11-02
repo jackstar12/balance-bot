@@ -1,12 +1,15 @@
+import operator
 import os
 import uuid
-from typing import Optional, Generic
+from operator import and_, or_
+from typing import Optional, Generic, Type
 
 from fastapi import Depends, APIRouter
-from fastapi_users import FastAPIUsers, schemas
+from fastapi.security import APIKeyQuery
+from fastapi_users import FastAPIUsers, schemas, BaseUserManager, models, exceptions
 from fastapi_users.authentication import (
     CookieTransport,
-    AuthenticationBackend
+    AuthenticationBackend, Transport, Strategy
 )
 from fastapi_users.jwt import SecretType
 from fastapi_users.models import ID, UOAP, OAP
@@ -15,20 +18,33 @@ from httpx_oauth.oauth2 import BaseOAuth2
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
+from starlette.requests import Request
 
 from api.authenticator import RedisStrategy
 from api.dependencies import get_db
 from api.oauth import get_oauth_router
 from api.settings import settings
 from api.usermanager import UserManager
-from database.dbasync import redis, db_eager
+from core import utc_now
+from database.dbasync import redis, db_eager, db_unique, safe_op
+from database.dbmodels.authgrant import AuthGrant, GrantAssociaton
 from database.dbmodels.user import User, OAuthAccount
 
 
-class UserDatabase(Generic[UOAP, ID, OAP], SQLAlchemyUserDatabase[UOAP, ID]):
+class UserDatabase(Generic[ID, OAP], SQLAlchemyUserDatabase[User, ID]):
     def __init__(self, *args, base_stmt: Select, **kwargs):
         super().__init__(*args, **kwargs)
         self.base_stmt = base_stmt
+
+    async def get_by_token(self, token: str):
+        return await self._get_user(
+            self.base_stmt.join(
+                AuthGrant, and_(
+                    AuthGrant.user_id == User.id,
+                    AuthGrant.token == token
+                )
+            )
+        )
 
     async def get(self, id: ID) -> Optional[UOAP]:
         statement = self.base_stmt.filter(self.user_table.id == id)
@@ -39,7 +55,6 @@ class UserDatabase(Generic[UOAP, ID, OAP], SQLAlchemyUserDatabase[UOAP, ID]):
             if oauth_account.oauth_name == oauth_name:
                 await self.session.delete(oauth_account)
                 await self.session.commit()
-
 
 
 class UserDatabaseDep:
@@ -85,26 +100,14 @@ class CustomFastAPIUsers(FastAPIUsers[User, uuid.UUID]):
 get_user_db = UserDatabaseDep(User.oauth_accounts)
 
 
-def get_current_user(*eager):
-    _get_user_db = UserDatabaseDep(*eager)
-
-    def _get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(_get_user_db)):
-        yield UserManager(user_db)
-
-    users = FastAPIUsers[User, uuid.UUID](
-        _get_user_manager,
-        auth_backends=[auth_backend]
-    )
-
-    return users.authenticator.current_user()
-
-
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):
     yield UserManager(user_db)
 
 
 def get_redis_strategy():
     return RedisStrategy(redis=redis, lifetime_seconds=48 * 60 * 60)
+
+
 
 
 OAUTH2_REDIRECT_URI = os.environ.get('REDIRECT_BASE_URI')
@@ -120,6 +123,59 @@ assert OAUTH2_REDIRECT_URI
 #         response.st
 
 
+class TokenTransport(Transport):
+    scheme: APIKeyQuery
+
+    def __init__(self):
+        self.scheme = APIKeyQuery(
+            name="token",
+            auto_error=False
+        )
+
+
+class TokenStrategy(Strategy[User, uuid.UUID]):
+    def __init__(self,
+                 request: Request,
+                 db: AsyncSession,
+                 assoc: Type[GrantAssociaton]):
+        self.request = request
+        self.db = db
+        self.assoc = assoc
+
+    async def read_token(
+        self, token: Optional[str], user_manager: BaseUserManager[User, models.ID]
+    ) -> Optional[User]:
+        if token is None:
+            return None
+
+        now = utc_now()
+        user_id = await db_unique(
+            select(AuthGrant.user_id).where(
+                or_(
+                    AuthGrant.expires < now,
+                    AuthGrant.expires == None
+                ),
+                AuthGrant.token == token
+            ).join(self.assoc, and_(
+                AuthGrant.id == self.assoc.grant_id,
+                *[
+                    int(value) == getattr(self.assoc, name)
+                    for name, value in self.request.path_params.items()
+                    if hasattr(self.assoc, name)
+                ]
+            )),
+            session=self.db
+        )
+
+        try:
+            return await user_manager.get(user_id)
+        except (exceptions.UserNotExists, exceptions.InvalidID):
+            return None
+
+
+token_transport = TokenTransport()
+
+
 auth_backend = AuthenticationBackend(
     name="cookie",
     transport=CookieTransport(
@@ -129,6 +185,31 @@ auth_backend = AuthenticationBackend(
     ),
     get_strategy=get_redis_strategy
 )
+
+
+def get_token_backend(association_table: Type[GrantAssociaton]):
+    def get_token_strategy(request: Request, db: AsyncSession = Depends(get_db)):
+        return TokenStrategy(request, db, association_table)
+
+    return AuthenticationBackend(
+        name=association_table.__tablename__,
+        transport=token_transport,
+        get_strategy=get_token_strategy
+    )
+
+
+def get_current_user(*eager, auth_backends: list[AuthenticationBackend] = None):
+    _get_user_db = UserDatabaseDep(*eager)
+
+    def _get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(_get_user_db)):
+        yield UserManager(user_db)
+
+    users = FastAPIUsers[User, uuid.UUID](
+        _get_user_manager,
+        auth_backends=[*auth_backends] if auth_backends else [auth_backend]
+    )
+
+    return users.authenticator.current_user()
 
 
 fastapi_users = CustomFastAPIUsers(
