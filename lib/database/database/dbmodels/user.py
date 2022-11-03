@@ -89,6 +89,13 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
                              cascade="all, delete",
                              lazy='noload')
 
+    def __init__(self):
+        self.grant = None
+
+    @orm.reconstructor
+    def init_on_load(self):
+        self.grant = None
+
     def get_oauth(self, name: str) -> Optional[OAuthAccount]:
         for account in self.oauth_accounts:
             if account.oauth_name == name:

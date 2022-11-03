@@ -112,7 +112,7 @@ JournalTokenBackend = get_token_backend(JournalGrant)
 @router.get(
     '',
     description="Query all the users journals",
-    response_model=List[JournalInfo]
+    response_model=list[JournalInfo]
 )
 async def get_journals(user: User = Depends(
     get_current_user(User.journals, auth_backends=[JournalTokenBackend]))

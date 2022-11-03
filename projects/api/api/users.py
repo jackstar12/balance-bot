@@ -206,7 +206,7 @@ def get_current_user(*eager, auth_backends: list[AuthenticationBackend] = None):
 
     users = FastAPIUsers[User, uuid.UUID](
         _get_user_manager,
-        auth_backends=[*auth_backends] if auth_backends else [auth_backend]
+        auth_backends=[*auth_backends, auth_backend] if auth_backends else [auth_backend]
     )
 
     return users.authenticator.current_user()
