@@ -12,6 +12,8 @@ class TableNames(Enum):
     TICKER = "ticker"
     PNL_DATA = "pnldata"
     CACHE = "cache"
+    CHAPTER = "chapter"
+    JOURNAL = "journal"
 
 
 __all__ = [

@@ -51,27 +51,10 @@ def user_info(request: UserRequest):
 
 @redis_server.method(input_model=UserRequest)
 def guilds(request: UserRequest):
-    guild: discord.Guild
-    member: discord.Member
-    res = []
-    for guild in bot.get_user(request.user_id).mutual_guilds:
-        member = guild.get_member(request.user_id)
-        res.append(
-            GuildData(
-                id=guild.id,
-                name=guild.name,
-                icon_url=str(guild.icon_url),
-                text_channels=[
-                    TextChannel(
-                        id=tc.id,
-                        name=tc.name,
-                        category=tc.category.name
-                    )
-                    for tc in guild.text_channels if tc.permissions_for(member).read_messages
-                ],
-                is_admin=member.guild_permissions.administrator
-            )
-        )
+    res = [
+        GuildData.from_member(data, request.user_id)
+        for data in bot.get_user(request.user_id).mutual_guilds
+    ]
     return jsonable_encoder(res)
 
 
@@ -87,23 +70,11 @@ async def send_dm(self, user_id: int, message: str, embed: discord.Embed = None)
 @redis_server.method(input_model=GuildRequest)
 def guild(request: GuildRequest):
     data: discord.Guild = bot.get_guild(request.guild_id)
-    member: discord.Member = data.get_member(request.user_id)
     return jsonable_encoder(
-        GuildData(
-            id=data.id,
-            name=data.name,
-            icon_url=str(data.icon_url),
-            text_channels=[
-                TextChannel(
-                    id=tc.id,
-                    name=tc.name,
-                    category=tc.category.name
-                )
-                for tc in data.text_channels if tc.permissions_for(member).read_messages
-            ],
-            is_admin=member.guild_permissions.administrator
-        )
+        GuildData.from_member(data, request.user_id)
     )
+
+
 
 
 def _get_channel(guild_id: int, channel_id: int) -> discord.TextChannel:

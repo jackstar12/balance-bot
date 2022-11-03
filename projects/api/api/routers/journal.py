@@ -1,20 +1,22 @@
-from typing import List
+from functools import wraps
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.util import greenlet_spawn
 
 from api.routers.template import query_templates
 from api.dependencies import get_messenger, get_db
-from api.users import CurrentUser, get_current_user, get_token_backend
+from api.users import CurrentUser, get_current_user, get_token_backend, get_auth_grant_dependency, OptionalUser
 from api.models.completejournal import (
     JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
     ChapterCreate, ChapterUpdate, JournalDetailedInfo
 )
 from api.utils.responses import BadRequest, OK, CustomJSONResponse
-from database.dbasync import db_unique, db_all
-from database.dbmodels.authgrant import JournalGrant
+from database.dbasync import db_unique, db_all, db_select, db_select_all
+from database.dbmodels.authgrant import JournalGrant, AuthGrant
 from database.dbmodels.editing.chapter import Chapter as DbChapter
 from database.dbmodels.client import add_client_filters, Client
 from database.dbmodels.editing.journal import Journal, JournalType
@@ -106,7 +108,16 @@ async def create_journal(body: JournalCreate,
     await db.commit()
     return JournalInfo.from_orm(journal)
 
+
 JournalTokenBackend = get_token_backend(JournalGrant)
+
+
+def wrap_greenlet(fn):
+    @wraps(fn)
+    async def wrapper(*args, **kwargs):
+        return await greenlet_spawn(fn, *args, **kwargs, _require_await=True)
+
+    return wrapper
 
 
 @router.get(
@@ -114,14 +125,15 @@ JournalTokenBackend = get_token_backend(JournalGrant)
     description="Query all the users journals",
     response_model=list[JournalInfo]
 )
-async def get_journals(user: User = Depends(
-    get_current_user(User.journals, auth_backends=[JournalTokenBackend]))
-):
+@wrap_greenlet
+def get_journals(grant: AuthGrant = Depends(get_auth_grant_dependency()),
+                 user: Optional[User] = Depends(OptionalUser)):
     return CustomJSONResponse(
         content=jsonable_encoder(
             [
                 JournalInfo.from_orm(journal)
-                for journal in user.journals
+                for journal in
+                (grant.journals if grant else user.journals)
             ]
         )
     )

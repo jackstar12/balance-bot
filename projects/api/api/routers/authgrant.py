@@ -1,21 +1,31 @@
 from datetime import datetime
-from typing import Optional
+from enum import Enum
+from operator import and_
+from typing import Optional, Type
 
 from fastapi import Depends
+from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.crudrouter import create_crud_router, Route
-from api.dependencies import CurrentUser
+from api.dependencies import get_db
+from api.users import CurrentUser
+from api.utils.responses import BadRequest, OK
 from database.dbmodels import User
 from database.dbsync import BaseMixin
 from database.models import OrmBaseModel, OutputID, CreateableModel, BaseModel
 from database.models.user import UserPublicInfo
+
 from database.dbmodels.authgrant import (
     AuthGrant,
-    GrantType,
-    JournalAssociation,
-    ChapterAssociation,
-    EventAssociation
+    JournalGrant,
+    ChapterGrant,
+    EventGrant,
+    TradeGrant,
+    GrantAssociaton
 )
+from database.redis import TableNames
 
 from lib.database.database.models import InputID
 
@@ -46,56 +56,75 @@ router = create_crud_router('/auth-grant',
                             ))
 
 
+class GrantType(Enum):
+    EVENT = 'event'
+    CHAPTER = 'chapter'
+    TRADE = 'trade'
+    JOURNAL = 'journal'
+
+    def get_impl(self) -> Type[GrantAssociaton]:
+        if self == GrantType.EVENT:
+            return EventGrant
+        elif self == GrantType.CHAPTER:
+            return ChapterGrant
+        elif self == GrantType.JOURNAL:
+            return JournalGrant
+        elif self == GrantType.TRADE:
+            return TradeGrant
+
+
 class AddToGrant(BaseModel):
-    id: InputID
+    pass
+    #id: InputID
 
 
-@router.patch('/{grant_id}/add/{type}')
-async def add_to_grant(grant_id: int,
-                       type: GrantType,
-                       user: Depends(CurrentUser),
-                       body: AddToGrant,
-                       db: AsyncSession = Depends(get_db)):
-    if type == GrantType.EVENT:
-        new = EventAssociation(event_id=body.id)
-    elif type == GrantType.CHAPTER:
-        new = ChapterAssociation(chapter_id=body.id)
-    elif type == GrantType.JOURNAL:
-        new = JournalAssociation(journal_id=body.id)
-    elif type == GrantType.TRADE:
-        new = JournalAssociation(journal_id=body.id)
-    else:
-        return BadRequest(detail='Invalid Type')
-
-    new.grant_id = grant_id
-    new.user = user
-    db.add(new)
-    await db.commit()
-
-    return OK()
-
-
-@router.delete('/{grant_id}/remove/{type}/{id}')
+@router.post('/{grant_id}/permit/{type}/{id}')
 async def add_to_grant(grant_id: int,
                        type: GrantType,
                        id: int,
-                       user: Depends(CurrentUser),
-                       body: AddToGrant,
+                       user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
-    if type == GrantType.EVENT:
-        new = EventAssociation(event_id=body.id)
-    elif type == GrantType.CHAPTER:
-        new = ChapterAssociation(chapter_id=body.id)
-    elif type == GrantType.JOURNAL:
-        new = JournalAssociation(journal_id=body.id)
-    elif type == GrantType.TRADE:
-        new = JournalAssociation(journal_id=body.id)
-    else:
+    impl = type.get_impl()
+    if not impl:
         return BadRequest(detail='Invalid Type')
+    instance = impl()
 
-    new.grant_id = grant_id
-    new.user = user
-    db.add(new)
-    await db.commit()
+    instance.grant_id = grant_id
+    instance.user = user
+    instance.identity = id
+
+    try:
+        db.add(instance)
+        await db.commit()
+    except IntegrityError as e:
+        return BadRequest(f'Invalid grant or {type.value} id')
 
     return OK()
+
+
+@router.delete('/{grant_id}/permit/{type}/{id}')
+async def add_to_grant(grant_id: int,
+                       type: GrantType,
+                       id: int,
+                       user: User = Depends(CurrentUser),
+                       db: AsyncSession = Depends(get_db)):
+    impl = type.get_impl()
+    if not impl:
+        return BadRequest(detail='Invalid Type')
+    stmt = delete(impl).where(
+        impl.identity == id,
+        impl.grant_id == grant_id,
+        AuthGrant.id == grant_id,
+        AuthGrant.user_id == user.id
+    ).execution_options(
+        synchronize_session=False
+    )
+    result = await db.execute(
+        stmt
+    )
+    await db.commit()
+
+    if result.rowcount == 1:
+        return OK()
+    else:
+        return BadRequest(f'Invalid grant or {type.value} id')

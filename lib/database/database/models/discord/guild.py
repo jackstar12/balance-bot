@@ -43,6 +43,25 @@ class GuildData(OrmBaseModel):
     text_channels: list[TextChannel]
     is_admin: bool
 
+    @classmethod
+    def from_member(cls, guild: discord.Guild, member_id: int):
+        member = guild.get_member(member_id)
+        if member:
+            return GuildData(
+                id=guild.id,
+                name=guild.name,
+                icon_url=str(guild.icon_url),
+                text_channels=[
+                    TextChannel(
+                        id=tc.id,
+                        name=tc.name,
+                        category=tc.category.name
+                    )
+                    for tc in guild.text_channels if tc.permissions_for(member).read_messages
+                ],
+                is_admin=member.guild_permissions.administrator
+            )
+
 
 class Guild(OrmBaseModel):
     data: GuildData

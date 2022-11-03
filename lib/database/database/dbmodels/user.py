@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from typing import Optional, TypedDict, TYPE_CHECKING
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID, SQLAlchemyBaseOAuthAccountTableUUID
-from sqlalchemy import Column
+from sqlalchemy import Column, orm
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -81,8 +81,7 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
 
     journals = relationship('Journal',
                             back_populates='user',
-                            cascade="all, delete",
-                            lazy='raise')
+                            cascade="all, delete")
 
     templates = relationship('Template',
                              back_populates='user',

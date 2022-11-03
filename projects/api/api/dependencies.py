@@ -72,33 +72,6 @@ def get_messenger():
     return messenger
 
 
-class CurrentUserDep:
-    def __init__(self, *eager_loads):
-        self.base_stmt = db_eager(select(User).options(joinedload(User.events)), *eager_loads)
-        self._eager_loads = eager_loads
-
-    async def __call__(self,
-                       request: Request,
-                       authenticator = Depends(get_authenticator),
-                       db: AsyncSession = Depends(get_db)):
-        uuid = await authenticator.verify_id(request)
-        ts1 = time.perf_counter()
-        user = await db_unique(self.base_stmt, session=db) if uuid else None
-        ts2 = time.perf_counter()
-        print(ts2 - ts1)
-        if not user:
-            raise HTTPException(
-                status_code=HTTPStatus.BAD_REQUEST,
-                detail='Invalid session'
-            )
-        return user
-
-
-
-
-CurrentUser = CurrentUserDep()
-
-
 class FilterQueryParamsDep:
     def __init__(self,
                  filter_model: Type[BaseModel]):
