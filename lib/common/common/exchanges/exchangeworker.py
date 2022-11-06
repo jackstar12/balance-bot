@@ -512,7 +512,7 @@ class ExchangeWorker:
                         for tr_id, pnl_data in pnl_by_trade.items()
                     )
 
-                if execution.trade and execution.trade.initial_execution_id == execution.id:
+                if execution.trade and execution.trade.open_time == execution.time:
                     execution.trade.init_balance = new_balance
 
                 # Don't bother adding multiple balances for executions happening as a direct series of events

@@ -1,11 +1,45 @@
 from __future__ import annotations
-from typing import Optional
+
+from datetime import datetime
+from enum import Enum
+from typing import Optional, Literal, Any
+
 from database.models import BaseModel
+
+
+class Operator(Enum):
+    GT = "gt"
+    LT = "lt"
+    EQ = "eq"
+    NE = "ne"
+    INCLUDES = "includes"
+    EXCLUDES = "excludes"
 
 
 class Mark(BaseModel):
     type: str
     attrs: Optional[dict]
+
+
+class Dates(BaseModel):
+    since: datetime
+    to: datetime
+
+
+class FilterInput(BaseModel):
+    op: Operator
+    value: Any
+
+
+FilterOptions = dict[str, list[FilterInput]]
+
+
+class TradeData(BaseModel):
+    clientIds: list[int]
+    tradeIds: list[int]
+    dates: Dates
+    tradeSource: Literal['all', 'select', 'children']
+    filters: FilterOptions
 
 
 class DocumentModel(BaseModel):
@@ -15,6 +49,7 @@ class DocumentModel(BaseModel):
     text: 'Optional[str]'
     attrs: 'Optional[dict]'
     marks: 'Optional[list[Mark]]'
+
 
     @property
     def title(self):
@@ -59,4 +94,3 @@ class DocumentModel(BaseModel):
 
 
 DocumentModel.update_forward_refs()
-

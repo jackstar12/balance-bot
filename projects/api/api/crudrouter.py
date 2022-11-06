@@ -10,7 +10,7 @@ from sqlalchemy.sql import Select, Update, Delete
 
 from api.dependencies import get_db
 from api.users import CurrentUser
-from api.utils.responses import OK, NotFound
+from api.utils.responses import OK, NotFound, BadRequest
 from database.dbasync import db_all, db_unique, TEager
 from database.dbmodels.user import User
 from database.dbsync import Base
@@ -27,14 +27,13 @@ class Route:
     dependencies: list[Depends] = field(default_factory=lambda: [])
 
 
-def create_crud_router(prefix: str,
-                       table: Type[Base],
-                       read_schema: Type[OrmBaseModel],
-                       create_schema: Type[CreateableModel],
-                       update_schema: Type[BaseModel] = None,
-                       default_route: Route = None,
-                       **routes: dict[str, Route]):
-
+def add_crud_routes(router: APIRouter,
+                    table: Type[Base],
+                    read_schema: Type[OrmBaseModel],
+                    create_schema: Type[CreateableModel],
+                    update_schema: Type[BaseModel] = None,
+                    default_route: Route = None,
+                    **routes: dict[str, Route]):
     def default_filter(stmt: TStmt, user: User) -> Select:
         return stmt.where(
             table.user_id == user.id
@@ -48,12 +47,6 @@ def create_crud_router(prefix: str,
 
     update_schema = update_schema or create_schema
 
-    router = APIRouter(
-        tags=[prefix],
-        dependencies=default_route.dependencies,
-        prefix=prefix
-    )
-
     create_route = routes.get('create', default_route)
     if create_route != Undefined:
         @router.post('', response_model=read_schema, dependencies=create_route.dependencies)
@@ -63,6 +56,10 @@ def create_crud_router(prefix: str,
             instance = body.get(user)
             if hasattr(instance, 'user'):
                 instance.user = user
+            try:
+                await instance.validate()
+            except (ValueError, AssertionError) as e:
+                raise BadRequest(detail=str(e))
             db.add(instance)
             await db.commit()
             return read_schema.from_orm(instance)
@@ -78,7 +75,7 @@ def create_crud_router(prefix: str,
                 user,
                 **kwargs
             ),
-            *get_one.eager_loads,
+            *get_one_route.eager_loads,
             session=db
         )
 
@@ -92,7 +89,7 @@ def create_crud_router(prefix: str,
             if entity:
                 return read_schema.from_orm(entity)
             else:
-                return NotFound('Invalid id')
+                raise NotFound('Invalid id')
 
     delete_one_route = routes.get('delete_one', default_route)
 
@@ -107,7 +104,7 @@ def create_crud_router(prefix: str,
                 await db.commit()
                 return OK('Deleted')
             else:
-                return NotFound('Invalid id')
+                raise NotFound('Invalid id')
 
     all_route = routes.get('get_all', default_route)
 
@@ -144,11 +141,17 @@ def create_crud_router(prefix: str,
             if entity:
                 for key, value in body.dict(exclude_none=True).items():
                     setattr(entity, key, value)
+                try:
+                    await entity.validator()
+                except (AssertionError, ValueError) as e:
+                    raise BadRequest(detail=str(e))
 
                 await db.commit()
 
                 return read_schema.from_orm(entity)
             else:
-                return NotFound('Invalid id')
+                raise NotFound('Invalid id')
 
     return router
+
+

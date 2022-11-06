@@ -44,3 +44,6 @@ class BaseMixin:
     @property
     def async_session(self) -> Optional[AsyncSession]:
         return self._sa_instance_state.async_session
+
+    async def validate(self):
+        pass

@@ -33,7 +33,7 @@ async def get_discord_info(user: User = Depends(CurrentUser),
                            db: AsyncSession = Depends(get_db),
                            dc_rpc: rpc.Client = Depends(get_dc_rpc_client)):
     if not user.discord:
-        return BadRequest('No discord account connected')
+        raise BadRequest('No discord account connected')
     try:
         data_by_id = groupby_unique(
             await dc_rpc(
@@ -45,7 +45,7 @@ async def get_discord_info(user: User = Depends(CurrentUser),
 
         discord_info = await user.discord.populate_oauth_data(dc_rpc.redis)
     except rpc.TimeoutError:
-        return InternalError('Discord data is currently not available')
+        raise InternalError('Discord data is currently not available')
 
     guilds = await db_select_all(
         GuildDB,
@@ -78,7 +78,7 @@ async def get_guild_info(guild_id: int,
                          db: AsyncSession = Depends(get_db),
                          dc_rpc: rpc.Client = Depends(get_dc_rpc_client)):
     if not user.discord:
-        return BadRequest('No discord account connected')
+        raise BadRequest('No discord account connected')
 
     data = await dc_rpc(
         'guild',
@@ -107,7 +107,7 @@ async def get_guild_info(guild_id: int,
                          user: User = Depends(CurrentUser),
                          dc_rpc: rpc.Client = Depends(get_dc_rpc_client)):
     if not user.discord:
-        return BadRequest('No discord account connected')
+        raise BadRequest('No discord account connected')
 
     data = await dc_rpc(
         'guild',
@@ -127,14 +127,14 @@ async def update_guild(guild_id: int,
                        db: AsyncSession = Depends(get_db),
                        dc_rpc: rpc.Client = Depends(get_dc_rpc_client)):
     if not user.discord:
-        return BadRequest('No discord account connected')
+        raise BadRequest('No discord account connected')
     try:
         data = await dc_rpc.call(
             'guild',
             GuildRequest(user_id=user.discord.account_id, guild_id=guild_id)
         )
     except rpc.BadRequest:
-        return BadRequest('Invalid guild id')
+        raise BadRequest('Invalid guild id')
 
     if body.client_id:
         client = await get_user_client(
@@ -142,7 +142,7 @@ async def update_guild(guild_id: int,
         )
 
         if not client:
-            return BadRequest('Invalid client id')
+            raise BadRequest('Invalid client id')
 
         result = await db.execute(
             insertpg(GuildAssociationDB).values(
@@ -157,7 +157,7 @@ async def update_guild(guild_id: int,
             )
         )
         if result.rowcount != 1:
-            return InternalError('Could not update')
+            raise InternalError('Could not update')
 
     await db.commit()
     return OK('Updated')

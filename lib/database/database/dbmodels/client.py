@@ -158,7 +158,7 @@ class ClientQueryMixin:
     async def query(cls,
                     *eager,
                     time_col: Column,
-                    user: User,
+                    user_id: UUID,
                     ids: list[int] | None,
                     params: ClientQueryParams,
                     db: AsyncSession) -> list:
@@ -172,7 +172,7 @@ class ClientQueryMixin:
                 ).limit(
                     params.limit
                 ),
-                user=user,
+                user_id=user_id,
                 client_ids=params.client_ids
             ),
             *eager,
@@ -507,13 +507,12 @@ class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
         return self.id.__hash__()
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_ids: set[int] | list[int] = None) -> \
-        Union[
-            Select, Delete, Update]:
+def add_client_filters(stmt: Union[Select, Delete, Update], user_id: UUID, client_ids: set[int] | list[int] = None) -> \
+        Union[Select, Delete, Update]:
     """
     Commonly used utility to add filters that ensure authorized client access
     :param stmt: stmt to add filters to
-    :param user: desired user
+    :param user_id: desired user
     :param client_ids: possible client ids. If None, all clients will be used
     :return:
     """
@@ -523,7 +522,7 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user: User, client_i
     return stmt.filter(
         Client.id.in_(client_ids) if client_ids else True,
         or_(
-            Client.user_id == user.id,
+            Client.user_id == user_id,
             # Client.oauth_account_id == user.discord_user_id if user.discord_user_id else False
         ),
         #Client.type == ClientType.FULL,

@@ -14,11 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from api.authenticator import Authenticator
-from api.models.filterparam import FilterParam
+from database.dbmodels.mixins.filtermixin import FilterParam
 from api.settings import settings
 from database.dbasync import redis, db_eager, db_unique, async_maker
 from database.dbmodels.user import User
 from common.messenger import Messenger
+from database.dbsync import BaseMixin
 from database.models import BaseModel
 from database.redis import rpc
 
@@ -74,14 +75,16 @@ def get_messenger():
 
 class FilterQueryParamsDep:
     def __init__(self,
-                 filter_model: Type[BaseModel]):
-        self.filter_model = filter_model
+                 table: Type[BaseMixin],
+                 model: Type[BaseModel]):
+        self.table = table
+        self.model = model
 
     def __call__(self, request: Request):
         filters = []
         for key in request.query_params.keys():
             try:
-                filters.append(FilterParam.parse(key, request.query_params.getlist(key), self.filter_model))
+                filters.append(FilterParam.parse(key, request.query_params.getlist(key), self.table, self.model))
             except ValueError:
                 continue
         return filters

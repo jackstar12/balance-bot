@@ -1,17 +1,18 @@
 from datetime import datetime
 from enum import Enum
 from operator import and_
-from typing import Optional, Type
+from typing import Optional, Type, Literal
 
-from fastapi import Depends
+from fastapi import Depends, APIRouter
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.crudrouter import create_crud_router, Route
+from api.crudrouter import add_crud_routes, Route
 from api.dependencies import get_db
-from api.users import CurrentUser
+from api.users import CurrentUser, DefaultGrant
 from api.utils.responses import BadRequest, OK
+from database.dbasync import wrap_greenlet
 from database.dbmodels import User
 from database.dbsync import BaseMixin
 from database.models import OrmBaseModel, OutputID, CreateableModel, BaseModel
@@ -23,70 +24,64 @@ from database.dbmodels.authgrant import (
     ChapterGrant,
     EventGrant,
     TradeGrant,
-    GrantAssociaton
+    GrantAssociaton, DiscordPermission, AssociationType
 )
 from database.redis import TableNames
 
 from lib.database.database.models import InputID
 
 
-class AuthGrantInfo(OrmBaseModel):
-    id: OutputID
-    owner: UserPublicInfo
-    expires: Optional[datetime]
-    token: Optional[str]
-    public: Optional[bool]
-    data: Optional[dict]
-
-
 class AuthGrantCreate(CreateableModel):
     expires: Optional[datetime]
-    public: Optional[datetime]
+    public: Optional[bool]
+    discord: Optional[DiscordPermission]
+    token: Optional[bool]
+    wildcards: Optional[list[AssociationType]]
 
-    def get(self, user: User) -> BaseMixin:
+    def dict(
+            self,
+            *,
+            exclude_none=False,
+            **kwargs
+    ):
+        return super().dict(exclude_none=False, **kwargs)
+
+    def get(self, user: User) -> AuthGrant:
         return AuthGrant(**self.dict(), user=user)
 
 
-router = create_crud_router('/auth-grant',
-                            table=AuthGrant,
-                            read_schema=AuthGrantInfo,
-                            create_schema=AuthGrantCreate,
-                            default_route=Route(
-                                eager_loads=[AuthGrant.user]
-                            ))
+class AuthGrantInfo(AuthGrantCreate, OrmBaseModel):
+    id: OutputID
+    owner: UserPublicInfo
+    token: Optional[str]
 
 
-class GrantType(Enum):
-    EVENT = 'event'
-    CHAPTER = 'chapter'
-    TRADE = 'trade'
-    JOURNAL = 'journal'
-
-    def get_impl(self) -> Type[GrantAssociaton]:
-        if self == GrantType.EVENT:
-            return EventGrant
-        elif self == GrantType.CHAPTER:
-            return ChapterGrant
-        elif self == GrantType.JOURNAL:
-            return JournalGrant
-        elif self == GrantType.TRADE:
-            return TradeGrant
+router = APIRouter(
+    tags=["Auth Grant"],
+    prefix="/auth-grant"
+)
 
 
 class AddToGrant(BaseModel):
     pass
-    #id: InputID
+    # id: InputID
+
+
+@router.get('/current', response_model=AuthGrantInfo)
+@wrap_greenlet
+def get_current_grant(grant: AuthGrant = Depends(DefaultGrant)):
+    return OK(result=AuthGrantInfo.from_orm(grant))
 
 
 @router.post('/{grant_id}/permit/{type}/{id}')
 async def add_to_grant(grant_id: int,
-                       type: GrantType,
+                       type: AssociationType,
                        id: int,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     impl = type.get_impl()
     if not impl:
-        return BadRequest(detail='Invalid Type')
+        raise BadRequest(detail='Invalid Type')
     instance = impl()
 
     instance.grant_id = grant_id
@@ -97,20 +92,20 @@ async def add_to_grant(grant_id: int,
         db.add(instance)
         await db.commit()
     except IntegrityError as e:
-        return BadRequest(f'Invalid grant or {type.value} id')
+        raise BadRequest(f'Invalid grant or {type.value} id')
 
     return OK()
 
 
 @router.delete('/{grant_id}/permit/{type}/{id}')
 async def add_to_grant(grant_id: int,
-                       type: GrantType,
+                       type: AssociationType,
                        id: int,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     impl = type.get_impl()
     if not impl:
-        return BadRequest(detail='Invalid Type')
+        raise BadRequest(detail='Invalid Type')
     stmt = delete(impl).where(
         impl.identity == id,
         impl.grant_id == grant_id,
@@ -127,4 +122,13 @@ async def add_to_grant(grant_id: int,
     if result.rowcount == 1:
         return OK()
     else:
-        return BadRequest(f'Invalid grant or {type.value} id')
+        raise BadRequest(f'Invalid grant or {type.value} id')
+
+
+add_crud_routes(router,
+                table=AuthGrant,
+                read_schema=AuthGrantInfo,
+                create_schema=AuthGrantCreate,
+                default_route=Route(
+                    eager_loads=[AuthGrant.user]
+                ))

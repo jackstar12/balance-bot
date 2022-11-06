@@ -31,14 +31,14 @@ async def update_transfer(transfer_id: int,
             ).join(
                 TransferDB.client
             ),
-            user=user
+            user_id=user.id
         )
     )
 
     if transfer:
         return Transfer.from_orm(transfer)
     else:
-        return NotFound('Invalid transfer_id')
+        raise NotFound('Invalid transfer_id')
 
 
 @router.patch('/{transfer_id}')

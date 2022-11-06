@@ -9,7 +9,7 @@ from collector.services.baseservice import BaseService
 from database.dbasync import db_all, db_select
 from database.dbmodels import Client
 from database.dbmodels.event import Event, EventState
-from database.dbmodels.score import EventEntry
+from database.dbmodels.evententry import EventEntry
 from common.messenger import Category, TableNames, EVENT
 from database.models.balance import Balance
 

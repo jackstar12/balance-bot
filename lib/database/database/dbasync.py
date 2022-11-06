@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from functools import wraps
 from operator import and_
 from time import perf_counter
 from typing import List, Tuple, Union, Any, TypeVar, Type, Optional, Callable
@@ -16,7 +17,7 @@ from sqlalchemy import delete, select, Column
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, joinedload, selectinload, InstrumentedAttribute, RelationshipProperty
 from sqlalchemy.sql import Select
-from sqlalchemy.util import symbol
+from sqlalchemy.util import symbol, greenlet_spawn
 
 from core import json as customjson
 from database.dbsync import Base
@@ -35,6 +36,14 @@ async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=asynci
 
 
 redis = aioredis.from_url(environment.REDIS_URI)
+
+
+def wrap_greenlet(fn):
+    @wraps(fn)
+    async def wrapper(*args, **kwargs):
+        return await greenlet_spawn(fn, *args, **kwargs)
+
+    return wrapper
 
 
 async def db_exec(stmt: Any, session: AsyncSession = None) -> Any:
@@ -74,7 +83,10 @@ async def db_unique(stmt: Select, *eager, session: AsyncSession = None):
     return (await (session or async_session).scalars(stmt.limit(1))).unique().first()
 
 
-db_first = db_unique
+async def db_first(stmt: Select, *eager, session: AsyncSession = None):
+    if eager:
+        stmt = db_eager(stmt, *eager)
+    return (await (session or async_session).scalars(stmt.limit(1))).first()
 
 
 async def db_del_filter(cls, session=None, **kwargs):

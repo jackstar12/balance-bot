@@ -11,7 +11,7 @@ import re
 import sys
 import typing
 from asyncio import Task
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Callable, Union, Dict, Any
@@ -180,7 +180,6 @@ def parse_isoformat(iso: str):
     return datetime.fromisoformat(iso.replace('Z', '+00:00'))
 
 
-
 def readable_time(time: datetime) -> str:
     """
     Utility for converting a date to a readable format, only showing the date if it's not equal to the current one.
@@ -233,16 +232,12 @@ def join_args(*args, denominator=':'):
     return denominator.join([str(arg.value if isinstance(arg, Enum) else arg) for arg in args if arg])
 
 
-
-
-
 def safe_cmp_default(fnc: Callable[[T, T], T], a: T, b: T):
     return fnc(a, b) if a and b else a or b
 
 
 def safe_cmp(fnc: Callable[[T, T], T], a: T, b: T):
     return fnc(a, b) if a and b else None
-
 
 
 def sum_iter(iterator: typing.Iterable[T]):
@@ -279,6 +274,59 @@ def groupby_unique(items: list[VT], key: str | Callable[[VT], KT]) -> dict[KT, V
 
 def truthy_dict(**kwargs):
     return dict((k, v) for k, v in kwargs.items() if v)
+
+
+def get_timedelta(time_str: str) -> typing.Optional[timedelta]:
+    """
+    Calculates time from given time args.
+    Arg Format:
+      <n><f>
+      where <f> can be m (minutes), h (hours), d (days) or w (weeks)
+
+      or valid time string
+
+    :raise:
+      ValueError if invalid arg is given
+    :return:
+      Calculated timedelta or None if None was passed in
+    """
+
+    if not time_str:
+        return None
+
+    time_str = time_str.lower()
+    minute = 0
+    hour = 0
+    day = 0
+    week = 0
+    second = 0
+    args = time_str.split(' ')
+
+    if len(args) > 0:
+        for arg in args:
+            try:
+                if 'h' in arg:
+                    hour += int(arg.rstrip('h'))
+                elif 'm' in arg:
+                    minute += int(arg.rstrip('m'))
+                elif 's' in arg:
+                    second += int(arg.rstrip('s'))
+                elif 'w' in arg:
+                    week += int(arg.rstrip('w'))
+                elif 'd' in arg:
+                    day += int(arg.rstrip('d'))
+                else:
+                    raise ValueError(f'Invalid time argument: {arg}')
+            except ValueError:  # Make sure both cases are treated the same
+                raise ValueError(f'Invalid time argument: {arg}')
+    result = timedelta(hours=hour, minutes=minute, days=day, weeks=week, seconds=second)
+
+
+    if not result:
+        raise ValueError(f'Invalid time argument: {time_str}')
+
+    return result
+
 
 
 def mask_dict(d, *keys, value_func=None):

@@ -17,6 +17,7 @@ import api.routers.test as test
 import api.routers.trade as trade
 import api.routers.user as user
 import api.routers.authgrant as authgrant
+import api.routers.chapter as chapter
 from api.dependencies import messenger, set_http_session, get_http_session
 from api.models.user import UserRead, UserCreate
 from api.routers import labelgroup
@@ -25,14 +26,15 @@ from database.dbmodels import Event, Client, EventEntry
 from core.utils import setup_logger
 
 VERSION = 1
-PREFIX = f'/api/v{VERSION}'
+# PREFIX = f'/api/v{VERSION}'
+PREFIX = ''
 
 app = FastAPI(
-    docs_url='/api/v1/docs',
-    openapi_url='/api/v1/openapi.json',
+    docs_url=PREFIX + '/docs',
+    openapi_url=PREFIX + '/openapi.json',
     title="TradeAlpha",
     description='Trade Analytics and Journaling platform',
-    version="0.0.1",
+    version=f"0.0.{VERSION}",
     terms_of_service="https://example.com/terms/",
     contact={
         "name": "Deadpoolio the Amazing",
@@ -95,6 +97,7 @@ app.include_router(
 for module in (
         # auth,
         authgrant,
+        chapter,
         discord,
         labelgroup,
         label,
@@ -108,7 +111,7 @@ for module in (
         action,
         client,
 ):
-    app.include_router(module.router, prefix='/api/v1')
+    app.include_router(module.router)
 
 db_permission_flag = False
 

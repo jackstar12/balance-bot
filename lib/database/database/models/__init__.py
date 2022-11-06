@@ -73,6 +73,8 @@ class BaseModel(PydanticBaseModel):
 
             def process_result_value(self, value, dialect):
                 if value:
+                    if isinstance(value, str):
+                        return value
                     if validate:
                         return cls(**value)
                     return cls.deep_construct(**value)
@@ -86,6 +88,11 @@ class CreateableModel(BaseModel):
 
     def get(self, user: User) -> BaseMixin:
         return self.__table__(**self.__dict__, user=user)
+
+
+class ValidatableModel(BaseModel):
+    __table__: Type[BaseMixin]
+
 
 
 class OrmBaseModel(BaseModel):

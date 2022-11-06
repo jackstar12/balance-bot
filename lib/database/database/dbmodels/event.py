@@ -20,7 +20,7 @@ import database.models.eventinfo as eventmodels
 from database.utils import get_client_history
 from database.models import OrmBaseModel
 from core.utils import join_args, utc_now
-from database.dbmodels.score import EventEntry, EventScore
+from database.dbmodels.evententry import EventEntry, EventScore
 from database.models.discord.guild import GuildRequest
 from database.redis import rpc
 from database.dbmodels.types import Document
@@ -188,7 +188,7 @@ class Event(Base, Serializer):
 
                 if entry.init_balance is None:
                     entry.init_balance = await entry.client.get_balance_at_time(
-                        self.start,
+                        entry.joined_at or self.start
                     )
 
                 gain = await entry.client.calc_gain(

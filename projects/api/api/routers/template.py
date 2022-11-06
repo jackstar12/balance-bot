@@ -126,7 +126,7 @@ async def update_template(template_id: int,
     await db.commit()
 
     if result.rowcount == 0:
-        return NotFound('Invalid template id')
+        raise NotFound('Invalid template id')
 
     return OK('Updated')
 
@@ -143,6 +143,6 @@ async def delete_template(template_id: int,
     await db.commit()
 
     if result.rowcount == 0:
-        return NotFound('Invalid template id')
+        raise NotFound('Invalid template id')
 
     return OK('Deleted')

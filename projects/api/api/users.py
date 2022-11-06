@@ -3,7 +3,7 @@ import uuid
 from operator import and_, or_
 from typing import Optional, Generic, Type
 
-from fastapi import Depends, APIRouter, HTTPException
+from fastapi import Depends, APIRouter, HTTPException, Query
 from fastapi.security import APIKeyQuery
 from fastapi_users import FastAPIUsers, schemas, BaseUserManager, models, exceptions
 from fastapi_users.authentication import (
@@ -24,6 +24,7 @@ from api.dependencies import get_db
 from api.oauth import get_oauth_router
 from api.settings import settings
 from api.usermanager import UserManager
+from api.utils.responses import Unauthorized
 from core import utc_now
 from database.dbasync import redis, db_eager, db_unique, safe_op, TEager
 from database.dbmodels.authgrant import AuthGrant, GrantAssociaton
@@ -34,6 +35,8 @@ class UserDatabase(Generic[ID, OAP], SQLAlchemyUserDatabase[User, ID]):
     def __init__(self, *args, base_stmt: Select, **kwargs):
         super().__init__(*args, **kwargs)
         self.base_stmt = base_stmt
+
+
 
     async def get_by_token(self, token: str):
         return await self._get_user(
@@ -169,14 +172,27 @@ auth_backend = AuthenticationBackend(
     get_strategy=get_redis_strategy
 )
 
+fastapi_users = CustomFastAPIUsers(
+    get_user_manager,
+    auth_backends=[auth_backend]
+)
+
+CurrentUser = fastapi_users.current_user(optional=False, active=True)
+OptionalUser = fastapi_users.current_user(optional=True, active=True)
+
 
 def get_auth_grant_dependency(*eager: list[TEager],
-                              association_table: Type[GrantAssociaton] = None):
+                              association_table: Type[GrantAssociaton] = None,
+                              root_only=False):
     async def get_auth_grant(request: Request,
                              db: AsyncSession = Depends(get_db),
-                             user: Optional[User] = Depends(OptionalUser),
-                             token=Depends(token_transport.scheme),
-                             public_user_id=Depends(user_transport.scheme)):
+                             user: Optional[User] = Depends(CurrentUser if root_only else OptionalUser),
+                             token: str = Query(default=None),
+                             public_id: uuid.UUID = Query(default=None, alias='public-id')):
+
+        if request.method != 'GET' and not user:
+            raise Unauthorized(detail='Authentication Grants only work on GET Requests')
+
         now = utc_now()
 
         base = select(AuthGrant).where(
@@ -190,26 +206,28 @@ def get_auth_grant_dependency(*eager: list[TEager],
             base = base.where(
                 AuthGrant.token == token,
             )
-        elif public_user_id:
+        else:
             base = base.where(
-                AuthGrant.user_id == public_user_id,
-                AuthGrant.public == True
+                AuthGrant.public
             )
-        elif not user:
-            raise HTTPException(status_code=401, detail='Unauthorized')
+            if public_id:
+                base = base.where(
+                    AuthGrant.user_id == public_id,
+                )
+            elif not association_table:
+                if user:
+                    return AuthGrant(user=user, user_id=user.id, root=True)
+                else:
+                    raise Unauthorized()
 
         if association_table:
-            add = [
-                int(value) == getattr(association_table, name)
-                for name, value in request.path_params.items()
-                if hasattr(association_table, name)
-            ]
-            if add and False:
+            test = association_table.identity.property.key
+            if test in request.path_params:
                 base = base.join(
                     association_table,
                     and_(
-                        AuthGrant.id == association_table.grant_id,
-                        *add
+                        association_table.grant_id == AuthGrant.id,
+                        association_table.identity == int(request.path_params[test])
                     )
                 )
 
@@ -219,15 +237,64 @@ def get_auth_grant_dependency(*eager: list[TEager],
             session=db,
         )
 
-        if not grant and not user:
+        try:
+            if grant:
+                await grant.check(user)
+                return grant
+            elif user:
+                return AuthGrant(user=user, user_id=user.id, root=True)
+            else:
+                raise HTTPException(status_code=401, detail='Unauthorized')
+        except AssertionError:
             raise HTTPException(status_code=401, detail='Unauthorized')
+
+    return get_auth_grant
+
+
+def get_auth_assoc_dependency(*eager: list[TEager],
+                              association_table: Type[GrantAssociaton]):
+    async def get_auth_grant(request: Request,
+                             db: AsyncSession = Depends(get_db),
+                             user: Optional[User] = Depends(OptionalUser),
+                             token: str = Query(default=None),
+                             public_id: uuid.UUID = Query(default=None, alias='public-id')):
+        now = utc_now()
+        test = association_table.identity.property.key
+
+        base = select(association_table).where(
+            association_table.identity == int(request.path_params[test]),
+            or_(
+                AuthGrant.expires < now,
+                AuthGrant.expires == None
+            )
+        ).join(association_table.grant)
+
+        if token:
+            base = base.where(
+                AuthGrant.token == token,
+            )
+        elif public_id:
+            base = base.where(
+                AuthGrant.user_id == public_id,
+                AuthGrant.public
+            )
+
+        grant: AuthGrant = await db_unique(
+            base,
+            *eager,
+            session=db,
+        )
 
         try:
             if grant:
                 await grant.validate(user)
-            return grant
+                return grant
+            elif user:
+                return AuthGrant(user=user, user_id=user.id, root=True)
+            else:
+                raise HTTPException(status_code=401, detail='Unauthorized')
         except AssertionError:
-            return None
+            raise HTTPException(status_code=401, detail='Unauthorized')
 
     return get_auth_grant
 
@@ -263,10 +330,4 @@ def get_current_user(*eager, auth_backends: list[AuthenticationBackend] = None, 
     return users.authenticator.current_user(optional=optional)
 
 
-fastapi_users = CustomFastAPIUsers(
-    get_user_manager,
-    auth_backends=[auth_backend]
-)
-
-CurrentUser = fastapi_users.current_user(optional=False, active=True)
-OptionalUser = fastapi_users.current_user(optional=True, active=True)
+DefaultGrant = get_auth_grant_dependency()

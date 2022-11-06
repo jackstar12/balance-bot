@@ -16,13 +16,12 @@ class Gain(NamedTuple):
 class ChapterInfo(BaseModel):
     id: OutputID
     title: Optional[str]
+    parent_id: Optional[OutputID]
     start_date: Optional[date]
     end_date: Optional[date]
 
     #balances: List[Balance]
     #performance: Optional[Gain]
-    child_ids: List[OutputID]
-    parent_id: Optional[OutputID]
     #start_balance: FullBalance
     #end_balance: FullBalance
 
@@ -36,8 +35,6 @@ class JournalInfo(BaseModel):
     title: Optional[str]
     type: JournalType
     chapter_interval: Optional[IntervalType]
-    auto_generate: Optional[bool]
-    default_template_id: Optional[OutputID]
 
     class Config:
         orm_mode = True
@@ -45,8 +42,9 @@ class JournalInfo(BaseModel):
 
 class JournalDetailedInfo(JournalInfo):
     overview: Optional[dict]
+    default_template_id: Optional[OutputID]
     default_template: Optional[TemplateInfo]
-    chapters: list[ChapterInfo]
+    chapters_info: list[ChapterInfo]
 
 
 class JournalUpdate(BaseModel):
@@ -81,6 +79,7 @@ class ChapterUpdate(BaseModel):
 
 
 class ChapterCreate(BaseModel):
+    journal_id: int
     start_date: Optional[date]
     parent_id: Optional[InputID]
     template_id: Optional[InputID]

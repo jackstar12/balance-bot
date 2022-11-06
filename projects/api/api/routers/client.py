@@ -71,14 +71,14 @@ async def new_client(body: ClientCreateBody,
                     worker = exchange_cls(client, http_session, db_maker=async_maker)
                     init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
                 except InvalidClientError:
-                    return BadRequest('Invalid API credentials')
+                    raise BadRequest('Invalid API credentials')
                 except ResponseError:
-                    return InternalError()
+                    raise InternalError()
                 await worker.cleanup()
 
                 if init_balance.error is None:
                     if init_balance.realized.is_zero():
-                        return BadRequest(
+                        raise BadRequest(
                             f'You do not have any balance in your account. Please fund your account before registering.'
                         )
                     else:
@@ -93,14 +93,14 @@ async def new_client(body: ClientCreateBody,
                             balance=Balance.from_orm(init_balance)
                         )
                 else:
-                    return BadRequest(f'An error occured while getting your balance: {init_balance.error}.')
+                    raise BadRequest(f'An error occured while getting your balance: {init_balance.error}.')
             else:
                 logging.error(
                     f'Not enough kwargs for exchange {exchange_cls.exchange} were given.'
                     f'\nGot: {body.extra_kwargs}\nRequired: {exchange_cls.required_extra_args}'
                 )
                 args_readable = '\n'.join(exchange_cls.required_extra_args)
-                return BadRequest(
+                raise BadRequest(
                     detail=f'Need more keyword arguments for exchange {exchange_cls.exchange}.'
                            f'\nRequirements:\n {args_readable}',
                     code=40100
@@ -108,7 +108,7 @@ async def new_client(body: ClientCreateBody,
         else:
             logging.error(f'Class {exchange_cls} is no subclass of ClientWorker!')
     except KeyError:
-        return BadRequest(f'Exchange {body.exchange} unknown')
+        raise BadRequest(f'Exchange {body.exchange} unknown')
 
 
 @router.post('/client/confirm', response_model=ClientInfo)
@@ -124,11 +124,11 @@ async def confirm_client(body: ClientConfirm,
         db.add(client)
         await db.commit()
     except jwt.ExpiredSignatureError:
-        return BadRequest(detail='Token expired')
+        raise BadRequest(detail='Token expired')
     except (jwt.InvalidTokenError, TypeError):
-        return BadRequest(detail='Invalid token')
+        raise BadRequest(detail='Invalid token')
     except IntegrityError:
-        return BadRequest(detail='This api key is already in use.')
+        raise BadRequest(detail='This api key is already in use.')
 
     return ClientInfo.from_orm(client)
 
@@ -234,7 +234,7 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         query_params.limit = 5
         query_params.order = 'desc'
         recent_trades = await client_utils.query_trades(TradeDB.initial,
-                                                        user=user,
+                                                        user_id=user.id,
                                                         query_params=query_params,
                                                         db=db)
         overview = ClientOverview.construct(
@@ -249,7 +249,7 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         print('encode', ts2 - ts1)
         return CustomJSONResponse(content=encoded)
     else:
-        return BadRequest('Invalid client id', 40000)
+        raise BadRequest('Invalid client id', 40000)
 
 
 class PnlStat(OrmBaseModel):
@@ -300,7 +300,7 @@ async def get_client_performance(interval: IntervalType = Query(default=None),
         ).join(
             TradeDB.client
         ),
-        user=user,
+        user_id=user.id,
         client_ids=query_params.client_ids
     )
     results = (await db.execute(stmt)).all()
@@ -340,7 +340,7 @@ async def get_client_balance(balance_id: list[int] = Query(None, alias='balance-
                              db: AsyncSession = Depends(get_db)):
     balance = await BalanceDB.query(
         time_col=BalanceDB.time,
-        user=user,
+        user_id=user.id,
         ids=balance_id,
         params=query_params,
         db=db
@@ -361,7 +361,7 @@ async def get_client(client_id: int,
     if client:
         return ClientDetailed.from_orm(client)
     else:
-        return NotFound('Invalid id')
+        raise NotFound('Invalid id')
 
 
 @router.delete('/client/{client_id}')
@@ -369,13 +369,13 @@ async def delete_client(client_id: int,
                         user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        add_client_filters(delete(Client), user, {client_id}),
+        add_client_filters(delete(Client), user.id, {client_id}),
     )
     await db.commit()
     if result.rowcount == 1:
         return OK(detail='Success')
     else:
-        return NotFound(detail='Invalid ID')
+        raise NotFound(detail='Invalid ID')
 
 
 @router.patch('/client/{client_id}', response_model=ClientDetailed)
@@ -394,7 +394,7 @@ async def update_client(client_id: int, body: ClientEdit,
 
         client.validate()
     else:
-        return BadRequest('Invalid client id')
+        raise BadRequest('Invalid client id')
 
     await db.commit()
     return ClientDetailed.from_orm(client)

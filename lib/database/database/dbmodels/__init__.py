@@ -15,7 +15,7 @@ import database.dbmodels.mixins.serializer
 import database.dbmodels.trade
 import database.dbmodels.transfer
 import database.dbmodels.user
-import database.dbmodels.score
+import database.dbmodels.evententry
 import database.dbmodels.action
 
 import database.dbmodels.editing.chapter as chapter
@@ -34,8 +34,8 @@ Balance = balance.Balance
 Chapter = chapter.Chapter
 Execution = execution.Execution
 TradeDB = trade.Trade
-EventEntry = score.EventEntry
-EventScore = score.EventScore
+EventEntry = evententry.EventEntry
+EventScore = evententry.EventScore
 Event = event.Event
 GuildAssociation = ga.GuildAssociation
 

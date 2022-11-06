@@ -25,7 +25,6 @@ class Subscription(enum.Enum):
     PREMIUM = 3
 
 
-
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
     account_id: str = Column(sa.String(length=320), index=True, nullable=False, unique=True)
     data: Optional[ProfileData] = Column(JSONB, nullable=True)
@@ -56,7 +55,6 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
     info: str | ProfileData | None = Column(JSONB, nullable=True)
     about_me = Column(Document, nullable=True)
     events = relationship('Event',
-                          lazy='raise',
                           back_populates='owner')
 
     all_clients = relationship(
@@ -87,13 +85,6 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
                              back_populates='user',
                              cascade="all, delete",
                              lazy='noload')
-
-    def __init__(self):
-        self.grant = None
-
-    @orm.reconstructor
-    def init_on_load(self):
-        self.grant = None
 
     def get_oauth(self, name: str) -> Optional[OAuthAccount]:
         for account in self.oauth_accounts:

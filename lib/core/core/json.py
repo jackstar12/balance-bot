@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -18,6 +18,8 @@ def default(obj: Any):
         return obj.dict()
     if isinstance(obj, (date, datetime)):
         return obj.isoformat()
+    if isinstance(obj, timedelta):
+        return obj.total_seconds()
     raise TypeError
 
 

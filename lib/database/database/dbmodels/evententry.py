@@ -58,6 +58,8 @@ class EventEntry(Base, Serializer):
                       nullable=False)
     init_balance_id = Column(ForeignKey('balance.id', name=fkey_name('evententry', 'init_balance_id'), ondelete='CASCADE'),
                              nullable=True)
+    joined_at = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), nullable=False)
+
     rekt_on = Column(DateTime(timezone=True), nullable=True)
 
     init_balance: BalanceDB = relationship('Balance', lazy='noload')

@@ -1,6 +1,8 @@
 from typing import Any
 
-from api.crudrouter import create_crud_router, Route
+from fastapi import APIRouter
+
+from api.crudrouter import add_crud_routes, Route
 from api.models.labelinfo import CreateLabel
 from api.models.labelinfo import LabelInfo
 from database.dbmodels.label import Label as LabelDB, LabelGroup as LabelGroupDB
@@ -15,10 +17,15 @@ def label_filter(stmt: Any, user: User):
     )
 
 
-router = create_crud_router(prefix="/label",
-                            table=LabelDB,
-                            read_schema=LabelInfo,
-                            create_schema=CreateLabel,
-                            default_route=Route(
-                                add_filters=label_filter
-                            ))
+router = APIRouter(
+    tags=["Label"],
+    prefix="/label"
+)
+
+add_crud_routes(router,
+                table=LabelDB,
+                read_schema=LabelInfo,
+                create_schema=CreateLabel,
+                default_route=Route(
+                    add_filters=label_filter
+                ))

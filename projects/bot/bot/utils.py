@@ -559,7 +559,6 @@ def calc_time_from_time_args(time_str: str, allow_future=False) -> Optional[date
     :return:
       Calculated timedelta or None if None was passed in
     """
-
     if not time_str:
         return None
 

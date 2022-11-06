@@ -57,6 +57,21 @@ class UserInfo(UserRead, UserPublicInfo):
         orm_mode = True
 
 
+#@router.get('/profile', response_model=ResponseModel[UserPublicInfo])
+#async def info(user: User = Depends(user_info_dep),
+#               db: AsyncSession = Depends(get_db)):
+#    for account in user.oauth_accounts:
+#        await account.populate_oauth_data(redis=redis)
+#
+#    await db.commit()
+#
+#    return OK(
+#        result=UserInfo.from_orm(user)
+#    )
+
+
+
+
 @router.get('', response_model=ResponseModel[UserInfo])
 async def info(user: User = Depends(user_info_dep),
                db: AsyncSession = Depends(get_db)):

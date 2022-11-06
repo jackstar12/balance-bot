@@ -1,5 +1,6 @@
 import asyncio
 import dataclasses
+import operator
 import time
 from collections import OrderedDict
 from datetime import datetime
@@ -14,17 +15,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_user_id
 from api.models.client import get_query_params
+from database.dbmodels.mixins.filtermixin import FilterParam
 from api.models.websocket import ClientConfig
+from api.users import DefaultGrant
 from core import json as customjson
 from database.calc import calc_daily
 from database.dbasync import redis, db_all, redis_bulk, RedisKey, db_first, time_range
 from database.dbmodels import TradeDB
+from database.dbmodels.authgrant import AuthGrant
 from database.dbmodels.balance import Balance
 from database.dbmodels.client import Client, add_client_filters, ClientRedis
 from database.dbmodels.client import ClientQueryParams
 from database.dbmodels.user import User
+from database.dbsync import BaseMixin
 from database.models import BaseModel
+from database.models.document import FilterInput, FilterOptions
 from database.redis.client import ClientSpace, ClientCacheKeys
+from database.utils import query_table
 
 
 def ratio(a: float, b: float):
@@ -282,58 +289,34 @@ class ClientCacheDependency:
         self.cache_data_key = cache_data_key
         self.data_model = data_model
 
-    def __call__(self, query_params: ClientQueryParams = Depends(get_query_params),
-                 user_id: UUID = Depends(get_user_id)):
+    def __call__(self,
+                 query_params: ClientQueryParams = Depends(get_query_params),
+                 grant: AuthGrant = Depends(DefaultGrant)):
         return ClientCache(
             cache_data_key=self.cache_data_key,
             data_model=self.data_model,
             query_params=query_params,
-            user_id=user_id
+            user_id=grant.user_id
         )
 
 
-TTable = TypeVar('TTable')
-
-
-async def query_table(*eager,
-                      table: TTable,
-                      time_col: Column,
-                      user: User,
-                      ids: List[int],
-                      query_params: ClientQueryParams,
-                      db: AsyncSession) -> list[TTable]:
-    return await db_all(
-        add_client_filters(
-            select(table).filter(
-                table.id.in_(ids) if ids else True,
-                time_range(time_col, query_params.since, query_params.to)
-            ).join(
-                table.client
-            ).order_by(
-                desc(time_col) if query_params.order == 'desc' else asc(time_col)
-            ).limit(
-                query_params.limit
-            ),
-            user=user,
-            client_ids=query_params.client_ids
-        ),
-        *eager,
-        session=db
-    )
+TTable = TypeVar('TTable', bound=BaseMixin)
 
 
 def query_trades(*eager,
-                 user: User,
+                 user_id: UUID,
                  query_params: ClientQueryParams,
                  trade_id: list[int] = None,
-                 db: AsyncSession):
+                 db: AsyncSession,
+                 filters: list[FilterParam] = None):
     return query_table(
         *eager,
         table=TradeDB,
         time_col=TradeDB.open_time,
-        user=user,
+        user_id=user_id,
         ids=trade_id,
         query_params=query_params,
+        filters=filters,
         db=db
     )
 
@@ -385,7 +368,7 @@ def query_balance(*eager,
 
 def get_user_client(user: User, client_id: int, *eager, db: AsyncSession = None) -> Awaitable[Optional[Client]]:
     return db_first(
-        add_client_filters(select(Client), user, {client_id}),
+        add_client_filters(select(Client), user.id, {client_id}),
         *eager,
         session=db
     )
@@ -393,5 +376,5 @@ def get_user_client(user: User, client_id: int, *eager, db: AsyncSession = None)
 
 def get_user_clients(user: User, ids: List[int] = None, *eager, db: AsyncSession = None) -> Awaitable[list[Client]]:
     return db_all(
-        add_client_filters(select(Client), user, ids), *eager, session=db
+        add_client_filters(select(Client), user.id, ids), *eager, session=db
     )

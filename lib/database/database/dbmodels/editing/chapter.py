@@ -11,7 +11,7 @@ from database.dbmodels.editing._base import PageMixin
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbsync import Base
 from database.models import BaseModel
-from database.models.document import DocumentModel
+from database.models.document import DocumentModel, TradeData
 
 balance_association = sa.Table(
     'balance_association', Base.metadata,
@@ -56,8 +56,10 @@ class Chapter(Base, EditsMixin, PageMixin):
         results = []
 
         def recursive(current: DocumentModel):
-            if current.attrs and current.attrs['data']:
-                results.append(current.attrs['data'])
+            if current.attrs and 'data' in current.attrs:
+                results.append(
+                    TradeData(**current.attrs['data'])
+                )
 
             if current.content:
                 for node in current.content:

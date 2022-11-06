@@ -1,5 +1,7 @@
 from datetime import datetime
+from operator import and_
 from typing import Optional
+from uuid import UUID
 
 import pytz
 import sqlalchemy.exc
@@ -9,14 +11,15 @@ from pydantic import validator
 from sqlalchemy import select, or_, insert, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_messenger, get_db
-from api.users import CurrentUser, get_current_user
+from api.dependencies import get_db
+from api.users import CurrentUser, get_current_user, get_auth_grant_dependency, DefaultGrant
 from api.utils.responses import BadRequest, OK, InternalError, ResponseModel, NotFound
 from database import utils as dbutils
-from database.dbasync import db_first, redis, db_unique
+from database.dbasync import db_first, redis, db_unique, wrap_greenlet
 from database.dbmodels import Client
+from database.dbmodels.authgrant import AuthGrant, EventGrant
 from database.dbmodels.event import Event as EventDB, EventState
-from database.dbmodels.score import EventEntry as EventEntryDB
+from database.dbmodels.evententry import EventEntry as EventEntryDB
 from database.dbmodels.user import User
 from database.dbmodels.client import add_client_filters
 from database.models import BaseModel, InputID
@@ -26,7 +29,6 @@ from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, Lea
 
 router = APIRouter(
     tags=["event"],
-    dependencies=[Depends(CurrentUser), Depends(get_messenger)],
     responses={
         401: {'detail': 'Wrong Email or Password'},
         400: {'detail': "Email is already used"}
@@ -36,11 +38,11 @@ router = APIRouter(
 
 
 def add_event_filters(stmt,
-                      user: User,
+                      user_id: UUID,
                       owner=False):
     if owner:
         return stmt.filter(
-            EventDB.owner_id == user.id
+            EventDB.owner_id == user_id
         )
     else:
         # stmt = stmt\
@@ -59,37 +61,37 @@ def add_event_filters(stmt,
         return stmt.filter(
             or_(
                 EventDB.public,
-                EventDB.owner_id == user.id
+                EventDB.owner_id == user_id
             )
         )
 
 
-def query_event(event_id: int,
-                user: User,
-                *eager,
-                owner=False,
-                db: AsyncSession):
-    stmt = add_event_filters(
-        select(EventDB).filter(
-            EventDB.id == event_id
-        ),
-        user=user,
-        owner=owner,
-    )
-
-    return db_first(stmt, *eager, EventDB.clients, session=db)
-
-
-def create_event_dep(*eager, owner=False):
-    async def dependency(event_id: int,
-                         user: User = Depends(CurrentUser),
+def event_dep(*eager, root_only=False):
+    async def dependency(event_id: InputID,
+                         grant: AuthGrant = Depends(
+                             get_auth_grant_dependency(root_only=True) if root_only else DefaultGrant
+                         ),
                          db: AsyncSession = Depends(get_db)) -> EventDB:
-        return await query_event(event_id, user, *eager, owner=owner, db=db)
+        stmt = select(EventDB).filter(
+            EventDB.id == event_id,
+            EventDB.owner_id == grant.user_id
+        )
+        if not grant.root:
+            stmt = stmt.join(EventGrant, and_(
+                EventGrant.event_id == event_id,
+                EventGrant.grant_id == grant.id
+            ))
+
+        event = await db_first(stmt, *eager, EventDB.clients, session=db)
+
+        if not event:
+            BadRequest('Invalid event id')
+        return event
 
     return dependency
 
 
-default_event = create_event_dep()
+default_event = event_dep()
 
 
 @router.post('', response_model=ResponseModel[EventInfo])
@@ -108,7 +110,7 @@ async def create_event(body: EventCreate,
         event.validate()
         await event.validate_location(redis)
     except ValueError as e:
-        return BadRequest(str(e))
+        raise BadRequest(str(e))
 
     active_event = await dbutils.get_event(location=body.location,
                                            throw_exceptions=False,
@@ -116,9 +118,9 @@ async def create_event(body: EventCreate,
 
     if active_event:
         if body.start < active_event.end:
-            return BadRequest(f"Event can't start while other event ({active_event.name}) is still active")
+            raise BadRequest(f"Event can't start while other event ({active_event.name}) is still active")
         if body.registration_start < active_event.registration_end:
-            return BadRequest(
+            raise BadRequest(
                 f"Event registration can't start while other event ({active_event.name}) is still open for registration")
 
     active_registration = await dbutils.get_event(location=body.location, state=EventState.REGISTRATION,
@@ -127,7 +129,7 @@ async def create_event(body: EventCreate,
 
     if active_registration:
         if body.registration_start < active_registration.registration_end:
-            return BadRequest(
+            raise BadRequest(
                 f"Event registration can't start while other event ({active_registration.name}) is open for registration")
 
     db.add(event)
@@ -144,86 +146,62 @@ EventUserDep = get_current_user(
 
 
 @router.get('', response_model=ResponseModel[list[EventInfo]])
-async def get_events(user: User = Depends(EventUserDep)):
+@wrap_greenlet
+def get_events(grant: AuthGrant = Depends(DefaultGrant)):
     return OK(
-        result=[
-            EventInfo.from_orm(event) for event in user.events
-        ]
+        result=[EventInfo.from_orm(event) for event in grant.events]
     )
 
 
 @router.get('/{event_id}', response_model=ResponseModel[EventDetailed])
-async def get_event(event_id: int,
-                    user: User = Depends(CurrentUser),
-                    db: AsyncSession = Depends(get_db)):
-    event = await query_event(event_id, user,
-                              EventDB.owner,
-                              (EventDB.entries, [
-                                  EventEntryDB.client,
-                                  EventEntryDB.user,
-                                  EventEntryDB.init_balance
-                              ]),
-                              db=db, owner=False)
+async def get_event(event: EventDB = Depends(event_dep(EventDB.owner,
+                                                       (EventDB.entries, [
+                                                           EventEntryDB.client,
+                                                           EventEntryDB.user,
+                                                           EventEntryDB.init_balance
+                                                       ])))):
+    return OK(
+        result=EventDetailed.from_orm(event)
+    )
 
-    if event:
-        return OK(
-            result=EventDetailed.from_orm(event)
-        )
-    else:
-        return BadRequest('Invalid event id')
+
+SummaryEvent = event_dep(
+    (EventDB.entries,
+     [
+         EventEntryDB.client,
+         EventEntryDB.init_balance
+     ])
+)
 
 
 @router.get('/{event_id}/leaderboard', response_model=ResponseModel[Leaderboard])
-async def get_event(event_id: int,
-                    user: User = Depends(CurrentUser),
-                    db: AsyncSession = Depends(get_db)):
-    event = await query_event(event_id,
-                              user,
-                              (EventDB.entries, [
-                                  EventEntryDB.client,
-                                  EventEntryDB.init_balance
-                              ]),
-                              db=db, owner=False)
-
+async def get_event(db: AsyncSession = Depends(get_db),
+                    event: EventDB = Depends(SummaryEvent)):
     leaderboard = await event.get_leaderboard()
     await db.commit()
 
-    if event:
-        return OK(result=leaderboard)
-    else:
-        return BadRequest('Invalid event id')
+    return OK(result=leaderboard)
+
+
+EventAuth = get_auth_grant_dependency(association_table=EventGrant)
 
 
 @router.get('/{event_id}/summary', response_model=ResponseModel[Summary])
-async def get_summary(event_id: int,
-                      user: User = Depends(CurrentUser),
-                      db: AsyncSession = Depends(get_db)):
-    event = await query_event(event_id,
-                              user,
-                              (EventDB.entries, [
-                                  EventEntryDB.client,
-                                  EventEntryDB.init_balance
-                              ]),
-                              db=db, owner=False)
-
+async def get_summary(event: EventDB = Depends(SummaryEvent)):
     leaderboard = await event.get_summary()
-
-    if event:
-        return OK(result=leaderboard)
-    else:
-        return BadRequest('Invalid event id')
+    return OK(result=leaderboard)
 
 
 @router.get('/{event_id}/registrations/{client_id}', response_model=ResponseModel[EventEntry])
 async def get_event_registration(event_id: int,
                                  client_id: int,
-                                 user: User = Depends(CurrentUser),
+                                 grant: AuthGrant = Depends(EventAuth),
                                  db: AsyncSession = Depends(get_db)):
     score = await db_unique(
         add_event_filters(
             select(EventEntryDB).filter_by(
                 client_id=client_id, event_id=event_id
-            ), user=user, owner=False
+            ), user_id=grant.user_id, owner=False
         ),
         (EventEntryDB.client, Client.history),
         session=db
@@ -232,7 +210,7 @@ async def get_event_registration(event_id: int,
     if score:
         return OK(result=EventEntry.from_orm(score))
     else:
-        return BadRequest('Invalid event or client id. You might miss authorization')
+        raise BadRequest('Invalid event or client id. You might miss authorization')
 
 
 class EventUpdate(BaseModel):
@@ -253,12 +231,9 @@ class EventUpdate(BaseModel):
         return v
 
 
-owner_event = create_event_dep(EventDB.clients, owner=True)
-
-
 @router.patch('/{event_id}', response_model=ResponseModel[EventInfo])
 async def update_event(body: EventUpdate,
-                       event: EventDB = Depends(owner_event),
+                       event: EventDB = Depends(event_dep(EventDB.clients, root_only=True)),
                        db: AsyncSession = Depends(get_db)):
     # dark magic
     for key, value in body.dict(exclude_none=True).items():
@@ -268,26 +243,22 @@ async def update_event(body: EventUpdate,
         event.validate()
     except ValueError as e:
         await db.rollback()
-        return BadRequest(str(e))
+        raise BadRequest(str(e))
 
     await db.commit()
 
     return OK('Event Updated', result=EventInfo.from_orm(event))
 
 
-# Actions have to be loaded and deleted in-app because of dynamic functionality of actions
-delete_dep = create_event_dep(EventDB.actions)
-
-
 @router.delete('/{event_id}')
-async def delete_event(event: EventDB = Depends(delete_dep),
+async def delete_event(event: EventDB = Depends(event_dep(EventDB.actions, root_only=True)),
                        db: AsyncSession = Depends(get_db)):
     if event:
         await db.delete(event)
         await db.commit()
         return OK('Deleted')
     else:
-        return BadRequest('You can not delete this event')
+        raise BadRequest('You can not delete this event')
 
 
 class EventJoinBody(BaseModel):
@@ -298,10 +269,10 @@ class EventJoinBody(BaseModel):
 async def join_event(body: EventJoinBody,
                      event: EventDB = Depends(default_event),
                      db: AsyncSession = Depends(get_db),
-                     user: User = Depends(CurrentUser)):
+                     grant: AuthGrant = Depends(EventAuth)):
     client_id = await db_first(
         add_client_filters(
-            select(Client.id), user=user, client_ids=[body.client_id]
+            select(Client.id), user_id=grant.user_id, client_ids=[body.client_id]
         ),
         session=db
     )
@@ -311,11 +282,11 @@ async def join_event(body: EventJoinBody,
                 insert(EventEntryDB).values(
                     event_id=event.id,
                     client_id=client_id,
-                    user_id=user.id
+                    user_id=grant.user_id
                 )
             )
         except sqlalchemy.exc.IntegrityError:
-            return BadRequest('Already signed up')
+            raise BadRequest('Already signed up')
         # db.add(
         #     EventScoreDB
         #     ()
@@ -324,9 +295,9 @@ async def join_event(body: EventJoinBody,
         if result.rowcount == 1:
             return OK('Signed Up')
         else:
-            return InternalError('Sign up failed')
+            raise InternalError('Sign up failed')
     else:
-        return BadRequest('Invalid client ID')
+        raise BadRequest('Invalid client ID')
 
 
 @router.delete('/{event_id}/registrations/{entry_id}')
@@ -342,4 +313,4 @@ async def unregister_event(event_id: int,
     if result.rowcount == 1:
         return OK('Unregistered form the Event')
     else:
-        return NotFound('Invalid entry id')
+        raise NotFound('Invalid entry id')

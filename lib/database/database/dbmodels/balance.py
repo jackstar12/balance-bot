@@ -27,7 +27,7 @@ class Amount(Base, ClientQueryMixin, Serializer, _Common):
 
     balance_id = Column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
     balance = relationship('Balance', lazy='raise')
-    currency: str = Column(sa.String(length=3), primary_key=True)
+    currency: str = Column(sa.String(length=5), primary_key=True)
 
 
 class Balance(Base, _Common, Serializer, ClientQueryMixin):

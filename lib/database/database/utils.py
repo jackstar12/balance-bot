@@ -1,25 +1,68 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional, Union, TYPE_CHECKING, Any
+from typing import Optional, List, Type, TypeVar
+from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlalchemy import select, desc, JSON, or_, delete, update
+from sqlalchemy import JSON, delete, update
+from sqlalchemy import select, Column, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import Select, Delete, Update
 
 import database.dbmodels.event as db_event
 from database import dbmodels
-from database.dbasync import db_first, db_all, \
-    db_select, async_session, time_range
+from database.dbasync import db_all, db_first, time_range
+from database.dbasync import db_select, async_session
 from database.dbmodels.balance import Balance
+from database.dbmodels.client import ClientQueryParams
+from database.dbmodels.client import add_client_filters
 from database.dbmodels.discord.discorduser import DiscordUser
+from database.dbmodels.mixins.filtermixin import FilterParam
 from database.dbmodels.trade import Trade
 from database.dbmodels.transfer import Transfer
+from database.dbsync import BaseMixin
 from database.errors import UserInputError
 from database.models.history import History
 
 if TYPE_CHECKING:
     from database.dbmodels.event import EventState, LocationModel
+
+
+TTable = TypeVar('TTable', bound=BaseMixin)
+
+
+async def query_table(*eager,
+                      table: Type[TTable],
+                      time_col: Column,
+                      user_id: UUID,
+                      ids: List[int],
+                      query_params: ClientQueryParams,
+                      db: AsyncSession,
+                      filters: list[FilterParam] = None) -> list[TTable]:
+    stmt = select(table if eager else table.id).where(
+        table.id.in_(ids) if ids else True,
+        time_range(time_col, query_params.since, query_params.to)
+    ).join(
+        table.client
+    ).order_by(
+        desc(time_col) if query_params.order == 'desc' else asc(time_col)
+    ).limit(
+        query_params.limit
+    )
+
+    if filters:
+        for f in filters:
+            stmt = f.apply(stmt, table)
+
+    return await db_all(
+        add_client_filters(
+            stmt,
+            user_id=user_id,
+            client_ids=query_params.client_ids
+        ),
+        *eager,
+        session=db
+    )
 
 
 async def get_client_history(client: dbmodels.Client,

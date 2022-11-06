@@ -8,13 +8,16 @@ from typing import Optional, TYPE_CHECKING
 import pytz
 import sqlalchemy.exc
 from aioredis import Redis
-from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case
+from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case, extract, \
+    or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, object_session
+from sqlalchemy.orm import relationship, object_session, aliased
 
+from database.dbmodels.mixins.filtermixin import FilterMixin, FilterParam
 from core.utils import weighted_avg, join_args
 from database.dbmodels.types import Document
+from database.models.document import Operator
 from database.redis import TableNames
 
 if TYPE_CHECKING:
@@ -40,7 +43,7 @@ trade_association = Table('trade_association', Base.metadata,
 #     TRANSFER = "transfer"
 
 
-class Trade(Base, Serializer, CurrencyMixin):
+class Trade(Base, Serializer, CurrencyMixin, FilterMixin):
     __tablename__ = 'trade'
     __serializer_forbidden__ = ['client', 'initial']
 
@@ -170,6 +173,10 @@ class Trade(Base, Serializer, CurrencyMixin):
     def side(self):
         return (self.initial or self.executions[0]).side
 
+    @side.expression
+    def side(self):
+        return Execution.side
+
     @hybrid_property
     def net_pnl(self):
         return self.realized_pnl - self.total_commissions
@@ -189,6 +196,17 @@ class Trade(Base, Serializer, CurrencyMixin):
         if 13 <= hour < 22:
             result.append(TradeSession.NEW_YORK)
         return result
+
+    @classmethod
+    def is_(cls, session: TradeSession):
+        hour = extract('hour', cls.open_time)
+        if session == TradeSession.ASIA:
+            return hour >= 22 or hour < 9
+        if session == TradeSession.LONDON:
+            return and_(8 <= hour, hour < 16)
+        if session == TradeSession.NEW_YORK:
+            return 13 <= hour and hour < 22
+        return False
 
     @hybrid_property
     def weekday(self):
@@ -264,6 +282,45 @@ class Trade(Base, Serializer, CurrencyMixin):
         # Subtracting the transferred qty is important because
         # "trades" which were initiated by a transfer should not provide any pnl.
         return self.qty - self.open_qty - self.transferred_qty
+
+    @hybrid_property
+    def duration(self):
+        return self.close_time - self.open_time
+
+    @classmethod
+    def apply(cls, param: FilterParam, stmt):
+        if param.field == 'label_ids':
+            return stmt.join(trade_association, and_(
+                trade_association.columns.trade_id == cls.id,
+                *[
+                    trade_association.columns.label_id == value if param.op == Operator.INCLUDES else not cls.is_(value)
+                    for value in param.values
+                ]
+            )).join
+        col = getattr(cls, param.field)
+        if col == cls.side:
+            alias = aliased(Execution)
+            return stmt.join(alias, and_(
+                cls.initial_execution_id == alias.id,
+                or_(*[
+                    param.cmp_func(alias.side, value)
+                    for value in param.values
+                ])
+            ))
+        elif col == cls.sessions:
+            return stmt.where(*[
+                cls.is_(value) if param.op == Operator.INCLUDES else not cls.is_(value)
+                for value in param.values
+            ])
+        else:
+            raise ValueError
+
+    @classmethod
+    def validator(cls, field: str):
+        if field == 'sessions':
+            return TradeSession
+        if field == 'label_ids':
+            return int
 
     def calc_pnl(self, qty: Decimal, exit: Decimal):
         diff = 1 / self.entry - 1 / exit if self.inverse else exit - self.entry

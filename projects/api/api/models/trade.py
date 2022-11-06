@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Any
 
-from pydantic import Extra
+from pydantic import Extra, validator
 
+from core import get_timedelta
 from database.models import OutputID
 from api.models.execution import Execution
 from api.models.pnldata import PnlData
@@ -37,6 +38,15 @@ class Trade(BasicTrade):
     executions: List[Execution]
     label_ids: List[str]
     close_time: Optional[datetime]
+    duration: timedelta
+
+    @validator('duration', pre=True)
+    def duration_parse(cls, v: Any):
+        if isinstance(v, str):
+            return get_timedelta(v)
+        return v
+
+
     #initial: Execution
     #initial_execution_id: int
 
