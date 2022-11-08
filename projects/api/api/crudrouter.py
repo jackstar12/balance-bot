@@ -14,7 +14,7 @@ from api.utils.responses import OK, NotFound, BadRequest
 from database.dbasync import db_all, db_unique, TEager
 from database.dbmodels.user import User
 from database.dbsync import Base
-from database.models import BaseModel, OrmBaseModel, CreateableModel
+from database.models import BaseModel, OrmBaseModel, CreateableModel, InputID
 
 TStmt = Select | Update | Delete
 
@@ -66,7 +66,7 @@ def add_crud_routes(router: APIRouter,
 
     get_one_route = routes.get('get_one', default_route)
 
-    def read_one(entity_id: int, user: User, db: AsyncSession, **kwargs):
+    def read_one(entity_id: InputID, user: User, db: AsyncSession, **kwargs):
         return db_unique(
             get_one_route.add_filters(
                 select(table).where(
@@ -81,7 +81,7 @@ def add_crud_routes(router: APIRouter,
 
     if get_one_route != Undefined:
         @router.get('/{entity_id}', response_model=read_schema, dependencies=get_one_route.dependencies)
-        async def get_one(entity_id: int,
+        async def get_one(entity_id: InputID,
                           user: User = Depends(get_one_route.user_dependency),
                           db: AsyncSession = Depends(get_db)):
             entity = await read_one(entity_id, user, db)
@@ -95,7 +95,7 @@ def add_crud_routes(router: APIRouter,
 
     if delete_one_route != Undefined:
         @router.delete('/{entity_id}', dependencies=delete_one_route.dependencies)
-        async def delete_one(entity_id: int,
+        async def delete_one(entity_id: InputID,
                              user: User = Depends(delete_one_route.user_dependency),
                              db: AsyncSession = Depends(get_db)):
             entity = await read_one(entity_id, user, db)
@@ -132,7 +132,7 @@ def add_crud_routes(router: APIRouter,
     update_one_route = routes.get('update_one', default_route)
     if update_one_route != Undefined:
         @router.patch('/{entity_id}', response_model=read_schema, dependencies=update_one_route.dependencies)
-        async def update_one(entity_id: int,
+        async def update_one(entity_id: InputID,
                              body: update_schema,
                              user: User = Depends(update_one_route.user_dependency),
                              db: AsyncSession = Depends(get_db)):

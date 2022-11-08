@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import List, Optional, NamedTuple, Set
 
+from api.routers.authgrant import AuthGrantInfo
 from database.models import BaseModel, OutputID, InputID
 from api.models.template import TemplateInfo
 from database.dbmodels.editing.journal import IntervalType, JournalType
@@ -45,6 +46,7 @@ class JournalDetailedInfo(JournalInfo):
     default_template_id: Optional[OutputID]
     default_template: Optional[TemplateInfo]
     chapters_info: list[ChapterInfo]
+    grants: Optional[list[AuthGrantInfo]]
 
 
 class JournalUpdate(BaseModel):

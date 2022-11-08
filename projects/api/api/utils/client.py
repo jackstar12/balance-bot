@@ -10,6 +10,7 @@ from uuid import UUID
 
 import pytz
 from fastapi import Depends
+from fastapi_users.types import DependencyCallable
 from sqlalchemy import select, Column, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -281,23 +282,19 @@ class ClientCache(Generic[T]):
         )
 
 
-class ClientCacheDependency:
-
-    def __init__(self,
-                 cache_data_key: ClientCacheKeys,
-                 data_model: Type[BaseModel], ):
-        self.cache_data_key = cache_data_key
-        self.data_model = data_model
-
-    def __call__(self,
-                 query_params: ClientQueryParams = Depends(get_query_params),
-                 grant: AuthGrant = Depends(DefaultGrant)):
+def ClientCacheDependency(cache_data_key: ClientCacheKeys,
+                          data_model: Type[BaseModel],
+                          grant_dependency: Optional[DependencyCallable] = None):
+    def __call__(query_params: ClientQueryParams = Depends(get_query_params),
+                 grant: AuthGrant = Depends(grant_dependency or DefaultGrant)):
         return ClientCache(
-            cache_data_key=self.cache_data_key,
-            data_model=self.data_model,
+            cache_data_key=cache_data_key,
+            data_model=data_model,
             query_params=query_params,
             user_id=grant.user_id
         )
+
+    return __call__
 
 
 TTable = TypeVar('TTable', bound=BaseMixin)

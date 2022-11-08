@@ -5,17 +5,25 @@ from typing import TYPE_CHECKING
 
 import sqlalchemy
 import sqlalchemy as sa
-from sqlalchemy import orm, select, func, text, or_
+from sqlalchemy import orm, select, func, text, or_, Date, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import aliased, declared_attr
 
+from core import safe_cmp
 from database.dbasync import db_all, safe_op
 from database.dbmodels.types import Document
 from database.models.document import DocumentModel
 
 if TYPE_CHECKING:
     from database.dbmodels.client import ClientQueryParams
+
+
+def cmp_dates(col, val):
+    return or_(
+        col.astext.cast(Date) <= val if val else True,
+        col == JSONB.NULL
+    )
 
 
 class PageMixin:
@@ -86,8 +94,8 @@ class PageMixin:
 
         whereas = (
             data != JSONB.NULL,
-            data['dates']['to'] >= query_params.to if query_params.to else data['dates']['to'] == JSONB.NULL,
-            data['dates']['since'] <= query_params.since if query_params.since else data['dates']['since'] == JSONB.NULL,
+            cmp_dates(data['dates']['to'], query_params.to.date()),
+            cmp_dates(data['dates']['since'], query_params.since.date()),
             or_(
                 data['clientIds'] == JSONB.NULL,
                 data['clientIds'].contains([str(id) for id in query_params.client_ids])
@@ -95,18 +103,6 @@ class PageMixin:
         )
 
         return select(data).where(*whereas)
-        return text("""
-
-            WITH RECURSIVE schema_objects (id, object) AS (SELECT id, jsonb_array_elements(doc -> 'content')
-                                               FROM chapter WHERE id={root_id}
-                                               UNION
-                                               SELECT id, jsonb_array_elements(object -> 'content')
-                                               FROM schema_objects
-                                               WHERE jsonb_exists(object -> 'attrs', 'data'))
-            SELECT object -> 'attrs' -> 'data'
-            FROM schema_objects WHERE jsonb_exists(object -> 'attrs', 'data');
-
-        """.format(root_id=root_id))
 
     @classmethod
     async def all_childs(cls, root_id: int, db):

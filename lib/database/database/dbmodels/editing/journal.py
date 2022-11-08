@@ -169,7 +169,7 @@ class Journal(Base, BaseMixin):
         self.chapters.append(new_chapter)
         return new_chapter
 
-    async def update(self, db: AsyncSession, template: Template = None):
+    async def update(self, template: Template = None):
         return
         if self.type == JournalType.INTERVAL:
             template = template or self.default_template

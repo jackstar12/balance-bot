@@ -183,7 +183,7 @@ async def get_event(db: AsyncSession = Depends(get_db),
     return OK(result=leaderboard)
 
 
-EventAuth = get_auth_grant_dependency(association_table=EventGrant)
+EventAuth = get_auth_grant_dependency(EventGrant)
 
 
 @router.get('/{event_id}/summary', response_model=ResponseModel[Summary])

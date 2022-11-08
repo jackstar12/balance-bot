@@ -176,6 +176,13 @@ def get_multiple(d: dict[_KT, _VT], *keys: str) -> typing.Optional[_VT]:
             return d[key]
 
 
+def get_multiple_dict(key: str, *dicts: dict[_KT, _VT]) -> typing.Optional[_VT]:
+    for d in dicts:
+        if key in d:
+            return d[key]
+
+
+
 def parse_isoformat(iso: str):
     return datetime.fromisoformat(iso.replace('Z', '+00:00'))
 

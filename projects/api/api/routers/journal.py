@@ -113,26 +113,28 @@ def get_journals(grant: AuthGrant = Depends(DefaultGrant)):
 
 UserDep = get_current_user(auth_backends=[JournalTokenBackend])
 
+chapter_select = select(
+    DbChapter.id,
+    DbChapter.parent_id,
+    DbChapter.title,
+    DbChapter.data['start_date'],
+    DbChapter.data['end_date'],
+)
+
 
 @router.get('/{journal_id}', response_model=JournalDetailedInfo)
 async def get_journal(journal_id: int,
-                      grant: AuthGrant = Depends(get_auth_grant_dependency(association_table=JournalGrant)),
+                      grant: AuthGrant = Depends(get_auth_grant_dependency(JournalGrant)),
                       db: AsyncSession = Depends(get_db)):
-
     journal = await query_journal(
         journal_id, grant.user_id,
         Journal.default_template,
         Journal.clients,
+        grant.is_root_for(AssociationType.JOURNAL) and Journal.grants,
         session=db
     )
 
-    stmt = select(
-        DbChapter.id,
-        DbChapter.parent_id,
-        DbChapter.title,
-        DbChapter.data['start_date'],
-        DbChapter.data['end_date'],
-    ).where(
+    stmt = chapter_select.where(
         DbChapter.journal_id == journal_id
     )
 
@@ -146,7 +148,7 @@ async def get_journal(journal_id: int,
 
     result = await db.execute(stmt)
 
-    await journal.update(db)
+    await journal.update()
     return OK(
         result=JournalDetailedInfo(
             **journal.__dict__,
@@ -176,7 +178,7 @@ async def update_journal(journal_id: int,
         if body.client_ids != set(journal.client_ids):
             clients = await query_clients(body.client_ids, user, db)
             journal.clients = clients
-            await journal.update(db)
+            await journal.update()
 
     if body.default_template_id:
         journal.default_template_id = body.default_template_id

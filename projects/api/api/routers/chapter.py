@@ -23,6 +23,7 @@ from database.dbmodels.editing.chapter import Chapter as DbChapter
 from database.dbmodels.client import add_client_filters, Client
 from database.dbmodels.editing.journal import Journal, JournalType
 from database.dbmodels.user import User
+from database.models import InputID
 
 router = APIRouter(
     tags=["chapter"],
@@ -52,9 +53,9 @@ async def query_chapter(chapter_id: int,
     return chapter
 
 
-@router.get('/{chapter_id}')
-async def get_chapter(chapter_id: int,
-                      grant: AuthGrant = Depends(get_auth_grant_dependency(association_table=ChapterGrant)),
+@router.get('/{chapter_id}', response_model=DetailedChapter)
+async def get_chapter(chapter_id: InputID,
+                      grant: AuthGrant = Depends(get_auth_grant_dependency(ChapterGrant)),
                       db: AsyncSession = Depends(get_db)):
     chapter = await query_chapter(
         chapter_id,
@@ -66,9 +67,9 @@ async def get_chapter(chapter_id: int,
     return OK(result=DetailedChapter.from_orm(chapter).dict(exclude_none=True))
 
 
-@router.get('/{chapter_id}/data')
-async def get_chapter_data(chapter_id: int,
-                           grant: AuthGrant = Depends(get_auth_grant_dependency(association_table=ChapterGrant)),
+@router.get('/{chapter_id}/data', response_model=DetailedChapter)
+async def get_chapter_data(chapter_id: InputID,
+                           grant: AuthGrant = Depends(get_auth_grant_dependency(ChapterGrant)),
                            db: AsyncSession = Depends(get_db)):
     chapter = await query_chapter(
         chapter_id,
@@ -88,7 +89,7 @@ async def get_chapter_data(chapter_id: int,
 
 
 @router.patch('/{chapter_id}')
-async def update_chapter(chapter_id: int,
+async def update_chapter(chapter_id: InputID,
                          body: ChapterUpdate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
@@ -125,7 +126,7 @@ async def create_chapter(body: ChapterCreate,
 
 
 @router.delete('/{chapter_id}')
-async def delete_chapter(chapter_id: int,
+async def delete_chapter(chapter_id: InputID,
                          user: User = Depends(CurrentUser),
                          db=Depends(get_db)):
     chapter = await query_chapter(

@@ -74,6 +74,7 @@ class AssociationType(Enum):
 class AuthGrant(Base, BaseMixin):
     __tablename__ = 'authgrant'
     id = sa.Column(sa.Integer, primary_key=True)
+    name = sa.Column(sa.String, nullable=True)
     user_id = sa.Column(FKey('user.id', ondelete='CASCADE'), nullable=False)
     expires = sa.Column(sa.DateTime(timezone=True), nullable=True)
     public = sa.Column(sa.Boolean, server_default='False', default=False)
@@ -114,7 +115,7 @@ class AuthGrant(Base, BaseMixin):
 
     @property
     def owner(self):
-        return self.user
+        return self.sync_session.get(User, self.user_id) if self.sync_session else self.user
 
     @hybrid_property
     def discord(self) -> DiscordPermission:

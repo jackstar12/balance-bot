@@ -40,7 +40,7 @@ from database.dbmodels.user import User
 from database.enums import IntervalType
 from common.exchanges import EXCHANGES
 from common.exchanges.exchangeworker import ExchangeWorker
-from database.models import OrmBaseModel, BaseModel, OutputID
+from database.models import OrmBaseModel, BaseModel, OutputID, InputID
 from database.models.balance import Balance
 from database.redis.client import ClientCacheKeys
 from core.utils import validate_kwargs, groupby, date_string, sum_iter
@@ -349,7 +349,7 @@ async def get_client_balance(balance_id: list[int] = Query(None, alias='balance-
 
 
 @router.get('/client/{client_id}', response_model=ClientDetailed)
-async def get_client(client_id: int,
+async def get_client(client_id: InputID,
                      user: User = Depends(CurrentUser),
                      db: AsyncSession = Depends(get_db)):
     client = await client_utils.get_user_client(user,
@@ -365,7 +365,7 @@ async def get_client(client_id: int,
 
 
 @router.delete('/client/{client_id}')
-async def delete_client(client_id: int,
+async def delete_client(client_id: InputID,
                         user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -379,7 +379,7 @@ async def delete_client(client_id: int,
 
 
 @router.patch('/client/{client_id}', response_model=ClientDetailed)
-async def update_client(client_id: int, body: ClientEdit,
+async def update_client(client_id: InputID, body: ClientEdit,
                         user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):
     client = await client_utils.get_user_client(user,

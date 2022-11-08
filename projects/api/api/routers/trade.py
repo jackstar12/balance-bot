@@ -17,7 +17,7 @@ from database.dbmodels.mixins.filtermixin import FilterParam
 from api.routers.template import query_templates
 from core import join_args, json
 from core.json import dumps
-from database.dbmodels.authgrant import AuthGrant, TradeGrant, AssociationType
+from database.dbmodels.authgrant import AuthGrant, TradeGrant, AssociationType, ChapterGrant
 from database.models.document import DocumentModel
 from api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
@@ -56,7 +56,7 @@ def add_trade_filters(stmt, user_id: UUID, trade_id: int):
 
 
 @router.patch('/trade/{trade_id}', response_model=UpdateTradeResponse)
-async def update_trade(trade_id: int,
+async def update_trade(trade_id: InputID,
                        body: UpdateTrade,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
@@ -111,9 +111,12 @@ def create_trade_endpoint(path: str,
     class Trades(BaseModel):
         data: list[model]
 
+    auth = get_auth_grant_dependency(ChapterGrant)
+
     TradeCache = client_utils.ClientCacheDependency(
         core.join_args(ClientCacheKeys.TRADE, path),
-        Trades
+        Trades,
+        auth
     )
 
     FilterQueryParams = FilterQueryParamsDep(TradeDB, model)
@@ -125,7 +128,7 @@ def create_trade_endpoint(path: str,
                          cache: client_utils.ClientCache = Depends(TradeCache),
                          query_params: ClientQueryParams = Depends(get_query_params),
                          filter_params: FilterQueryParams = Depends(FilterQueryParams),
-                         grant: AuthGrant = Depends(DefaultGrant),
+                         grant: AuthGrant = Depends(auth),
                          db: AsyncSession = Depends(get_db)):
         ts1 = time.perf_counter()
 

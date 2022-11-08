@@ -25,7 +25,7 @@ from api.oauth import get_oauth_router
 from api.settings import settings
 from api.usermanager import UserManager
 from api.utils.responses import Unauthorized
-from core import utc_now
+from core import utc_now, get_multiple, get_multiple_dict
 from database.dbasync import redis, db_eager, db_unique, safe_op, TEager
 from database.dbmodels.authgrant import AuthGrant, GrantAssociaton
 from database.dbmodels.user import User, OAuthAccount
@@ -35,8 +35,6 @@ class UserDatabase(Generic[ID, OAP], SQLAlchemyUserDatabase[User, ID]):
     def __init__(self, *args, base_stmt: Select, **kwargs):
         super().__init__(*args, **kwargs)
         self.base_stmt = base_stmt
-
-
 
     async def get_by_token(self, token: str):
         return await self._get_user(
@@ -177,12 +175,12 @@ fastapi_users = CustomFastAPIUsers(
     auth_backends=[auth_backend]
 )
 
-CurrentUser = fastapi_users.current_user(optional=False, active=True)
+CurrentUser = fastapi_users.current_user(optional=True, active=True)
 OptionalUser = fastapi_users.current_user(optional=True, active=True)
 
 
-def get_auth_grant_dependency(*eager: list[TEager],
-                              association_table: Type[GrantAssociaton] = None,
+def get_auth_grant_dependency(*association_tables: Type[GrantAssociaton],
+                              eager: list[TEager] = None,
                               root_only=False):
     async def get_auth_grant(request: Request,
                              db: AsyncSession = Depends(get_db),
@@ -214,26 +212,28 @@ def get_auth_grant_dependency(*eager: list[TEager],
                 base = base.where(
                     AuthGrant.user_id == public_id,
                 )
-            elif not association_table:
+            elif not association_tables:
                 if user:
                     return AuthGrant(user=user, user_id=user.id, root=True)
                 else:
                     raise Unauthorized()
 
-        if association_table:
-            test = association_table.identity.property.key
-            if test in request.path_params:
-                base = base.join(
-                    association_table,
-                    and_(
-                        association_table.grant_id == AuthGrant.id,
-                        association_table.identity == int(request.path_params[test])
+        if association_tables:
+            for association_table in association_tables:
+                ident_name = association_table.identity.property.key
+                val = get_multiple_dict(ident_name, request.path_params, request.query_params)
+                if val:
+                    base = base.join(
+                        association_table,
+                        and_(
+                            association_table.grant_id == AuthGrant.id,
+                            association_table.identity == int(val)
+                        )
                     )
-                )
 
         grant: AuthGrant = await db_unique(
             base,
-            *eager,
+            *(eager or tuple()),
             session=db,
         )
 
@@ -300,7 +300,7 @@ def get_auth_assoc_dependency(*eager: list[TEager],
 
 
 def get_token_backend(association_table: Type[GrantAssociaton]):
-    def get_token_strategy(grant: AuthGrant = Depends(get_auth_grant_dependency(association_table=association_table))):
+    def get_token_strategy(grant: AuthGrant = Depends(get_auth_grant_dependency(association_table))):
         return TokenStrategy(grant=grant)
 
     return AuthenticationBackend(

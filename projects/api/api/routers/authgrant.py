@@ -37,6 +37,7 @@ class AuthGrantCreate(CreateableModel):
     discord: Optional[DiscordPermission]
     token: Optional[bool]
     wildcards: Optional[list[AssociationType]]
+    name: Optional[str]
 
     def dict(
             self,
@@ -54,6 +55,7 @@ class AuthGrantInfo(AuthGrantCreate, OrmBaseModel):
     id: OutputID
     owner: UserPublicInfo
     token: Optional[str]
+
 
 
 router = APIRouter(
@@ -74,9 +76,9 @@ def get_current_grant(grant: AuthGrant = Depends(DefaultGrant)):
 
 
 @router.post('/{grant_id}/permit/{type}/{id}')
-async def add_to_grant(grant_id: int,
+async def add_to_grant(grant_id: InputID,
                        type: AssociationType,
-                       id: int,
+                       id: InputID,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     impl = type.get_impl()
@@ -98,9 +100,9 @@ async def add_to_grant(grant_id: int,
 
 
 @router.delete('/{grant_id}/permit/{type}/{id}')
-async def add_to_grant(grant_id: int,
+async def add_to_grant(grant_id: InputID,
                        type: AssociationType,
-                       id: int,
+                       id: InputID,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     impl = type.get_impl()

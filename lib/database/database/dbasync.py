@@ -122,24 +122,25 @@ def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False)
     return stmt
 
 
-TEager = Union[Column, Tuple[Column, Union[Tuple, InstrumentedAttribute, List, str]]]
+TEager = Union[Column, Tuple[Column, Union[Tuple, InstrumentedAttribute, List, str]], None]
 
 
 def db_eager(stmt: Select, *eager: TEager, root=None, joined=False):
     for col in eager:
-        if isinstance(col, Tuple):
-            if root is None:
-                path = selectinload(col[0])
+        if col:
+            if isinstance(col, Tuple):
+                if root is None:
+                    path = selectinload(col[0])
+                else:
+                    path = root.selectinload(col[0])
+                if isinstance(col[1], list):
+                    stmt = db_eager(stmt, *col[1], root=path, joined=joined)
+                elif isinstance(col[1], InstrumentedAttribute) or isinstance(col[1], Tuple):
+                    stmt = db_eager(stmt, col[1], root=path, joined=joined)
+                elif col[1] == '*':
+                    stmt = apply_option(stmt, '*', root=path, joined=joined)
             else:
-                path = root.selectinload(col[0])
-            if isinstance(col[1], list):
-                stmt = db_eager(stmt, *col[1], root=path, joined=joined)
-            elif isinstance(col[1], InstrumentedAttribute) or isinstance(col[1], Tuple):
-                stmt = db_eager(stmt, col[1], root=path, joined=joined)
-            elif col[1] == '*':
-                stmt = apply_option(stmt, '*', root=path, joined=joined)
-        else:
-            stmt = apply_option(stmt, col, root=root, joined=joined)
+                stmt = apply_option(stmt, col, root=root, joined=joined)
     return stmt
 
 
