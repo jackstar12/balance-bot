@@ -110,7 +110,7 @@ async def update_chapter(chapter_id: InputID,
 async def create_chapter(body: ChapterCreate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
-    journal = await query_journal(body.journal_id, user, Journal.clients, session=db)
+    journal = await query_journal(body.journal_id, user.id, Journal.clients, session=db)
 
     template = None
     if body.template_id:

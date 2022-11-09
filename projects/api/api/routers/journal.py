@@ -147,8 +147,8 @@ async def get_journal(journal_id: int,
         )
 
     result = await db.execute(stmt)
-
     await journal.update()
+
     return OK(
         result=JournalDetailedInfo(
             **journal.__dict__,

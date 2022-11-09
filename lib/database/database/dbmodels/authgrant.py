@@ -149,6 +149,8 @@ class AuthGrant(Base, BaseMixin):
         await self.check(self.user)
 
     async def check(self, user: User):
+        if user and self.user_id == user.id:
+            self.root = True
         if self.data and 'discord' in self.data:
             assert user and user.discord, "No discord account provided"
             client = rpc.Client('discord', redis)
