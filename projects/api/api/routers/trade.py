@@ -104,14 +104,15 @@ async def update_trade(trade_id: InputID,
     )
 
 
+auth = get_auth_grant_dependency(ChapterGrant)
+
+
 def create_trade_endpoint(path: str,
                           model: Type[BasicTrade],
                           *eager,
                           **kwargs):
     class Trades(BaseModel):
         data: list[model]
-
-    auth = get_auth_grant_dependency(ChapterGrant)
 
     TradeCache = client_utils.ClientCacheDependency(
         core.join_args(ClientCacheKeys.TRADE, path),
@@ -273,8 +274,22 @@ class PnlDataResponse(BaseModel):
 @router.get('/trade-detailled/pnl-data',
             response_model=ResponseModel[PnlDataResponse])
 async def get_pnl_data(trade_id: list[int] = Query(default=[], alias='trade-id'),
+                       chapter_id: InputID = Query(...),
+                       grant: AuthGrant = Depends(auth),
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
+
+    if not grant.is_root_for(AssociationType.TRADE):
+        if not grant.is_root_for(AssociationType.TRADE):
+            if chapter_id:
+                node = await db_first(Chapter.query_nodes(chapter_id, None), session=db)
+                if not node:
+                    raise Unauthorized()
+            else:
+                trade_id = await grant.check_ids(AssociationType.TRADE, trade_id)
+                if not trade_id:
+                    return OK(result=[])
+
     data: List[PnlData] = await db_all(
         add_client_filters(
             select(PnlData)

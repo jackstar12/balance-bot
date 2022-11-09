@@ -74,7 +74,7 @@ class PageMixin:
         return select(other.id).where(self.id == other.parent_id)
 
     @classmethod
-    def query_nodes(cls, root_id: id, query_params: ClientQueryParams):
+    def query_nodes(cls, root_id: id, query_params: ClientQueryParams = None, trade_ids: list[int] = None):
         tree = select(
             func.jsonb_array_elements(cls.doc['content']).cast(JSONB).label('node')
         ).where(
@@ -98,7 +98,11 @@ class PageMixin:
             cmp_dates(data['dates']['since'], query_params.since.date()),
             or_(
                 data['clientIds'] == JSONB.NULL,
-                data['clientIds'].contains([str(id) for id in query_params.client_ids])
+                data['clientIds'].contains(map(str, query_params.client_ids))
+            ),
+            or_(
+                data['tradeIds'] == JSONB.NULL,
+                data['tradeIds'].contains(trade_ids and map(str, trade_ids))
             )
         )
 
