@@ -4,15 +4,15 @@ from operator import and_
 from typing import Optional, Type, Literal
 
 from fastapi import Depends, APIRouter
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.crudrouter import add_crud_routes, Route
 from api.dependencies import get_db
 from api.users import CurrentUser, DefaultGrant
-from api.utils.responses import BadRequest, OK
-from database.dbasync import wrap_greenlet
+from api.utils.responses import BadRequest, OK, Unauthorized
+from database.dbasync import wrap_greenlet, db_unique
 from database.dbmodels import User
 from database.dbsync import BaseMixin
 from database.models import OrmBaseModel, OutputID, CreateableModel, BaseModel
@@ -81,6 +81,18 @@ async def add_to_grant(grant_id: InputID,
                        id: InputID,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
+
+    # Verify grant id
+    grant_id = await db_unique(
+        select(AuthGrant.id).where(
+            AuthGrant.id == grant_id,
+            AuthGrant.user_id == user.id
+        )
+    )
+
+    if not grant_id:
+        raise Unauthorized('Can not access this grant')
+
     impl = type.get_impl()
     if not impl:
         raise BadRequest(detail='Invalid Type')
@@ -93,7 +105,7 @@ async def add_to_grant(grant_id: InputID,
     try:
         db.add(instance)
         await db.commit()
-    except IntegrityError as e:
+    except IntegrityError:
         raise BadRequest(f'Invalid grant or {type.value} id')
 
     return OK()
