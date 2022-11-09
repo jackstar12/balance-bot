@@ -28,7 +28,7 @@ from database.dbmodels.authgrant import (
 )
 from database.redis import TableNames
 
-from lib.database.database.models import InputID
+from database.models import InputID
 
 
 class AuthGrantCreate(CreateableModel):
