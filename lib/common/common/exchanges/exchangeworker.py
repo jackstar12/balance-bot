@@ -404,7 +404,7 @@ class ExchangeWorker:
                     while to_exec:
                         current_executions = [to_exec]
                         # TODO: What if the start point isnt from 0 ?
-                        open_qty = to_exec.effective_qty
+                        open_qty = to_exec.effective_qty or 0
                         while open_qty != 0 and to_exec:
                             to_exec = next(exec_iter, None)
                             if to_exec:
