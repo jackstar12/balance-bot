@@ -14,19 +14,14 @@ from api.users import CurrentUser, DefaultGrant
 from api.utils.responses import BadRequest, OK, Unauthorized
 from database.dbasync import wrap_greenlet, db_unique
 from database.dbmodels import User
-from database.dbsync import BaseMixin
 from database.models import OrmBaseModel, OutputID, CreateableModel, BaseModel
 from database.models.user import UserPublicInfo
 
 from database.dbmodels.authgrant import (
     AuthGrant,
-    JournalGrant,
-    ChapterGrant,
-    EventGrant,
-    TradeGrant,
-    GrantAssociaton, DiscordPermission, AssociationType
+    DiscordPermission,
+    AssociationType
 )
-from database.redis import TableNames
 
 from database.models import InputID
 
