@@ -163,6 +163,8 @@ class AuthGrant(Base, BaseMixin):
 
 
 class GrantAssociaton(BaseMixin):
+    alias: str = None
+
     @declared_attr
     def grant_id(self):
         return sa.Column(FKey('authgrant.id', ondelete='CASCADE'), primary_key=True)
@@ -199,6 +201,8 @@ class JournalGrant(Base, GrantAssociaton):
     __tablename__ = 'journalgrant'
     journal_id = sa.Column(FKey('journal.id', ondelete='CASCADE'), primary_key=True)
 
+    alias = 'journalId'
+
     @hybrid_property
     def identity(cls):
         return cls.journal_id
@@ -210,6 +214,9 @@ class JournalGrant(Base, GrantAssociaton):
 
 class ChapterGrant(Base, GrantAssociaton):
     __tablename__ = 'chaptergrant'
+
+    alias = 'chapterId'
+
     chapter_id = sa.Column(FKey('chapter.id', ondelete='CASCADE'), primary_key=True)
 
     @hybrid_property

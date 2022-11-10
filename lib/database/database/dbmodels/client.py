@@ -37,7 +37,7 @@ from database.dbmodels.discord.guildassociation import GuildAssociation
 from database.dbmodels.pnldata import PnlData
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.user import User
-from database.models import BaseModel
+from database.models import BaseModel, InputID
 from database.models.balance import Balance as BalanceModel, Amount
 from database.dbsync import Base
 from database.redis import TableNames
@@ -147,7 +147,7 @@ class QueryParams(BaseModel):
 
 
 class ClientQueryParams(QueryParams):
-    client_ids: set[int]
+    client_ids: set[InputID]
     currency: str
 
 

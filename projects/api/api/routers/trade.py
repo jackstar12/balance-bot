@@ -124,8 +124,8 @@ def create_trade_endpoint(path: str,
 
     @router.get(f'/{path}', response_model=list[model], **kwargs)
     async def get_trades(background_tasks: BackgroundTasks,
-                         trade_id: list[InputID] = Query(None, alias='trade-id'),
-                         chapter_id: InputID = Query(None, alias='chapter-id'),
+                         trade_id: list[InputID] = Query(None, alias='tradeId'),
+                         chapter_id: InputID = Query(None, alias=ChapterGrant.alias),
                          cache: client_utils.ClientCache = Depends(TradeCache),
                          query_params: ClientQueryParams = Depends(get_query_params),
                          filter_params: FilterQueryParams = Depends(FilterQueryParams),
@@ -217,7 +217,7 @@ class PnlDataResponse(BaseModel):
 
 @router.get('/trade-detailled/pnl-data',
             response_model=ResponseModel[PnlDataResponse])
-async def get_pnl_data(trade_id: list[int] = Query(default=[], alias='trade-id'),
+async def get_pnl_data(trade_id: list[int] = Query(default=[], alias='tradeId'),
                        chapter_id: InputID = Query(default=None),
                        grant: AuthGrant = Depends(auth),
                        user: User = Depends(CurrentUser),
