@@ -143,8 +143,7 @@ def create_trade_endpoint(path: str,
                 return OK(result=[])
 
         hits, misses = await cache.read(db)
-        # misses = query_params.client_ids
-        ts2 = time.perf_counter()
+
         if misses:
             query_params.client_ids = misses
 
@@ -173,7 +172,7 @@ def create_trade_endpoint(path: str,
                 )
         if trade_id:
             filter_params.append(
-                FilterParam.construct(field='id', values=[str(t_id) for t_id in trade_id])
+                FilterParam.construct(field='id', values=map(str, trade_id))
             )
 
         ts4 = time.perf_counter()
@@ -182,61 +181,6 @@ def create_trade_endpoint(path: str,
                 trade for trades in hits for trade in trades.data
                 if all(f.check(trade) for f in filter_params)
             ]
-        )
-
-    @router.get(f'/{path}', response_model=list[model], **kwargs)
-    async def get_trades(background_tasks: BackgroundTasks,
-                         trade_id: list[int] = Query(None, alias='trade-id'),
-                         cache: client_utils.ClientCache = Depends(TradeCache),
-                         query_params: ClientQueryParams = Depends(get_query_params),
-                         filter_params: FilterQueryParams = Depends(FilterQueryParams),
-                         grant: AuthGrant = Depends(get_auth_grant_dependency()),
-                         db: AsyncSession = Depends(get_db)):
-        ts1 = time.perf_counter()
-
-        if not grant.is_root_for(AssociationType.TRADE):
-            trade_id = await grant.check_ids(AssociationType.TRADE, trade_id)
-            if not trade_id:
-                return OK(result=[])
-
-        trade_ids_db = await client_utils.query_trades(
-            # *eager,
-            user_id=grant.user_id,
-            query_params=query_params,
-            trade_id=trade_id,
-            filters=filter_params,
-            db=db
-        )
-        trades = []
-
-        async with redis.pipeline(transaction=True) as pipe:
-            for t_id in trade_ids_db:
-                pipe.get(join_args(TradeCache, t_id))
-            results = await pipe.execute()
-            for result in results:
-                if result:
-                    result = json.loads_bytes(result)
-                    trades.append(result)
-                    trade_ids_db.remove(int(result['id']))
-
-        if trade_ids_db:
-            ts6 = time.perf_counter()
-            trades_db = await db_all(select(TradeDB).where(TradeDB.id.in_(trade_ids_db)), *eager, session=db)
-            ts5 = time.perf_counter()
-
-            print('ALL BY ID', ts5 - ts6)
-
-            for trade in trades_db:
-                encoded = jsonable_encoder(model.from_orm(trade))
-                trades.append(encoded)
-
-                async def add():
-                    await redis.set(join_args(TradeCache, trade.id), dumps(encoded))
-
-                background_tasks.add_task(add)
-
-        return OK(
-            result=trades
         )
 
 
@@ -274,21 +218,20 @@ class PnlDataResponse(BaseModel):
 @router.get('/trade-detailled/pnl-data',
             response_model=ResponseModel[PnlDataResponse])
 async def get_pnl_data(trade_id: list[int] = Query(default=[], alias='trade-id'),
-                       chapter_id: InputID = Query(...),
+                       chapter_id: InputID = Query(default=None),
                        grant: AuthGrant = Depends(auth),
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
 
     if not grant.is_root_for(AssociationType.TRADE):
-        if not grant.is_root_for(AssociationType.TRADE):
-            if chapter_id:
-                node = await db_first(Chapter.query_nodes(chapter_id, None), session=db)
-                if not node:
-                    raise Unauthorized()
-            else:
-                trade_id = await grant.check_ids(AssociationType.TRADE, trade_id)
-                if not trade_id:
-                    return OK(result=[])
+        if chapter_id:
+            node = await db_first(Chapter.query_nodes(chapter_id, None), session=db)
+            if not node:
+                raise Unauthorized()
+        else:
+            trade_id = await grant.check_ids(AssociationType.TRADE, trade_id)
+            if not trade_id:
+                return OK(result=[])
 
     data: List[PnlData] = await db_all(
         add_client_filters(
