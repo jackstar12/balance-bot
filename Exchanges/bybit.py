@@ -54,12 +54,11 @@ class BybitClient(ExchangeWorker):
                     if currency == 'USDT':
                         price = 1.0
                     elif amount > 0:
-                        price = ticker_prices.get(f'{currency}USD')
+                        price = ticker_prices.get(f'{currency}USD') or ticker_prices.get(f'{currency}USDT')
                         extra_currencies[currency] = amount
                         if not price:
                             logging.info(f'Bybit Bug: ticker prices do not contain info about {currency}:\n{ticker_prices}')
-                            err_msg = 'This is a bug in the ByBit bot implementation.'
-                            break
+                            continue
                     total_balance += amount * float(price)
             else:
                 err_msg = tickers['ret_msg']
