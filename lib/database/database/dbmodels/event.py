@@ -197,8 +197,8 @@ class Event(Base, Serializer):
                     currency=self.currency
                 )
                 if gain:
-                    if gain.relative < self.rekt_threshold:
-                        pass
+                    if gain.relative < self.rekt_threshold and not entry.rekt_on:
+                        entry.rekt_on = now
                     score = eventmodels.EventScore.construct(
                         entry_id=entry.id,
                         rank=1,  # Ranks are evaluated lazy
@@ -212,6 +212,7 @@ class Event(Base, Serializer):
             else:
                 unknown.append(entry.id)
 
+        await self.async_session.commit()
         valid.sort(reverse=True)
 
         prev = None

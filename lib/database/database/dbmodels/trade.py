@@ -381,7 +381,7 @@ class Trade(Base, Serializer, CurrencyMixin, FilterMixin):
                 not self.latest_pnl
                 or force
                 or self.max_pnl.total == self.min_pnl.total
-                or abs((live - self.latest_pnl.total) / self.size) > Decimal(.2)
+                or abs((live - self.latest_pnl.total) / self.size) > Decimal(.05)
         ):
             self.async_session.add(self.live_pnl)
             self.latest_pnl = self.live_pnl

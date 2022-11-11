@@ -420,7 +420,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                 if contract_type == ContractType.LINEAR:
                     price = Decimal(1)
             elif unrealized > 0 and contract_type == ContractType.INVERSE:
-                price = get_multiple(ticker_prices, f'{currency}USD', '{currency}USDT')
+                price = get_multiple(ticker_prices, f'{currency}USD', f'{currency}USDT')
                 extra_currencies.append(
                     Amount(currency=currency, realized=realized, unrealized=unrealized)
                 )

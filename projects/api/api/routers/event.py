@@ -85,7 +85,7 @@ def event_dep(*eager, root_only=False):
         event = await db_first(stmt, *eager, EventDB.clients, session=db)
 
         if not event:
-            BadRequest('Invalid event id')
+            raise BadRequest('Invalid event id')
         return event
 
     return dependency
