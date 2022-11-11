@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import aliased, declared_attr
 
-from core import safe_cmp
+from core import safe_cmp, map_list
 from database.dbasync import db_all, safe_op
 from database.dbmodels.types import Document
 from database.models.document import DocumentModel
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 def cmp_dates(col, val):
     return or_(
-        col.astext.cast(Date) <= val if val else True,
+        col.astext.cast(Date) <= val.date() if val else True,
         col == JSONB.NULL
     )
 
@@ -94,16 +94,16 @@ class PageMixin:
 
         whereas = (
             data != JSONB.NULL,
-            cmp_dates(data['dates']['to'], query_params.to.date()),
-            cmp_dates(data['dates']['since'], query_params.since.date()),
+            cmp_dates(data['dates']['to'], query_params.to),
+            cmp_dates(data['dates']['since'], query_params.since),
             or_(
                 data['clientIds'] == JSONB.NULL,
-                data['clientIds'].contains(map(str, query_params.client_ids))
+                data['clientIds'].contains(map_list(str, query_params.client_ids))
             ),
-            or_(
-                data['tradeIds'] == JSONB.NULL,
-                data['tradeIds'].contains(trade_ids and map(str, trade_ids))
-            )
+            #or_(
+            #    data['tradeIds'] == JSONB.NULL,
+            #    data['tradeIds'].contains(trade_ids and map_list(str, trade_ids))
+            #)
         )
 
         return select(data).where(*whereas)

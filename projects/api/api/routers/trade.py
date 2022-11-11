@@ -124,8 +124,8 @@ def create_trade_endpoint(path: str,
 
     @router.get(f'/{path}', response_model=list[model], **kwargs)
     async def get_trades(background_tasks: BackgroundTasks,
-                         trade_id: list[InputID] = Query(None, alias='tradeId'),
-                         chapter_id: InputID = Query(None, alias=ChapterGrant.alias),
+                         trade_id: list[InputID] = Query(default=[]),
+                         chapter_id: InputID = Query(None),
                          cache: client_utils.ClientCache = Depends(TradeCache),
                          query_params: ClientQueryParams = Depends(get_query_params),
                          filter_params: FilterQueryParams = Depends(FilterQueryParams),
@@ -138,9 +138,10 @@ def create_trade_endpoint(path: str,
                 node = await db_first(Chapter.query_nodes(chapter_id, query_params), session=db)
                 if not node:
                     raise Unauthorized()
-            trade_id = await grant.check_ids(AssociationType.TRADE, trade_id)
-            if not trade_id:
-                return OK(result=[])
+            else:
+                trade_id = await grant.check_ids(AssociationType.TRADE, trade_id)
+                if not trade_id:
+                    return OK(result=[])
 
         hits, misses = await cache.read(db)
 
@@ -217,7 +218,7 @@ class PnlDataResponse(BaseModel):
 
 @router.get('/trade-detailled/pnl-data',
             response_model=ResponseModel[PnlDataResponse])
-async def get_pnl_data(trade_id: list[int] = Query(default=[], alias='tradeId'),
+async def get_pnl_data(trade_id: list[InputID] = Query(default=[]),
                        chapter_id: InputID = Query(default=None),
                        grant: AuthGrant = Depends(auth),
                        user: User = Depends(CurrentUser),

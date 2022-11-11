@@ -24,7 +24,6 @@ def FKey(column: str,
          ondelete=None,
          **kw):
     split = column.split('.')
-    print(column, split)
     return sa.ForeignKey(column, onupdate=onupdate, ondelete=ondelete, name=fkey_name(split[0], split[1]), **kw)
 
 

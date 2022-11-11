@@ -176,6 +176,10 @@ def get_multiple(d: dict[_KT, _VT], *keys: str) -> typing.Optional[_VT]:
             return d[key]
 
 
+def map_list(func, iter):
+    return [func(current) for current in iter]
+
+
 def get_multiple_dict(key: str, *dicts: dict[_KT, _VT]) -> typing.Optional[_VT]:
     for d in dicts:
         if key in d:

@@ -186,7 +186,7 @@ def get_auth_grant_dependency(*association_tables: Type[GrantAssociaton],
                              db: AsyncSession = Depends(get_db),
                              user: Optional[User] = Depends(CurrentUser if root_only else OptionalUser),
                              token: str = Query(default=None),
-                             public_id: uuid.UUID = Query(default=None, alias='public-id')):
+                             public_id: uuid.UUID = Query(default=None)):
 
         if request.method != 'GET' and not user:
             raise Unauthorized(detail='Authentication Grants only work on GET Requests')

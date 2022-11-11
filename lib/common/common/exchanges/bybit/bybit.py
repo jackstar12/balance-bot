@@ -420,14 +420,13 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                 if contract_type == ContractType.LINEAR:
                     price = Decimal(1)
             elif unrealized > 0 and contract_type == ContractType.INVERSE:
-                price = ticker_prices.get(f'{currency}USD')
+                price = get_multiple(ticker_prices, f'{currency}USD', '{currency}USDT')
                 extra_currencies.append(
                     Amount(currency=currency, realized=realized, unrealized=unrealized)
                 )
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {currency}:\n{ticker_prices}')
-                    err_msg = 'This is a bug in the ByBit implementation.'
-                    break
+                    continue
             total_realized += realized * Decimal(price)
             total_unrealized += unrealized * Decimal(price)
 
