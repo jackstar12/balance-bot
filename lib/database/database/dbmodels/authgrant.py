@@ -82,6 +82,7 @@ class AuthGrant(Base, BaseMixin):
     token = sa.Column(sa.String, nullable=True)
 
     user = relationship('User')
+
     granted_journals = relationship('Journal', secondary='journalgrant', backref='grants')
     granted_chapters = relationship('Chapter', secondary='chaptergrant', backref='grants')
     granted_events = relationship('Event', secondary='eventgrant', backref='grants')

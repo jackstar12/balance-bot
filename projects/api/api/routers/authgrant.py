@@ -3,7 +3,7 @@ from enum import Enum
 from operator import and_
 from typing import Optional, Type, Literal
 
-from fastapi import Depends, APIRouter
+from fastapi import Depends, APIRouter, Query, Body
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,32 +63,42 @@ class AddToGrant(BaseModel):
     # id: InputID
 
 
-@router.post('/permit/{type}/{id}')
+@router.get('/current', response_model=AuthGrantInfo)
+@wrap_greenlet
+def get_current_grant(grant: AuthGrant = Depends(DefaultGrant)):
+    return OK(result=AuthGrantInfo.from_orm(grant))
+
+
+@router.post('/permit/{type}/{id}', response_model=AuthGrantInfo)
 async def add_to_grant(type: AssociationType,
                        id: InputID,
-                       grant_id: InputID = None,
-                       public: bool = None,
+                       grant_id: InputID = Body(),
+                       public: bool = Body(),
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
-    # Verify grant id
-    grant_id = await db_unique(
-        select(AuthGrant.id).where(
+    # Verify grant
+    grant = await db_unique(
+        select(AuthGrant).where(
             AuthGrant.user_id == user.id,
             safe_op(AuthGrant.id, grant_id),
             safe_op(AuthGrant.public, public)
         )
     )
 
-    if not grant_id:
-        raise Unauthorized('Can not access this grant')
+    if not grant:
+        if public is not None:
+            grant = AuthGrant(public=public, user=user)
+            db.add(grant)
+            await db.commit()
+        else:
+            raise Unauthorized('Can not access this grant')
 
     impl = type.get_impl()
     if not impl:
         raise BadRequest(detail='Invalid Type')
-    instance = impl()
 
-    instance.grant_id = grant_id
-    instance.user = user
+    instance = impl()
+    instance.grant = grant
     instance.identity = id
 
     try:
@@ -97,37 +107,31 @@ async def add_to_grant(type: AssociationType,
     except IntegrityError:
         raise BadRequest(f'Invalid grant or {type.value} id')
 
-    return OK()
-
-
-@router.get('/current', response_model=AuthGrantInfo)
-@wrap_greenlet
-def get_current_grant(grant: AuthGrant = Depends(DefaultGrant)):
-    return OK(result=AuthGrantInfo.from_orm(grant))
+    return AuthGrantInfo.from_orm(grant)
 
 
 @router.delete('/permit/{type}/{id}')
 async def add_to_grant(type: AssociationType,
                        id: InputID,
-                       grant_id: InputID = None,
-                       public: bool = None,
+                       grant_id: InputID = Body(),
+                       public: bool = Body(),
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
+
     impl = type.get_impl()
     if not impl:
         raise BadRequest(detail='Invalid Type')
+
     stmt = delete(impl).where(
         impl.identity == id,
-        impl.grant_id == grant_id,
+        AuthGrant.id == impl.grant_id,
         AuthGrant.user_id == user.id,
-        safe_op(AuthGrant.id, grant_id),
+        safe_op(impl.grant_id, grant_id),
         safe_op(AuthGrant.public, public)
     ).execution_options(
         synchronize_session=False
     )
-    result = await db.execute(
-        stmt
-    )
+    result = await db.execute(stmt)
     await db.commit()
 
     if result.rowcount == 1:
