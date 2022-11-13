@@ -18,7 +18,7 @@ from api.models.completejournal import (
 )
 from api.utils.responses import BadRequest, OK, CustomJSONResponse
 from database.dbasync import db_unique, db_all, db_select, db_select_all, wrap_greenlet
-from database.dbmodels.authgrant import JournalGrant, AuthGrant, ChapterGrant
+from database.dbmodels.authgrant import JournalGrant, AuthGrant, ChapterGrant, AssociationType
 from database.dbmodels.editing.chapter import Chapter as DbChapter
 from database.dbmodels.client import add_client_filters, Client
 from database.dbmodels.editing.journal import Journal, JournalType
@@ -60,6 +60,7 @@ async def get_chapter(chapter_id: InputID,
     chapter = await query_chapter(
         chapter_id,
         grant.user_id,
+        grant.is_root_for(AssociationType.CHAPTER) and DbChapter.grants,
         # DbChapter.trades,
         session=db
     )

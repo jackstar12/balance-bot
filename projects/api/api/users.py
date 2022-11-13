@@ -175,7 +175,7 @@ fastapi_users = CustomFastAPIUsers(
     auth_backends=[auth_backend]
 )
 
-CurrentUser = fastapi_users.current_user(optional=True, active=True)
+CurrentUser = fastapi_users.current_user(optional=False, active=True)
 OptionalUser = fastapi_users.current_user(optional=True, active=True)
 
 
@@ -220,7 +220,7 @@ def get_auth_grant_dependency(*association_tables: Type[GrantAssociaton],
 
         if association_tables:
             for association_table in association_tables:
-                ident_name = association_table.alias or association_table.identity.property.key
+                ident_name = association_table.identity.property.key
                 val = get_multiple_dict(ident_name, request.path_params, request.query_params)
                 if val:
                     base = base.join(

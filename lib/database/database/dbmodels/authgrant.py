@@ -4,7 +4,7 @@ import logging
 import secrets
 from datetime import datetime, date, timedelta
 from enum import Enum
-from typing import Optional, Union, Literal, Any, TYPE_CHECKING, Sequence, TypedDict, Type
+from typing import Optional, Union, Literal, Any, TYPE_CHECKING, Sequence, TypedDict, Type, Iterable
 from uuid import UUID
 import sqlalchemy as sa
 import pytz
@@ -77,13 +77,13 @@ class AuthGrant(Base, BaseMixin):
     name = sa.Column(sa.String, nullable=True)
     user_id = sa.Column(FKey('user.id', ondelete='CASCADE'), nullable=False)
     expires = sa.Column(sa.DateTime(timezone=True), nullable=True)
-    public = sa.Column(sa.Boolean, server_default='False', default=False)
     wildcards = sa.Column(sa.ARRAY(sa.Enum(AssociationType)), nullable=True)
     data = sa.Column(sa.JSON, nullable=True)
-    _token = sa.Column('token', sa.String, nullable=True)
+    token = sa.Column(sa.String, nullable=True)
 
     user = relationship('User')
     granted_journals = relationship('Journal', secondary='journalgrant', backref='grants')
+    granted_chapters = relationship('Chapter', secondary='chaptergrant', backref='grants')
     granted_events = relationship('Event', secondary='eventgrant', backref='grants')
 
     def __init__(self, *args, root=False, **kwargs):
@@ -91,15 +91,15 @@ class AuthGrant(Base, BaseMixin):
         self.root = root
 
     @hybrid_property
-    def token(self):
-        return self._token
+    def public(self):
+        return self.token == None
 
-    @token.setter
-    def token(self, value: bool):
+    @public.setter
+    def public(self, value: bool):
         if value:
-            self._token = secrets.token_urlsafe()
+            self.token = None
         else:
-            self._token = None
+            self.token = secrets.token_urlsafe()
 
     @orm.reconstructor
     def init(self):
@@ -128,6 +128,8 @@ class AuthGrant(Base, BaseMixin):
     @discord.setter
     def discord(self, value: DiscordPermission):
         if value:
+            if not self.data:
+                self.data = {}
             self.data['discord'] = value
         elif self.data:
             self.data.pop('discord')
@@ -135,12 +137,12 @@ class AuthGrant(Base, BaseMixin):
     def is_root_for(self, assoc_type: AssociationType):
         return self.root or (self.wildcards and assoc_type in self.wildcards)
 
-    async def check_ids(self, asooc_type: AssociationType, ids: Sequence[int] = None):
+    async def check_ids(self, asooc_type: AssociationType, ids: Iterable[int] = None):
         impl = asooc_type.get_impl()
         return await db_all(
             select(impl.identity).where(
                 impl.grant_id == self.id,
-                impl.identity in ids if ids else True
+                impl.identity.in_(list(ids)) if ids else True
             ),
             session=self.async_session
         )

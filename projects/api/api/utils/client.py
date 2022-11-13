@@ -234,7 +234,7 @@ class ClientCache(Generic[T]):
             ]
             pairs[client.cache_hash] = [
                 RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC, parse=_parse_date),
-                RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS, model=ClientQueryParams)
+                RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS, model=self.query_params.__class__)
             ]
 
         data = await redis_bulk(pairs, redis_instance=redis)
@@ -284,8 +284,9 @@ class ClientCache(Generic[T]):
 
 def ClientCacheDependency(cache_data_key: ClientCacheKeys,
                           data_model: Type[BaseModel],
-                          grant_dependency: Optional[DependencyCallable] = None):
-    def __call__(query_params: ClientQueryParams = Depends(get_query_params),
+                          grant_dependency: DependencyCallable[AuthGrant] = None,
+                          query_params_dep: DependencyCallable[ClientQueryParams] = get_query_params):
+    def __call__(query_params: ClientQueryParams = Depends(query_params_dep),
                  grant: AuthGrant = Depends(grant_dependency or DefaultGrant)):
         return ClientCache(
             cache_data_key=cache_data_key,
@@ -303,7 +304,7 @@ TTable = TypeVar('TTable', bound=BaseMixin)
 def query_trades(*eager,
                  user_id: UUID,
                  query_params: ClientQueryParams,
-                 trade_id: list[int] = None,
+                 trade_ids: list[int] = None,
                  db: AsyncSession,
                  filters: list[FilterParam] = None):
     return query_table(
@@ -311,7 +312,7 @@ def query_trades(*eager,
         table=TradeDB,
         time_col=TradeDB.open_time,
         user_id=user_id,
-        ids=trade_id,
+        ids=trade_ids,
         query_params=query_params,
         filters=filters,
         db=db

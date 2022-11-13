@@ -72,6 +72,7 @@ class DetailedChapter(ChapterInfo):
     #trades: List[Trade]
     data: Optional[dict]
     doc: Optional[DocumentModel]
+    grants: Optional[list[AuthGrantInfo]]
 
 
 class ChapterUpdate(BaseModel):

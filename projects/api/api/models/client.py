@@ -21,14 +21,12 @@ def get_query_params(id: set[InputID] = Query(default=[]),
                      currency: str = Query(default='USD'),
                      since: datetime = Query(default=None),
                      to: datetime = Query(default=None),
-                     limit: int = Query(default=None),
                      order: str = Query(default='asc')):
     return qmxin.ClientQueryParams(
         client_ids=id,
         currency=currency,
         since=since,
         to=to,
-        limit=limit,
         order=order
     )
 

@@ -12,7 +12,8 @@ from api.crudrouter import add_crud_routes, Route
 from api.dependencies import get_db
 from api.users import CurrentUser, DefaultGrant
 from api.utils.responses import BadRequest, OK, Unauthorized
-from database.dbasync import wrap_greenlet, db_unique
+from core import safe_cmp
+from database.dbasync import wrap_greenlet, db_unique, safe_op
 from database.dbmodels import User
 from database.models import OrmBaseModel, OutputID, CreateableModel, BaseModel
 from database.models.user import UserPublicInfo
@@ -30,7 +31,6 @@ class AuthGrantCreate(CreateableModel):
     expires: Optional[datetime]
     public: Optional[bool]
     discord: Optional[DiscordPermission]
-    token: Optional[bool]
     wildcards: Optional[list[AssociationType]]
     name: Optional[str]
 
@@ -52,7 +52,6 @@ class AuthGrantInfo(AuthGrantCreate, OrmBaseModel):
     token: Optional[str]
 
 
-
 router = APIRouter(
     tags=["Auth Grant"],
     prefix="/auth-grant"
@@ -64,24 +63,19 @@ class AddToGrant(BaseModel):
     # id: InputID
 
 
-@router.get('/current', response_model=AuthGrantInfo)
-@wrap_greenlet
-def get_current_grant(grant: AuthGrant = Depends(DefaultGrant)):
-    return OK(result=AuthGrantInfo.from_orm(grant))
-
-
-@router.post('/{grant_id}/permit/{type}/{id}')
-async def add_to_grant(grant_id: InputID,
-                       type: AssociationType,
+@router.post('/permit/{type}/{id}')
+async def add_to_grant(type: AssociationType,
                        id: InputID,
+                       grant_id: InputID = None,
+                       public: bool = None,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
-
     # Verify grant id
     grant_id = await db_unique(
         select(AuthGrant.id).where(
-            AuthGrant.id == grant_id,
-            AuthGrant.user_id == user.id
+            AuthGrant.user_id == user.id,
+            safe_op(AuthGrant.id, grant_id),
+            safe_op(AuthGrant.public, public)
         )
     )
 
@@ -106,10 +100,17 @@ async def add_to_grant(grant_id: InputID,
     return OK()
 
 
-@router.delete('/{grant_id}/permit/{type}/{id}')
-async def add_to_grant(grant_id: InputID,
-                       type: AssociationType,
+@router.get('/current', response_model=AuthGrantInfo)
+@wrap_greenlet
+def get_current_grant(grant: AuthGrant = Depends(DefaultGrant)):
+    return OK(result=AuthGrantInfo.from_orm(grant))
+
+
+@router.delete('/permit/{type}/{id}')
+async def add_to_grant(type: AssociationType,
                        id: InputID,
+                       grant_id: InputID = None,
+                       public: bool = None,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     impl = type.get_impl()
@@ -118,8 +119,9 @@ async def add_to_grant(grant_id: InputID,
     stmt = delete(impl).where(
         impl.identity == id,
         impl.grant_id == grant_id,
-        AuthGrant.id == grant_id,
-        AuthGrant.user_id == user.id
+        AuthGrant.user_id == user.id,
+        safe_op(AuthGrant.id, grant_id),
+        safe_op(AuthGrant.public, public)
     ).execution_options(
         synchronize_session=False
     )

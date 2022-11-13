@@ -138,7 +138,7 @@ class QueryParams(BaseModel):
     offset: Optional[int]
     order: Optional[Literal['desc', 'asc']]
 
-    def within(self, other: ClientQueryParams):
+    def within(self, other: QueryParams):
         return (
                 (not other.since or (self.since and self.since >= other.since))
                 and
