@@ -72,8 +72,8 @@ def get_current_grant(grant: AuthGrant = Depends(DefaultGrant)):
 @router.post('/permit/{type}/{id}', response_model=AuthGrantInfo)
 async def add_to_grant(type: AssociationType,
                        id: InputID,
-                       grant_id: InputID = Body(),
-                       public: bool = Body(),
+                       grant_id: Optional[InputID] = Body(default=None),
+                       public: Optional[bool] = Body(default=None),
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
     # Verify grant
@@ -82,14 +82,13 @@ async def add_to_grant(type: AssociationType,
             AuthGrant.user_id == user.id,
             safe_op(AuthGrant.id, grant_id),
             safe_op(AuthGrant.public, public)
-        )
+        ),
+        session=db
     )
 
     if not grant:
         if public is not None:
             grant = AuthGrant(public=public, user=user)
-            db.add(grant)
-            await db.commit()
         else:
             raise Unauthorized('Can not access this grant')
 
@@ -111,10 +110,10 @@ async def add_to_grant(type: AssociationType,
 
 
 @router.delete('/permit/{type}/{id}')
-async def add_to_grant(type: AssociationType,
+async def forbid_grant(type: AssociationType,
                        id: InputID,
-                       grant_id: InputID = Body(),
-                       public: bool = Body(),
+                       grant_id: Optional[InputID] = Body(default=None),
+                       public: Optional[bool] = Body(default=None),
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
 
