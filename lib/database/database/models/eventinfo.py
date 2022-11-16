@@ -106,6 +106,11 @@ class EventEntry(OrmBaseModel):
     init_balance: Optional[Balance]
 
 
+class EventEntryDetailed(EventEntry):
+    rank_history: list[EventScore]
+
+
+
 class EventDetailed(EventInfo):
     owner: UserPublicInfo
     entries: list[EventEntry]

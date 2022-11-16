@@ -25,7 +25,7 @@ from database.dbmodels.client import add_client_filters
 from database.models import BaseModel, InputID
 from database.models.document import DocumentModel
 from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, Leaderboard, Summary, \
-    EventEntry
+    EventEntry, EventEntryDetailed
 
 router = APIRouter(
     tags=["event"],
@@ -37,50 +37,16 @@ router = APIRouter(
 )
 
 
-def add_event_filters(stmt,
-                      user_id: UUID,
-                      owner=False):
-    if owner:
-        return stmt.filter(
-            EventDB.owner_id == user_id
-        )
-    else:
-        # stmt = stmt\
-        #    .join(EventScoreDB
-        #    , EventScoreDB
-        #    .event_id == event_id)\
-        #    .join(EventScoreDB
-        #    .client)\
-        #    .filter(
-        #    or_(
-        #        Client.user_id == user.id,
-        #        EventDB.public,
-        #        EventDB.owner_id == user.id
-        #    )
-        # )
-        return stmt.filter(
-            or_(
-                EventDB.public,
-                EventDB.owner_id == user_id
-            )
-        )
-
-
 def event_dep(*eager, root_only=False):
     async def dependency(event_id: InputID,
                          grant: AuthGrant = Depends(
-                             get_auth_grant_dependency(root_only=True) if root_only else DefaultGrant
+                             get_auth_grant_dependency(EventGrant, root_only=root_only)
                          ),
                          db: AsyncSession = Depends(get_db)) -> EventDB:
         stmt = select(EventDB).filter(
             EventDB.id == event_id,
             EventDB.owner_id == grant.user_id
         )
-        if not grant.root:
-            stmt = stmt.join(EventGrant, and_(
-                EventGrant.event_id == event_id,
-                EventGrant.grant_id == grant.id
-            ))
 
         event = await db_first(stmt, *eager, EventDB.clients, session=db)
 
@@ -192,25 +158,26 @@ async def get_summary(event: EventDB = Depends(SummaryEvent)):
     return OK(result=leaderboard)
 
 
-@router.get('/{event_id}/registrations/{client_id}', response_model=ResponseModel[EventEntry])
-async def get_event_registration(event_id: int,
-                                 client_id: int,
-                                 grant: AuthGrant = Depends(EventAuth),
-                                 db: AsyncSession = Depends(get_db)):
+@router.get('/{event_id}/registrations/{entry_id}',
+            response_model=ResponseModel[EventEntryDetailed],
+            dependencies=[Depends(EventAuth)])
+async def get_event_entry(event_id: int,
+                          entry_id: int,
+                          db: AsyncSession = Depends(get_db)):
+
     score = await db_unique(
-        add_event_filters(
-            select(EventEntryDB).filter_by(
-                client_id=client_id, event_id=event_id
-            ), user_id=grant.user_id, owner=False
+        select(EventEntryDB).filter_by(
+            id=entry_id,
+            event_id=event_id
         ),
-        (EventEntryDB.client, Client.history),
+        EventEntryDB.rank_history,
         session=db
     )
 
     if score:
-        return OK(result=EventEntry.from_orm(score))
+        return OK(result=EventEntryDetailed.from_orm(score))
     else:
-        raise BadRequest('Invalid event or client id. You might miss authorization')
+        raise BadRequest('Invalid event or entry id. You might miss authorization')
 
 
 class EventUpdate(BaseModel):
