@@ -6,9 +6,9 @@ from uuid import UUID
 import pytz
 import sqlalchemy.exc
 from fastapi import APIRouter, Depends
-from fastapi.params import Path
+from fastapi.params import Path, Query
 from pydantic import validator
-from sqlalchemy import select, or_, insert, delete
+from sqlalchemy import select, or_, insert, delete, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -18,14 +18,15 @@ from database import utils as dbutils
 from database.dbasync import db_first, redis, db_unique, wrap_greenlet
 from database.dbmodels import Client
 from database.dbmodels.authgrant import AuthGrant, EventGrant
-from database.dbmodels.event import Event as EventDB, EventState
-from database.dbmodels.evententry import EventEntry as EventEntryDB
+from database.dbmodels.event import Event as EventDB, EventState, EventEntry
+from database.dbmodels.evententry import EventEntry as EventEntryDB, EventScore as EventScoreDB
 from database.dbmodels.user import User
 from database.dbmodels.client import add_client_filters
-from database.models import BaseModel, InputID
+from database.models import BaseModel, InputID, OutputID, OrmBaseModel
 from database.models.document import DocumentModel
 from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, Leaderboard, Summary, \
-    EventEntry, EventEntryDetailed
+    EventEntry, EventEntryDetailed, EventScore
+from core.utils import groupby
 
 router = APIRouter(
     tags=["event"],
@@ -142,8 +143,9 @@ SummaryEvent = event_dep(
 
 @router.get('/{event_id}/leaderboard', response_model=ResponseModel[Leaderboard])
 async def get_event(db: AsyncSession = Depends(get_db),
+                    date: datetime = None,
                     event: EventDB = Depends(SummaryEvent)):
-    leaderboard = await event.get_leaderboard()
+    leaderboard = await event.get_leaderboard(date)
     await db.commit()
 
     return OK(result=leaderboard)
@@ -153,9 +155,10 @@ EventAuth = get_auth_grant_dependency(EventGrant)
 
 
 @router.get('/{event_id}/summary', response_model=ResponseModel[Summary])
-async def get_summary(event: EventDB = Depends(SummaryEvent)):
-    leaderboard = await event.get_summary()
-    return OK(result=leaderboard)
+async def get_summary(event: EventDB = Depends(SummaryEvent),
+                      date: datetime = None):
+    summary = await event.get_summary(date)
+    return OK(result=summary)
 
 
 @router.get('/{event_id}/registrations/{entry_id}',
@@ -164,7 +167,6 @@ async def get_summary(event: EventDB = Depends(SummaryEvent)):
 async def get_event_entry(event_id: int,
                           entry_id: int,
                           db: AsyncSession = Depends(get_db)):
-
     score = await db_unique(
         select(EventEntryDB).filter_by(
             id=entry_id,
@@ -178,6 +180,32 @@ async def get_event_entry(event_id: int,
         return OK(result=EventEntryDetailed.from_orm(score))
     else:
         raise BadRequest('Invalid event or entry id. You might miss authorization')
+
+
+class EntryHistoryResponse(OrmBaseModel):
+    by_entry: dict[OutputID, list[EventScore]]
+
+
+@router.get('/{event_id}/registrations/history}',
+            response_model=ResponseModel[EventEntryDetailed],
+            dependencies=[Depends(EventAuth)])
+async def get_event_entry_history(event_id: int,
+                                  entry_ids: list[InputID] = Query(alias='entry_id'),
+                                  db: AsyncSession = Depends(get_db)):
+    scores = await db_unique(
+        select(EventScoreDB).where(
+            EventScoreDB.entry_id.in_(entry_ids),
+            EventEntryDB.event_id == event_id
+        ).join(
+            EventScoreDB.entry
+        ).order_by(
+            asc(EventScoreDB.time)
+        ),
+        session=db
+    )
+    grouped = groupby(scores, 'entry_id')
+
+    return OK(result=EntryHistoryResponse(by_entry=grouped))
 
 
 class EventUpdate(BaseModel):

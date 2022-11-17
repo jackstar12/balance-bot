@@ -325,12 +325,12 @@ class Event(Base, Serializer):
     async def finalize(self):
         pass
 
-    async def get_summary(self):
+    async def get_summary(self, date: datetime = None):
 
         if self.is_(EventState.ARCHIVED) and self.final_summary:
             return self.final_summary
 
-        leaderboard = await self.get_leaderboard()
+        leaderboard = await self.get_leaderboard(date)
 
         if not leaderboard.valid:
             return None

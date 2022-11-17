@@ -11,7 +11,6 @@ COPY lib/database/database/__init__.py /app/lib/database/database/__init__.py
 COPY lib/database/../core/pyproject.toml /app/lib/database/../core/pyproject.toml
 COPY lib/database/../core/core/__init__.py /app/lib/database/../core/core/__init__.py
 
-
 WORKDIR /app/lib/database/
 
 RUN export PATH=$PATH:$HOME/.local/bin &&    poetry config virtualenvs.create false &&    poetry install --without dev
