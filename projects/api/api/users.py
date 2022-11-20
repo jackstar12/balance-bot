@@ -212,11 +212,10 @@ def get_auth_grant_dependency(*association_tables: Type[GrantAssociaton],
                 base = base.where(
                     AuthGrant.user_id == public_id,
                 )
+            elif user:
+                return AuthGrant(user=user, user_id=user.id, root=True)
             elif not association_tables:
-                if user:
-                    return AuthGrant(user=user, user_id=user.id, root=True)
-                else:
-                    raise Unauthorized()
+                raise Unauthorized()
 
         if association_tables:
             for association_table in association_tables:

@@ -9,6 +9,7 @@ import urllib.parse
 from asyncio import Future, Task
 from asyncio.queues import PriorityQueue
 from collections import deque, OrderedDict
+from copy import copy, deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -26,7 +27,7 @@ from sqlalchemy.orm import selectinload, sessionmaker, joinedload
 
 import core
 from core import json as customjson
-from database.dbasync import db_unique, db_all, db_select
+from database.dbasync import db_unique, db_all, db_select, db_select_all
 from database.dbmodels.client import Client, ClientState
 from database.dbmodels.execution import Execution
 from database.dbmodels.pnldata import PnlData
@@ -285,7 +286,6 @@ class ExchangeWorker:
             for raw_transfer in raw_transfers:
 
                 if raw_transfer.amount:
-
                     market = Market(
                         base=raw_transfer.coin,
                         quote=self.client.currency
@@ -387,7 +387,7 @@ class ExchangeWorker:
             def get_time(b: Balance):
                 return b.time
 
-            current_balance = await self._update_realized_balance(db)
+            prev_balance = await self._update_realized_balance(db)
 
             if executions_by_symbol:
                 for symbol, executions in executions_by_symbol.items():
@@ -404,7 +404,13 @@ class ExchangeWorker:
                     while to_exec:
                         current_executions = [to_exec]
                         # TODO: What if the start point isnt from 0 ?
+
                         open_qty = to_exec.effective_qty or 0
+
+                        for trade in client.trades:
+                            if trade.is_open and trade.symbol == symbol:
+                                open_qty += trade.open_qty
+
                         while open_qty != 0 and to_exec:
                             to_exec = next(exec_iter, None)
                             if to_exec:
@@ -430,9 +436,12 @@ class ExchangeWorker:
                                                                            [item],
                                                                            realtime=False)
                             elif isinstance(item, OHLC) and current_trade:
+                                if isinstance(item.open, float):
+                                    pass
                                 current_trade.update_pnl(
                                     current_trade.calc_upnl(item.open),
                                     now=item.time,
+                                    extra_currencies={client.currency: item.open}
                                 )
                         to_exec = next(exec_iter, None)
 
@@ -453,13 +462,11 @@ class ExchangeWorker:
             current_misc = next(misc_iter, None)
 
             balances = []
-
-            pnl_data = await db_all(
-                select(PnlData).filter(
-                    PnlData.trade_id.in_(execution.trade_id for execution in all_executions)
-                ).order_by(
-                    desc(PnlData.time)
-                ),
+            pnl_data = await db_select_all(
+                PnlData,
+                PnlData.trade_id.in_(execution.trade_id for execution in all_executions),
+                eager=[PnlData.trade],
+                apply=lambda s: s.order_by(desc(PnlData.time)),
                 session=db
             )
 
@@ -473,19 +480,32 @@ class ExchangeWorker:
                 prev_exec: Execution
                 next_exec: Execution
 
-                new_balance = db_balance.Balance(
-                    realized=current_balance.realized,
-                    unrealized=current_balance.unrealized,
+                current_balance = db_balance.Balance(
+                    realized=prev_balance.realized,
+                    unrealized=prev_balance.unrealized,
+                    extra_currencies=[
+                        db_balance.Amount(
+                            currency=amount.currency,
+                            realized=amount.realized,
+                            unrealized=amount.unrealized
+                        )
+                        for amount in prev_balance.extra_currencies
+                    ],
                     time=execution.time,
                     client=self.client
                 )
-                new_balance.__realtime__ = False
+
+                current_balance.__realtime__ = False
 
                 if execution.type == ExecType.TRANSFER:
-                    new_balance.realized -= execution.effective_size
+                    if execution.settle != client.currency:
+                        amt = current_balance.get_amount(execution.settle)
+                        amt.realized -= execution.effective_size
+                    else:
+                        current_balance.realized -= execution.effective_size
 
                 while current_misc and execution.time <= current_misc.time:
-                    new_balance.realized -= current_misc.amount
+                    current_balance.realized -= current_misc.amount
                     current_misc = next(misc_iter, None)
 
                 pnl_by_trade = {}
@@ -497,39 +517,68 @@ class ExchangeWorker:
                             pnl_by_trade[cur_pnl.trade_id] = cur_pnl
                         cur_pnl = next(pnl_iter, None)
 
-                if prev_exec:
-                    if prev_exec.realized_pnl:
-                        new_balance.realized -= prev_exec.realized_pnl
-                    if prev_exec.commission:
-                        new_balance.realized += prev_exec.commission
-
-                    current_balance.unrealized = current_balance.realized + sum(
-                        # Note that when upnl of the current execution is included the rpnl that was realized
-                        # can't be included anymore
-                        pnl_data.unrealized
-                        if tr_id != execution.trade_id
-                        else pnl_data.unrealized - (execution.realized_pnl or 0)
-                        for tr_id, pnl_data in pnl_by_trade.items()
-                    )
-
                 if execution.trade and execution.trade.open_time == execution.time:
-                    execution.trade.init_balance = new_balance
+                    execution.trade.init_balance = current_balance
+
+                if execution.net_pnl:
+                    if execution.settle != client.currency:
+                        amt = current_balance.get_amount(execution.settle)
+                        amt.realized -= execution.net_pnl
+                    else:
+                        current_balance.realized -= execution.net_pnl
+
+                if current_balance.extra_currencies:
+                    current_balance.realized = 0
+                    for amount in current_balance.extra_currencies:
+                        rate = await self._conversion_rate(
+                            Market(base=amount.currency, quote=client.currency),
+                            execution.time
+                        )
+                        amount.rate = rate
+                        current_balance.realized += amount.realized * rate
+
+                current_balance.unrealized = current_balance.realized
+
+                #base = sum(
+                #    # Note that when upnl of the current execution is included the rpnl that was realized
+                #    # can't be included anymore
+                #    pnl_data.unrealized
+                #    if tr_id != execution.trade_id
+                #    else pnl_data.unrealized - execution.net_pnl
+                #    for tr_id, pnl_data in pnl_by_trade.items()
+                #)
+#
+                #if execution.settle != client.currency:
+                #    amt = new_balance.get_amount(execution.settle)
+                #    prev = current_balance.get_amount(execution.settle)
+                #    amt.unrealized = amt.realized + base
+                #    new_balance.unrealized = new_balance.realized + sum(
+                #        # Note that when upnl of the current execution is included the rpnl that was realized
+                #        # can't be included anymore
+                #        pnl_data.unrealized_ccy(client.currency)
+                #        if tr_id != execution.trade_id
+                #        else pnl_data.unrealized_ccy(client.currency) - execution.net_pnl * execution.price
+                #        for tr_id, pnl_data in pnl_by_trade.items()
+                #    )
+                #else:
+                #    new_balance.unrealized = new_balance.realized + base
+
 
                 # Don't bother adding multiple balances for executions happening as a direct series of events
                 if not prev_exec or prev_exec.time != execution.time:
-                    balances.append(new_balance)
-                current_balance = new_balance
+                    balances.append(current_balance)
+                prev_balance = current_balance
 
-            if all_executions:
-                first_execution = all_executions[0]
-                balances.append(
-                    db_balance.Balance(
-                        realized=current_balance.realized + (first_execution.commission or 0),
-                        unrealized=current_balance.unrealized + (first_execution.commission or 0),
-                        time=first_execution.time - timedelta(seconds=1),
-                        client=self.client
-                    )
-                )
+            #if all_executions:
+            #    first_execution = all_executions[0]
+            #    balances.append(
+            #        db_balance.Balance(
+            #            realized=current_balance.realized + (first_execution.commission or 0),
+            #            unrealized=current_balance.unrealized + (first_execution.commission or 0),
+            #            time=first_execution.time - timedelta(seconds=1),
+            #            client=self.client
+            #        )
+            #    )
 
             db.add_all(balances)
             db.add_all(transfers)
@@ -712,12 +761,13 @@ class ExchangeWorker:
         :param now: [optional] can be passed to replace datetime.now()
         :return: Fitting resolution or  None
         """
-        to = to or datetime.now(pytz.utc)
-        for res in resolutions_s:
-            current_n = (to - since).total_seconds() // res
-            if current_n <= n:
-                return int(current_n), res
-        return None
+        if to:
+            for res in resolutions_s:
+                current_n = (to - since).total_seconds() // res
+                if current_n <= n:
+                    return int(current_n), res
+        else:
+            return n, resolutions_s[0]
 
     async def cleanup(self):
         pass

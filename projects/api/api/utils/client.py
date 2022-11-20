@@ -343,7 +343,7 @@ def query_balance(*eager,
                   query_params: ClientQueryParams,
                   db: AsyncSession):
     return query_table(*eager,
-                       table=Balance, time_col=Balance.time, user=user,
+                       table=Balance, time_col=Balance.time, user_id=user.id,
                        ids=balance_id, query_params=query_params, db=db)
     # return db_all(
     #     add_client_filters(

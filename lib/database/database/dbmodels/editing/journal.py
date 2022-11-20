@@ -1,14 +1,17 @@
 from datetime import date, timedelta
 from enum import Enum
+from operator import and_
 from typing import TypedDict, Optional
 from typing import TYPE_CHECKING
 from fastapi_users_db_sqlalchemy import GUID
 
 import sqlalchemy as sa
-from sqlalchemy import orm
+from sqlalchemy import orm, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import relationship, aliased
 
+from database import dbmodels
 from database.dbmodels.editing.template import Template
 import core
 from database.dbsync import Base, BaseMixin
@@ -187,8 +190,22 @@ class Journal(Base, BaseMixin):
     def client_ids(self):
         return [client.id for client in self.clients]
 
+    @client_ids.expression
+    def client_ids(self):
+        return (
+            select(dbmodels.Client.id).join(self.clients).scalar_subquery()
+        )
+
     async def init(self, db_session: AsyncSession):
         return
 
     def flatten_content(self):
         pass
+#test = aliased(Client.id)
+#
+#Journal.client_ids = relationship(
+#    test,
+#    primaryjoin=and_(
+#journal_association.
+#    )
+#)

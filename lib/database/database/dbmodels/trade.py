@@ -323,7 +323,7 @@ class Trade(Base, Serializer, CurrencyMixin, FilterMixin):
             return int
 
     def calc_pnl(self, qty: Decimal, exit: Decimal):
-        diff = 1 / self.entry - 1 / exit if self.inverse else exit - self.entry
+        diff = 1 / self.entry - 1 / Decimal(exit) if self.inverse else Decimal(exit) - self.entry
         raw = diff * qty
         return raw * -1 if self.initial.side == Side.SELL else raw
 
@@ -415,6 +415,8 @@ class Trade(Base, Serializer, CurrencyMixin, FilterMixin):
                 )
                 self.qty += execution.qty
                 self.open_qty += execution.qty
+                if execution.commission:
+                    self.total_commissions += execution.commission
             else:
                 if execution.qty > self.open_qty:
                     new_exec = Execution(
@@ -452,7 +454,7 @@ class Trade(Base, Serializer, CurrencyMixin, FilterMixin):
                         self.total_commissions += execution.commission
 
                     if self.open_qty.is_zero():
-                        self.update_pnl(0, force=True, now=execution.time)
+                        self.update_pnl(Decimal(0), force=True, now=execution.time)
 
         return new
 

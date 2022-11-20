@@ -15,7 +15,7 @@ from api.dependencies import get_db
 from api.users import CurrentUser, get_current_user, get_auth_grant_dependency, DefaultGrant
 from api.utils.responses import BadRequest, OK, InternalError, ResponseModel, NotFound
 from database import utils as dbutils
-from database.dbasync import db_first, redis, db_unique, wrap_greenlet
+from database.dbasync import db_first, redis, db_unique, wrap_greenlet, db_all
 from database.dbmodels import Client
 from database.dbmodels.authgrant import AuthGrant, EventGrant
 from database.dbmodels.event import Event as EventDB, EventState, EventEntry
@@ -161,6 +161,33 @@ async def get_summary(event: EventDB = Depends(SummaryEvent),
     return OK(result=summary)
 
 
+class EntryHistoryResponse(OrmBaseModel):
+    by_entry: dict[OutputID, list[EventScore]]
+
+
+@router.get('/{event_id}/registrations/history',
+            response_model=ResponseModel[EntryHistoryResponse],
+            dependencies=[Depends(EventAuth)])
+async def get_event_entry_history(event_id: InputID,
+                                  entry_ids: list[InputID] = Query(alias='entry_id'),
+                                  db: AsyncSession = Depends(get_db)):
+    scores = await db_all(
+        select(EventScoreDB).where(
+            EventScoreDB.entry_id.in_(entry_ids),
+            EventEntryDB.event_id == event_id
+        ).join(
+            EventScoreDB.entry
+        ).order_by(
+            asc(EventScoreDB.time)
+        ),
+        session=db
+    )
+
+    grouped = groupby(scores or [], 'entry_id')
+
+    return OK(result=EntryHistoryResponse(by_entry=grouped))
+
+
 @router.get('/{event_id}/registrations/{entry_id}',
             response_model=ResponseModel[EventEntryDetailed],
             dependencies=[Depends(EventAuth)])
@@ -181,31 +208,6 @@ async def get_event_entry(event_id: int,
     else:
         raise BadRequest('Invalid event or entry id. You might miss authorization')
 
-
-class EntryHistoryResponse(OrmBaseModel):
-    by_entry: dict[OutputID, list[EventScore]]
-
-
-@router.get('/{event_id}/registrations/history}',
-            response_model=ResponseModel[EventEntryDetailed],
-            dependencies=[Depends(EventAuth)])
-async def get_event_entry_history(event_id: int,
-                                  entry_ids: list[InputID] = Query(alias='entry_id'),
-                                  db: AsyncSession = Depends(get_db)):
-    scores = await db_unique(
-        select(EventScoreDB).where(
-            EventScoreDB.entry_id.in_(entry_ids),
-            EventEntryDB.event_id == event_id
-        ).join(
-            EventScoreDB.entry
-        ).order_by(
-            asc(EventScoreDB.time)
-        ),
-        session=db
-    )
-    grouped = groupby(scores, 'entry_id')
-
-    return OK(result=EntryHistoryResponse(by_entry=grouped))
 
 
 class EventUpdate(BaseModel):

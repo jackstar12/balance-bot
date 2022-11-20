@@ -29,6 +29,8 @@ class EventScore(Base, Serializer):
     abs_value = Column(Numeric, nullable=True)
     rel_value = Column(Numeric, nullable=True)
 
+    entry = relationship('EventEntry')
+
     async def get_entry(self):
         return await self.async_session.get(EventEntry, self.entry_id)
 

@@ -35,6 +35,10 @@ class Execution(Base, Serializer, CurrencyMixin):
     )
 
     @hybrid_property
+    def net_pnl(self):
+        return (self.realized_pnl or Decimal(0)) - (self.commission or Decimal(0))
+
+    @hybrid_property
     def size(self):
         return self.price * self.qty
 

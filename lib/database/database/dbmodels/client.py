@@ -29,9 +29,9 @@ from database.errors import UserInputError
 from database.dbmodels.transfer import Transfer
 
 from database.dbmodels.mixins.editsmixin import EditsMixin
-from core import json as customjson
+from core import json as customjson, safe_cmp
 from database.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey, db_unique, \
-    time_range
+    time_range, safe_op
 from database.dbmodels.editing.chapter import Chapter
 from database.dbmodels.discord.guildassociation import GuildAssociation
 from database.dbmodels.pnldata import PnlData
@@ -46,7 +46,6 @@ from database.redis.client import ClientSpace
 
 if TYPE_CHECKING:
     from database.dbmodels import BalanceDB as Balance, Event
-
 
 from pydantic import BaseModel as PydanticBaseModel, Field
 
@@ -486,7 +485,6 @@ class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
     def is_active(self):
         return not all(not event.is_active for event in self.events)
 
-
     async def initial(self):
         b = dbmodels.Balance
         return await db_first(
@@ -507,10 +505,12 @@ class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
         return self.id.__hash__()
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user_id: UUID, client_ids: set[int] | list[int] = None) -> \
-        Union[Select, Delete, Update]:
+def add_client_filters(stmt: Union[Select, Delete, Update], user_id: UUID,
+                       client_ids: set[int] | list[int] = None,
+                       currency: str = None) -> Union[Select, Delete, Update]:
     """
     Commonly used utility to add filters that ensure authorized client access
+    :param currency:
     :param stmt: stmt to add filters to
     :param user_id: desired user
     :param client_ids: possible client ids. If None, all clients will be used
@@ -525,6 +525,7 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user_id: UUID, clien
             Client.user_id == user_id,
             # Client.oauth_account_id == user.discord_user_id if user.discord_user_id else False
         ),
-        #Client.type == ClientType.FULL,
-        Client.state.not_in((ClientState.INVALID, ClientState.SYNCHRONIZING))
+        # Client.type == ClientType.FULL,
+        Client.state.not_in((ClientState.INVALID, ClientState.SYNCHRONIZING)),
+        safe_op(Client.currency, currency)
     )

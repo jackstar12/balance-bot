@@ -28,6 +28,7 @@ class Amount(Base, ClientQueryMixin, Serializer, _Common):
     balance_id = Column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
     balance = relationship('Balance', lazy='raise')
     currency: str = Column(sa.String, primary_key=True)
+    rate = Column(Numeric, nullable=True)
 
 
 class Balance(Base, _Common, Serializer, ClientQueryMixin):
@@ -46,11 +47,10 @@ class Balance(Base, _Common, Serializer, ClientQueryMixin):
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
-    client: 'Client' = relationship('Client', lazy='raise', foreign_keys=client_id)
     time = Column(DateTime(timezone=True), nullable=False, index=True)
+
+    client: 'Client' = relationship('Client', lazy='raise', foreign_keys=client_id)
     extra_currencies: list[Amount] = relationship('Amount', lazy='noload', back_populates='balance')
-    transfer_id = Column(Integer, ForeignKey('transfer.id', ondelete='SET NULL'), nullable=True)
-    transfer = relationship('Transfer')
 
     @hybrid_property
     def client_save(self):
@@ -79,10 +79,23 @@ class Balance(Base, _Common, Serializer, ClientQueryMixin):
         d['client_id'] = self.client_id
         return d
 
+    def get_amount(self, ccy: str = None):
+        for amount in self.extra_currencies:
+            if amount.currency == ccy:
+                return amount
+        amt = Amount(currency=ccy, realized=0, unrealized=0)
+        self.extra_currencies.append(amt)
+        return amt
+
     def get_currency(self, ccy: str = None) -> AmountModel:
         for amount in self.extra_currencies:
             if amount.currency == ccy:
-                return AmountModel.from_orm(amount)
+                return AmountModel(
+                    realized=amount.realized,
+                    unrealized=amount.unrealized,
+                    currency=ccy,
+                    time=self.time
+                )
         return AmountModel(
             realized=self.realized,
             unrealized=self.unrealized,
@@ -130,4 +143,3 @@ class Balance(Base, _Common, Serializer, ClientQueryMixin):
     @classmethod
     def is_data(cls):
         return True
-

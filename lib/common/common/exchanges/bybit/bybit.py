@@ -21,6 +21,7 @@ from database.errors import ResponseError, InvalidClientError, RateLimitExceeded
 from common.exchanges.bybit.websocket import BybitWebsocketClient
 from common.exchanges.exchangeworker import ExchangeWorker, create_limit
 from database.models.async_websocket_manager import WebsocketManager
+from database.models.market import Market
 from database.models.ohlc import OHLC
 from ccxt.async_support import bybit
 
@@ -60,6 +61,8 @@ _interval_map = {
     **tf_helper('M', utils.WEEK * 4, [1]),
 }
 
+_all_intervals = list(_interval_map.keys())
+
 
 class _BybitBaseClient(ExchangeWorker, ABC):
     supports_extended_data = True
@@ -72,6 +75,10 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
     _response_error = 'ret_msg'
     _response_result = 'result'
+
+    @classmethod
+    def get_symbol(cls, market: Market) -> str:
+        return market.base + market.quote
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -445,7 +452,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
         if not resolution_s:
             limit, resolution_s = self._calc_resolution(
                 limit,
-                list(_interval_map.keys()),
+                _all_intervals,
                 since,
                 to
             )
@@ -461,10 +468,10 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
         contract_type = _get_contract_type(symbol)
         # Different endpoints, but they both use the exact same repsonse
         if contract_type == ContractType.INVERSE:
-            # https://bybit-exchange.github.io/docs/inverse/#t-markpricekline
+            # https://bybit-exchange.github.io/docs/futuresV2/inverse/#t-markpricekline
             url = '/v2/public/mark-price-kline'
         elif contract_type == ContractType.LINEAR:
-            # https://bybit-exchange.github.io/docs/linear/#t-markpricekline
+            # https://bybit-exchange.github.io/docs/futuresV2/linear/#t-markpricekline
             url = '/public/linear/mark-price-kline'
         else:
             raise
@@ -489,7 +496,6 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                     high=ohlc["high"],
                     low=ohlc["low"],
                     close=ohlc["close"],
-                    volume=Decimal(0),
                     time=self.parse_ts(ohlc["start_at"])
                 )
                 for ohlc in data

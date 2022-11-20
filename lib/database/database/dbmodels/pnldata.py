@@ -9,6 +9,7 @@ from database.dbsync import Base
 from enum import Enum as PyEnum
 from database.models.compactpnldata import CompactPnlData
 from database.dbmodels.mixins.serializer import Serializer
+import database.dbmodels as dbmodels
 
 
 class PNLType(PyEnum):
@@ -29,6 +30,10 @@ class PnlData(Base, Serializer):
     time = Column(DateTime(timezone=True), nullable=False, index=True)
     extra_currencies = Column(JSONB, nullable=True)
 
+    @property
+    def _trade(self):
+        return self.sync_session.get(dbmodels.Trade, self.trade_id)
+
     @hybrid_property
     def total(self) -> Decimal:
         return self.realized + self.unrealized
@@ -38,7 +43,7 @@ class PnlData(Base, Serializer):
         return True
 
     def _rate(self, ccy: str):
-        return self.extra_currencies.get(ccy, 0) if ccy != self.trade.settle else 1
+        return Decimal(self.extra_currencies.get(ccy, 0) if self.extra_currencies and ccy != self.trade.settle else 1)
 
     def realized_ccy(self, currency: str):
         return self.realized * self._rate(currency)

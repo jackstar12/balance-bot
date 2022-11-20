@@ -60,6 +60,7 @@ class ClientInfo(BaseModel):
     name: Optional[str]
     type: ClientType
     state: ClientState
+    currency: str
     trade_template_id: Optional[OutputID]
 
     created_at: datetime

@@ -50,24 +50,26 @@ async def db_exec(stmt: Any, session: AsyncSession = None) -> Any:
 
 
 Table = TypeVar('Table', bound=Base)
-
+StmtCallable = Callable[[Select], Any]
 
 async def db_select(cls: Type[Table],
                     *where,
                     eager=None,
                     session: AsyncSession = None,
+                    apply: StmtCallable = None,
                     **filters) -> Optional[Table]:
-    stmt = db_eager(select(cls), *eager) if eager else select(cls)
-    return await db_first(stmt.where(*where).filter_by(**filters), session=session)
+    stmt = db_eager(select(cls).where(*where).filter_by(**filters), *eager) if eager else select(cls)
+    return await db_first(apply(stmt) if apply else stmt, session=session)
 
 
 async def db_select_all(cls: Type[Table],
                         *where,
                         eager=None,
                         session: AsyncSession = None,
+                        apply: StmtCallable = None,
                         **filters) -> list[Table]:
-    stmt = db_eager(select(cls), *eager) if eager else select(cls)
-    return await db_all(stmt.where(*where).filter_by(**filters), session=session)
+    stmt = db_eager(select(cls).where(*where).filter_by(**filters), *eager) if eager else select(cls)
+    return await db_all(apply(stmt) if apply else stmt, session=session)
 
 
 async def db_all(stmt: Select, *eager, session=None) -> list[Any]:

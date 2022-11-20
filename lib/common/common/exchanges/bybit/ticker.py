@@ -10,7 +10,6 @@ from database.models.async_websocket_manager import WebsocketManager
 from database.models.ticker import Ticker
 
 
-
 class _BybitTicker(ExchangeTicker):
     _WS_ENDPOINT = None
     EXCHANGE = ''

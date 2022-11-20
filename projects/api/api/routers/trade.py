@@ -27,7 +27,7 @@ from api.models.trade import Trade, BasicTrade, DetailledTrade, UpdateTrade, Upd
 from api.users import CurrentUser, get_auth_grant_dependency, DefaultGrant
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, ResponseModel, Unauthorized
 from database.dbasync import db_first, db_all, redis_bulk, redis
-from database.dbmodels import TradeDB as TradeDB, Chapter
+from database.dbmodels import TradeDB as TradeDB, Chapter, Balance
 from database.dbmodels.client import add_client_filters, QueryParams
 from database.dbmodels.label import Label as LabelDB
 from database.dbmodels.client import ClientQueryParams
@@ -227,7 +227,7 @@ create_trade_endpoint(
     TradeDB.max_pnl,
     TradeDB.min_pnl,
     TradeDB.labels,
-    TradeDB.init_balance,
+    (TradeDB.init_balance, Balance.extra_currencies),
 )
 
 

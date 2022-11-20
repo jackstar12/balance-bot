@@ -71,7 +71,6 @@ class UserInfo(UserRead, UserPublicInfo):
 
 
 
-
 @router.get('', response_model=ResponseModel[UserInfo])
 async def info(user: User = Depends(user_info_dep),
                db: AsyncSession = Depends(get_db)):

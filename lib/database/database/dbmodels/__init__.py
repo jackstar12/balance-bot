@@ -34,6 +34,7 @@ Balance = balance.Balance
 Chapter = chapter.Chapter
 Execution = execution.Execution
 TradeDB = trade.Trade
+Trade = trade.Trade
 EventEntry = evententry.EventEntry
 EventScore = evententry.EventScore
 Event = event.Event

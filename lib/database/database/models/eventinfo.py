@@ -101,9 +101,10 @@ class EventScore(OrmBaseModel):
 class EventEntry(OrmBaseModel):
     id: OutputID
     user: UserPublicInfo
+    exchange: Optional[str]
     nick_name: Optional[str]
-    exchange: str
     init_balance: Optional[Balance]
+    joined_at: datetime
 
 
 class EventEntryDetailed(EventEntry):

@@ -213,11 +213,10 @@ class BinanceFutures(_BinanceBaseClient):
         return [
             OHLC(
                 time=self.parse_ms(data[0]),
-                open=Decimal(data[1]),
-                high=Decimal(data[2]),
-                low=Decimal(data[3]),
-                close=Decimal(data[4]),
-                volume=Decimal(0)
+                open=data[1],
+                high=data[2],
+                low=data[3],
+                close=data[4],
             )
             for data in data
         ]

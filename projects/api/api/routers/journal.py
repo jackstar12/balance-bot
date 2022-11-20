@@ -127,7 +127,8 @@ async def get_journal(journal_id: int,
                       grant: AuthGrant = Depends(get_auth_grant_dependency(JournalGrant)),
                       db: AsyncSession = Depends(get_db)):
     journal = await query_journal(
-        journal_id, grant.user_id,
+        journal_id,
+        grant.user_id,
         Journal.default_template,
         Journal.clients,
         grant.is_root_for(AssociationType.JOURNAL) and Journal.grants,

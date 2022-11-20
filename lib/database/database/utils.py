@@ -58,7 +58,8 @@ async def query_table(*eager,
         add_client_filters(
             stmt,
             user_id=user_id,
-            client_ids=query_params.client_ids
+            client_ids=query_params.client_ids,
+            currency=query_params.currency
         ),
         *eager,
         session=db
