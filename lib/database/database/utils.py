@@ -59,7 +59,6 @@ async def query_table(*eager,
             stmt,
             user_id=user_id,
             client_ids=query_params.client_ids,
-            currency=query_params.currency
         ),
         *eager,
         session=db

@@ -18,7 +18,7 @@ from database.models.interval import Interval
 
 
 def get_query_params(id: set[InputID] = Query(default=[]),
-                     currency: str = Query(default='USD'),
+                     currency: str = Query(default=None),
                      since: datetime = Query(default=None),
                      to: datetime = Query(default=None),
                      order: str = Query(default='asc')):
@@ -55,19 +55,13 @@ class ClientInfo(BaseModel):
     id: OutputID
     user_id: Optional[UUID4]
     discord_user_id: Optional[OutputID]
-
     exchange: str
     name: Optional[str]
     type: ClientType
     state: ClientState
     currency: str
     trade_template_id: Optional[OutputID]
-
-    created_at: datetime
-    last_edited: Optional[datetime]
-    subaccount: Optional[str]
-    api_key: str
-    extra_kwargs: Optional[Dict]
+    currently_realized: Optional[Balance]
 
     class Config:
         orm_mode = True

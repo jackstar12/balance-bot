@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTasks
 
 from database.dbmodels.label import LabelGroup
 from api.dependencies import get_db
@@ -42,15 +43,12 @@ async def delete_user(db: AsyncSession = Depends(get_db), user: User = Depends(C
 
 user_info_dep = get_current_user(
     User.oauth_accounts,
-    (User.label_groups, LabelGroup.labels),
-    User.alerts,
     User.all_clients
 )
 
 
 class UserInfo(UserRead, UserPublicInfo):
     all_clients: list[ClientInfo]
-    label_groups: list[LabelGroupInfo]
     alerts: list[Alert]
 
     class Config:
@@ -70,11 +68,12 @@ class UserInfo(UserRead, UserPublicInfo):
 #    )
 
 
-
 @router.get('', response_model=ResponseModel[UserInfo])
-async def info(user: User = Depends(user_info_dep),
+async def info(background: BackgroundTasks,
+               user: User = Depends(user_info_dep),
                db: AsyncSession = Depends(get_db)):
     for account in user.oauth_accounts:
+        # background.add_task(account.populate_oauth_data, redis=redis)
         await account.populate_oauth_data(redis=redis)
 
     await db.commit()

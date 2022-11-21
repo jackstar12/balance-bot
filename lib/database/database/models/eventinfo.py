@@ -60,7 +60,7 @@ class _Common(BaseModel):
     end: datetime
     name: str
     description: DocumentModel
-    public: bool
+    public: Optional[bool]
     location: Union[DiscordLocation, WebLocation] = Field(..., disriminator='platform')
     max_registrations: int
     currency: Optional[str] = Field(default='USD')

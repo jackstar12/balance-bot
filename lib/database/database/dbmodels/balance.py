@@ -50,7 +50,7 @@ class Balance(Base, _Common, Serializer, ClientQueryMixin):
     time = Column(DateTime(timezone=True), nullable=False, index=True)
 
     client: 'Client' = relationship('Client', lazy='raise', foreign_keys=client_id)
-    extra_currencies: list[Amount] = relationship('Amount', lazy='noload', back_populates='balance')
+    extra_currencies: list[Amount] = relationship('Amount', lazy='joined', back_populates='balance')
 
     @hybrid_property
     def client_save(self):

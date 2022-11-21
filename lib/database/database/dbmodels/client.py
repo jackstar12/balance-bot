@@ -147,7 +147,7 @@ class QueryParams(BaseModel):
 
 class ClientQueryParams(QueryParams):
     client_ids: set[InputID]
-    currency: str
+    currency: Optional[str]
 
 
 class ClientQueryMixin:

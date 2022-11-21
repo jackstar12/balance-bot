@@ -1,4 +1,5 @@
 import asyncio
+import operator
 import time
 from datetime import datetime
 from decimal import Decimal
@@ -19,7 +20,7 @@ from api.routers.template import query_templates
 from core import join_args, json, groupby
 from core.json import dumps
 from database.dbmodels.authgrant import AuthGrant, TradeGrant, AssociationType, ChapterGrant
-from database.models.document import DocumentModel
+from database.models.document import DocumentModel, Operator
 from api.dependencies import get_messenger, get_db, \
     FilterQueryParamsDep
 from api.models.client import get_query_params
@@ -117,7 +118,7 @@ class TradeQueryParams(ClientQueryParams):
 
 def get_trade_params(client_id: set[InputID] = Query(default=[]),
                      trade_id: set[InputID] = Query(default=[], alias='id'),
-                     currency: str = Query(default='USD'),
+                     currency: str = Query(default=None),
                      since: datetime = Query(default=None),
                      to: datetime = Query(default=None),
                      order: Literal['asc', 'desc'] = Query(default='asc')):
@@ -169,6 +170,16 @@ def create_trade_endpoint(path: str,
 
         hits, misses = await cache.read(db)
 
+        if query_params.trade_ids:
+            filter_params.append(
+                FilterParam.construct(field='id', values=list(map(str, query_params.trade_ids)), op=Operator.EQ)
+            )
+
+        if query_params.currency:
+            filter_params.append(
+                FilterParam.construct(field='settle', values=[query_params.currency], op=Operator.EQ)
+            )
+
         if misses:
             query_params.client_ids = misses
 
@@ -194,10 +205,7 @@ def create_trade_endpoint(path: str,
                     client_id,
                     trades
                 )
-        if query_params.trade_ids:
-            filter_params.append(
-                FilterParam.construct(field='id', values=list(map(str, query_params.trade_ids)))
-            )
+
 
         ts4 = time.perf_counter()
         return OK(
