@@ -136,6 +136,7 @@ def create_trade_endpoint(path: str,
                           model: Type[BasicTrade],
                           *eager,
                           **kwargs):
+
     class Trades(BaseModel):
         data: list[model]
 

@@ -150,6 +150,9 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         # query_params.client_ids = [None]
         any_client = True
 
+    if not query_params.currency:
+        query_params.currency = 'USD'
+
     raw_overviews, non_cached = await cache.read(db)
 
     if non_cached:
