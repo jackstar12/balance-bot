@@ -50,7 +50,6 @@ class DocumentModel(BaseModel):
     attrs: 'Optional[dict]'
     marks: 'Optional[list[Mark]]'
 
-
     @property
     def title(self):
         titleNode = self[0]

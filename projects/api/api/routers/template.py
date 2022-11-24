@@ -1,23 +1,26 @@
 import operator
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from api.dependencies import get_messenger, get_db
-from api.models.template import TemplateUpdate, TemplateInfo, TemplateCreate
-from api.users import CurrentUser
+from api.models.template import TemplateUpdate, TemplateInfo, TemplateCreate, TemplateDetailed
+from api.users import CurrentUser, get_auth_grant_dependency, DefaultGrant
 from api.utils.responses import OK, CustomJSONResponse, NotFound
-from database.dbasync import db_unique, db_all, db_del_filter, safe_op
+from database.dbasync import db_unique, db_all, db_del_filter, safe_op, wrap_greenlet
 from database.dbmodels import Client
+from database.dbmodels.authgrant import TemplateGrant, AuthGrant, AssociationType
 from database.dbmodels.editing import Journal
 from database.dbmodels.editing.template import Template as DbTemplate, TemplateType
 from database.dbmodels.user import User
 
 router = APIRouter(
     tags=["template"],
-    dependencies=[Depends(CurrentUser), Depends(get_messenger), Depends(get_db)],
+    dependencies=[],
     responses={
         401: {'detail': 'Wrong Email or Password'},
         400: {'detail': "Email is already used"}
@@ -27,19 +30,21 @@ router = APIRouter(
 
 async def query_templates(template_ids: list[int],
                           *where,
-                          user: User,
+                          user_id: UUID,
                           session: AsyncSession,
                           raise_not_found=True,
+                          eager=None,
                           **filters) -> DbTemplate | list[DbTemplate]:
     func = db_unique if len(template_ids) == 1 else db_all
     template = await func(
         select(DbTemplate).where(
             DbTemplate.id.in_(template_ids) if template_ids else True,
-            DbTemplate.user_id == user.id,
+            DbTemplate.user_id == user_id,
             *where
         ).filter_by(
             **filters
         ),
+        *(eager or []),
         session=session,
     )
     if not template and raise_not_found:
@@ -83,27 +88,37 @@ async def create_template(body: TemplateCreate,
     return TemplateInfo.from_orm(template)
 
 
-@router.get('/template/{template_id}', response_model=TemplateInfo)
+auth = get_auth_grant_dependency(TemplateGrant)
+
+
+@router.get('/template/{template_id}', response_model=TemplateDetailed)
 async def get_template(template_id: int,
                        template_type: TemplateType = Query(default=None),
-                       user: User = Depends(CurrentUser),
+                       grant: AuthGrant = Depends(auth),
                        db: AsyncSession = Depends(get_db)):
     template = await query_templates([template_id],
                                      safe_op(DbTemplate.type, template_type, operator.eq),
-                                     user=user,
+                                     eager=[DbTemplate.grants if grant.is_root_for(AssociationType.TEMPLATE) else None],
+                                     user_id=grant.user_id,
                                      session=db)
-    return TemplateInfo.from_orm(template)
+    return TemplateDetailed.from_orm(template)
 
 
 @router.get('/template', response_model=list[TemplateInfo])
-async def get_templates(user: User = Depends(CurrentUser),
-                        template_type: TemplateType = Query(default=None),
-                        db: AsyncSession = Depends(get_db)):
-    templates = await query_templates([],
-                                      safe_op(DbTemplate.type, template_type),
-                                      user=user,
-                                      session=db,
-                                      raise_not_found=False)
+@wrap_greenlet
+def get_templates(template_type: TemplateType = Query(default=None),
+                  grant: AuthGrant = Depends(DefaultGrant)):
+    return CustomJSONResponse(
+        content=jsonable_encoder(
+            TemplateInfo.from_orm(template)
+            for template in (grant.user.templates if grant.is_root_for(AssociationType.TEMPLATE) else grant.templates)
+        )
+    )
+    # templates = await query_templates([],
+    #                                   safe_op(DbTemplate.type, template_type),
+    #                                   user_id=user,
+    #                                   session=db,
+    #                                   raise_not_found=False)
 
     return CustomJSONResponse(
         content=jsonable_encoder(TemplateInfo.from_orm(template) for template in (templates or []))

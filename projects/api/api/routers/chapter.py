@@ -116,7 +116,7 @@ async def create_chapter(body: ChapterCreate,
     template = None
     if body.template_id:
         template = await query_templates([body.template_id],
-                                         user=user,
+                                         user_id=user.id,
                                          session=db)
 
     new_chapter = journal.create_chapter(body.parent_id, template)

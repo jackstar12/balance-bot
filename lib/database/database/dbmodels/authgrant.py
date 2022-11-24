@@ -10,10 +10,10 @@ import sqlalchemy as sa
 import pytz
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
+from sqlalchemy import Column, Integer, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
     Date, UniqueConstraint, orm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship, reconstructor, RelationshipProperty, declared_attr
+from sqlalchemy.orm import relationship, reconstructor, RelationshipProperty, declared_attr, backref
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -59,6 +59,7 @@ class AssociationType(Enum):
     CHAPTER = 'chapter'
     TRADE = 'trade'
     JOURNAL = 'journal'
+    TEMPLATE = 'template'
 
     def get_impl(self) -> Type[GrantAssociaton]:
         if self == AssociationType.EVENT:
@@ -69,6 +70,8 @@ class AssociationType(Enum):
             return JournalGrant
         elif self == AssociationType.TRADE:
             return TradeGrant
+        elif self == AssociationType.TEMPLATE:
+            return TemplateGrant
 
 
 class AuthGrant(Base, BaseMixin):
@@ -83,9 +86,11 @@ class AuthGrant(Base, BaseMixin):
 
     user = relationship('User')
 
-    granted_journals = relationship('Journal', secondary='journalgrant', backref='grants')
-    granted_chapters = relationship('Chapter', secondary='chaptergrant', backref='grants')
-    granted_events = relationship('Event', secondary='eventgrant', backref='grants')
+    granted_journals = relationship('Journal', secondary='journalgrant', backref=backref('grants', lazy='noload'))
+    granted_chapters = relationship('Chapter', secondary='chaptergrant', backref=backref('grants', lazy='noload'))
+    granted_events = relationship('Event', secondary='eventgrant', backref=backref('grants', lazy='noload'))
+    templates = relationship('Template', secondary='templategrant', backref=backref('grants', lazy='noload'))
+
 
     def __init__(self, *args, root=False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -242,3 +247,16 @@ class TradeGrant(Base, GrantAssociaton):
     @identity.setter
     def identity(self, val):
         self.trade_id = val
+
+
+class TemplateGrant(Base, GrantAssociaton):
+    __tablename__ = 'templategrant'
+    template_id = sa.Column(FKey('template.id', ondelete='CASCADE'), primary_key=True)
+
+    @hybrid_property
+    def identity(cls):
+        return cls.template_id
+
+    @identity.setter
+    def identity(self, val):
+        self.template_id = val

@@ -1,5 +1,6 @@
 from typing import Optional
 
+from api.routers.authgrant import AuthGrantInfo
 from database.dbmodels.editing.template import TemplateType
 from database.models import BaseModel, InputID, OutputID
 
@@ -23,3 +24,10 @@ class TemplateInfo(TemplateCreate):
 
     class Config:
         orm_mode = True
+
+
+class TemplateDetailed(TemplateInfo):
+    grants: Optional[list[AuthGrantInfo]]
+    class Config:
+        orm_mode = True
+

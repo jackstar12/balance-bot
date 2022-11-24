@@ -47,8 +47,8 @@ class FilterParam(BaseModel, Generic[T]):
 
         values = []
 
-        if model:
-            compare_field = model.__fields__.get(field)
+        if model and field in model.__fields__:
+            compare_field = model.__fields__[field]
 
             if op in ('includes', 'excludes'):
                 values, errors = compare_field.validate(raw_values, {}, loc='none')
@@ -60,7 +60,6 @@ class FilterParam(BaseModel, Generic[T]):
                     if errors:
                         raise ValueError('Invalid input value')
                     values.append(validated)
-
         elif table:
             validate = table.validator(field)
 
@@ -74,6 +73,9 @@ class FilterParam(BaseModel, Generic[T]):
             for value in raw_values:
                 validated = validate(value)
                 values.append(validated)
+
+        else:
+            raise ValueError('Unknown field')
 
         return cls(
             field=field,

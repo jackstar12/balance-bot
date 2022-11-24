@@ -83,8 +83,7 @@ class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
 
     templates = relationship('Template',
                              back_populates='user',
-                             cascade="all, delete",
-                             lazy='noload')
+                             cascade="all, delete")
 
     def get_oauth(self, name: str) -> Optional[OAuthAccount]:
         for account in self.oauth_accounts:

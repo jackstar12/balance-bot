@@ -93,7 +93,7 @@ async def update_trade(trade_id: InputID,
         )
 
     if body.template_id:
-        template = await query_templates([body.template_id], user=user, session=db)
+        template = await query_templates([body.template_id], user_id=user, session=db)
         trade.notes = DocumentModel(
             content=template.body,
             type='doc'
