@@ -30,8 +30,10 @@ from datetime import datetime
 from sqlalchemy.ext.hybrid import hybrid_property
 import discord
 
-from database.dbsync import Base
-from database.models.eventinfo import EventState, LocationModel
+from database.dbsync import Base, BaseMixin
+from database.models.eventinfo import EventState
+from database.models.platform import PlatformModel
+from database.dbmodels.types import Platform
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
     select, insert, literal, and_, update, Numeric, BigInteger
@@ -43,11 +45,10 @@ if TYPE_CHECKING:
     from database.dbmodels.user import User
     from database.dbmodels.client import Client
 
-Location = LocationModel.get_sa_type()
 SummaryType = eventmodels.Summary.get_sa_type(validate=True)
 
 
-class Event(Base, Serializer):
+class Event(Base, Serializer, BaseMixin):
     __tablename__ = 'event'
 
     id = Column(Integer, primary_key=True)
@@ -63,7 +64,7 @@ class Event(Base, Serializer):
 
     name = Column(String, nullable=False)
     description = Column(Document, nullable=False)
-    location = Column(Location, nullable=False)
+    location = Column(Platform, nullable=False)
     currency = Column(String(10), nullable=False, server_default='USD')
     rekt_threshold = Column(Numeric, nullable=False, server_default='-99')
     final_summary = Column(SummaryType, nullable=True)
@@ -228,8 +229,8 @@ class Event(Base, Serializer):
         )
 
     async def validate_location(self, redis: Redis):
-        self.location: 'LocationModel'
-        if self.location.platform == 'discord':
+        self.location: 'PlatformModel'
+        if self.location.name == 'discord':
             # Validate
             discord_oauth = self.owner.get_oauth('discord')
             if not discord:

@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import Field, condecimal
 
+from database.models.platform import DiscordPlatform, WebPlatform
 from database.models.user import UserPublicInfo
 from core import safe_cmp_default, safe_cmp
 from database import dbmodels
@@ -22,35 +23,11 @@ if TYPE_CHECKING:
     from database.dbmodels import User
 
 
-class LocationModel(OrmBaseModel):
-    platform: str
-    data: dict
-
-
 class EventState(Enum):
     UPCOMING = "upcoming"
     ACTIVE = "active"
     REGISTRATION = "registration"
     ARCHIVED = "archived"
-
-
-class DiscordData(TypedDict):
-    guild_id: str
-    channel_id: str
-
-
-class DiscordLocation(LocationModel):
-    platform: Literal['discord']
-    data: DiscordData
-
-
-class WebData(TypedDict):
-    pass
-
-
-class WebLocation(LocationModel):
-    platform: Literal['web']
-    data: WebData
 
 
 class _Common(BaseModel):
@@ -61,7 +38,7 @@ class _Common(BaseModel):
     name: str
     description: DocumentModel
     public: Optional[bool]
-    location: Union[DiscordLocation, WebLocation] = Field(..., disriminator='platform')
+    location: Union[DiscordPlatform, WebPlatform]
     max_registrations: int
     currency: Optional[str] = Field(default='USD')
     rekt_threshold: condecimal(gt=Decimal(-100), lt=Decimal(0)) = -99

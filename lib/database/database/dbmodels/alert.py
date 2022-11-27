@@ -3,11 +3,11 @@ from sqlalchemy import Column, Integer, ForeignKey, String, Enum, Numeric
 from sqlalchemy.dialects.postgresql import UUID
 
 from database.dbmodels.mixins.serializer import Serializer
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 from database.enums import Side
 
 
-class Alert(Base, Serializer):
+class Alert(Base, Serializer, BaseMixin):
     __tablename__ = "alert"
     __serializer_data_forbidden__ = ["user", "discord_user"]
 

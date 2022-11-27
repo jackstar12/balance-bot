@@ -39,7 +39,7 @@ from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.user import User
 from database.models import BaseModel, InputID
 from database.models.balance import Balance as BalanceModel, Amount
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 from database.redis import TableNames
 from database.dbmodels.trade import Trade
 from database.redis.client import ClientSpace
@@ -179,7 +179,7 @@ class ClientQueryMixin:
         )
 
 
-class Client(Base, Serializer, EditsMixin, ClientQueryMixin):
+class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
     __tablename__ = TableNames.CLIENT.value
     __serializer_forbidden__ = ['api_secret']
     __serializer_data_forbidden__ = ['api_secret', 'discorduser']

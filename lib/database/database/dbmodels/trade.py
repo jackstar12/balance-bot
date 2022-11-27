@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from database.dbmodels import Balance
 
 from database.dbmodels.pnldata import PnlData
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.execution import Execution
 from database.enums import Side, ExecType, Status, TradeSession
@@ -43,7 +43,7 @@ trade_association = Table('trade_association', Base.metadata,
 #     TRANSFER = "transfer"
 
 
-class Trade(Base, Serializer, CurrencyMixin, FilterMixin):
+class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
     __tablename__ = 'trade'
     __serializer_forbidden__ = ['client', 'initial']
 

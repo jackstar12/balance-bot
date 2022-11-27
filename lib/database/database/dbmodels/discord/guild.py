@@ -1,13 +1,13 @@
 from database.dbmodels.mixins.serializer import Serializer
 
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy import Column, String, BigInteger, Enum
 
 from database.enums import Tier
 
 
-class Guild(Base, Serializer):
+class Guild(Base, Serializer, BaseMixin):
     __tablename__ = 'guild'
 
     id = Column(BigInteger, primary_key=True, nullable=False)

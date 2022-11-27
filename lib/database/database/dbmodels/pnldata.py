@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 from enum import Enum as PyEnum
 from database.models.compactpnldata import CompactPnlData
 from database.dbmodels.mixins.serializer import Serializer
@@ -17,7 +17,7 @@ class PNLType(PyEnum):
     RPNL = 1
 
 
-class PnlData(Base, Serializer):
+class PnlData(Base, Serializer, BaseMixin):
     __tablename__ = 'pnldata'
 
     id = Column(BigInteger, primary_key=True)

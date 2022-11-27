@@ -24,6 +24,8 @@ from api.routers import labelgroup
 from api.users import fastapi_users, auth_backend
 from database.dbmodels import Event, Client, EventEntry
 from core.utils import setup_logger
+from database.dbmodels.action import Action
+from database.dbmodels.authgrant import AuthGrant
 
 VERSION = 1
 # PREFIX = f'/api/v{VERSION}'
@@ -142,6 +144,8 @@ async def on_start():
     set_http_session(aiohttp.ClientSession())
     messenger.listen_class_all(Event)
     messenger.listen_class_all(Client)
+    messenger.listen_class_all(Action)
+    messenger.listen_class_all(AuthGrant)
 
 
 @app.on_event("shutdown")

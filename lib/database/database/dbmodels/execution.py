@@ -4,14 +4,14 @@ from decimal import Decimal
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
-from database.dbsync import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Numeric, Enum, UniqueConstraint
+from database.dbsync import Base, BaseMixin
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Numeric, Enum, UniqueConstraint, Boolean
 from database.dbmodels.mixins.serializer import Serializer
 from database.enums import ExecType, Side
 from database.dbmodels.symbol import CurrencyMixin
 
 
-class Execution(Base, Serializer, CurrencyMixin):
+class Execution(Base, Serializer, BaseMixin, CurrencyMixin):
     __tablename__ = 'execution'
 
     id = Column(Integer, primary_key=True)
@@ -27,6 +27,7 @@ class Execution(Base, Serializer, CurrencyMixin):
     qty: Decimal = Column(Numeric, nullable=True)
     side = Column(Enum(Side), nullable=True)
     commission: Decimal = Column(Numeric, nullable=True)
+    reduce: bool = Column(Boolean, nullable=False)
 
     trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
 

@@ -6,12 +6,14 @@ import discord
 from sqlalchemy import select
 
 from collector.services.baseservice import BaseService
+from common.messenger import Category
 from database.dbasync import db_all, db_select
 from database.dbmodels import Execution
-from database.dbmodels.action import Action, ActionType, ActionTrigger
+from database.dbmodels.action import Action, ActionTrigger
 from database.dbmodels.balance import Balance
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.trade import Trade
+from database.enums import Side
 from database.models.discord.guild import MessageRequest
 from database.redis import rpc
 
@@ -33,6 +35,10 @@ class ActionService(BaseService):
 
     @classmethod
     def to_embed(cls, table: Type[Serializer], data: dict):
+        return cls.get_embed(
+            title=table.__tablename__,
+            fields=data
+        )
         if table == Balance:
             return cls.get_balance_embed(Balance(**data))
         if table == Trade:
@@ -45,9 +51,10 @@ class ActionService(BaseService):
             title='Trade',
             fields={
                 'Symbol': trade.symbol,
-                'Realized PNL': trade.realized_pnl,
+                'Net PNL': trade.net_pnl,
                 'Entry': trade.entry,
-                'Exit': trade.exit
+                'Exit': trade.exit,
+                'Side': 'Long' if trade.side == Side.BUY else 'Short'
             }
         )
 
@@ -81,11 +88,11 @@ class ActionService(BaseService):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # self.action_sync = SyncedService(self._messenger,
-        #                                  EVENT,
-        #                                  get_stmt=self._get_event,
-        #                                  update=self._get_event,
-        #                                  cleanup=self._on_event_delete)
+        #self.action_sync = SyncedService(self._messenger,
+        #                                 EVENT,
+        #                                 get_stmt=self._get_event,
+        #                                 update=self._get_event,
+        #                                 cleanup=self._on_event_delete)
 
     async def update(self, action: Action):
         await self.remove(action)
@@ -93,7 +100,7 @@ class ActionService(BaseService):
 
     def add(self, action: Action):
         return self._messenger.sub_channel(
-            action.namespace,
+            action.type,
             action.topic,
             lambda data: self.execute(action, data),
             **action.all_ids
@@ -101,23 +108,23 @@ class ActionService(BaseService):
 
     def remove(self, action: Action):
         return self._messenger.unsub_channel(
-            action.namespace,
+            action.type,
             action.topic,
             **action.all_ids
         )
 
     async def execute(self, action: Action, data: dict):
-        messenger_space = self._messenger.get_namespace(action.namespace)
-        if action.action_type == ActionType.WEBHOOK:
-            url = action.extra['url']
+        messenger_space = self._messenger.get_namespace(action.type)
+        if action.platform.name == 'webhook':
+            url = action.platform.data['url']
             # call
-        elif action.action_type == ActionType.DISCORD:
+        elif action.platform.name == 'discord':
             dc = rpc.Client('discord', self._redis)
             embed = self.to_embed(messenger_space.table, data)
             await dc(
                 'send',
                 MessageRequest(
-                    **action.extra,
+                    **action.platform.data,
                     embed=embed.to_dict() if embed else None
                 )
             )
@@ -129,4 +136,15 @@ class ActionService(BaseService):
     async def init(self):
         for action in await db_all(select(Action)):
             await self.add(action)
+
+        wrap = self.table_decorator(Action)
+
+        await self._messenger.bulk_sub(
+            Action,
+            {
+                Category.NEW: wrap(self.add),
+                Category.UPDATE: wrap(self.update),
+                Category.DELETE: wrap(self.remove)
+            }
+        )
         # await self.action_sync.sub()

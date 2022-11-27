@@ -174,7 +174,7 @@ class Journal(Base, BaseMixin):
 
     async def update(self, template: Template = None):
         return
-        if self.type == JournalType.INTERVAL:
+        if self.name == JournalType.INTERVAL:
             template = template or self.default_template
             today = date.today()
             while not self.latest_chapter or today > self.latest_chapter.data.end_date:

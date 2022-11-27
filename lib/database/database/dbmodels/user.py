@@ -12,7 +12,7 @@ from sqlalchemy.orm import relationship
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.types import Document
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 from database.models.user import ProfileData, UserProfile
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
         return self.data
 
 
-class User(Base, Serializer, SQLAlchemyBaseUserTableUUID, EditsMixin):
+class User(Base, Serializer, BaseMixin, SQLAlchemyBaseUserTableUUID, EditsMixin):
     __tablename__ = 'user'
     __serializer_forbidden__ = ['hashed_password', 'salt']
 

@@ -52,6 +52,7 @@ async def db_exec(stmt: Any, session: AsyncSession = None) -> Any:
 Table = TypeVar('Table', bound=Base)
 StmtCallable = Callable[[Select], Any]
 
+
 async def db_select(cls: Type[Table],
                     *where,
                     eager=None,

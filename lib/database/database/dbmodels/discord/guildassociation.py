@@ -2,10 +2,10 @@ from sqlalchemy import Column, ForeignKey
 from sqlalchemy.orm import relationship
 
 from database.dbmodels.mixins.serializer import Serializer
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 
 
-class GuildAssociation(Base, Serializer):
+class GuildAssociation(Base, Serializer, BaseMixin):
     __tablename__ = 'guild_association'
     discord_user_id = Column(ForeignKey('oauth_account.account_id', ondelete='CASCADE'), nullable=False, primary_key=True)
     discord_user = relationship('DiscordUser', lazy='raise')

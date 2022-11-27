@@ -1,16 +1,33 @@
-from database.dbmodels.action import ActionType, Action
-from database.models import OrmBaseModel, CreateableModel
+from typing import Literal, TypedDict, Union, Optional
+
+from pydantic import HttpUrl, Field
+
+from database.dbmodels.action import Action, ActionTrigger, ActionType
+from database.models import OrmBaseModel, CreateableModel, OutputID
+from database.models.platform import DiscordPlatform, PlatformModel
+
+
+class WebhookData(TypedDict):
+    url: HttpUrl
+
+
+class WebhookPlatform(PlatformModel):
+    name: Literal['webhook']
+    data: WebhookData
 
 
 class ActionCreate(CreateableModel):
     __table__ = Action
 
-    namespace: str
+    name: Optional[str]
+    type: ActionType
     topic: str
-    action_type: ActionType
-    trigger_ids: dict
-    extra: dict
+    platform: Union[DiscordPlatform, WebhookPlatform]
+    trigger_type: ActionTrigger
+    trigger_ids: Optional[dict]
 
 
 class ActionInfo(OrmBaseModel, ActionCreate):
-    id: int
+    id: OutputID
+
+

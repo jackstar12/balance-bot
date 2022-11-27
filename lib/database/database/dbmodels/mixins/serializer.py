@@ -8,7 +8,7 @@ from sqlalchemy.orm.dynamic import AppenderQuery
 from database.dbsync import BaseMixin
 
 
-class Serializer(BaseMixin):
+class Serializer:
     __tablename__: str
     __serializer_anti_recursion__ = False
     __serializer_forbidden__ = []
@@ -30,14 +30,14 @@ class Serializer(BaseMixin):
                 if data or not self.is_data():
                     s = {}
                     for k in inspect(self).attrs.keys():
-                        forbidden = self.__serializer_data_forbidden__ if data else self.__serializer_forbidden__
+                        forbidden = self.__serializer_forbidden__
                         if k not in forbidden:
                             try:
                                 v = getattr(self, k)
                             except sqlalchemy.exc.InvalidRequestError:
                                 continue
-                            if v is None:
-                                continue
+                            #if v is None:
+                            #    continue
                             if issubclass(type(v), list):
                                 if full:
                                     v = Serializer.serialize_list(v, data=data, full=full, *args, **kwargs)

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from functools import wraps
 
 import aiohttp
 from aioredis import Redis
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from common.messenger import Messenger
+from core import call_unknown_function
 
 
 class BaseService:
@@ -29,6 +31,18 @@ class BaseService:
 
     async def init(self):
         pass
+
+    def table_decorator(self, table):
+        def decorator(coro):
+            @wraps(coro)
+            async def wrapper(data: dict):
+                async with self._db_lock:
+                    instance = await self._db.get(table, data['id'], populate_existing=True)
+                return await call_unknown_function(coro, instance)
+
+            return wrapper
+
+        return decorator
 
     async def run_forever(self):
         # Do nothing, required because otherwise service would finish and the db session would close

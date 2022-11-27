@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 from database.dbsync import Base, BaseMixin
 
 
-class EventScore(Base, Serializer):
+class EventScore(Base, Serializer, BaseMixin):
     __tablename__ = 'eventscore'
 
     entry_id = Column(ForeignKey('evententry.id', name=fkey_name('eventscore', 'entry_id'), ondelete='CASCADE'), primary_key=True)
@@ -48,7 +48,7 @@ class EventScore(Base, Serializer):
         self.abs_value = val.absolute
 
 
-class EventEntry(Base, Serializer):
+class EventEntry(Base, Serializer, BaseMixin):
     __tablename__ = 'evententry'
 
     id = Column(Integer, primary_key=True, unique=True)

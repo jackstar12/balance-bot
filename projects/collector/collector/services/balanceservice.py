@@ -428,7 +428,8 @@ class ExtendedBalanceService(_BalanceServiceBase):
                             client.live_balance = balance
 
                     await self._db.commit()
-                self._logger.debug(balances)
+                if balances:
+                    self._logger.debug(balances)
 
                 for balance in balances:
                     await balance.client.as_redis(pipe).set_balance(balance)

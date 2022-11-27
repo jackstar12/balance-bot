@@ -374,7 +374,7 @@ class ExchangeWorker:
                 else:
                     await db.delete(trade)
 
-            if client.currently_realized and valid_until and valid_until < client.currently_realized.time:
+            if client.currently_realized and valid_until and valid_until < client.currently_realized.time and all_executions:
                 await db.execute(
                     delete(db_balance.Balance).where(
                         db_balance.Balance.client_id == client.id,

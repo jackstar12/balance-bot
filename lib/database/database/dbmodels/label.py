@@ -4,7 +4,7 @@ from sqlalchemy import Column, Integer, ForeignKey, String
 from sqlalchemy.orm import relationship, declared_attr
 
 from database.dbmodels.mixins.serializer import Serializer
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 
 
 class Group:
@@ -16,7 +16,7 @@ class Group:
         return Column(ForeignKey('user.id', ondelete="CASCADE"), nullable=False)
 
 
-class LabelGroup(Group, Base, Serializer):
+class LabelGroup(Group, Base, Serializer, BaseMixin):
     __tablename__ = 'labelgroup'
     labels = relationship('Label',
                           back_populates='group',
@@ -25,7 +25,7 @@ class LabelGroup(Group, Base, Serializer):
                           lazy='raise')
 
 
-class Label(Base, Serializer):
+class Label(Base, Serializer, BaseMixin):
     __tablename__ = 'label'
     id: Any = Column(Integer, primary_key=True)
     group_id = Column(ForeignKey(LabelGroup.id, ondelete="CASCADE"), nullable=False)

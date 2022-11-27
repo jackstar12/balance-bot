@@ -61,6 +61,7 @@ class SyncedService(Generic[TTable]):
                 Category.UPDATE: self.uses_identity(self._on_update)
             }
         )
+
     async def get_ident(self, identity: Any) -> Optional[TTable]:
         async with self._identity_map_lock:
             return self._identity_map.get(identity)

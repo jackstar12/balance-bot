@@ -23,8 +23,10 @@ def default(obj: Any):
     raise TypeError
 
 
-def dumps(obj: Any):
-    test = orjson.dumps(obj, default=default, option=orjson.OPT_OMIT_MICROSECONDS)
+def dumps(obj: Any, indent=False):
+    test = orjson.dumps(obj,
+                        default=default,
+                        option=orjson.OPT_OMIT_MICROSECONDS | orjson.OPT_INDENT_2 if indent else orjson.OPT_OMIT_MICROSECONDS)
     return test
 
 

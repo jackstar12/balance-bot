@@ -1,3 +1,4 @@
+import typing
 from dataclasses import dataclass, field
 from typing import Type, Callable, Optional
 
@@ -11,9 +12,9 @@ from sqlalchemy.sql import Select, Update, Delete
 from api.dependencies import get_db
 from api.users import CurrentUser
 from api.utils.responses import OK, NotFound, BadRequest
-from database.dbasync import db_all, db_unique, TEager
+from database.dbasync import db_all, db_unique, TEager, db_select
 from database.dbmodels.user import User
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 from database.models import BaseModel, OrmBaseModel, CreateableModel, InputID
 
 TStmt = Select | Update | Delete
@@ -27,8 +28,11 @@ class Route:
     dependencies: list[Depends] = field(default_factory=lambda: [])
 
 
+TTable = typing.TypeVar('TTable', bound=BaseMixin)
+
+
 def add_crud_routes(router: APIRouter,
-                    table: Type[Base],
+                    table: Type[TTable],
                     read_schema: Type[OrmBaseModel],
                     create_schema: Type[CreateableModel],
                     update_schema: Type[BaseModel] = None,
@@ -66,18 +70,17 @@ def add_crud_routes(router: APIRouter,
 
     get_one_route = routes.get('get_one', default_route)
 
-    def read_one(entity_id: InputID, user: User, db: AsyncSession, **kwargs):
-        return db_unique(
-            get_one_route.add_filters(
-                select(table).where(
-                    table.id == entity_id
-                ),
-                user,
-                **kwargs
-            ),
+    async def read_one(entity_id: InputID, user: User, db: AsyncSession, **kwargs):
+        result = await db_select(
+            table,
+            table.id == entity_id,
+            apply=lambda s: get_one_route.add_filters(s, user, **kwargs),
             *get_one_route.eager_loads,
             session=db
         )
+        if not result:
+            raise NotFound('Invalid id')
+        return result
 
     if get_one_route != Undefined:
         @router.get('/{entity_id}', response_model=read_schema, dependencies=get_one_route.dependencies)
@@ -86,10 +89,7 @@ def add_crud_routes(router: APIRouter,
                           db: AsyncSession = Depends(get_db)):
             entity = await read_one(entity_id, user, db)
 
-            if entity:
-                return read_schema.from_orm(entity)
-            else:
-                raise NotFound('Invalid id')
+            return read_schema.from_orm(entity)
 
     delete_one_route = routes.get('delete_one', default_route)
 
@@ -99,12 +99,9 @@ def add_crud_routes(router: APIRouter,
                              user: User = Depends(delete_one_route.user_dependency),
                              db: AsyncSession = Depends(get_db)):
             entity = await read_one(entity_id, user, db)
-            if entity:
-                await db.delete(entity)
-                await db.commit()
-                return OK('Deleted')
-            else:
-                raise NotFound('Invalid id')
+            await db.delete(entity)
+            await db.commit()
+            return OK('Deleted')
 
     all_route = routes.get('get_all', default_route)
 
@@ -138,19 +135,16 @@ def add_crud_routes(router: APIRouter,
                              db: AsyncSession = Depends(get_db)):
             entity = await read_one(entity_id, user, db)
 
-            if entity:
-                for key, value in body.dict(exclude_none=True).items():
-                    setattr(entity, key, value)
-                try:
-                    await entity.validator()
-                except (AssertionError, ValueError) as e:
-                    raise BadRequest(detail=str(e))
+            for key, value in body.dict(exclude_none=True).items():
+                setattr(entity, key, value)
+            try:
+                await entity.validate()
+            except (AssertionError, ValueError) as e:
+                raise BadRequest(detail=str(e))
 
-                await db.commit()
+            await db.commit()
 
-                return read_schema.from_orm(entity)
-            else:
-                raise NotFound('Invalid id')
+            return read_schema.from_orm(entity)
 
     return router
 

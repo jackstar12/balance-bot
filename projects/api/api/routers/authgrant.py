@@ -103,7 +103,7 @@ async def add_to_grant(type: AssociationType,
     try:
         db.add(instance)
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         raise BadRequest(f'Invalid grant or {type.value} id')
 
     return AuthGrantInfo.from_orm(grant)

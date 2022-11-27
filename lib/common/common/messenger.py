@@ -17,7 +17,9 @@ from sqlalchemy.orm.util import identity_key
 import core
 from core import json as customjson
 from database.dbmodels import Client, Balance, Chapter, Event, EventEntry
+from database.dbmodels.action import Action
 from database.dbmodels.alert import Alert
+from database.dbmodels.authgrant import AuthGrant
 from database.dbmodels.editing import Journal
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.pnldata import PnlData
@@ -28,6 +30,9 @@ from database.dbsync import BaseMixin
 from database.redis import TableNames
 
 TTable = TypeVar('TTable', bound=BaseMixin)
+
+
+by_names = {}
 
 
 @dataclass
@@ -41,12 +46,15 @@ class RedisNameSpace(Generic[TTable]):
     def from_table(cls,
                    table: Type[TTable],
                    parent: 'Optional[RedisNameSpace]' = None):
-        return cls(
+        new = cls(
             parent=parent,
             name=table.__tablename__,
             table=table,
             id=f'{table.__tablename__}_id'
         )
+        by_names[new.name] = new
+        return new
+
 
     def get_ids(self, instance: TTable):
         if not instance:
@@ -126,11 +134,8 @@ EVENT_SCORE = RedisNameSpace.from_table(EventEntry, parent=EVENT)
 JOURNAL = RedisNameSpace.from_table(Journal, parent=USER)
 CHAPTER = RedisNameSpace.from_table(Chapter, parent=JOURNAL)
 
-
-by_names = core.groupby_unique(
-    [USER, CLIENT, BALANCE, TRADE, PNL_DATA, ALERT, EVENT, EVENT_SCORE, JOURNAL, CHAPTER, TRANSFER],
-    lambda space: space.name
-)
+ACTION = RedisNameSpace.from_table(Action, parent=USER)
+AUTH_GRANT = RedisNameSpace.from_table(AuthGrant, parent=USER)
 
 
 class Category(Enum):

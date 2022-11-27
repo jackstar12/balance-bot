@@ -10,6 +10,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Tuple, Optional, Type
 
+from core import json
 from aiohttp import ClientResponseError, ClientResponse
 
 from core import utils, get_multiple, parse_isoformat
@@ -95,6 +96,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         resp = await self._ws.authenticate(self._api_key, self._api_secret)
         if resp['success']:
             await self._ws.subscribe("execution")
+            await self._ws.subscribe("order")
             self._logger.info('Authed')
         else:
             return WebsocketError(reason='Could not authenticate')
@@ -108,6 +110,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
     @classmethod
     def _parse_exec(cls, raw_exec: Dict):
+
         if raw_exec['exec_type'] == "Trade":
             symbol = raw_exec["symbol"]
             commission = Decimal(raw_exec["exec_fee"])
@@ -134,6 +137,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
     async def _on_message(self, ws: WebsocketManager, message: Dict):
         # https://bybit-exchange.github.io/docs/inverse/#t-websocketexecution
+        print(message)
         if message["topic"] == "execution":
             for execution in (executions for executions in message["data"]):
                 # {
@@ -352,7 +356,6 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                     params=params.copy(),
                     page_param='page',
                     result_path="trade_list"
-
                 ))
             elif contract_type == ContractType.LINEAR:
                 params['symbol'] = f'{coin}USDT'

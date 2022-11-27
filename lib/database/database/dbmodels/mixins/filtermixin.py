@@ -65,7 +65,7 @@ class FilterParam(BaseModel, Generic[T]):
 
             if not validate:
                 compare_field = getattr(table, field)
-                validate = compare_field.expression.type.python_type
+                validate = compare_field.expression.name.python_type
 
                 if validate == datetime:
                     validate = datetime.fromisoformat

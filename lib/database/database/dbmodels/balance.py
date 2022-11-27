@@ -9,7 +9,7 @@ from sqlalchemy.orm import relationship, object_session, Session
 import database.dbmodels as dbmodels
 from database.dbmodels.client import ClientQueryMixin
 from database.dbmodels.mixins.serializer import Serializer
-from database.dbsync import Base
+from database.dbsync import Base, BaseMixin
 from database.models.balance import Amount as AmountModel, Balance as BalanceModel
 from core.utils import round_ccy
 
@@ -22,7 +22,7 @@ class _Common:
     unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
 
 
-class Amount(Base, ClientQueryMixin, Serializer, _Common):
+class Amount(Base, ClientQueryMixin, Serializer, BaseMixin, _Common):
     __tablename__ = 'amount'
 
     balance_id = Column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
@@ -31,7 +31,7 @@ class Amount(Base, ClientQueryMixin, Serializer, _Common):
     rate = Column(Numeric, nullable=True)
 
 
-class Balance(Base, _Common, Serializer, ClientQueryMixin):
+class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
     """
     Represents the balance of a client at a given time.
 
@@ -43,7 +43,7 @@ class Balance(Base, _Common, Serializer, ClientQueryMixin):
     """
     __tablename__ = 'balance'
     __model__ = BalanceModel
-    __serializer_forbidden__ = ['id', 'error', 'client', 'transfer', 'transfer_id']
+    __serializer_forbidden__ = ['id', 'error', 'client']
 
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
@@ -74,10 +74,10 @@ class Balance(Base, _Common, Serializer, ClientQueryMixin):
         client = self.client_save
         return client.currency if client else None
 
-    def serialize(self, full=False, data=True, include_none=True, *args, **kwargs):
-        d = BalanceModel.from_orm(self).dict()
-        d['client_id'] = self.client_id
-        return d
+    #def serialize(self, full=False, data=True, include_none=True, *args, **kwargs):
+    #    d = BalanceModel.from_orm(self).dict()
+    #    d['client_id'] = self.client_id
+    #    return d
 
     def get_amount(self, ccy: str = None):
         for amount in self.extra_currencies:

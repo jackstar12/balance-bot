@@ -25,7 +25,7 @@ from database.errors import UserInputError
 from database.models.history import History
 
 if TYPE_CHECKING:
-    from database.dbmodels.event import EventState, LocationModel
+    from database.dbmodels.event import EventState, PlatformModel
 
 
 TTable = TypeVar('TTable', bound=BaseMixin)
@@ -163,7 +163,7 @@ async def get_discord_client(user_id: int,
         raise UserInputError("User {name} is not registered", user_id)
 
 
-async def get_event(location: LocationModel | dict,
+async def get_event(location: PlatformModel | dict,
                     state: EventState = None,
                     throw_exceptions=True,
                     eager_loads=None,
