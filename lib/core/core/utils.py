@@ -259,8 +259,9 @@ KT = typing.TypeVar('KT')
 VT = typing.TypeVar('VT')
 
 
-def groupby(items: typing.Iterable[VT], key: str | Callable[[VT], KT]) -> dict[KT, list[VT]]:
+def groupby(items: typing.Iterable[VT], key: str | Callable[[VT], KT], use_set=False) -> dict[KT, list[VT]]:
     res = {}
+
     if isinstance(key, str):
         def key_fn(x: VT) -> KT:
             return getattr(x, key)
@@ -269,8 +270,11 @@ def groupby(items: typing.Iterable[VT], key: str | Callable[[VT], KT]) -> dict[K
     for item in items:
         val = key_fn(item)
         if val not in res:
-            res[val] = []
-        res[val].append(item)
+            res[val] = set() if use_set else list()
+        if use_set:
+            res[val].add(item)
+        else:
+            res[val].append(item)
     return res
 
 

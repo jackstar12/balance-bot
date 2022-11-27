@@ -27,7 +27,7 @@ class Execution(Base, Serializer, BaseMixin, CurrencyMixin):
     qty: Decimal = Column(Numeric, nullable=True)
     side = Column(Enum(Side), nullable=True)
     commission: Decimal = Column(Numeric, nullable=True)
-    reduce: bool = Column(Boolean, nullable=False)
+    #reduce: bool = Column(Boolean, nullable=False)
 
     trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
 

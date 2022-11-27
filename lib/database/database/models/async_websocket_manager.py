@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import secrets
 import time
 from asyncio import Future
+from random import random
 from typing import Callable, Any
 
 import aiohttp
@@ -37,7 +39,7 @@ class WebsocketManager:
 
     @classmethod
     def _generate_id(cls) -> int:
-        return time.monotonic_ns()
+        return secrets.token_urlsafe()
 
     def _get_message_id(self, message: dict) -> Any:
         raise NotImplementedError()

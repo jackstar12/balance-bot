@@ -5,15 +5,17 @@ import time
 import urllib.parse
 from abc import ABC
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Tuple, Optional, Type
+from sqlalchemy import select
 
-from core import json
+from core import json, map_list, utc_now, groupby
 from aiohttp import ClientResponseError, ClientResponse
 
 from core import utils, get_multiple, parse_isoformat
+from database.dbasync import db_all
 from database.dbmodels.balance import Balance, Amount
 from database.dbmodels.execution import Execution
 from database.dbmodels.transfer import RawTransfer
@@ -33,14 +35,17 @@ class Transfer(Enum):
     FAILED = "FAILED"
 
 
-class Wallet(Enum):
-    SPOT = 1
-    DERIVATIVE = 2
+class Account(Enum):
+    SPOT = "SPOT"
+    DERIVATIVE = "DERIVATIVE"
+    UNIFIED = "UNIFIED"
+    INVESTMENT = "INVESTMENT"
+    OPTION = "OPTION"
 
 
 class ContractType(Enum):
-    INVERSE = 1
-    LINEAR = 2
+    INVERSE = "inverse"
+    LINEAR = "linear"
 
 
 class Direction(Enum):
@@ -94,9 +99,10 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         self._logger.info('Connected')
 
         resp = await self._ws.authenticate(self._api_key, self._api_secret)
+
         if resp['success']:
-            await self._ws.subscribe("execution")
-            await self._ws.subscribe("order")
+            await self._ws.subscribe("user.order.contractAccount")
+            await self._ws.subscribe("user.execution.contractAccount")
             self._logger.info('Authed')
         else:
             return WebsocketError(reason='Could not authenticate')
@@ -135,10 +141,108 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
             )
 
+    @classmethod
+    def _parse_exec_v3(cls, raw: Dict):
+
+        # {
+        #     "symbol": "BITUSDT",
+        #     "execFee": "0.02022",
+        #     "execId": "beba036f-9fb4-59a7-84b7-2620e5d13e1c",
+        #     "execPrice": "0.674",
+        #     "execQty": "50",
+        #     "execType": "Trade",
+        #     "execValue": "33.7",
+        #     "feeRate": "0.0006",
+        #     "lastLiquidityInd": "RemovedLiquidity",
+        #     "leavesQty": "0",
+        #     "orderId": "ddbea432-2bd7-45dd-ab42-52d920b8136d",
+        #     "orderLinkId": "b001",
+        #     "orderPrice": "0.707",
+        #     "orderQty": "50",
+        #     "orderType": "Market",
+        #     "stopOrderType": "UNKNOWN",
+        #     "side": "Buy",
+        #     "execTime": "1659057535081",
+        #     "closedSize": "0"
+        # }
+
+        if raw['execType'] == "Trade":
+            symbol = raw["symbol"]
+            commission = Decimal(raw["execFee"])
+            price = Decimal(get_multiple(raw, "execPrice"))
+            qty = Decimal(raw["execQty"])
+
+            # Unify Inverse and Linear
+            contract_type = _get_contract_type(symbol)
+            return Execution(
+                symbol=symbol,
+                price=price,
+                qty=qty,
+                commission=commission,
+                time=cls.parse_ms(int(raw["execTime"])),
+                side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
+                type=ExecType.TRADE,
+                inverse=contract_type == ContractType.INVERSE,
+                settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
+            )
+
+    @classmethod
+    def _parse_order_v3(cls, raw: Dict):
+
+        # {
+        #     "symbol": "BTCUSD",
+        #     "orderId": "ee013d82-fafc-4504-97b1-d92aca21eedd",
+        #     "side": "Buy",
+        #     "orderType": "Market",
+        #     "stopOrderType": "UNKNOWN",
+        #     "price": "21920.00",
+        #     "qty": "200",
+        #     "timeInForce": "ImmediateOrCancel",
+        #     "orderStatus": "Filled",
+        #     "triggerPrice": "0.00",
+        #     "orderLinkId": "inv001",
+        #     "createdTime": "1661338622771",
+        #     "updatedTime": "1661338622775",
+        #     "takeProfit": "0.00",
+        #     "stopLoss": "0.00",
+        #     "tpTriggerBy": "UNKNOWN",
+        #     "slTriggerBy": "UNKNOWN",
+        #     "triggerBy": "UNKNOWN",
+        #     "reduceOnly": false,
+        #     "closeOnTrigger": false,
+        #     "triggerDirection": 0,
+        #     "leavesQty": "0",
+        #     "lastExecQty": "200",
+        #     "lastExecPrice": "21282.00",
+        #     "cumExecQty": "200",
+        #     "cumExecValue": "0.00939761"
+        # }
+
+        if raw['orderStatus'] == 'Filled':
+            symbol = raw["symbol"]
+            commission = Decimal(raw["exec_fee"])
+            price = Decimal(get_multiple(raw, "exec_price", "price"))
+            qty = Decimal(raw["qty"])
+
+            # Unify Inverse and Linear
+            contract_type = _get_contract_type(symbol)
+            return Execution(
+                symbol=symbol,
+                price=price,
+                qty=qty,
+                commission=commission,
+                time=cls.parse_ms(int(raw["createdTime"])),
+                side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
+                type=ExecType.TRADE,
+                inverse=contract_type == ContractType.INVERSE,
+                settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
+            )
+
     async def _on_message(self, ws: WebsocketManager, message: Dict):
         # https://bybit-exchange.github.io/docs/inverse/#t-websocketexecution
         print(message)
-        if message["topic"] == "execution":
+        topic = message.get('topic')
+        if topic == "execution":
             for execution in (executions for executions in message["data"]):
                 # {
                 #     "symbol": "BTCUSD",
@@ -156,6 +260,10 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 #     "trade_time": "2020-01-14T14:07:23.629Z"
                 # }
                 await self._on_execution(self._parse_exec(execution))
+        elif topic == "user.execution.contractAccount":
+            await self._on_execution(
+                map_list(self._parse_exec_v3, message["data"])
+            )
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
     def _sign_request(self, method: str, path: str, headers=None, params: OrderedDict = None, data=None, **kwargs):
@@ -192,7 +300,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 human=f'{get_multiple(response_json, "ret_msg", "retMsg")}, Code: {code}'
             )
 
-    async def _get_internal_transfers(self, since: datetime, wallet: Wallet) -> List[RawTransfer]:
+    async def _get_internal_transfers(self, since: datetime, wallet: Account) -> List[RawTransfer]:
         transfers = []
         params = {'status': Transfer.SUCCESS.value}
         if since:
@@ -241,16 +349,62 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                             and
                             transfer["to_account_type"] == "SPOT"
                             and
-                            wallet == Wallet.DERIVATIVE
+                            wallet == Account.DERIVATIVE
                     ) or (
                     transfer["from_account_type"] == "SPOT"
                     and
                     transfer["to_account_type"] == "CONTRACT"
                     and
-                    wallet == Wallet.SPOT
+                    wallet == Account.SPOT
             )):
                 # Withdrawals are signaled by negative amounts
                 amount *= -1
+            results.append(RawTransfer(
+                amount=amount,
+                time=self.parse_ts(transfer["timestamp"]),
+                coin=transfer["coin"],
+                fee=None
+            ))
+
+        return results
+
+    async def _get_internal_transfers_v3(self, since: datetime, account: Account) -> List[RawTransfer]:
+        transfers = []
+        results = []
+
+        params = {'status': Transfer.SUCCESS.value}
+        if since:
+            params['startTime'] = self._parse_date(since)
+
+        def query_transfers():
+            return self.get('/asset/v3/private/transfer/inter-transfer/list/query',
+                            params=params)
+
+        res = await query_transfers()
+        while res['list']:
+            transfers.extend(res['list'])
+            params['cursor'] = res['nextPageCursor']
+            res = await query_transfers()
+
+        # {
+        #     "transferId": "selfTransfer_cafc74cc-e28a-4ff6-b0e6-9e711376fc90",
+        #     "coin": "USDT",
+        #     "amount": "1000",
+        #     "fromAccountType": "UNIFIED",
+        #     "toAccountType": "SPOT",
+        #     "timestamp": "1658986298000",
+        #     "status": "SUCCESS"
+        # }
+        for transfer in transfers:
+            if transfer["fromAccountType"] == account.value:
+                # Withdrawal
+                amount = transfer["amount"] * -1
+            elif transfer["toAccountType"] == account.value:
+                # Deposit
+                amount = transfer["amount"]
+            else:
+                continue
+
             results.append(RawTransfer(
                 amount=amount,
                 time=self.parse_ts(transfer["timestamp"]),
@@ -282,6 +436,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._internal_transfers: Optional[Tuple[datetime, List[RawTransfer]]] = None
+        self._latest_balance = None
         # TODO: Fetch symbols https://bybit-exchange.github.io/docs/inverse/#t-querysymbol
 
     async def _get_paginated(self,
@@ -306,6 +461,22 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             result = response.get(result_path)
             if result:
                 results.extend(result)
+        return results
+
+    async def _get_paginated_v3(self,
+                                params: dict = None,
+                                **kwargs):
+        page = True
+        results = []
+
+        while page:
+            if page is not True:
+                params['cursor'] = page
+            elif 'cursor' in params:
+                del params['cursor']
+            response = await self.get(params=params, **kwargs)
+            results.extend(response['list'])
+            page = response.get('nextPageCursor')
         return results
 
     async def _get_internal_executions(self,
@@ -407,6 +578,118 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
 
         return list(execs)
 
+    async def get_instruments(self, contract: ContractType) -> list[dict]:
+        resp = await self.get(
+            '/derivatives/v3/public/instruments-info',
+            params={'contract': contract.value},
+            cache=True,
+            sign=False
+        )
+        return resp['list']
+
+    async def get_tickers(self, contract: ContractType) -> list[dict]:
+        resp = await self.get(
+            '/derivatives/v3/public/tickers',
+            params={'contract': contract.value},
+            cache=True,
+            sign=False
+        )
+        return resp['list']
+
+    async def _get_internal_executions_v3(self,
+                                          contract_type: ContractType,
+                                          since: datetime) -> List[Execution]:
+
+        coins_to_fetch = set()
+        symbols_to_fetch = set()
+        symbols_fetched = set()
+
+        since_ts = self._parse_date(since) if since else None
+
+        params = {
+            'limit': 50,
+            # 'walletFundType': 'RealisedPNL'
+        }
+        if since_ts:
+            params['startTime'] = since_ts
+
+        if self._internal_transfers and self._internal_transfers[0] == since:
+            for transfer in self._internal_transfers[1]:
+                coins_to_fetch.add(transfer.coin)
+
+        asset_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
+                                                     params=params)
+
+        params["coin"] = 'USDT'
+
+        usd_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
+                                                   params=params)
+
+        asset_records.extend(usd_records)
+
+        required_execs = {}
+
+        # {
+        #     "coin": "USDT",
+        #     "type": "AccountTransfer",
+        #     "amount": "500",
+        #     "walletBalance": "2731.63599033",
+        #     "execTime": "1658215763731"
+        # }
+        if asset_records:
+            for record in asset_records:
+                coin = record["coin"]
+                if coin not in required_execs:
+                    required_execs[coin] = set()
+                required_execs[coin].add(record["execTime"])
+
+            # async with self.db_maker() as db:
+            #     for symbol in await db_all(
+            #         select(Execution.symbol).distinct(),
+            #         session=db
+            #     ):
+            #         symbols_to_fetch.add(symbol)
+        execs = []
+
+        for coin, timestamps in required_execs.items():
+            symbols_to_fetch = []
+
+            if coin == 'USDT':
+                instruments = await self.get_tickers(ContractType.LINEAR)
+                instruments.sort(key=lambda i: Decimal(i['turnover24h']), reverse=True)
+                for instrument in instruments:
+                    if not instrument['symbol'].endswith('PERP'):
+                        symbols_to_fetch.append(instrument['symbol'])
+            else:
+                symbols_to_fetch.append(f'{coin}USD')
+
+            params = {'limit': 200}
+            if since_ts:
+                params['start_time'] = since_ts
+            for symbol in symbols_to_fetch:
+                params['symbol'] = symbol
+                try:
+                    raw_execs = await self._get_paginated_v3(path='/contract/v3/private/execution/list',
+                                                             params=params)
+                    raw_execs = await self._get_paginated_v3(path='/contract/v3/private/position/closed-pnl',
+                                                             params=params)
+                except ResponseError:
+                    self._logger.error('Something went wrong with symbol: ' + symbol)
+                    continue
+                for raw_exec in reversed(raw_execs):
+                    if isinstance(raw_exec, str):
+                        pass
+                    if raw_exec['execTime'] in timestamps:
+                        timestamps.remove(raw_exec['execTime'])
+                    parsed = self._parse_exec_v3(raw_exec)
+                    if parsed:
+                        execs.append(parsed)
+
+                if not timestamps:
+                    break
+
+        return list(execs)
+
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _internal_get_balance(self, contract_type: ContractType, time: datetime, upnl=True):
 
@@ -447,6 +730,46 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             error=err_msg
         )
 
+    async def _internal_get_balance_v3(self, contract_type: ContractType):
+
+        balances, tickers = await asyncio.gather(
+            self.get('/contract/v3/private/account/wallet/balance'),
+            self.get('/derivatives/v3/public/tickers', params={'category': contract_type.value}, sign=False, cache=True)
+        )
+
+        total_realized = total_unrealized = Decimal(0)
+        extra_currencies: list[Amount] = []
+
+        ticker_prices = {
+            ticker['symbol']: Decimal(ticker['lastPrice']) for ticker in tickers['list']
+        }
+        err_msg = None
+        for balance in balances["list"]:
+            realized = Decimal(balance['walletBalance'])
+            unrealized = Decimal(balance['equity'])
+            coin = balance["coin"]
+            price = 0
+            if coin == 'USDT':
+                if contract_type == ContractType.LINEAR:
+                    price = Decimal(1)
+            elif unrealized > 0 and contract_type == ContractType.INVERSE:
+                price = get_multiple(ticker_prices, f'{coin}USD', f'{coin}USDT')
+                extra_currencies.append(
+                    Amount(currency=coin, realized=realized, unrealized=unrealized, rate=price)
+                )
+                if not price:
+                    logging.error(f'Bybit Bug: ticker prices do not contain info about {coin}:\n{ticker_prices}')
+                    continue
+            total_realized += realized * price
+            total_unrealized += unrealized * price
+
+        return Balance(
+            realized=total_realized,
+            unrealized=total_unrealized,
+            extra_currencies=extra_currencies,
+            error=err_msg
+        )
+
     async def _get_ohlc(self, symbol: str, since: datetime = None, to: datetime = None, resolution_s: int = None,
                         limit: int = None) -> List[OHLC]:
 
@@ -459,11 +782,11 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                 since,
                 to
             )
-
+        ts = int(since.timestamp())
         params = {
             'symbol': symbol,
             'interval': _interval_map[resolution_s],
-            'from': int(since.timestamp())
+            'from': ts - (ts % resolution_s)
         }
         if limit:
             params['limit'] = limit
@@ -479,7 +802,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
         else:
             raise
 
-        data = await self.get(url, params=params)
+        data = await self.get(url, params=params, sign=False, cache=True)
 
         # "result": [{
         #     "id": 3866948,
@@ -521,25 +844,24 @@ class BybitInverseWorker(_BybitDerivativesBaseClient):
     ]
 
     async def _get_transfers(self, since: datetime = None, to: datetime = None) -> List[RawTransfer]:
-        self._internal_transfers = (since, await self._get_internal_transfers(since, Wallet.DERIVATIVE))
+        self._internal_transfers = (since, await self._get_internal_transfers_v3(since, Account.DERIVATIVE))
         return self._internal_transfers[1]
 
     async def _get_executions(self,
                               since: datetime,
                               init=False):
-        return await self._get_internal_executions(ContractType.INVERSE, since, init), []
+        return await self._get_internal_executions_v3(ContractType.INVERSE, since), []
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):
-        return await self._internal_get_balance(ContractType.INVERSE, time, upnl)
+        return await self._internal_get_balance_v3(ContractType.INVERSE)
 
 
 class BybitLinearWorker(_BybitDerivativesBaseClient):
-
     exchange = 'bybit-linear'
 
     _WS_ENDPOINT = 'wss://stream.bybit.com/realtime_private'
-    _WS_SANDBOX_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime_private'
+    _WS_SANDBOX_ENDPOINT = 'wss://stream-testnet.bybit.com/contract/private/v3'
 
     _limits = [
         create_limit(interval_seconds=5, max_amount=5 * 70, default_weight=1),
@@ -549,17 +871,18 @@ class BybitLinearWorker(_BybitDerivativesBaseClient):
     ]
 
     async def _get_transfers(self, since: datetime = None, to: datetime = None) -> List[RawTransfer]:
-        self._internal_transfers = (since, await self._get_internal_transfers(since, Wallet.DERIVATIVE))
+        self._internal_transfers = (since, await self._get_internal_transfers_v3(since, Account.DERIVATIVE))
         return self._internal_transfers[1]
 
     async def _get_executions(self,
                               since: datetime,
                               init=False):
-        return await self._get_internal_executions(ContractType.LINEAR, since, init), []
+        since = since or utc_now() - timedelta(days=365)
+        return await self._get_internal_executions_v3(ContractType.LINEAR, since), []
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):
-        return await self._internal_get_balance(ContractType.LINEAR, time, upnl)
+        return await self._internal_get_balance_v3(ContractType.LINEAR)
 
 
 class BybitSpotClient(_BybitBaseClient):

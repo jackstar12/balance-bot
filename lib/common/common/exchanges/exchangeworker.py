@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, sessionmaker, joinedload
 
 import core
-from core import json as customjson
+from core import json as customjson, json
 from database.dbasync import db_unique, db_all, db_select, db_select_all
 from database.dbmodels.client import Client, ClientState
 from database.dbmodels.execution import Execution
@@ -88,10 +88,12 @@ class Request(NamedTuple):
     method: str
     url: str
     path: str
-    headers: Optional[Dict]
-    params: Optional[Dict]
-    json: Optional[Dict]
-    source: Client
+    headers: Optional[dict]
+    params: Optional[dict]
+    json: Optional[dict]
+
+    def __hash__(self):
+        return json.dumps(self._asdict()).__hash__()
 
 
 PRIORITY_INTERVALS = {
@@ -143,7 +145,7 @@ class ExchangeWorker:
 
     _ENDPOINT: str
     _SANDBOX_ENDPOINT: str
-    _cache: Dict[str, Cached] = {}
+    _cache: Dict[Request, Cached] = {}
 
     # Networking
     _response_result = ''
@@ -614,8 +616,11 @@ class ExchangeWorker:
             db.add(balance)
             return balance
 
-    async def _on_execution(self, execution: Execution):
-        self._pending_execs.append(execution)
+    async def _on_execution(self, execution: Execution | list[Execution]):
+        if isinstance(execution, list):
+            self._pending_execs.extend(execution)
+        else:
+            self._pending_execs.append(execution)
         if self._waiter and not self._waiter.done():
             self._waiter.cancel()
         asyncio.create_task(self._exec_waiter())
@@ -888,10 +893,10 @@ class ExchangeWorker:
                         resp = await cls._process_response(resp)
 
                         if item.cache:
-                            cls._cache[item.request.url] = Cached(
+                            cls._cache[item.request] = Cached(
                                 url=item.request.url,
                                 response=resp,
-                                expires=time.time() + 5
+                                expires=time.time() + 3600
                             )
 
                         item.future.set_result(resp)
@@ -927,10 +932,7 @@ class ExchangeWorker:
         params = OrderedDict(params or {})
         headers = headers or {}
 
-        if cache:
-            cached = ExchangeWorker._cache.get(url)
-            if cached and time.time() < cached.expires:
-                return cached.response
+
         if sign:
             self._sign_request(method, path, headers, params, data)
 
@@ -941,8 +943,12 @@ class ExchangeWorker:
             headers,
             params,
             data,
-            source=self.client
         )
+
+        if cache:
+            cached = ExchangeWorker._cache.get(request)
+            if cached and time.time() < cached.expires:
+                return cached.response
 
         loop = asyncio.get_running_loop()
         future = loop.create_future()

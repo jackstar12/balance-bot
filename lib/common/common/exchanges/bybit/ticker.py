@@ -41,16 +41,17 @@ class _BybitTicker(ExchangeTicker):
         await self._ws.close()
 
     async def _on_message(self, ws: WebsocketManager, message: Dict):
-        all_data = message["data"]
-        if "trade" in message["topic"]:
-            data = all_data[0]
-            await self._callbacks.get(Channel.TICKER).notify(
-                Ticker(
-                    symbol=data["symbol"],
-                    exchange=self.EXCHANGE,
-                    price=Decimal(data["price"]),
+        if "data" in message:
+            all_data = message["data"]
+            if "trade" in message["topic"]:
+                data = all_data[0]
+                await self._callbacks.get(Channel.TICKER).notify(
+                    Ticker(
+                        symbol=data["symbol"],
+                        exchange=self.EXCHANGE,
+                        price=Decimal(data["price"]),
+                    )
                 )
-            )
 
 
 class BybitLinearTicker(_BybitTicker):
