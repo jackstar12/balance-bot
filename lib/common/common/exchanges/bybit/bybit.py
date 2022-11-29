@@ -5,7 +5,7 @@ import time
 import urllib.parse
 from abc import ABC
 from collections import OrderedDict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Tuple, Optional, Type
@@ -165,26 +165,30 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         #     "execTime": "1659057535081",
         #     "closedSize": "0"
         # }
+        if raw['execType'] == 'Trade':
+            exec_type = ExecType.TRADE
+        elif raw['execType'] == 'Funding':
+            exec_type = ExecType.FUNDING
+        else:
+            return
+        symbol = raw["symbol"]
+        commission = Decimal(raw["execFee"])
+        price = Decimal(get_multiple(raw, "execPrice"))
+        qty = Decimal(raw["execQty"])
 
-        if raw['execType'] == "Trade":
-            symbol = raw["symbol"]
-            commission = Decimal(raw["execFee"])
-            price = Decimal(get_multiple(raw, "execPrice"))
-            qty = Decimal(raw["execQty"])
-
-            # Unify Inverse and Linear
-            contract_type = _get_contract_type(symbol)
-            return Execution(
-                symbol=symbol,
-                price=price,
-                qty=qty,
-                commission=commission,
-                time=cls.parse_ms(int(raw["execTime"])),
-                side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
-                type=ExecType.TRADE,
-                inverse=contract_type == ContractType.INVERSE,
-                settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
-            )
+        # Unify Inverse and Linear
+        contract_type = _get_contract_type(symbol)
+        return Execution(
+            symbol=symbol,
+            price=price,
+            qty=qty,
+            commission=commission,
+            time=cls.parse_ms_dt(int(raw["execTime"])),
+            side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
+            type=exec_type,
+            inverse=contract_type == ContractType.INVERSE,
+            settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
+        )
 
     @classmethod
     def _parse_order_v3(cls, raw: Dict):
@@ -231,7 +235,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 price=price,
                 qty=qty,
                 commission=commission,
-                time=cls.parse_ms(int(raw["createdTime"])),
+                time=cls.parse_ms_dt(int(raw["createdTime"])),
                 side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
                 type=ExecType.TRADE,
                 inverse=contract_type == ContractType.INVERSE,
@@ -465,7 +469,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
 
     async def _get_paginated_v3(self,
                                 params: dict = None,
-                                **kwargs):
+                                **kwargs) -> list[dict]:
         page = True
         results = []
 
@@ -617,6 +621,8 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             for transfer in self._internal_transfers[1]:
                 coins_to_fetch.add(transfer.coin)
 
+        balance = await self._internal_get_balance_v3(contract_type)
+
         asset_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
                                                      params=params)
 
@@ -637,11 +643,17 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
         #     "execTime": "1658215763731"
         # }
         if asset_records:
+            # sum(Decimal(record['amount']) for record in usd_records if record['type'] == 'RealisedPNL') + (Decimal("8293.8771") - Decimal(usd_records[0]['walletBalance']))
+            # equal to sum of all closed p&ls
             for record in asset_records:
                 coin = record["coin"]
                 if coin not in required_execs:
-                    required_execs[coin] = set()
-                required_execs[coin].add(record["execTime"])
+                    required_execs[coin] = Decimal(0)
+                required_execs[coin] += Decimal(record["amount"])
+
+
+                #    required_execs[coin] = dict()
+                # required_execs[coin][self.parse_ms_d(record["execTime"])] = Decimal(record["amount"])
 
             # async with self.db_maker() as db:
             #     for symbol in await db_all(
@@ -651,7 +663,20 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             #         symbols_to_fetch.add(symbol)
         execs = []
 
-        for coin, timestamps in required_execs.items():
+        for coin, pnl_entries in required_execs.items():
+
+            def sub_pnl(date_ms: str, amt: str | Decimal):
+                required_execs[coin] -= Decimal(amt)
+                return
+                parsed = self.parse_ms_d(date_ms)
+                if parsed in pnl_entries:
+
+                    pnl_entries[parsed] -= Decimal(amt)
+                    if not pnl_entries[parsed]:
+                        pnl_entries.pop(parsed)
+                else:
+                    pass
+
             symbols_to_fetch = []
 
             if coin == 'USDT':
@@ -671,21 +696,32 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                 try:
                     raw_execs = await self._get_paginated_v3(path='/contract/v3/private/execution/list',
                                                              params=params)
-                    raw_execs = await self._get_paginated_v3(path='/contract/v3/private/position/closed-pnl',
-                                                             params=params)
+
+                    if raw_execs:
+                        # https://bybit-exchange.github.io/docs/derivativesV3/contract/#t-dv_closedprofitandloss
+                        closed_pnl = await self._get_paginated_v3(path='/contract/v3/private/position/closed-pnl',
+                                                                  params=params)
+
+                    else:
+                        continue
                 except ResponseError:
                     self._logger.error('Something went wrong with symbol: ' + symbol)
                     continue
                 for raw_exec in reversed(raw_execs):
                     if isinstance(raw_exec, str):
                         pass
-                    if raw_exec['execTime'] in timestamps:
-                        timestamps.remove(raw_exec['execTime'])
+
                     parsed = self._parse_exec_v3(raw_exec)
+
                     if parsed:
                         execs.append(parsed)
+                        if parsed.type == ExecType.FUNDING:
+                            sub_pnl(raw_exec['execTime'], Decimal(raw_exec['execFee']) * -1)
 
-                if not timestamps:
+                for entry in closed_pnl:
+                    sub_pnl(entry['createdAt'], entry['closedPnl'])
+
+                if not pnl_entries:
                     break
 
         return list(execs)
@@ -877,7 +913,7 @@ class BybitLinearWorker(_BybitDerivativesBaseClient):
     async def _get_executions(self,
                               since: datetime,
                               init=False):
-        since = since or utc_now() - timedelta(days=365)
+        since = since or utc_now() - timedelta(days=7)
         return await self._get_internal_executions_v3(ContractType.LINEAR, since), []
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance

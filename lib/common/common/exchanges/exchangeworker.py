@@ -11,7 +11,7 @@ from asyncio.queues import PriorityQueue
 from collections import deque, OrderedDict
 from copy import copy, deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from decimal import Decimal
 from enum import Enum
 from typing import List, Dict, Tuple, Optional, Union, Set
@@ -1003,8 +1003,13 @@ class ExchangeWorker:
         return int(datetime.timestamp())
 
     @classmethod
-    def parse_ms(cls, ts_ms: int | float):
+    def parse_ms_dt(cls, ts_ms: int | float):
         return datetime.fromtimestamp(ts_ms / 1000, pytz.utc)
+
+    @classmethod
+    def parse_ms_d(cls, ts_ms: int | str):
+        return date.fromtimestamp(int(ts_ms) / 1000)
+
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'

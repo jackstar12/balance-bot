@@ -106,7 +106,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
                         amount = -Decimal(row['amount'])
                     else:
                         continue
-                    date = self.parse_ms(row['timestamp'])
+                    date = self.parse_ms_dt(row['timestamp'])
                     results.append(
                         RawTransfer(amount, date, row["asset"], fee=None)
                     )
@@ -212,7 +212,7 @@ class BinanceFutures(_BinanceBaseClient):
         )
         return [
             OHLC(
-                time=self.parse_ms(data[0]),
+                time=self.parse_ms_dt(data[0]),
                 open=data[1],
                 high=data[2],
                 low=data[3],
@@ -254,7 +254,7 @@ class BinanceFutures(_BinanceBaseClient):
                 qty=Decimal(trade['qty']),
                 price=Decimal(trade['price']),
                 side=Side.BUY if trade['side'] == 'BUY' else Side.SELL,
-                time=self.parse_ms(trade['time']),
+                time=self.parse_ms_dt(trade['time']),
                 realized_pnl=Decimal(trade['realizedPnl']),
                 commission=Decimal(trade['commission']),
                 type=ExecType.TRADE
@@ -314,7 +314,7 @@ class BinanceFutures(_BinanceBaseClient):
                         # realized_pnl=amount if type == ExecType.LIQUIDATION else 0,
                         # commission=amount if type == ExecType.FUNDING else 0,
                         realized_pnl=amount,
-                        time=self.parse_ms(income['time']),
+                        time=self.parse_ms_dt(income['time']),
                         type=type
                     )
                 )
@@ -322,7 +322,7 @@ class BinanceFutures(_BinanceBaseClient):
                 misc.append(
                     MiscIncome(
                         amount=Decimal(income['income']),
-                        time=self.parse_ms(income['time'])
+                        time=self.parse_ms_dt(income['time'])
                     )
                 )
 
@@ -436,7 +436,7 @@ class BinanceFutures(_BinanceBaseClient):
                     price=Decimal(data['ap']) or Decimal(data['p']),
                     qty=Decimal(data['q']),
                     side=data['S'],
-                    time=self.parse_ms(message['E']),
+                    time=self.parse_ms_dt(message['E']),
                     type=execType,
                     realized_pnl=Decimal(data['rp']),
                     commission=Decimal(data['n'])
@@ -451,7 +451,7 @@ class BinanceFutures(_BinanceBaseClient):
                 await self._on_execution(
                     Execution(
                         symbol=asset["a"],
-                        time=self.parse_ms(message['E']),
+                        time=self.parse_ms_dt(message['E']),
                         type=ExecType.FUNDING,
                         commission=Decimal(asset['bc'])
                     )

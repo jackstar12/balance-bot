@@ -68,7 +68,7 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
                     size=msg['q'],
                     price=Decimal(msg['p']),
                     exchange='binance-futures',
-                    time=ExchangeWorker.parse_ms(float(msg['E'])),
+                    time=ExchangeWorker.parse_ms_dt(float(msg['E'])),
                     perp=True
                 )
             )
