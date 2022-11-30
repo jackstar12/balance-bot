@@ -40,7 +40,7 @@ from common.messenger import TableNames, Category, Messenger
 from database.models.miscincome import MiscIncome
 from database.models.ohlc import OHLC
 from database.models.market import Market
-from core.utils import combine_time_series
+from core.utils import combine_time_series, MINUTE
 
 if TYPE_CHECKING:
     from database.dbmodels.balance import Balance
@@ -534,10 +534,12 @@ class ExchangeWorker:
                     for amount in current_balance.extra_currencies:
                         rate = await self._conversion_rate(
                             Market(base=amount.currency, quote=client.currency),
-                            execution.time
+                            execution.time,
+                            resolution_s=5 * MINUTE
                         )
-                        amount.rate = rate
-                        current_balance.realized += amount.realized * rate
+                        if rate:
+                            amount.rate = rate
+                            current_balance.realized += amount.realized * rate
 
                 current_balance.unrealized = current_balance.realized
 
@@ -716,15 +718,17 @@ class ExchangeWorker:
                     db.add(active_trade)
             return active_trade
 
-    async def _conversion_rate(self, market: Market, date: datetime):
+    async def _conversion_rate(self, market: Market, date: datetime, resolution_s: int = None):
         if self._usd_like(market.base):
             return 1
         ticker = await self._get_ohlc(
             self.get_symbol(market),
             since=date,
+            resolution_s=None,
             limit=1
         )
-        return (ticker[0].open + ticker[0].close) / 2
+        if ticker:
+            return (ticker[0].open + ticker[0].close) / 2
 
     async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
         if self._usd_like(coin):

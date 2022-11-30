@@ -418,7 +418,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
         return results
 
-    def _parse_date(self, date: datetime = None):
+    def _parse_date(self, date: datetime | date = None):
         return int(date.timestamp() * 1000) if date else None
 
 
@@ -610,28 +610,32 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
 
         since_ts = self._parse_date(since) if since else None
 
-        params = {
+        pnlParams = {
             'limit': 50,
             # 'walletFundType': 'RealisedPNL'
         }
-        if since_ts:
-            params['startTime'] = since_ts
 
         if self._internal_transfers and self._internal_transfers[0] == since:
             for transfer in self._internal_transfers[1]:
                 coins_to_fetch.add(transfer.coin)
 
-        balance = await self._internal_get_balance_v3(contract_type)
+        balance = await self.get_balance()
+        balance.client = self.client
+
+        if since:
+            pnlParams['startTime'] = self._parse_date(since.replace(hour=0, minute=0, second=0))
 
         asset_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
-                                                     params=params)
+                                                     params=pnlParams)
 
-        params["coin"] = 'USDT'
+        pnlParams["coin"] = 'USDT'
 
         usd_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
-                                                   params=params)
+                                                   params=pnlParams)
 
-        asset_records.extend(usd_records)
+        #asset_records.extend(usd_records)
+
+        records_by_assets = groupby(asset_records, lambda a: a['coin'])
 
         required_execs = {}
 
@@ -642,15 +646,16 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
         #     "walletBalance": "2731.63599033",
         #     "execTime": "1658215763731"
         # }
-        if asset_records:
+        if records_by_assets:
             # sum(Decimal(record['amount']) for record in usd_records if record['type'] == 'RealisedPNL') + (Decimal("8293.8771") - Decimal(usd_records[0]['walletBalance']))
             # equal to sum of all closed p&ls
-            for record in asset_records:
-                coin = record["coin"]
-                if coin not in required_execs:
-                    required_execs[coin] = Decimal(0)
-                required_execs[coin] += Decimal(record["amount"])
 
+            for coin, records in records_by_assets.items():
+                required_execs[coin] = sum(Decimal(record["amount"]) for record in records if record['type'] == 'RealisedPNL')
+                required_execs[coin] += balance.get_realized(coin) - Decimal(records[0]['walletBalance'])
+
+            # for asset in required_execs:
+            #     required_execs[asset] +=
 
                 #    required_execs[coin] = dict()
                 # required_execs[coin][self.parse_ms_d(record["execTime"])] = Decimal(record["amount"])
@@ -663,7 +668,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             #         symbols_to_fetch.add(symbol)
         execs = []
 
-        for coin, pnl_entries in required_execs.items():
+        for coin in required_execs:
 
             def sub_pnl(date_ms: str, amt: str | Decimal):
                 required_execs[coin] -= Decimal(amt)
@@ -693,6 +698,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                 params['start_time'] = since_ts
             for symbol in symbols_to_fetch:
                 params['symbol'] = symbol
+                pnlParams['symbol'] = symbol
                 try:
                     raw_execs = await self._get_paginated_v3(path='/contract/v3/private/execution/list',
                                                              params=params)
@@ -700,7 +706,7 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                     if raw_execs:
                         # https://bybit-exchange.github.io/docs/derivativesV3/contract/#t-dv_closedprofitandloss
                         closed_pnl = await self._get_paginated_v3(path='/contract/v3/private/position/closed-pnl',
-                                                                  params=params)
+                                                                  params=pnlParams)
 
                     else:
                         continue
@@ -715,13 +721,12 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
 
                     if parsed:
                         execs.append(parsed)
-                        if parsed.type == ExecType.FUNDING:
-                            sub_pnl(raw_exec['execTime'], Decimal(raw_exec['execFee']) * -1)
 
-                for entry in closed_pnl:
-                    sub_pnl(entry['createdAt'], entry['closedPnl'])
+                #for entry in closed_pnl:
+                #    sub_pnl(entry['createdAt'], entry['closedPnl'])
+                required_execs[coin] -= sum(Decimal(entry['closedPnl']) for entry in closed_pnl)
 
-                if not pnl_entries:
+                if not required_execs[coin]:
                     break
 
         return list(execs)
@@ -750,12 +755,13 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
                     price = Decimal(1)
             elif unrealized > 0 and contract_type == ContractType.INVERSE:
                 price = get_multiple(ticker_prices, f'{currency}USD', f'{currency}USDT')
-                extra_currencies.append(
-                    Amount(currency=currency, realized=realized, unrealized=unrealized)
-                )
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {currency}:\n{ticker_prices}')
                     continue
+            if contract_type != ContractType.LINEAR:
+                extra_currencies.append(
+                    Amount(currency=currency, realized=realized, unrealized=unrealized)
+                )
             total_realized += realized * Decimal(price)
             total_unrealized += unrealized * Decimal(price)
 
@@ -766,11 +772,15 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             error=err_msg
         )
 
-    async def _internal_get_balance_v3(self, contract_type: ContractType):
+    async def _internal_get_balance_v3(self, contract_type: ContractType = None):
+
+        params = {}
+        if contract_type:
+            params['category'] = contract_type.value
 
         balances, tickers = await asyncio.gather(
             self.get('/contract/v3/private/account/wallet/balance'),
-            self.get('/derivatives/v3/public/tickers', params={'category': contract_type.value}, sign=False, cache=True)
+            self.get('/derivatives/v3/public/tickers', params=params, sign=False, cache=True)
         )
 
         total_realized = total_unrealized = Decimal(0)
@@ -786,16 +796,18 @@ class _BybitDerivativesBaseClient(_BybitBaseClient, ABC):
             coin = balance["coin"]
             price = 0
             if coin == 'USDT':
-                if contract_type == ContractType.LINEAR:
+                if contract_type == ContractType.LINEAR or not contract_type:
                     price = Decimal(1)
-            elif unrealized > 0 and contract_type == ContractType.INVERSE:
+            elif unrealized > 0 and (contract_type == ContractType.INVERSE or not contract_type):
                 price = get_multiple(ticker_prices, f'{coin}USD', f'{coin}USDT')
-                extra_currencies.append(
-                    Amount(currency=coin, realized=realized, unrealized=unrealized, rate=price)
-                )
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {coin}:\n{ticker_prices}')
                     continue
+
+            if contract_type != ContractType.LINEAR:
+                extra_currencies.append(
+                    Amount(currency=coin, realized=realized, unrealized=unrealized, rate=price)
+                )
             total_realized += realized * price
             total_unrealized += unrealized * price
 
@@ -913,12 +925,13 @@ class BybitLinearWorker(_BybitDerivativesBaseClient):
     async def _get_executions(self,
                               since: datetime,
                               init=False):
-        since = since or utc_now() - timedelta(days=7)
+        since = since or utc_now() - timedelta(days=365)
         return await self._get_internal_executions_v3(ContractType.LINEAR, since), []
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):
-        return await self._internal_get_balance_v3(ContractType.LINEAR)
+        #return await self._internal_get_balance_v3(ContractType.LINEAR)
+        return await self._internal_get_balance_v3()
 
 
 class BybitSpotClient(_BybitBaseClient):
