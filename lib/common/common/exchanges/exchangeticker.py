@@ -8,8 +8,9 @@ from common.exchanges.channel import Channel
 
 class ExchangeTicker:
 
-    def __init__(self, session: aiohttp.ClientSession):
+    def __init__(self, session: aiohttp.ClientSession, sandbox: bool):
         self.session = session
+        self.sandbox = sandbox
         # Initialize Channels
         self._callbacks: Dict[Channel, Observable] = {}
         for channel in Channel:

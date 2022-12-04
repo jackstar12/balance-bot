@@ -15,7 +15,7 @@ class BybitWebsocketClient(WebsocketManager):
 
     def __init__(self,
                  session: aiohttp.ClientSession,
-                 get_url: Callable[..., str],
+                 get_url: Callable[..., str] | str,
                  on_message: Callable[[Self, Dict], Awaitable],
                  sandbox: bool = False,
                  **kwargs):

@@ -38,11 +38,18 @@ class Action(Base, BaseMixin, EditsMixin, Serializer):
     topic = sa.Column(sa.String, nullable=False)
     platform = sa.Column(Platform, nullable=False)
     trigger_type = sa.Column(sa.Enum(ActionTrigger), nullable=False)
-    trigger_ids = sa.Column(JSONB, nullable=True)
+    _trigger_ids = sa.Column('trigger_ids', JSONB, nullable=True)
+
+    @hybrid_property
+    def trigger_ids(self):
+        return self._trigger_ids or {}
+
+    @trigger_ids.setter
+    def trigger_ids(self, value):
+        self._trigger_ids = value or None
 
     @hybrid_property
     def all_ids(self):
         res = {'user_id': self.user_id}
-        if self.trigger_ids:
-            res |= self.trigger_ids
+        res |= self.trigger_ids
         return res

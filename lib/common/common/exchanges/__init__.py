@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Type
 
 from ccxt import Exchange
@@ -7,13 +8,21 @@ from database.models.client import ClientCreate
 from common.exchanges.binance.worker import BinanceFutures, BinanceSpot
 from common.exchanges.binance.ticker import BinanceFuturesTicker
 from common.exchanges.bitmex.bitmex import BitmexWorker
-from common.exchanges.bybit.bybit import BybitInverseWorker, BybitLinearWorker
-from common.exchanges.bybit.ticker import BybitLinearTicker, BybitInverseTicker
+from common.exchanges.bybit.derivatives import BybitDerivativesWorker
+from common.exchanges.bybit.ticker import BybitDerivativesTicker
 from common.exchanges.ftx.http import FtxWorker
 from common.exchanges.ftx.ticker import FtxTicker
 from common.exchanges.kucoin.kucoin import KuCoinFuturesWorker
 from common.exchanges.okx.okx import OkxWorker
 import ccxt
+
+
+class ExchangeName(Enum):
+    FTX = 'ftx'
+    BINANCE_FUTURES = 'binance-futures'
+    BYBIT = 'bybit'
+    KUCOIN = 'kucoin'
+
 
 EXCHANGES: dict[str, Type[ExchangeWorker]] = {
     worker.exchange: worker
@@ -23,8 +32,7 @@ EXCHANGES: dict[str, Type[ExchangeWorker]] = {
         BitmexWorker,
         FtxWorker,
         KuCoinFuturesWorker,
-        BybitLinearWorker,
-        BybitInverseWorker,
+        BybitDerivativesWorker,
         OkxWorker,
     ]
 }
@@ -32,8 +40,7 @@ EXCHANGES: dict[str, Type[ExchangeWorker]] = {
 EXCHANGE_TICKERS = {
     'ftx': FtxTicker,
     'binance-futures': BinanceFuturesTicker,
-    'bybit-linear': BybitLinearTicker,
-    'bybit-inverse': BybitInverseTicker
+    'bybit-derivatives': BybitDerivativesTicker,
 }
 
 SANDBOX_CLIENTS = [
@@ -44,7 +51,7 @@ SANDBOX_CLIENTS = [
         sandbox=True
     ),
     ClientCreate(
-        exchange=BybitLinearWorker.exchange,
+        exchange=BybitDerivativesWorker.exchange,
         api_key="82UvSdVteZHLWMI9sm",
         api_secret="XA8mFgINADoMWLHxnOTVcRyubSGCGoJXQAyX",
         sandbox=True,
@@ -75,8 +82,7 @@ CCXT_CLIENTS: dict[str, Type[Exchange]] = {
     BitmexWorker.exchange: ccxt.bitmex,
     KuCoinFuturesWorker.exchange: ccxt.kucoin,
     OkxWorker.exchange: ccxt.okex,
-    BybitLinearWorker.exchange: ccxt.bybit,
-    BybitInverseWorker.exchange: ccxt.bybit,
+    BybitDerivativesWorker.exchange: ccxt.bybit,
 }
 
 __all__ = [

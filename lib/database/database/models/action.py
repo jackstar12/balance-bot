@@ -24,7 +24,7 @@ class ActionCreate(CreateableModel):
     topic: str
     platform: Union[DiscordPlatform, WebhookPlatform]
     trigger_type: ActionTrigger
-    trigger_ids: Optional[dict]
+    trigger_ids: dict
 
 
 class ActionInfo(OrmBaseModel, ActionCreate):

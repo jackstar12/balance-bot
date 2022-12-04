@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict
+from typing import Dict, NamedTuple
 
 from collector.errors import InvalidExchangeError
 from collector.services.baseservice import BaseService
@@ -7,6 +7,7 @@ import core
 from common.exchanges import EXCHANGE_TICKERS
 from common.exchanges.exchangeticker import ExchangeTicker, Channel
 from common.messenger import TableNames
+from database.dbmodels.client import ExchangeInfo
 from database.models.observer import Observer
 from database.models.ticker import Ticker
 
@@ -20,8 +21,8 @@ class DataService(BaseService, Observer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._exchanges: Dict[str, ExchangeTicker] = {}
-        self._tickers: Dict[tuple[str, str], Ticker] = {}
+        self._exchanges: Dict[ExchangeInfo, ExchangeTicker] = {}
+        self._tickers: Dict[tuple[ExchangeInfo, str], Ticker] = {}
 
     async def run_forever(self):
         await self._update_redis()
@@ -30,12 +31,12 @@ class DataService(BaseService, Observer):
         for exchange in self._exchanges.values():
             await exchange.disconnect()
 
-    async def subscribe(self, exchange: str, channel: Channel, observer: Observer = None, **kwargs):
+    async def subscribe(self, exchange: ExchangeInfo, channel: Channel, observer: Observer = None, **kwargs):
         """
         Subscribes to the given ecxhange channel.
 
             # Will subscribe to BTCUSDT Ticker Messages from binance-futures
-            >>> self.subscribe('binance-futures', Channel.TICKER, symbol='BTCUSDT')
+            >>> self.subscribe(ExchangeInfo(name='binance-futures', sandbox=False), Channel.TICKER, symbol='BTCUSDT')
 
         :param exchange: which exchange?
         :param channel: the channel to subscribe to (ticker, trade etc.)
@@ -46,9 +47,9 @@ class DataService(BaseService, Observer):
         ticker = self._exchanges.get(exchange)
         if not ticker:
             self._logger.info(f'Creating ticker for {exchange}')
-            ticker_cls = EXCHANGE_TICKERS.get(exchange)
+            ticker_cls = EXCHANGE_TICKERS.get(exchange.name)
             if ticker_cls and issubclass(ticker_cls, ExchangeTicker):
-                ticker = ticker_cls(self._http_session)
+                ticker = ticker_cls(self._http_session, exchange.sandbox)
                 self._exchanges[exchange] = ticker
                 await ticker.connect()
             else:
@@ -57,7 +58,7 @@ class DataService(BaseService, Observer):
         observer = observer or self
         await ticker.subscribe(channel, observer, **kwargs)
 
-    async def unsubscribe(self, exchange: str, channel: Channel, observer: Observer = None, **kwargs):
+    async def unsubscribe(self, exchange: ExchangeInfo, channel: Channel, observer: Observer = None, **kwargs):
         self._logger.info(f'Unsubscribe: {exchange=} {channel=} {kwargs=}')
 
         ticker = self._exchanges.get(exchange)
@@ -70,7 +71,7 @@ class DataService(BaseService, Observer):
         self._logger.debug(ticker)
         self._tickers[(ticker.exchange, ticker.symbol)] = ticker
 
-    async def get_ticker(self, symbol, exchange):
+    async def get_ticker(self, symbol, exchange: ExchangeInfo):
         ticker = self._tickers.get((exchange, symbol))
         if not ticker:
             try:

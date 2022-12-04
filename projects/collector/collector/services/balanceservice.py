@@ -10,7 +10,7 @@ from sqlalchemy import select, and_, or_
 
 from common.exchanges import EXCHANGES
 from collector.services.baseservice import BaseService
-from collector.services.dataservice import DataService, Channel
+from collector.services.dataservice import DataService, Channel, ExchangeInfo
 from database.dbasync import db_all, db_unique, db_eager
 from database.dbmodels import Balance
 from database.dbmodels.client import Client, ClientState, ClientType
@@ -318,7 +318,11 @@ class ExtendedBalanceService(_BalanceServiceBase):
         worker = await self.get_worker(data['client_id'], create_if_missing=True)
         if worker:
             self._refresh_worker(worker)
-            await self.data_service.subscribe(worker.client.exchange, Channel.TICKER, symbol=data['symbol'])
+            await self.data_service.subscribe(
+                worker.client.exchange_info,
+                Channel.TICKER,
+                symbol=data['symbol']
+            )
 
     async def _on_trade_update(self, data: Dict):
         client_id = data['client_id']
@@ -343,7 +347,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
                     for trade in client.open_trades
                 )
                 if unsubscribe_symbol:
-                    await self.data_service.unsubscribe(client.exchange, Channel.TICKER, symbol=symbol)
+                    await self.data_service.unsubscribe(client.exchange_info, Channel.TICKER, symbol=symbol)
                 await self._remove_worker(worker)
 
     async def _add_worker(self, worker: ExchangeWorker):
@@ -402,7 +406,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
 
                         if client and client.open_trades:
                             for trade in client.open_trades:
-                                ticker = await self.data_service.get_ticker(trade.symbol, client.exchange)
+                                ticker = await self.data_service.get_ticker(trade.symbol, client.exchange_info)
                                 extra_ticker = ticker
                                 try:
                                     market = worker.get_market(trade.symbol)
@@ -411,7 +415,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
                                             worker.get_symbol(
                                                 Market(base=market.base, quote=client.currency)
                                             ),
-                                            client.exchange
+                                            client.exchange_info
                                         )
                                 except NotImplementedError:
                                     pass

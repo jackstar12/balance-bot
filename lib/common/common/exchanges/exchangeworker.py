@@ -230,6 +230,9 @@ class ExchangeWorker:
                              since: datetime) -> tuple[List[Transfer], List[Execution], List[MiscIncome]]:
         transfers = await self.get_transfers(since)
         execs, misc = await self._get_executions(since, init=self.client.last_execution_sync is None)
+
+
+
         # for transfer in transfers:
         #     if transfer.coin:
         #         raw_amount = transfer.extra_currencies.get(transfer.coin, transfer.amount)
@@ -243,6 +246,7 @@ class ExchangeWorker:
         #             commission=transfer.commission
         #         )
         #         execs.append(transfer.execution)
+
         for transfer in transfers:
             if transfer.execution:
                 execs.append(transfer.execution)
@@ -1007,8 +1011,8 @@ class ExchangeWorker:
         return int(datetime.timestamp())
 
     @classmethod
-    def parse_ms_dt(cls, ts_ms: int | float):
-        return datetime.fromtimestamp(ts_ms / 1000, pytz.utc)
+    def parse_ms_dt(cls, ts_ms: int | str):
+        return datetime.fromtimestamp(int(ts_ms) / 1000, pytz.utc)
 
     @classmethod
     def parse_ms_d(cls, ts_ms: int | str):

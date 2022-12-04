@@ -1,44 +1,57 @@
 from decimal import Decimal
 from typing import Dict
 
-import aiohttp
-
+from common.exchanges.bybit.derivatives import get_contract_type, ContractType
 from common.exchanges.exchangeticker import ExchangeTicker, Channel
-from core.env import TESTING
 from common.exchanges.bybit.websocket import BybitWebsocketClient
 from database.models.async_websocket_manager import WebsocketManager
 from database.models.ticker import Ticker
 
 
-class _BybitTicker(ExchangeTicker):
-    _WS_ENDPOINT = None
-    EXCHANGE = ''
+class BybitDerivativesTicker(ExchangeTicker):
+    _WS_LINEAR = 'wss://stream.bybit.com/contract/usdt/public/v3'
+    _WS_LINEAR_SANDBOX = 'wss://stream-testnet.bybit.com/contract/usdt/public/v3'
+    _WS_INVERSE = 'wss://stream.bybit.com/contract/inverse/public/v3'
+    _WS_INVERSE_SANDBOX = 'wss://stream-testnet.bybit.com/contract/inverse/public/v3'
 
-    def __init__(self, session: aiohttp.ClientSession):
-        super().__init__(session)
-        self._ws = BybitWebsocketClient(session,
-                                        self._get_url,
-                                        self._on_message)
+    EXCHANGE = 'bybit-derivatives'
 
-    def _get_url(self):
-        return self._WS_ENDPOINT
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    async def _subscribe(self, channel: Channel, **kwargs):
+        self._inverse = BybitWebsocketClient(self.session,
+                                             self._WS_INVERSE_SANDBOX if self.sandbox else self._WS_INVERSE,
+                                             self._on_message)
+
+        self._linear = BybitWebsocketClient(self.session,
+                                            self._WS_LINEAR_SANDBOX if self.sandbox else self._WS_LINEAR,
+                                            self._on_message)
+
+    def get_ws(self, symbol: str):
+        contract = get_contract_type(symbol)
+        if contract == ContractType.LINEAR:
+            return self._linear
+        elif contract == ContractType.INVERSE:
+            return self._inverse
+
+    def _subscribe(self, channel: Channel, **kwargs):
         # I have no idea why the values have to be compared
         if channel == Channel.TICKER:
-            res = await self._ws.subscribe("trade", kwargs["symbol"])
-            pass
+            symbol = kwargs["symbol"]
+            return self.get_ws(symbol).subscribe("trade", symbol)
 
-    async def _unsubscribe(self, channel: Channel, **kwargs):
+    def _unsubscribe(self, channel: Channel, **kwargs):
         if channel == Channel.TICKER:
-            res = await self._ws.unsubscribe("trade", kwargs["symbol"])
-            pass
+            symbol = kwargs["symbol"]
+            return self.get_ws(symbol).unsubscribe("trade", symbol)
 
     async def connect(self):
-        await self._ws.connect()
+        await self._inverse.connect()
+        await self._linear.connect()
 
     async def disconnect(self):
-        await self._ws.close()
+        await self._inverse.close()
+        await self._linear.close()
 
     async def _on_message(self, ws: WebsocketManager, message: Dict):
         if "data" in message:
@@ -52,14 +65,3 @@ class _BybitTicker(ExchangeTicker):
                         price=Decimal(data["price"]),
                     )
                 )
-
-
-class BybitLinearTicker(_BybitTicker):
-    _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime_public' if TESTING else 'wss://stream.bybit.com/realtime_public'
-    EXCHANGE = 'bybit-linear'
-
-
-class BybitInverseTicker(_BybitTicker):
-    _WS_ENDPOINT = 'wss://stream-testnet.bybit.com/realtime' if TESTING else 'wss://stream.bybit.com/realtime'
-    EXCHANGE = 'bybit-inverse'
-

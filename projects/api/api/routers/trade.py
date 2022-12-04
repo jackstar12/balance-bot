@@ -207,7 +207,6 @@ def create_trade_endpoint(path: str,
                     trades
                 )
 
-
         ts4 = time.perf_counter()
         return OK(
             result=[

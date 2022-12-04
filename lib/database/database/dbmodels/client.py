@@ -3,7 +3,7 @@ import asyncio
 import logging
 from datetime import datetime, date, timedelta
 from enum import Enum
-from typing import Optional, Union, Literal, Any, TYPE_CHECKING
+from typing import Optional, Union, Literal, Any, TYPE_CHECKING, NamedTuple
 from uuid import UUID
 import sqlalchemy as sa
 import pytz
@@ -50,6 +50,11 @@ if TYPE_CHECKING:
 from pydantic import BaseModel as PydanticBaseModel, Field
 
 
+class ExchangeInfo(NamedTuple):
+    name: str
+    sandbox: bool
+
+
 class ClientRedis:
 
     def __init__(self, user_id: UUID, client_id: int, redis_instance: Redis = None):
@@ -61,7 +66,7 @@ class ClientRedis:
         client_hash = self.cache_hash if space == 'cache' else self.normal_hash
         if space == 'cache':
             asyncio.ensure_future(self.redis.expire(client_hash, 5 * 60))
-        keys[RedisKey(client_hash, self.user_id)] = str(self.user_id)
+        #keys[RedisKey(client_hash, self.user_id)] = str(self.user_id)
 
         mapping = {
             k.key: customjson.dumps(v.dict()) if isinstance(v, PydanticBaseModel) else v
@@ -243,6 +248,10 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
         UniqueConstraint(user_id, exchange, api_key),
     )
 
+    @property
+    def exchange_info(self):
+        return ExchangeInfo(name=self.exchange, sandbox=self.sandbox)
+
     @reconstructor
     def reconstructor(self):
         self.live_balance: Optional[Balance] = None
@@ -344,6 +353,8 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
     async def get_latest_balance(self, redis: Redis, currency=None) -> BalanceModel | None:
         live = await self.as_redis(redis).get_balance()
         if live:
+            if not live.currency:
+                live.currency = self.currency
             return live
         else:
             latest = await self.latest()

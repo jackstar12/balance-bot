@@ -24,7 +24,7 @@ class WebsocketManager:
     # have authentication embedded into the url
     def __init__(self,
                  session: aiohttp.ClientSession,
-                 get_url: Callable[..., str],
+                 get_url: Callable[..., str] | str,
                  on_connect: Callable[[Self], None] = None,
                  ping_forever_seconds: int = None,
                  logger: logging.Logger = None):
@@ -92,7 +92,7 @@ class WebsocketManager:
         return self._ws and not self._ws.closed
 
     async def _run(self):
-        url = self._get_url()
+        url = self._get_url() if callable(self._get_url) else self._get_url
         self._logger.info(f'Connecting to {url}')
         async with self._session.ws_connect(url, autoping=True) as ws:
             self._ws = ws

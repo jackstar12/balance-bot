@@ -8,7 +8,7 @@ from database.dbasync import db_all
 from database.dbmodels.alert import Alert
 from collector.services.baseservice import BaseService
 from common.exchanges.channel import Channel
-from collector.services.dataservice import DataService
+from collector.services.dataservice import DataService, ExchangeInfo
 from database.enums import Side
 from common.messenger import Category
 from database.models.observer import Observer
@@ -27,7 +27,7 @@ class AlertService(BaseService, Observer):
         alerts = await db_all(select(Alert), session=self._db)
 
         for alert in alerts:
-            await self.data_service.subscribe(alert.exchange, Channel.TICKER, self, symbol=alert.symbol)
+            await self.data_service.subscribe(ExchangeInfo(name=alert.exchange, sandbox=False), Channel.TICKER, self, symbol=alert.symbol)
             self.add_alert(alert)
 
         await self._messenger.bulk_sub(TableNames.ALERT, {
@@ -51,7 +51,7 @@ class AlertService(BaseService, Observer):
         symbol = (new.symbol, new.exchange)
         ticker = self._tickers.get(symbol)
         if not ticker:
-            await self.data_service.subscribe(new.exchange, Channel.TICKER, self, symbol=new.symbol)
+            await self.data_service.subscribe(ExchangeInfo(name=new.exchange, sandbox=False), Channel.TICKER, self, symbol=new.symbol)
             while ticker is None:
                 await asyncio.sleep(0.1)
                 ticker = self._tickers.get(symbol)
