@@ -115,6 +115,10 @@ class Event(Base, Serializer, BaseMixin):
     def is_(self, state: EventState):
         return state in self.state
 
+    @property
+    def save_interval(self):
+        return (self.end - self.start).total_seconds() // 60
+
     @classmethod
     def is_expr(cls, state: EventState):
         now = func.now()

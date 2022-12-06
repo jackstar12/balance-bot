@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Callable
 
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select, and_
 
 from collector.services.baseservice import BaseService
@@ -61,7 +62,8 @@ class EventService(BaseService):
                                eager=[(Event.entries, [
                                    EventEntry.client,
                                    EventEntry.init_balance
-                               ])])
+                               ])],
+                               session=self._db)
 
     async def _on_event(self, data: dict):
         self._schedule(
@@ -96,40 +98,51 @@ class EventService(BaseService):
     def _on_event_delete(self, data: dict):
         self._unregister(data['id'])
 
+    async def _save_event(self, event_id: int):
+        event = await self._get_event(event_id)
+        await event.save_leaderboard()
+        await self._db.commit()
+
+    def schedule_job(self, event_id: int, run_date: datetime, category: Category):
+        job_id = self.job_id(event_id, category)
+
+        if self._scheduler.get_job(job_id):
+            self._scheduler.reschedule_job(
+                job_id,
+                trigger=DateTrigger(run_date=run_date)
+            )
+        else:
+            async def fn():
+                event = await self._get_event(event_id)
+                if event:
+                    if category in (EVENT.END, EVENT.START):
+                        await event.save_leaderboard()
+
+                        if category == EVENT.END:
+                            event.final_summary = await event.get_summary()
+
+                        await self._db.commit()
+                    return await self._messenger.pub_instance(event, category)
+
+            self._scheduler.add_job(
+                func=fn,
+                trigger=DateTrigger(run_date=run_date),
+                id=job_id
+            )
+
     def _schedule(self, event: Event):
 
-        def schedule_job(run_date: datetime, category: Category):
-            event_id = event.id
-            job_id = self.job_id(event_id, category)
+        self.schedule_job(event.id, event.start, EVENT.START)
+        self.schedule_job(event.id, event.end, EVENT.END)
+        self.schedule_job(event.id, event.registration_start, EVENT.REGISTRATION_START)
+        self.schedule_job(event.id, event.registration_end, EVENT.REGISTRATION_END)
 
-            if self._scheduler.get_job(job_id):
-                self._scheduler.reschedule_job(
-                    job_id,
-                    trigger=DateTrigger(run_date=run_date)
-                )
-            else:
-                async def fn():
-                    event = await self._get_event(event_id)
-                    if event:
-                        if category in (EVENT.END, EVENT.START):
-                            await event.save_leaderboard()
-
-                            if category == EVENT.END:
-                                event.final_summary = await event.get_summary()
-
-                            await self._db.commit()
-                        return await self._messenger.pub_instance(event, category)
-
-                self._scheduler.add_job(
-                    func=fn,
-                    trigger=DateTrigger(run_date=run_date),
-                    id=job_id
-                )
-
-        schedule_job(event.start, EVENT.START)
-        schedule_job(event.end, EVENT.END)
-        schedule_job(event.registration_start, EVENT.REGISTRATION_START)
-        schedule_job(event.registration_end, EVENT.REGISTRATION_END)
+        self._scheduler.add_job(
+            func=lambda: self._save_event(event.id),
+            trigger=IntervalTrigger(days=1),
+            id=f"event:{event.id}",
+            jitter=60
+        )
 
     def _unregister(self, event_id: int):
 
@@ -143,7 +156,8 @@ class EventService(BaseService):
         remove_job(EVENT.REGISTRATION_START)
         remove_job(EVENT.REGISTRATION_END)
 
+        self._scheduler.remove_job(f"event:{event_id}")
+
     @classmethod
     def job_id(cls, event_id: int, category: Category):
         return f'{event_id}:{category}'
-
