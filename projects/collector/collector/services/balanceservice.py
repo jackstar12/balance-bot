@@ -233,7 +233,7 @@ class BasicBalanceService(_BalanceServiceBase):
             exchange_queue = deque()
             job = self._scheduler.add_job(
                 self.update_worker_queue,
-                IntervalT rigger(seconds=3600),
+                IntervalTrigger(seconds=3600),
                 args=(exchange_queue,)
             )
             self._exchange_jobs[exchange] = ExchangeJob(exchange, job, exchange_queue)

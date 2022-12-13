@@ -18,7 +18,7 @@ from core import map_list
 from core import utils, get_multiple, parse_isoformat
 from database.dbmodels.execution import Execution
 from database.dbmodels.transfer import RawTransfer
-from database.enums import ExecType, Side
+from database.enums import ExecType, Side, MarketType
 from database.errors import ResponseError, InvalidClientError, RateLimitExceeded, WebsocketError
 from database.models.async_websocket_manager import WebsocketManager
 from database.models.market import Market
@@ -182,7 +182,8 @@ class _BybitBaseClient(ExchangeWorker, ABC):
             side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
             type=exec_type,
             inverse=contract_type == ContractType.INVERSE,
-            settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
+            settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3],
+            market_type = MarketType.DERIVATIVES
         )
 
     @classmethod
@@ -220,8 +221,8 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         if raw['orderStatus'] == 'Filled':
             symbol = raw["symbol"]
             commission = Decimal(raw["cumExecFee"])
-            price = Decimal(raw["price"])
-            qty = Decimal(raw["qty"])
+            qty = Decimal(raw["cumExecQty"])
+            price = Decimal(raw["cumExecValue"]) / qty
 
             # Unify Inverse and Linear
             contract_type = get_contract_type(symbol)
@@ -229,12 +230,14 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 symbol=symbol,
                 price=price,
                 qty=qty,
+                reduce=raw['reduceOnly'],
                 commission=commission,
                 time=cls.parse_ms_dt(int(raw["createdTime"])),
                 side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
                 type=ExecType.TRADE,
                 inverse=contract_type == ContractType.INVERSE,
-                settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
+                settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3],
+                market_type=MarketType.DERIVATIVES
             )
 
     async def _on_message(self, ws: WebsocketManager, message: Dict):
@@ -416,7 +419,8 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                     amount=Decimal(record['amount']) * (-1 if record['type'] == 'ExchangeOrderWithdraw' else 1),
                     time=self.parse_ms_dt(record['execTime']),
                     coin=record['coin'],
-                    fee=None
+                    fee=None,
+                    market_type=MarketType.SPOT
                 )
             )
 

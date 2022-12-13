@@ -7,7 +7,7 @@ from sqlalchemy.orm import relationship
 from database.dbsync import Base, BaseMixin
 from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Numeric, Enum, UniqueConstraint, Boolean
 from database.dbmodels.mixins.serializer import Serializer
-from database.enums import ExecType, Side
+from database.enums import ExecType, Side, MarketType
 from database.dbmodels.symbol import CurrencyMixin
 
 
@@ -27,7 +27,10 @@ class Execution(Base, Serializer, BaseMixin, CurrencyMixin):
     qty: Decimal = Column(Numeric, nullable=True)
     side = Column(Enum(Side), nullable=True)
     commission: Decimal = Column(Numeric, nullable=True)
-    #reduce: bool = Column(Boolean, nullable=False)
+
+    # If true, the execution will first lower the size of the current trade, otherwise open a new one
+    reduce: bool = Column(Boolean, server_default='True')
+    market_type = Column(Enum(MarketType), nullable=False, server_default='DERIVATIVES')
 
     trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
 

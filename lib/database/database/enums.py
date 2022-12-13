@@ -53,6 +53,11 @@ class Filter(Enum):
     LABEL = "label"
 
 
+class MarketType(Enum):
+    SPOT = "spot"
+    DERIVATIVES = "derivatives"
+
+
 class ExecType(Enum):
     TRADE = "trade"
     TRANSFER = "transfer"

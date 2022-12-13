@@ -29,11 +29,12 @@ import core
 from core import json as customjson, json
 from database.dbasync import db_unique, db_all, db_select, db_select_all
 from database.dbmodels.client import Client, ClientState
+#from database.dbmodels.ohlc import OHLC
 from database.dbmodels.execution import Execution
 from database.dbmodels.pnldata import PnlData
 from database.dbmodels.trade import Trade
 from database.dbmodels.transfer import Transfer, RawTransfer
-from database.enums import Priority, ExecType, Side
+from database.enums import Priority, ExecType, Side, MarketType
 from database.errors import RateLimitExceeded, ExchangeUnavailable, ExchangeMaintenance, ResponseError, \
     InvalidClientError, ClientDeletedError
 from common.messenger import TableNames, Category, Messenger
@@ -310,7 +311,8 @@ class ExchangeWorker:
                         side=Side.BUY if raw_transfer.amount > 0 else Side.SELL,
                         time=raw_transfer.time,
                         type=ExecType.TRANSFER,
-                        commission=None
+                        market_type=raw_transfer.market_type or MarketType.SPOT,
+                        commission=raw_transfer.fee
                     )
                     result.append(transfer)
             return result
@@ -382,9 +384,9 @@ class ExchangeWorker:
 
             if client.currently_realized and valid_until and valid_until < client.currently_realized.time and all_executions:
                 await db.execute(
-                    delete(db_balance.Balance).where(
-                        db_balance.Balance.client_id == client.id,
-                        db_balance.Balance.time > valid_until
+                    delete(bl).where(
+                        bl.client_id == client.id,
+                        bl.time > valid_until
                     )
                 )
 
@@ -669,55 +671,58 @@ class ExchangeWorker:
                 )
                 await self._update_realized_balance(db)
 
-            for execution in executions:
+            async def get_trade(execution: Execution) -> Optional[Trade]:
 
-                async def get_trade(symbol: str):
-
-                    stmt = select(Trade).where(
+                stmt = (
+                    select(Trade).where(
                         # Trade.symbol.like(f'{symbol}%'),
-                        Trade.symbol == symbol,
-                        Trade.symbol == execution.symbol,
-                        Trade.client_id == self.client_id
+                        Trade.client_id == self.client_id,
+                        Execution.symbol == execution.symbol,
+                        Execution.market_type == execution.market_type
                     )
+                    .join(Trade.initial)
+                )
 
-                    # The distinguishing here is pretty important because Liquidation Execs can happen
-                    # after a trade has been closed on paper (e.g. insurance fund on binance). These still have to be
-                    # attributed to the corresponding trade.
-                    if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
-                        stmt = stmt.where(
-                            Trade.is_open
-                        )
-                    elif execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
-                        stmt = stmt.order_by(
-                            desc(Trade.open_time)
-                        )
-                    return await db_unique(stmt,
-                                           Trade.executions,
-                                           Trade.init_balance,
-                                           Trade.initial,
-                                           Trade.max_pnl,
-                                           Trade.min_pnl,
-                                           session=db)
+                # The distinguishing here is pretty important because Liquidation Execs can happen
+                # after a trade has been closed on paper (e.g. insurance fund on binance). These still have to be
+                # attributed to the corresponding trade.
+                if execution.type in (ExecType.TRADE, ExecType.TRANSFER):
+                    stmt = stmt.where(
+                        Trade.is_open
+                    )
+                elif execution.type in (ExecType.FUNDING, ExecType.LIQUIDATION):
+                    stmt = stmt.order_by(
+                        desc(Trade.open_time)
+                    )
+                return await db_unique(stmt,
+                                       Trade.executions,
+                                       Trade.init_balance,
+                                       Trade.initial,
+                                       Trade.max_pnl,
+                                       Trade.min_pnl,
+                                       session=db)
 
-                if self._exclude_from_trade(execution):
+            for current in executions:
+
+                if self._exclude_from_trade(current):
                     continue
 
-                active_trade = await get_trade(execution.symbol)
+                active_trade = await get_trade(current)
 
                 if active_trade:
                     # Update existing trade
 
-                    execution.__realtime__ = realtime
-                    db.add(execution)
+                    current.__realtime__ = realtime
+                    db.add(current)
 
                     active_trade.__realtime__ = realtime
-                    new_trade = active_trade.add_execution(execution, current_balance)
+                    new_trade = active_trade.add_execution(current, current_balance)
                     if new_trade:
                         db.add(new_trade)
                         new_trade.__realtime__ = realtime
                         active_trade = new_trade
                 else:
-                    active_trade = Trade.from_execution(execution, self.client_id, current_balance)
+                    active_trade = Trade.from_execution(current, self.client_id, current_balance)
                     active_trade.__realtime__ = realtime
                     db.add(active_trade)
             return active_trade
@@ -725,6 +730,17 @@ class ExchangeWorker:
     async def _conversion_rate(self, market: Market, date: datetime, resolution_s: int = None):
         if self._usd_like(market.base):
             return 1
+
+        #conversion = await db_unique(
+        #    Conversion.at_dt(dt=date,
+        #                     market=market,
+        #                     tolerance=timedelta(seconds=resolution_s),
+        #                     exchange=self.exchange)
+        #)
+        #
+        #if conversion:
+        #    return conversion.rate
+
         ticker = await self._get_ohlc(
             self.get_symbol(market),
             since=date,
@@ -750,6 +766,10 @@ class ExchangeWorker:
     async def _get_executions(self,
                               since: datetime,
                               init=False) -> tuple[List[Execution], List[MiscIncome]]:
+        raise NotImplementedError
+
+    @classmethod
+    def _get_market_type(cls, symbol: str):
         raise NotImplementedError
 
     @classmethod

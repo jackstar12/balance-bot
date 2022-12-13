@@ -27,7 +27,7 @@ from database.dbmodels.pnldata import PnlData
 from database.dbsync import Base, BaseMixin
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.execution import Execution
-from database.enums import Side, ExecType, Status, TradeSession
+from database.enums import Side, ExecType, Status, TradeSession, MarketType
 
 import core
 from database.dbmodels.symbol import CurrencyMixin
@@ -417,7 +417,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
                 self.open_qty += execution.qty
                 if execution.commission:
                     self.total_commissions += execution.commission
-            else:
+            elif execution.reduce or True:
                 if execution.qty > self.open_qty:
                     new_exec = Execution(
                         qty=execution.qty - self.open_qty,
@@ -435,26 +435,28 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
                     execution.qty = self.open_qty
 
                     new = Trade.from_execution(new_exec, self.client_id, current_balance)
-                if execution.qty <= self.open_qty:
 
-                    if self.exit is None:
-                        self.exit = execution.price
-                    else:
-                        realized_qty = self.qty - self.open_qty
-                        self.exit = weighted_avg((self.exit, execution.price),
-                                                 (realized_qty, execution.qty))
+                if self.exit is None:
+                    self.exit = execution.price
+                else:
+                    realized_qty = self.qty - self.open_qty
+                    self.exit = weighted_avg((self.exit, execution.price),
+                                             (realized_qty, execution.qty))
 
-                    if execution.realized_pnl is None:
-                        execution.realized_pnl = self.calc_pnl(execution.qty, execution.price)
+                if execution.realized_pnl is None:
+                    execution.realized_pnl = self.calc_pnl(execution.qty, execution.price)
 
-                    self.open_qty -= execution.qty
-                    self.realized_pnl += execution.realized_pnl
+                self.open_qty -= execution.qty
+                self.realized_pnl += execution.realized_pnl
 
-                    if execution.commission:
-                        self.total_commissions += execution.commission
+                if execution.commission:
+                    self.total_commissions += execution.commission
 
-                    if self.open_qty.is_zero():
-                        self.update_pnl(Decimal(0), force=True, now=execution.time)
+                if self.open_qty.is_zero():
+                    self.update_pnl(Decimal(0), force=True, now=execution.time)
+            else:
+                print('wtf', execution)
+                new = Trade.from_execution(execution, self.client_id, current_balance)
 
         return new
 

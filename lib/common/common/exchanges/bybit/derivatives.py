@@ -31,6 +31,8 @@ from database.models.ohlc import OHLC
 from ccxt.async_support import bybit
 
 
+logger = logging.getLogger()
+
 
 def get_contract_type(contract: str):
     if contract.endswith('USDT'):
@@ -72,6 +74,12 @@ class BybitDerivativesWorker(_BybitBaseClient):
                 base=raw[:-3],
                 quote='USD'
             )
+
+    @classmethod
+    def set_weights(cls, weight: int, response: ClientResponse):
+        used = response.headers.get('X-Bapi-Limit-Status')
+        logger.info(f'Remaining: {used}')
+
 
     async def _get_paginated(self,
                              limit: int,
@@ -220,7 +228,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
                     self._logger.exception('Something went wrong with symbol: ' + symbol)
                     continue
 
-                for raw_order in reversed(raw_orders):
+                for raw_order in raw_orders:
                     parsed = self._parse_order_v3(raw_order)
 
                     if parsed:

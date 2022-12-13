@@ -1,4 +1,5 @@
 import enum
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import NamedTuple, Optional
@@ -8,7 +9,8 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from database.dbsync import Base
-from database.enums import Side
+from database.enums import Side, MarketType
+from database.models import BaseModel
 
 
 class TransferType(enum.Enum):
@@ -16,11 +18,12 @@ class TransferType(enum.Enum):
     WITHDRAW = "withdraw"
 
 
-class RawTransfer(NamedTuple):
+class RawTransfer(BaseModel):
     amount: Decimal
     time: datetime
     coin: str
     fee: Optional[Decimal]
+    market_type: Optional[MarketType]
 
 
 class Transfer(Base):
