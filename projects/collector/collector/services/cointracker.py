@@ -3,6 +3,8 @@ import time
 
 import pytz
 from sqlalchemy import select
+
+from common.exchanges.exchangeticker import Subscription
 from database.dbasync import db_all, async_session
 from collector.services.baseservice import BaseService
 from common.exchanges.channel import Channel
@@ -118,15 +120,13 @@ class CoinTracker(BaseService, Observer):
                         async_session.add(coin)
                     await self.data_service.subscribe(
                         'ftx',
-                        Channel.TRADES,
-                        observer=self,
-                        symbol=perp_name
+                        Subscription.get(channel=Channel.TRADES, symbol=perp_name),
+                        observer=self
                     )
                     await self.data_service.subscribe(
                         'ftx',
-                        Channel.TRADES,
+                        Subscription.get(channel=Channel.TRADES, symbol=perp_name),
                         observer=self,
-                        symbol=spot_name
                     )
 
         await async_session.commit()

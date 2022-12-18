@@ -24,6 +24,7 @@ import dotenv
 
 import database.dbmodels as dbmodels
 import core
+from database.enums import MarketType
 from database.env import environment
 from database.errors import UserInputError
 from database.dbmodels.transfer import Transfer
@@ -364,7 +365,10 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
         if not self.currently_realized:
             return
         realized = self.currently_realized.realized
-        upnl = sum(trade.live_pnl.unrealized for trade in self.open_trades if trade.live_pnl)
+        upnl = sum(
+            trade.live_pnl.unrealized for trade in self.open_trades
+            if trade.live_pnl if trade.initial.market_type == MarketType.DERIVATIVES
+        )
         return dbmodels.Balance(
             realized=realized,
             unrealized=realized + upnl,

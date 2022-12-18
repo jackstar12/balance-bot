@@ -880,7 +880,7 @@ def select_client(ctx, dc: discord.Client, slash: SlashCommand, user: DiscordUse
         slash,
         options=[
             SelectionOption(
-                name=client.name if client.name else client.exchange,
+                name=client.name if client.name else client.src,
                 value=str(client.id),
                 description=f'From {user.get_events_and_guilds_string(dc, client)}',
                 object=client

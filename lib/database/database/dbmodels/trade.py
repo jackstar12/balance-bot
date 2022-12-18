@@ -425,7 +425,8 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
                         price=execution.price,
                         side=execution.side,
                         time=execution.time,
-                        type=execution.type
+                        type=execution.type,
+                        settle=execution.settle
                     )
                     # Because the execution is "split" we also have to assign
                     # the commissions accordingly

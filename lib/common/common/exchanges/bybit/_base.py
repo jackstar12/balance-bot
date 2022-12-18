@@ -110,33 +110,6 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         return self._WS_SANDBOX_ENDPOINT if self.client.sandbox else self._WS_ENDPOINT
 
     @classmethod
-    def _parse_exec(cls, raw_exec: Dict):
-
-        if raw_exec['exec_type'] == "Trade":
-            symbol = raw_exec["symbol"]
-            commission = Decimal(raw_exec["exec_fee"])
-            price = Decimal(get_multiple(raw_exec, "exec_price", "price"))
-            qty = Decimal(raw_exec["exec_qty"])
-
-            # Unify Inverse and Linear
-            contract_type = get_contract_type(symbol)
-            return Execution(
-                symbol=symbol,
-                price=price,
-                qty=qty,
-                commission=commission,
-                time=(
-                    cls.parse_ts(raw_exec["trade_time_ms"] / 1000)
-                    if "trade_time_ms" in raw_exec else
-                    parse_isoformat(raw_exec["trade_time"])
-                ),
-                side=Side.BUY if raw_exec["side"] == "Buy" else Side.SELL,
-                type=ExecType.TRADE,
-                inverse=contract_type == ContractType.INVERSE,
-                settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3]
-            )
-
-    @classmethod
     def _parse_exec_v3(cls, raw: Dict):
 
         # {
@@ -220,12 +193,14 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
         if raw['orderStatus'] == 'Filled':
             symbol = raw["symbol"]
+            contract_type = get_contract_type(symbol)
+
             commission = Decimal(raw["cumExecFee"])
             qty = Decimal(raw["cumExecQty"])
-            price = Decimal(raw["cumExecValue"]) / qty
+            value = Decimal(raw["cumExecValue"])
+            price = value / qty if contract_type == ContractType.LINEAR else qty / value
 
             # Unify Inverse and Linear
-            contract_type = get_contract_type(symbol)
             return Execution(
                 symbol=symbol,
                 price=price,
@@ -244,25 +219,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         # https://bybit-exchange.github.io/docs/inverse/#t-websocketexecution
         print(message)
         topic = message.get('topic')
-        if topic == "execution":
-            for execution in (executions for executions in message["data"]):
-                # {
-                #     "symbol": "BTCUSD",
-                #     "side": "Buy",
-                #     "order_id": "xxxxxxxx-xxxx-xxxx-9a8f-4a973eb5c418",
-                #     "exec_id": "xxxxxxxx-xxxx-xxxx-8b66-c3d2fcd352f6",
-                #     "order_link_id": "",
-                #     "price": "8300",
-                #     "order_qty": 1,
-                #     "exec_type": "Trade",
-                #     "exec_qty": 1,
-                #     "exec_fee": "0.00000009",
-                #     "leaves_qty": 0,
-                #     "is_maker": false,
-                #     "trade_time": "2020-01-14T14:07:23.629Z"
-                # }
-                await self._on_execution(self._parse_exec(execution))
-        elif topic == "user.execution.contractAccount":
+        if topic == "user.execution.contractAccount":
             await self._on_execution(
                 map_list(self._parse_exec_v3, message["data"])
             )

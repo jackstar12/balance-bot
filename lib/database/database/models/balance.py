@@ -52,7 +52,6 @@ class Amount(AmountBase):
             time=safe_cmp_default(max, self.time, other.time)
         )
 
-
 class Balance(Amount):
     extra_currencies: Optional[list[AmountBase]]
 
@@ -84,4 +83,10 @@ class Balance(Amount):
             return self
         for amount in self.extra_currencies:
             if amount.currency == currency:
-                return amount
+                return Amount(
+                    currency=currency,
+                    realized=amount.realized,
+                    unrealized=amount.unrealized,
+                    time=self.time,
+                    client_id=self.client_id
+                )

@@ -103,9 +103,9 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
             time=self.time
         )
 
-    def get_realized(self, ccy: str) -> Decimal:
+    def get_realized(self, ccy: str = None) -> Decimal:
         amount = self.get_currency(ccy)
-        return amount.realized if amount else self.realized
+        return amount.realized if amount else (self.realized if ccy is None else 0)
 
     def get_unrealized(self, ccy: str) -> Decimal:
         amount = self.get_currency(ccy)

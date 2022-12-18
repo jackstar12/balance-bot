@@ -8,7 +8,7 @@ from typing import Iterator
 import pytz
 
 from common.exchanges.channel import Channel
-from common.exchanges.exchangeticker import ExchangeTicker
+from common.exchanges.exchangeticker import ExchangeTicker, Subscription
 from core import utc_now
 from database.dbmodels import Execution, Balance
 from database.dbmodels.client import ClientType
@@ -38,6 +38,8 @@ class RawExec(BaseModel):
 
 
 class MockTicker(ExchangeTicker):
+    NAME = 'mock'
+
     async def _unsubscribe(self, channel: Channel, **kwargs):
         pass
 
@@ -55,10 +57,10 @@ class MockTicker(ExchangeTicker):
             )
             await asyncio.sleep(0.1)
 
-    async def _subscribe(self, channel: Channel, **kwargs):
-        if channel == Channel.TICKER:
+    async def _subscribe(self, sub: Subscription):
+        if sub.channel == Channel.TICKER:
             asyncio.create_task(
-                self.generate_ticker(kwargs['symbol'])
+                self.generate_ticker(sub.kwargs['symbol'])
             )
 
     async def connect(self):

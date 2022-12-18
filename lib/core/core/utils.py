@@ -278,13 +278,15 @@ def groupby(items: typing.Iterable[VT], key: str | Callable[[VT], KT], use_set=F
     return res
 
 
-def groupby_unique(items: list[VT], key: str | Callable[[VT], KT]) -> dict[KT, VT]:
+def groupby_unique(items: typing.Iterable[VT], key: str | Callable[[VT], KT]) -> dict[KT, VT]:
     res = {}
     if isinstance(key, str):
-        def key(x: VT) -> KT:
+        def key_fn(x: VT) -> KT:
             return getattr(x, key)
+    else:
+        key_fn = key
     for item in items:
-        val = key(item)
+        val = key_fn(item)
         res[val] = item
     return res
 

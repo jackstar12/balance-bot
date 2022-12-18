@@ -3,6 +3,7 @@ from typing import List, Dict
 
 from sqlalchemy import select
 
+from common.exchanges.exchangeticker import Subscription
 from database.redis import TableNames
 from database.dbasync import db_all
 from database.dbmodels.alert import Alert
@@ -27,7 +28,11 @@ class AlertService(BaseService, Observer):
         alerts = await db_all(select(Alert), session=self._db)
 
         for alert in alerts:
-            await self.data_service.subscribe(ExchangeInfo(name=alert.exchange, sandbox=False), Channel.TICKER, self, symbol=alert.symbol)
+            await self.data_service.subscribe(
+                ExchangeInfo(name=alert.src, sandbox=False),
+                Subscription.get(Channel.TICKER, symbol=alert.symbol),
+                self
+            )
             self.add_alert(alert)
 
         await self._messenger.bulk_sub(TableNames.ALERT, {
@@ -51,7 +56,11 @@ class AlertService(BaseService, Observer):
         symbol = (new.symbol, new.exchange)
         ticker = self._tickers.get(symbol)
         if not ticker:
-            await self.data_service.subscribe(ExchangeInfo(name=new.exchange, sandbox=False), Channel.TICKER, self, symbol=new.symbol)
+            await self.data_service.subscribe(
+                ExchangeInfo(name=new.exchange, sandbox=False),
+                Subscription.get(Channel.TICKER, symbol=new.symbol),
+                self
+            )
             while ticker is None:
                 await asyncio.sleep(0.1)
                 ticker = self._tickers.get(symbol)
@@ -69,7 +78,7 @@ class AlertService(BaseService, Observer):
     async def update(self, *new_state):
         ticker: Ticker = new_state[0]
 
-        symbol = (ticker.symbol, ticker.exchange)
+        symbol = (ticker.symbol, ticker.src)
         self._tickers[symbol] = ticker
 
         alerts = self.alerts_by_symbol.get(symbol)

@@ -44,6 +44,10 @@ class WebsocketManager:
     def _get_message_id(self, message: dict) -> Any:
         raise NotImplementedError()
 
+    @classmethod
+    def _get_error(cls, message: dict) -> Exception | None:
+        return None
+
     async def send(self, msg: str | bytes, msg_id: Any = None):
         if not self.connected:
             return
@@ -101,7 +105,6 @@ class WebsocketManager:
             core.call_unknown_function(self._on_connect, self)
             async for msg in ws:
                 msg: WSMessage
-
                 if msg.type == aiohttp.WSMsgType.PING:
                     await ws.pong()
                     continue
@@ -115,7 +118,11 @@ class WebsocketManager:
                         if waiter:
                             if waiter.cancelled() or waiter.done():
                                 pass
-                            waiter.set_result(message)
+                            error = self._get_error(message)
+                            if error:
+                                waiter.set_exception(error)
+                            else:
+                                waiter.set_result(message)
                     except NotImplementedError:
                         pass
                     await self._callback(self._on_message, ws, message)

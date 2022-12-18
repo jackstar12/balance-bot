@@ -34,6 +34,11 @@ class BybitWebsocketClient(WebsocketManager):
         elif 'request' in message:
             return self._get_request_id(message['request'])
 
+    @classmethod
+    def _get_error(cls, message: dict) -> Exception | None:
+        if message.get("success") is False:
+            return Exception(message["ret_msg"])
+
     async def _send_op(self, op: str, *args):
         request = {'op': op, 'args': args, 'req_id': self._generate_id()}
         #return await self.send_json(request, msg_id=self._get_request_id(request))

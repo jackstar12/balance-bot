@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 import aiohttp.client
 import pytz
 from aiohttp import ClientResponse, ClientResponseError
-from sqlalchemy import select, desc, asc, update, delete
+from sqlalchemy import select, desc, asc, update, delete, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, sessionmaker, joinedload
 
@@ -29,7 +29,7 @@ import core
 from core import json as customjson, json
 from database.dbasync import db_unique, db_all, db_select, db_select_all
 from database.dbmodels.client import Client, ClientState
-#from database.dbmodels.ohlc import OHLC
+# from database.dbmodels.ohlc import OHLC
 from database.dbmodels.execution import Execution
 from database.dbmodels.pnldata import PnlData
 from database.dbmodels.trade import Trade
@@ -41,7 +41,7 @@ from common.messenger import TableNames, Category, Messenger
 from database.models.miscincome import MiscIncome
 from database.models.ohlc import OHLC
 from database.models.market import Market
-from core.utils import combine_time_series, MINUTE
+from core.utils import combine_time_series, MINUTE, groupby_unique
 
 if TYPE_CHECKING:
     from database.dbmodels.balance import Balance
@@ -181,7 +181,7 @@ class ExchangeWorker:
         self._extra_kwargs = client.extra_kwargs
 
         self._http = http_session
-        self._last_fetch = datetime.fromtimestamp(0, tz=pytz.UTC)
+        self._last_fetch: Balance | None = None
 
         self._on_balance = None
         self._on_new_trade = None
@@ -211,8 +211,8 @@ class ExchangeWorker:
                           upnl=True) -> Optional[Balance]:
         if not date:
             date = datetime.now(tz=pytz.UTC)
-        if force or date - self._last_fetch > timedelta(seconds=PRIORITY_INTERVALS[priority]):
-            self._last_fetch = date
+        if True or force or (
+                self._last_fetch and date - self._last_fetch.time > timedelta(seconds=PRIORITY_INTERVALS[priority])):
             try:
                 balance = await self._get_balance(date, upnl=upnl)
             except ResponseError as e:
@@ -222,17 +222,16 @@ class ExchangeWorker:
                 )
             if not balance.time:
                 balance.time = date
+            self._last_fetch = balance
             balance.client_id = self.client_id
             return balance
         else:
-            return None
+            return self._last_fetch
 
     async def get_executions(self,
                              since: datetime) -> tuple[List[Transfer], List[Execution], List[MiscIncome]]:
         transfers = await self.get_transfers(since)
         execs, misc = await self._get_executions(since, init=self.client.last_execution_sync is None)
-
-
 
         # for transfer in transfers:
         #     if transfer.coin:
@@ -312,7 +311,8 @@ class ExchangeWorker:
                         time=raw_transfer.time,
                         type=ExecType.TRANSFER,
                         market_type=raw_transfer.market_type or MarketType.SPOT,
-                        commission=raw_transfer.fee
+                        commission=raw_transfer.fee,
+                        settle=raw_transfer.coin
                     )
                     result.append(transfer)
             return result
@@ -338,6 +338,7 @@ class ExchangeWorker:
                 Client, Client.id == self.client_id,
                 eager=[
                     (Client.trades, [Trade.executions, Trade.init_balance, Trade.initial]),
+                    (Client.open_trades, [Trade.executions, Trade.init_balance, Trade.initial]),
                     Client.currently_realized
                 ],
                 session=db
@@ -383,6 +384,7 @@ class ExchangeWorker:
                     await db.delete(trade)
 
             if client.currently_realized and valid_until and valid_until < client.currently_realized.time and all_executions:
+                bl = db_balance.Balance
                 await db.execute(
                     delete(bl).where(
                         bl.client_id == client.id,
@@ -506,9 +508,9 @@ class ExchangeWorker:
                 current_balance.__realtime__ = False
 
                 if execution.type == ExecType.TRANSFER:
-                    if execution.settle != client.currency:
+                    if execution.settle != client.currency or current_balance.extra_currencies:
                         amt = current_balance.get_amount(execution.settle)
-                        amt.realized -= execution.effective_size
+                        amt.realized -= execution.effective_qty
                     else:
                         current_balance.realized -= execution.effective_size
 
@@ -538,27 +540,31 @@ class ExchangeWorker:
                 if current_balance.extra_currencies:
                     current_balance.realized = 0
                     for amount in current_balance.extra_currencies:
-                        rate = await self._conversion_rate(
-                            Market(base=amount.currency, quote=client.currency),
-                            execution.time,
-                            resolution_s=5 * MINUTE
-                        )
-                        if rate:
-                            amount.rate = rate
-                            current_balance.realized += amount.realized * rate
+                        if amount.currency:
+
+                            rate = await self._conversion_rate(
+                                Market(base=amount.currency, quote=client.currency),
+                                execution.time,
+                                resolution_s=5 * MINUTE
+                            )
+                            if rate:
+                                amount.rate = rate
+                                current_balance.realized += amount.realized * rate
+                        else:
+                            pass
 
                 current_balance.unrealized = current_balance.realized
 
-                #base = sum(
+                # base = sum(
                 #    # Note that when upnl of the current execution is included the rpnl that was realized
                 #    # can't be included anymore
                 #    pnl_data.unrealized
                 #    if tr_id != execution.trade_id
                 #    else pnl_data.unrealized - execution.net_pnl
                 #    for tr_id, pnl_data in pnl_by_trade.items()
-                #)
-#
-                #if execution.settle != client.currency:
+                # )
+                #
+                # if execution.settle != client.currency:
                 #    amt = new_balance.get_amount(execution.settle)
                 #    prev = current_balance.get_amount(execution.settle)
                 #    amt.unrealized = amt.realized + base
@@ -570,16 +576,15 @@ class ExchangeWorker:
                 #        else pnl_data.unrealized_ccy(client.currency) - execution.net_pnl * execution.price
                 #        for tr_id, pnl_data in pnl_by_trade.items()
                 #    )
-                #else:
+                # else:
                 #    new_balance.unrealized = new_balance.realized + base
-
 
                 # Don't bother adding multiple balances for executions happening as a direct series of events
                 if not prev_exec or prev_exec.time != execution.time:
                     balances.append(current_balance)
                 prev_balance = current_balance
 
-            #if all_executions:
+            # if all_executions:
             #    first_execution = all_executions[0]
             #    balances.append(
             #        db_balance.Balance(
@@ -618,9 +623,26 @@ class ExchangeWorker:
             datetime.now(pytz.utc),
             upnl=False
         )
+
         if balance:
             client = await self.get_client(db)
             client.currently_realized = balance
+
+            spot_trades = groupby_unique(
+                (t for t in client.open_trades if t.initial.market_type == MarketType.SPOT),
+                'symbol'
+            )
+
+            for trade in spot_trades.values():
+                realized = balance.get_realized(ccy=self.get_market(trade.symbol).base)
+                trade.open_qty = realized
+                if realized > trade.qty:
+                    trade.qty = realized
+
+            for amount in balance.extra_currencies:
+                if amount.currency not in spot_trades:
+                    pass
+
             db.add(balance)
             return balance
 
@@ -656,14 +678,13 @@ class ExchangeWorker:
     async def _add_executions(self,
                               db: AsyncSession,
                               executions: list[Execution],
-                              realtime=True,
-                              current_balance: Balance = None):
-        if not current_balance:
-            client = await self.get_client(db)
-            current_balance = client.currently_realized
+                              realtime=True, ):
+        client = await self.get_client(db)
+        current_balance = client.currently_realized
 
         if executions:
             active_trade: Optional[Trade] = None
+
             if realtime:
                 # Updating LAST_EXEC is siginificant for caching
                 asyncio.create_task(
@@ -720,25 +741,46 @@ class ExchangeWorker:
                     if new_trade:
                         db.add(new_trade)
                         new_trade.__realtime__ = realtime
+
                         active_trade = new_trade
                 else:
                     active_trade = Trade.from_execution(current, self.client_id, current_balance)
                     active_trade.__realtime__ = realtime
                     db.add(active_trade)
+                if not realtime:
+                    if current.settle:
+                        spot_trade = await db_unique(
+                            select(Trade).where(
+                                Trade.is_open,
+                                Trade.symbol == self.get_symbol(
+                                    Market(base=current.settle, quote=client.currency)
+                                ),
+                                Execution.market_type == MarketType.SPOT,
+
+                            ).join(Trade.initial),
+                            session=db
+                        )
+
+                        if spot_trade:
+                            spot_trade.open_qty += current.net_pnl
+                            spot_trade.qty = max(spot_trade.qty, spot_trade.open_qty)
+                    else:
+                        pass
+
             return active_trade
 
     async def _conversion_rate(self, market: Market, date: datetime, resolution_s: int = None):
         if self._usd_like(market.base):
             return 1
 
-        #conversion = await db_unique(
+        # conversion = await db_unique(
         #    Conversion.at_dt(dt=date,
         #                     market=market,
         #                     tolerance=timedelta(seconds=resolution_s),
         #                     exchange=self.exchange)
-        #)
+        # )
         #
-        #if conversion:
+        # if conversion:
         #    return conversion.rate
 
         ticker = await self._get_ohlc(
@@ -774,7 +816,7 @@ class ExchangeWorker:
 
     @classmethod
     def _exclude_from_trade(cls, execution: Execution):
-        return False
+        return execution.market_type == MarketType.SPOT
 
     @classmethod
     def _calc_resolution(cls,
@@ -960,7 +1002,6 @@ class ExchangeWorker:
         params = OrderedDict(params or {})
         headers = headers or {}
 
-
         if sign:
             self._sign_request(method, path, headers, params, data)
 
@@ -1037,7 +1078,6 @@ class ExchangeWorker:
     @classmethod
     def parse_ms_d(cls, ts_ms: int | str):
         return date.fromtimestamp(int(ts_ms) / 1000)
-
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'

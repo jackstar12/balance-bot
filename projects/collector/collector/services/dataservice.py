@@ -5,7 +5,7 @@ from collector.errors import InvalidExchangeError
 from collector.services.baseservice import BaseService
 import core
 from common.exchanges import EXCHANGE_TICKERS
-from common.exchanges.exchangeticker import ExchangeTicker, Channel
+from common.exchanges.exchangeticker import ExchangeTicker, Channel, Subscription
 from common.messenger import TableNames
 from database.dbmodels.client import ExchangeInfo
 from database.models.observer import Observer
@@ -24,26 +24,25 @@ class DataService(BaseService, Observer):
         self._exchanges: Dict[ExchangeInfo, ExchangeTicker] = {}
         self._tickers: Dict[tuple[ExchangeInfo, str], Ticker] = {}
 
-    async def run_forever(self):
-        await self._update_redis()
+    #async def run_forever(self):
+    #    await self._update_redis()
 
     async def teardown(self):
         for exchange in self._exchanges.values():
             await exchange.disconnect()
 
-    async def subscribe(self, exchange: ExchangeInfo, channel: Channel, observer: Observer = None, **kwargs):
+    async def subscribe(self, exchange: ExchangeInfo, sub: Subscription, observer: Observer = None):
         """
         Subscribes to the given ecxhange channel.
 
             # Will subscribe to BTCUSDT Ticker Messages from binance-futures
             >>> self.subscribe(ExchangeInfo(name='binance-futures', sandbox=False), Channel.TICKER, symbol='BTCUSDT')
 
+        :param sub:
         :param exchange: which exchange?
-        :param channel: the channel to subscribe to (ticker, trade etc.)
         :param observer: [Optional] will be notified whenever updates arrive
-        :param kwargs: will be passed down to the ``ExchangeTicker`` implementation.
         """
-        self._logger.info(f'Subscribe: {exchange=} {channel=} {kwargs=}')
+        self._logger.info(f'Subscribe: {exchange=} {sub=}')
         ticker = self._exchanges.get(exchange)
         if not ticker:
             self._logger.info(f'Creating ticker for {exchange}')
@@ -56,7 +55,10 @@ class DataService(BaseService, Observer):
                 raise InvalidExchangeError()
 
         observer = observer or self
-        await ticker.subscribe(channel, observer, **kwargs)
+        try:
+            await ticker.subscribe(sub, observer)
+        except Exception:
+            self._logger.exception('Could not subscribe')
 
     async def unsubscribe(self, exchange: ExchangeInfo, channel: Channel, observer: Observer = None, **kwargs):
         self._logger.info(f'Unsubscribe: {exchange=} {channel=} {kwargs=}')
@@ -69,13 +71,17 @@ class DataService(BaseService, Observer):
     async def update(self, ticker: Ticker):
         #ticker: Ticker = new_state[0]
         self._logger.debug(ticker)
-        self._tickers[(ticker.exchange, ticker.symbol)] = ticker
+        self._tickers[(ticker.src, ticker.symbol)] = ticker
 
-    async def get_ticker(self, symbol, exchange: ExchangeInfo):
+    async def get_ticker(self, symbol: str, exchange: ExchangeInfo):
         ticker = self._tickers.get((exchange, symbol))
         if not ticker:
             try:
-                await self.subscribe(exchange, Channel.TICKER, self, symbol=symbol)
+                await self.subscribe(
+                    exchange,
+                    Subscription.get(Channel.TICKER, symbol=symbol),
+                    self
+                )
             except asyncio.exceptions.TimeoutError:
                 pass
         return self._tickers.get((exchange, symbol))
@@ -85,7 +91,7 @@ class DataService(BaseService, Observer):
         while True:
             for ticker in self._tickers.values():
                 await self._redis.set(
-                    core.join_args(TableNames.TICKER, ticker.exchange, ticker.symbol),
+                    core.join_args(TableNames.TICKER, ticker.src, ticker.symbol),
                     str(ticker.price)
                 )
             await asyncio.sleep(1)

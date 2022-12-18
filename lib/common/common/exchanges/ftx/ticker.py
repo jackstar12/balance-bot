@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from common.exchanges.exchangeticker import ExchangeTicker, Channel
+from common.exchanges.exchangeticker import ExchangeTicker, Channel, Subscription
 from common.exchanges.ftx.websocket import FtxWebsocketClient
 from database.models.ticker import Ticker
 from database.models.trade import Trade
@@ -18,11 +18,11 @@ class FtxTicker(ExchangeTicker):
     async def disconnect(self):
         await self._ws.close()
 
-    async def _subscribe(self, channel: Channel, **kwargs):
-        if channel == Channel.TICKER:
-            await self._ws.get_ticker(kwargs['symbol'])
-        elif channel is Channel.TRADES:
-            await self._ws.get_trades(kwargs['symbol'])
+    async def _subscribe(self, sub: Subscription):
+        if sub.channel == Channel.TICKER:
+            await self._ws.get_ticker(sub.kwargs['symbol'])
+        elif sub.channel is Channel.TRADES:
+            await self._ws.get_trades(sub.kwargs['symbol'])
 
     async def _on_message(self, msg):
 

@@ -1,7 +1,8 @@
 from decimal import Decimal
 
-from common.exchanges.exchangeticker import ExchangeTicker, Channel
+from common.exchanges.exchangeticker import ExchangeTicker, Channel, Subscription
 from common.exchanges.exchangeworker import ExchangeWorker
+from database.dbmodels.client import ExchangeInfo
 from database.models.async_websocket_manager import WebsocketManager
 from database.models.ticker import Ticker
 from database.models.trade import Trade
@@ -20,6 +21,7 @@ def _ticker_stream(symbol: str):
 # https://binance-docs.github.io/apidocs/futures/en/#websocket-market-streams
 class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
     # _ENDPOINT = 'wss://stream.binancefuture.com' if TESTING else 'wss://fstream.binance.com'
+    NAME = 'binance-futures'
     _ENDPOINT = 'wss://fstream.binance.com'
 
     def __init__(self, *args, **kwargs):
@@ -35,11 +37,11 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
     async def disconnect(self):
         await self.close()
 
-    async def _subscribe(self, channel: Channel, **kwargs):
-        if channel == Channel.TICKER:
-            await self.send_message("SUBSCRIBE", _ticker_stream(kwargs.get("symbol")))
-        elif channel is Channel.TRADES:
-            await self.send_message("SUBSCRIBE", _trade_stream(kwargs.get("symbol")))
+    async def _subscribe(self, sub: Subscription):
+        if sub.channel == Channel.TICKER:
+            await self.send_message("SUBSCRIBE", _ticker_stream(sub.kwargs.get("symbol")))
+        elif sub.channel is Channel.TRADES:
+            await self.send_message("SUBSCRIBE", _trade_stream(sub.kwargs.get("symbol")))
 
     async def _unsubscribe(self, channel: Channel, **kwargs):
         if channel == Channel.TICKER:
@@ -60,8 +62,9 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
 
     async def _on_message(self, ws, msg):
         event = msg.get('e')
+
         if event == "aggTrade":
-            await self._callbacks.get(Channel.TRADES).notify(
+            await self._callbacks.get(Subscription.get(Channel.TRADES, symbol=msg['s'])).notify(
                 Trade(
                     symbol=msg['s'],
                     side='BUY' if msg['m'] else 'SELL',
@@ -73,10 +76,10 @@ class BinanceFuturesTicker(WebsocketManager, ExchangeTicker):
                 )
             )
         if event == "24hrTicker":
-            await self._callbacks.get(Channel.TICKER).notify(
+            await self._callbacks.get(Subscription.get(Channel.TICKER, symbol=msg['s'])).notify(
                 Ticker(
                     symbol=msg['s'],
                     price=Decimal(msg['c']),
-                    exchange='binance-futures'
+                    src=self.info
                 )
             )

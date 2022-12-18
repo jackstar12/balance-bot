@@ -139,17 +139,21 @@ class BybitDerivativesWorker(_BybitBaseClient):
             for transfer in self._internal_transfers[1]:
                 coins_to_fetch.add(transfer.coin)
 
-        balance = await self.get_balance()
-        balance.client = self.client
-
         if since:
-            pnlParams['startTime'] = self._parse_date(since.replace(hour=0, minute=0, second=0))
+            pnlParams['startTime'] = self._parse_date(since.replace(hour=0, minute=0, second=0, microsecond=0))
 
         # https://bybit-exchange.github.io/docs/derivativesV3/contract/#t-dv_walletrecords
         asset_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
                                                      params=pnlParams)
 
         pnlParams["coin"] = 'USDT'
+
+        # https://bybit-exchange.github.io/docs/derivativesV3/contract/#t-dv_walletrecords
+        usd_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
+                                                     params=pnlParams)
+
+        balance = await self.get_balance()
+        balance.client = self.client
 
         records_by_assets = groupby(asset_records, lambda a: a['coin'])
         required_execs = {}

@@ -3,7 +3,7 @@ import sqlalchemy as sa
 
 class CurrencyMixin:
     #raw = sa.Column(sa.String(10), nullable=False)
-    settle = sa.Column(sa.String(5), default='USD', nullable=False)
+    settle = sa.Column(sa.String(5), nullable=False)
     inverse = sa.Column(sa.Boolean, default=False, nullable=False)
 
     #@hybrid_property

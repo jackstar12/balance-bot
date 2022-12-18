@@ -11,6 +11,7 @@ from sqlalchemy import select, and_, or_
 from common.exchanges import EXCHANGES
 from collector.services.baseservice import BaseService
 from collector.services.dataservice import DataService, Channel, ExchangeInfo
+from common.exchanges.exchangeticker import Subscription
 from database.dbasync import db_all, db_unique, db_eager
 from database.dbmodels import Balance
 from database.dbmodels.client import Client, ClientState, ClientType
@@ -320,8 +321,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
             self._refresh_worker(worker)
             await self.data_service.subscribe(
                 worker.client.exchange_info,
-                Channel.TICKER,
-                symbol=data['symbol']
+                Subscription.get(Channel.TICKER, symbol=data['symbol']),
             )
 
     async def _on_trade_update(self, data: Dict):
