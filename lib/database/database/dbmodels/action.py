@@ -1,16 +1,14 @@
 from enum import Enum
 
 import sqlalchemy as sa
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbmodels.mixins.serializer import Serializer
-from database.dbsync import Base, BaseMixin
-from database.models import BaseModel
 from database.dbmodels.types import Platform
+from database.dbsync import Base, BaseMixin
 from database.redis import TableNames
 
 

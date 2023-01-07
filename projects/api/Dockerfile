@@ -8,12 +8,16 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 
 COPY projects/api/pyproject.toml /app/projects/api/pyproject.toml
 COPY projects/api/api/__init__.py /app/projects/api/api/__init__.py
+
 COPY projects/api/../../lib/common/pyproject.toml /app/projects/api/../../lib/common/pyproject.toml
 COPY projects/api/../../lib/common/common/__init__.py /app/projects/api/../../lib/common/common/__init__.py
+
 COPY projects/api/../../lib/database/pyproject.toml /app/projects/api/../../lib/database/pyproject.toml
 COPY projects/api/../../lib/database/database/__init__.py /app/projects/api/../../lib/database/database/__init__.py
+
 COPY projects/api/../../lib/core/pyproject.toml /app/projects/api/../../lib/core/pyproject.toml
 COPY projects/api/../../lib/core/core/__init__.py /app/projects/api/../../lib/core/core/__init__.py
+
 
 
 WORKDIR /app/projects/api/
@@ -24,4 +28,4 @@ COPY projects/api/ /app/projects/api/
 COPY lib /app/lib/
 
 EXPOSE 5000
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "6"]
+CMD [ "python3", "__main__.py" ]

@@ -61,6 +61,11 @@ class Transfer(Base):
     def size(self):
         return self.execution.effective_size
 
+    @hybrid_property
+    def amount(self):
+        return self.execution.qty
+
+
     #balance = relationship(
     #    'Balance',
     #    back_populates='transfer',

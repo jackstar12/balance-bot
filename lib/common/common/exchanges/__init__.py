@@ -10,8 +10,6 @@ from common.exchanges.binance.ticker import BinanceFuturesTicker
 from common.exchanges.bitmex.bitmex import BitmexWorker
 from common.exchanges.bybit.derivatives import BybitDerivativesWorker
 from common.exchanges.bybit.ticker import BybitDerivativesTicker
-from common.exchanges.ftx.http import FtxWorker
-from common.exchanges.ftx.ticker import FtxTicker
 from common.exchanges.kucoin.kucoin import KuCoinFuturesWorker
 from common.exchanges.okx.okx import OkxWorker
 import ccxt
@@ -30,7 +28,6 @@ EXCHANGES: dict[str, Type[ExchangeWorker]] = {
         BinanceFutures,
         BinanceSpot,
         BitmexWorker,
-        FtxWorker,
         KuCoinFuturesWorker,
         BybitDerivativesWorker,
         OkxWorker,
@@ -38,7 +35,6 @@ EXCHANGES: dict[str, Type[ExchangeWorker]] = {
 }
 
 EXCHANGE_TICKERS = {
-    'ftx': FtxTicker,
     'binance-futures': BinanceFuturesTicker,
     'bybit-derivatives': BybitDerivativesTicker,
 }
@@ -78,7 +74,6 @@ MAINNET_CLIENTS = [
 CCXT_CLIENTS: dict[str, Type[Exchange]] = {
     BinanceFutures.exchange: ccxt.binanceusdm,
     BinanceSpot.exchange: ccxt.binance,
-    FtxWorker.exchange: ccxt.ftx,
     BitmexWorker.exchange: ccxt.bitmex,
     KuCoinFuturesWorker.exchange: ccxt.kucoin,
     OkxWorker.exchange: ccxt.okex,

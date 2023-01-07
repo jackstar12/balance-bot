@@ -174,15 +174,19 @@ async def get_client_overview(background_tasks: BackgroundTasks,
                 select(TransferDB).where(
                     time_range(Execution.time, query_params.since, query_params.to),
                     TransferDB.client_id == client.id,
+                    TransferDB.coin == query_params.currency
                 ).join(TransferDB.execution),
                 session=db
             )
 
+            start_balance = await client.get_exact_balance_at_time(query_params.since)
+            latest = await client.get_latest_balance(redis=redis)
+
             overview = ClientOverviewCache(
                 id=client.id,
                 total=Interval.create(
-                    prev=await client.get_exact_balance_at_time(query_params.since),
-                    current=await client.get_latest_balance(redis=redis),
+                    prev=start_balance.get_currency(query_params.currency),
+                    current=latest.get_currency(query_params.currency),
                     offset=sum(transfer.size for transfer in transfers)
                 ),
                 daily_balance=daily,

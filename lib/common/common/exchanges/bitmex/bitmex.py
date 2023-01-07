@@ -49,12 +49,12 @@ class BitmexWorker(ExchangeWorker):
 
         for currency in response:
             symbol = currency['currency'].upper()
-            unrealized_raw = currency['marginBalance']
             realized_raw = currency['walletBalance']
+            unrealized_raw = currency['marginBalance'] - realized_raw
             price = 0
             if self._usd_like(symbol):
                 price = 1
-            elif unrealized_raw > 0:
+            elif realized_raw > 0:
                 response_price = await self.get(
                     '/api/v1/trade',
                     params={

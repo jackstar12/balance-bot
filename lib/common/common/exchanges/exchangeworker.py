@@ -490,33 +490,16 @@ class ExchangeWorker:
                 prev_exec: Execution
                 next_exec: Execution
 
-                current_balance = db_balance.Balance(
-                    realized=prev_balance.realized,
-                    unrealized=prev_balance.unrealized,
-                    extra_currencies=[
-                        db_balance.Amount(
-                            currency=amount.currency,
-                            realized=amount.realized,
-                            unrealized=amount.unrealized
-                        )
-                        for amount in prev_balance.extra_currencies
-                    ],
-                    time=execution.time,
-                    client=self.client
-                )
-
+                current_balance = prev_balance.clone()
+                current_balance.time = execution.time
                 current_balance.__realtime__ = False
 
                 if execution.type == ExecType.TRANSFER:
-                    if execution.settle != client.currency or current_balance.extra_currencies:
-                        amt = current_balance.get_amount(execution.settle)
-                        amt.realized -= execution.effective_qty
-                    else:
-                        current_balance.realized -= execution.effective_size
+                    current_balance.add_amount(execution.settle, realized=-execution.effective_qty)
 
-                while current_misc and execution.time <= current_misc.time:
-                    current_balance.realized -= current_misc.amount
-                    current_misc = next(misc_iter, None)
+                # while current_misc and execution.time <= current_misc.time:
+                #     current_balance.realized -= current_misc.amount
+                #     current_misc = next(misc_iter, None)
 
                 pnl_by_trade = {}
 
@@ -531,11 +514,7 @@ class ExchangeWorker:
                     execution.trade.init_balance = current_balance
 
                 if execution.net_pnl:
-                    if execution.settle != client.currency:
-                        amt = current_balance.get_amount(execution.settle)
-                        amt.realized -= execution.net_pnl
-                    else:
-                        current_balance.realized -= execution.net_pnl
+                    current_balance.add_amount(execution.settle, realized=-execution.net_pnl)
 
                 if current_balance.extra_currencies:
                     current_balance.realized = 0
@@ -553,7 +532,7 @@ class ExchangeWorker:
                         else:
                             pass
 
-                current_balance.unrealized = current_balance.realized
+                current_balance.unrealized = 0
 
                 # base = sum(
                 #    # Note that when upnl of the current execution is included the rpnl that was realized
@@ -580,6 +559,7 @@ class ExchangeWorker:
                 #    new_balance.unrealized = new_balance.realized + base
 
                 # Don't bother adding multiple balances for executions happening as a direct series of events
+
                 if not prev_exec or prev_exec.time != execution.time:
                     balances.append(current_balance)
                 prev_balance = current_balance

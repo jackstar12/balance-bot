@@ -352,7 +352,7 @@ class BinanceFutures(_BinanceBaseClient):
                 for asset in usd_assets
             ),
             unrealized=sum(
-                Decimal(asset['marginBalance'])
+                Decimal(asset['marginBalance']) - Decimal(asset['walletBalance'])
                 for asset in usd_assets
             ),
             time=time if time else datetime.now(pytz.utc)

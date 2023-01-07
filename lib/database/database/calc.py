@@ -144,11 +144,12 @@ def transfer_gen(transfers: list[Transfer],
 
     next_time: datetime = yield
     for transfer in transfers:
-        while next_time < transfer.time:
-            next_time = yield offsets
-            if reset:
-                offsets = Decimal(0)
-        offsets += transfer.size
+        if transfer.coin == ccy:
+            while next_time < transfer.time:
+                next_time = yield offsets
+                if reset:
+                    offsets = Decimal(0)
+            offsets += transfer.amount
         #offsets += transfer.amount if ccy == transfer.coin else transfer.size
         # _add_safe(offsets, ccy, transfer.size)
         #if transfer.extra_currencies:

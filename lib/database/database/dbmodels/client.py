@@ -30,7 +30,7 @@ from database.errors import UserInputError
 from database.dbmodels.transfer import Transfer
 
 from database.dbmodels.mixins.editsmixin import EditsMixin
-from core import json as customjson, safe_cmp
+from core import json as customjson, safe_cmp, utc_now
 from database.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey, db_unique, \
     time_range, safe_op
 from database.dbmodels.editing.chapter import Chapter
@@ -79,7 +79,9 @@ class ClientRedis:
     async def set_balance(self, balance: Balance):
         await self.redis_set(
             {
-                RedisKey(TableNames.BALANCE): customjson.dumps(balance.serialize())
+                RedisKey(TableNames.BALANCE): customjson.dumps(
+                    BalanceModel.from_orm(balance).dict()
+                )
             },
             space='normal'
         )
@@ -154,6 +156,9 @@ class QueryParams(BaseModel):
 class ClientQueryParams(QueryParams):
     client_ids: set[InputID]
     currency: Optional[str]
+
+    def within(self, other: ClientQueryParams):
+        return super().within(other) and self.currency == other.currency
 
 
 class ClientQueryMixin:
@@ -364,14 +369,26 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
     def evaluate_balance(self):
         if not self.currently_realized:
             return
+
+        result = self.currently_realized.clone()
+        result.time = utc_now()
         realized = self.currently_realized.realized
+
+        for trade in self.open_trades:
+            if trade.initial.market_type == MarketType.DERIVATIVES:
+                result.add_amount(trade.settle, trade.live_pnl.unrealized)
+
         upnl = sum(
             trade.live_pnl.unrealized for trade in self.open_trades
             if trade.live_pnl if trade.initial.market_type == MarketType.DERIVATIVES
         )
+
+        new = self.currently_realized.clone()
+        new.time = utc_now()
+
         return dbmodels.Balance(
             realized=realized,
-            unrealized=realized + upnl,
+            unrealized=upnl,
             time=datetime.now(pytz.utc),
             client=self
         )

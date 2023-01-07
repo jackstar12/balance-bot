@@ -306,7 +306,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
         err_msg = None
         for balance in balances["list"]:
             realized = Decimal(balance['walletBalance'])
-            unrealized = Decimal(balance['equity'])
+            unrealized = Decimal(balance['equity']) - realized
             coin = balance["coin"]
             price = 0
             if coin == 'USDT':

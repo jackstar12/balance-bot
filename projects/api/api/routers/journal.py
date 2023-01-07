@@ -25,6 +25,7 @@ from database.dbmodels.editing.chapter import Chapter as DbChapter
 from database.dbmodels.client import add_client_filters, Client
 from database.dbmodels.editing.journal import Journal, JournalType
 from database.dbmodels.user import User
+from database.models import InputID
 
 router = APIRouter(
     tags=["journal"],
@@ -37,7 +38,7 @@ router = APIRouter(
 )
 
 
-async def query_journal(journal_id: int, user_id: UUID, *eager, session: AsyncSession) -> Journal:
+async def query_journal(journal_id: InputID, user_id: UUID, *eager, session: AsyncSession) -> Journal:
     journal = await db_unique(
         select(Journal).where(
             Journal.id == journal_id,
@@ -123,7 +124,7 @@ chapter_select = select(
 
 
 @router.get('/{journal_id}', response_model=JournalDetailedInfo)
-async def get_journal(journal_id: int,
+async def get_journal(journal_id: InputID,
                       grant: AuthGrant = Depends(get_auth_grant_dependency(JournalGrant)),
                       db: AsyncSession = Depends(get_db)):
     journal = await query_journal(
@@ -160,7 +161,7 @@ async def get_journal(journal_id: int,
 
 
 @router.patch('/{journal_id}', response_model=JournalDetailedInfo)
-async def update_journal(journal_id: int,
+async def update_journal(journal_id: InputID,
                          body: JournalUpdate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
@@ -189,7 +190,7 @@ async def update_journal(journal_id: int,
 
 
 @router.delete('/{journal_id}')
-async def delete_journal(journal_id: int,
+async def delete_journal(journal_id: InputID,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
     journal = await query_journal(journal_id, user.id, session=db)
@@ -200,7 +201,7 @@ async def delete_journal(journal_id: int,
 
 
 @router.get('/{journal_id}/trades')
-async def get_journal_trades(journal_id: int,
+async def get_journal_trades(journal_id: InputID,
                              user: User = Depends(CurrentUser),
                              db: AsyncSession = Depends(get_db)):
     journal = await query_journal(journal_id, user.id, session=db)

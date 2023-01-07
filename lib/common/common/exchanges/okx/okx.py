@@ -55,7 +55,7 @@ class OkxWorker(ExchangeWorker):
                 elif amount > 0:
                     price = tickers.get(f'{currency}/USDT')['last']
                 total += amount * price
-        return balance.Balance(realized=Decimal(total), unrealized=Decimal(total), error=error)
+        return balance.Balance(realized=Decimal(total), unrealized=Decimal(0), error=error)
 
     async def cleanup(self):
         await self.ccxt_client.close()

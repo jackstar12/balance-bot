@@ -1,3 +1,4 @@
+from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -63,7 +64,7 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
 
     @hybrid_property
     def total(self):
-        return self.unrealized
+        return self.realized + self.unrealized
 
     @hybrid_property
     def total_transfers_corrected(self):
@@ -86,6 +87,15 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
         amt = Amount(currency=ccy, realized=0, unrealized=0)
         self.extra_currencies.append(amt)
         return amt
+
+    def add_amount(self, ccy: str, realized = 0, unrealized = 0):
+        if ccy != self.currency or self.extra_currencies:
+            amt = self.get_amount(ccy)
+            amt.realized += realized
+            amt.unrealized += unrealized
+        else:
+            self.realized += realized
+            self.unrealized += unrealized
 
     def get_currency(self, ccy: str = None) -> AmountModel:
         for amount in self.extra_currencies:
@@ -113,7 +123,7 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
 
     def __eq__(self, other):
         if isinstance(other, Balance):
-            return self.realized == other.realized and self.unrealized == other.unrealized
+            return self.realized == self.realized and self.unrealized == self.unrealized
         return False
 
     def __init__(self, error=None, *args, **kwargs):
@@ -143,3 +153,20 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
     @classmethod
     def is_data(cls):
         return True
+
+    def clone(self):
+        return Balance(
+            realized=self.realized,
+            unrealized=Decimal(0),
+            extra_currencies=[
+                Amount(
+                    currency=amount.currency,
+                    realized=amount.realized,
+                    unrealized=Decimal(0)
+                )
+                for amount in self.extra_currencies
+            ],
+            time=self.time,
+            client=self.client_save,
+            client_id=self.client_id
+        )

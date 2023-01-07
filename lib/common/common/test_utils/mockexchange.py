@@ -167,6 +167,6 @@ class MockExchange(ExchangeWorker):
     async def _get_balance(self, time: datetime, upnl=True):
         return Balance(
             realized=100,
-            unrealized=100,
+            unrealized=0,
             time=datetime.now(pytz.utc)
         )

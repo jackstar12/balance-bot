@@ -18,7 +18,7 @@ class AmountBase(OrmBaseModel):
 
     def gain_since(self, other: 'AmountBase', offset: Decimal) -> Gain:
         self._assert_equal(other)
-        gain = (self.unrealized - other.realized) - (offset or 0)
+        gain = (self.total - other.realized) - (offset or 0)
         return Gain.construct(
             absolute=gain,
             relative=calc_percentage_diff(other.realized, gain)
@@ -27,6 +27,10 @@ class AmountBase(OrmBaseModel):
     @property
     def total_transfers_corrected(self):
         return self.unrealized
+
+    @property
+    def total(self):
+        return self.realized + self.unrealized
 
     def __repr__(self):
         return f'{self.realized}{self.currency}'
@@ -51,6 +55,7 @@ class Amount(AmountBase):
             currency=self.currency,
             time=safe_cmp_default(max, self.time, other.time)
         )
+
 
 class Balance(Amount):
     extra_currencies: Optional[list[AmountBase]]
@@ -81,12 +86,18 @@ class Balance(Amount):
     def get_currency(self, currency: str):
         if currency == self.currency:
             return self
+        realized = 0
+        unrealized = 0
         for amount in self.extra_currencies:
             if amount.currency == currency:
-                return Amount(
-                    currency=currency,
-                    realized=amount.realized,
-                    unrealized=amount.unrealized,
-                    time=self.time,
-                    client_id=self.client_id
-                )
+                realized = amount.realized
+                unrealized = amount.unrealized
+                break
+
+        return Amount(
+            currency=currency,
+            realized=realized,
+            unrealized=unrealized,
+            time=self.time,
+            client_id=self.client_id
+        )
