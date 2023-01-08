@@ -21,7 +21,7 @@ fastapi-users = { extras = ["sqlalchemy"], version = "10.1.5"}
 pytest = "7.1.2"
 
 [tool.trade-alpha.docker]
-include = "EXPOSE $PORT"
+include = "EXPOSE 8000"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

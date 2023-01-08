@@ -27,5 +27,5 @@ RUN export PATH=$PATH:$HOME/.local/bin &&    poetry config virtualenvs.create fa
 COPY projects/api/ /app/projects/api/
 COPY lib /app/lib/
 
-EXPOSE $PORT
+EXPOSE 8000
 CMD [ "python3", "__main__.py" ]
