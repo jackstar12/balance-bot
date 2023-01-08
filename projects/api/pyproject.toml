@@ -22,6 +22,7 @@ pytest = "7.1.2"
 
 [tool.trade-alpha.docker]
 include = "EXPOSE 8000"
+command = "CMD [\"uvicorn\", \"api.app:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\", \"--workers\", \"6\"]"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
