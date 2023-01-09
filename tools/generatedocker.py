@@ -55,7 +55,12 @@ WORKDIR /app/{path}
 
 RUN export PATH=$PATH:$HOME/.local/bin &&\
     poetry config virtualenvs.create false &&\
-    poetry install --without dev
+    poetry install --without dev &&\
+    
+WORKDIR /lib/database
+RUN alembic upgrade head
+
+WORKDIR /app/{path}
 
 COPY {path} /app/{path}
 COPY lib /app/lib/
