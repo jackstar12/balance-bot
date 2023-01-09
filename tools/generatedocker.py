@@ -30,7 +30,7 @@ def copy_pyproject(path: str, package: str, to: str = None):
 
 
 def generate_docker_file(root: str):
-    pyproject = toml.load(root + 'pyproject.toml')
+    pyproject = toml.load(root + '/pyproject.toml')
     docker = pyproject['tool'].get('trade-alpha', {}).get('docker', {})
 
     dependencies = collect_dependencies(root)

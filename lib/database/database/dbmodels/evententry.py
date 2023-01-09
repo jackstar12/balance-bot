@@ -56,7 +56,7 @@ class EventEntry(Base, Serializer, BaseMixin):
                      nullable=False)
     client_id = Column(ForeignKey('client.id', name=fkey_name('evententry', 'client_id'), ondelete='SET NULL'),
                        nullable=True)
-    event_id = Column(ForeignKey('event.id', name=fkey_name('evententry', 'client_id'), ondelete='CASCADE'),
+    event_id = Column(ForeignKey('event.id', name=fkey_name('evententry', 'event_id'), ondelete='CASCADE'),
                       nullable=False)
     init_balance_id = Column(ForeignKey('balance.id', name=fkey_name('evententry', 'init_balance_id'), ondelete='CASCADE'),
                              nullable=True)

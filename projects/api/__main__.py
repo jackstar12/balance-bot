@@ -1,9 +1,11 @@
 import uvicorn
 from os import environ
 
+from api.app import app
+
 
 def run():
-    uvicorn.run('api.app:app', host='localhost', port=int(environ.get('PORT', '4000')), workers=4)
+    uvicorn.run(app, host='0.0.0.0', port=5000)
 
 
 if __name__ == '__main__':

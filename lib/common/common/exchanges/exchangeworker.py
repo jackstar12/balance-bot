@@ -650,10 +650,10 @@ class ExchangeWorker:
         async with self.db_maker() as db:
             try:
                 trade = await self._add_executions(db, execs, realtime=True)
+                await db.commit()
+                self._logger.debug(f'Added executions {execs} {trade}')
             except Exception as e:
-                self._logger.error('Error while adding executions')
-            await db.commit()
-            self._logger.debug(f'Added executions {execs} {trade}')
+                self._logger.exception('Error while adding executions')
 
     async def _add_executions(self,
                               db: AsyncSession,
