@@ -30,7 +30,6 @@ from database.models.market import Market
 from database.models.ohlc import OHLC
 from ccxt.async_support import bybit
 
-
 logger = logging.getLogger()
 
 
@@ -42,7 +41,6 @@ def get_contract_type(contract: str):
 
 
 class BybitDerivativesWorker(_BybitBaseClient):
-
     # https://bybit-exchange.github.io/docs/derivativesV3/contract/#t-websocket
     _WS_ENDPOINT = 'wss://stream.bybit.com/contract/private/v3'
     _WS_SANDBOX_ENDPOINT = 'wss://stream-testnet.bybit.com/contract/private/v3'
@@ -79,7 +77,6 @@ class BybitDerivativesWorker(_BybitBaseClient):
     def set_weights(cls, weight: int, response: ClientResponse):
         used = response.headers.get('X-Bapi-Limit-Status')
         logger.info(f'Remaining: {used}')
-
 
     async def _get_paginated(self,
                              limit: int,
@@ -150,7 +147,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
 
         # https://bybit-exchange.github.io/docs/derivativesV3/contract/#t-dv_walletrecords
         usd_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
-                                                     params=pnlParams)
+                                                   params=pnlParams)
 
         balance = await self.get_balance()
         balance.client = self.client
@@ -173,7 +170,6 @@ class BybitDerivativesWorker(_BybitBaseClient):
             # equal to sum of all closed p&ls
 
             for coin, records in records_by_assets.items():
-
                 required_execs[coin] = sum(
                     Decimal(record["amount"])
                     for record in records
@@ -184,13 +180,13 @@ class BybitDerivativesWorker(_BybitBaseClient):
 
             async with self.db_maker() as db:
                 for row in await db.execute(
-                    select(
-                        Execution.symbol,
-                        func.sum(Execution.size).label('total')
-                    )
-                    .where(Trade.client_id == self.client_id)
-                    .join(Execution.trade)
-                    .group_by(Execution.symbol),
+                        select(
+                            Execution.symbol,
+                            func.sum(Execution.size).label('total')
+                        )
+                                .where(Trade.client_id == self.client_id)
+                                .join(Execution.trade)
+                                .group_by(Execution.symbol),
                 ):
                     existing_symbols[row.symbol] = row.total
 
@@ -403,7 +399,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):
-        #return await self._internal_get_balance_v3(ContractType.LINEAR)
+        # return await self._internal_get_balance_v3(ContractType.LINEAR)
         return await self._internal_get_balance_v3()
 
 

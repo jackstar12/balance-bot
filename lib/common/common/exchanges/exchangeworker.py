@@ -607,13 +607,16 @@ class ExchangeWorker:
         if balance:
             client = await self.get_client(db)
             client.currently_realized = balance
-
-            spot_trades = groupby_unique(
-                (t for t in client.open_trades if t.initial.market_type == MarketType.SPOT),
-                'symbol'
+            spot_trades = await db_all(
+                select(Trade).where(
+                    Trade.client_id == client.id,
+                    Trade.is_open,
+                    Execution.market_type == MarketType.SPOT
+                ).join(Trade.initial),
+                session=db
             )
 
-            for trade in spot_trades.values():
+            for trade in spot_trades:
                 realized = balance.get_realized(ccy=self.get_market(trade.symbol).base)
                 trade.open_qty = realized
                 if realized > trade.qty:
@@ -664,13 +667,6 @@ class ExchangeWorker:
 
         if executions:
             active_trade: Optional[Trade] = None
-
-            if realtime:
-                # Updating LAST_EXEC is siginificant for caching
-                asyncio.create_task(
-                    self.client.as_redis().set_last_exec(executions[-1].time)
-                )
-                await self._update_realized_balance(db)
 
             async def get_trade(execution: Execution) -> Optional[Trade]:
 
@@ -746,6 +742,14 @@ class ExchangeWorker:
                             spot_trade.qty = max(spot_trade.qty, spot_trade.open_qty)
                     else:
                         pass
+
+            if realtime:
+                # Updating LAST_EXEC is siginificant for caching
+                asyncio.create_task(
+                    self.client.as_redis().set_last_exec(executions[-1].time)
+                )
+
+                await self._update_realized_balance(db)
 
             return active_trade
 
