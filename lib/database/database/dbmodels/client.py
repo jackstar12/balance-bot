@@ -25,7 +25,7 @@ import dotenv
 import database.dbmodels as dbmodels
 import core
 from database.enums import MarketType
-from database.env import environment
+from database.env import ENV
 from database.errors import UserInputError
 from database.dbmodels.transfer import Transfer
 
@@ -207,7 +207,7 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
     # Properties
     api_key = Column(String(), nullable=False)
     api_secret = Column(
-        StringEncryptedType(String(), environment.encryption.get_secret_value().encode('utf-8'), FernetEngine),
+        StringEncryptedType(String(), ENV.encryption.get_secret_value().encode('utf-8'), FernetEngine),
         nullable=False
     )
     exchange = Column(String, nullable=False)

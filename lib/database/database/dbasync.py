@@ -21,20 +21,20 @@ from sqlalchemy.util import symbol, greenlet_spawn
 
 from core import json as customjson
 from database.dbsync import Base
-from database.env import environment
+from database.env import ENV
 from database.models import BaseModel
 
 
 engine = create_async_engine(
-    f'postgresql+asyncpg://{environment.DATABASE_URI}',
+    f'postgresql+asyncpg://{ENV.PG_URL}',
     json_serializer=customjson.dumps_no_bytes,
-    json_deserializer=customjson.loads
+    json_deserializer=customjson.loads,
 )
 async_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=asyncio.current_task)
 
 
-redis = aioredis.from_url(environment.REDIS_URI)
+redis = aioredis.from_url(ENV.REDIS_URL)
 
 
 def wrap_greenlet(fn):

@@ -1,14 +1,13 @@
 from pydantic import SecretStr
+from sqlalchemy.engine import URL
 
 from core.env import EnvBase
 
 
 class Environment(EnvBase):
-    DATABASE_URI: str
-    DATABASE_TESTING_URI: str
-    REDIS_URI: str
-
+    PG_URL: str
+    REDIS_URL: str
     encryption: SecretStr
 
 
-environment = Environment()
+ENV = Environment()

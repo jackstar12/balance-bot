@@ -6,11 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker, scoped_session, Session, declarative_base, object_session
 import sqlalchemy.orm as orm
 
-from database.env import environment
+from database.env import ENV
 from database.models import BaseModel
 
 engine = create_engine(
-    f'postgresql://{environment.DATABASE_URI}'
+    f'postgresql://{ENV.PG_URL}'
 )
 maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 session: Session = scoped_session(maker)

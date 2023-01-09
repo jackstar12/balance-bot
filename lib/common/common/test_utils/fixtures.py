@@ -17,7 +17,7 @@ from database.dbmodels.trade import Trade
 from database.dbsync import Base
 from common.exchanges import EXCHANGES, EXCHANGE_TICKERS
 from common.messenger import Messenger, NameSpaceInput
-from database.env import environment
+from database.env import ENV
 
 pytestmark = pytest.mark.anyio
 
@@ -32,7 +32,7 @@ EXCHANGE_TICKERS['mock'] = MockTicker
 @pytest.fixture(scope='session')
 def engine():
     return create_async_engine(
-        f'postgresql+asyncpg://{environment.DATABASE_TESTING_URI}',
+        f'postgresql+asyncpg://{ENV.DATABASE_TESTING_URI}',
         json_serializer=customjson.dumps_no_bytes,
         json_deserializer=customjson.loads,
     )
@@ -58,7 +58,7 @@ async def db(tables, engine, session_maker) -> AsyncSession:
 
 @pytest.fixture(scope='session')
 def redis() -> Redis:
-    return aioredis.from_url(environment.REDIS_URI)
+    return aioredis.from_url(ENV.REDIS_URL)
 
 
 @pytest.fixture(scope='session')

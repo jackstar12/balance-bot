@@ -26,7 +26,7 @@ from typing_extensions import NotRequired
 
 import database.dbmodels as dbmodels
 import core
-from database.env import environment
+from database.env import ENV
 from database.errors import UserInputError
 from database.dbmodels.transfer import Transfer
 
