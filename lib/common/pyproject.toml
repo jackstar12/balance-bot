@@ -10,7 +10,7 @@ python = "3.10.3"
 SQLAlchemy = { extras=["asyncio"], version="1.4.40" }
 database = { path = "../database", develop = true }
 core = { path = "../core", develop = true}
-ccxt = "1.57.9"
+ccxt = "1.57.1"
 aiohttp = ">3.7.4"
 pydantic = "1.8.2"
 aioredis = "2.0.1"
