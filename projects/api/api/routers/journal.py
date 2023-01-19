@@ -118,8 +118,7 @@ chapter_select = select(
     DbChapter.id,
     DbChapter.parent_id,
     DbChapter.title,
-    DbChapter.data['start_date'],
-    DbChapter.data['end_date'],
+    DbChapter.data
 )
 
 

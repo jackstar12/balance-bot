@@ -75,7 +75,7 @@ def add_crud_routes(router: APIRouter,
             table,
             table.id == entity_id,
             apply=lambda s: get_one_route.add_filters(s, user, **kwargs),
-            *get_one_route.eager_loads,
+            eager=get_one_route.eager_loads,
             session=db
         )
         if not result:

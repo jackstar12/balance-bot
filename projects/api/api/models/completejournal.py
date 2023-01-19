@@ -18,8 +18,7 @@ class ChapterInfo(BaseModel):
     id: OutputID
     title: Optional[str]
     parent_id: Optional[OutputID]
-    start_date: Optional[date]
-    end_date: Optional[date]
+    data: dict
 
     #balances: List[Balance]
     #performance: Optional[Gain]
