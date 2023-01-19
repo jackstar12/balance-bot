@@ -207,7 +207,7 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
     # Properties
     api_key = Column(String(), nullable=False)
     api_secret = Column(
-        StringEncryptedType(String(), ENV.encryption.get_secret_value().encode('utf-8'), FernetEngine),
+        StringEncryptedType(String(), ENV.ENCRYPTION.get_secret_value().encode('utf-8'), FernetEngine),
         nullable=False
     )
     exchange = Column(String, nullable=False)
