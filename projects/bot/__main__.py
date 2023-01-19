@@ -26,6 +26,7 @@ from common.messenger import Messenger
 from database.models.discord.guild import UserRequest, GuildRequest, GuildData, MessageRequest, TextChannel
 from database.redis.rpc import Server
 from core.utils import setup_logger
+from database.utils import run_migrations
 
 intents = discord.Intents().default()
 intents.members = True
@@ -267,5 +268,6 @@ cog_instances = [
 ]
 
 if __name__ == '__main__':
+    run_migrations()
     setup_logger()
     bot.run(environment.BOT_KEY.get_secret_value())

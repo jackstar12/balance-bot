@@ -211,7 +211,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
                 type=ExecType.TRADE,
                 inverse=contract_type == ContractType.INVERSE,
-                settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3],
+                settle='USDT' if contract_type == ContractType.LINEAR else symbol[:-3],
                 market_type=MarketType.DERIVATIVES
             )
 

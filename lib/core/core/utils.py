@@ -86,16 +86,20 @@ _regrex_pattern = re.compile("["
 
 def setup_logger(debug: bool = False):
     logger = logging.getLogger()
+
+    for handler in logger.handlers:
+        print(handler.name)
+        logger.removeHandler(handler)
     logger.setLevel(logging.DEBUG if debug else logging.INFO)  # Change this to DEBUG if you want a lot more info
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    print(os.path.abspath(config.LOG_OUTPUT_DIR))
-    if not os.path.exists(config.LOG_OUTPUT_DIR):
-        os.mkdir(config.LOG_OUTPUT_DIR)
-    if config.TESTING or True:
-        log_stream = sys.stdout
-    else:
-        log_stream = open(config.LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
-    handler = logging.StreamHandler(log_stream)
+
+    # if not os.path.exists(config.LOG_OUTPUT_DIR):
+    #     os.mkdir(config.LOG_OUTPUT_DIR)
+    # if config.TESTING or True:
+    #     log_stream = sys.stdout
+    # else:
+    #     log_stream = open(config.LOG_OUTPUT_DIR + f'log_{datetime.now().strftime("%Y-%m-%d_%H_%M_%S")}.txt', "w")
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     return logger

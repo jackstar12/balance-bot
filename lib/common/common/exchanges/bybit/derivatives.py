@@ -308,7 +308,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
             if coin == 'USDT':
                 if contract_type == ContractType.LINEAR or not contract_type:
                     price = Decimal(1)
-            elif unrealized > 0 and (contract_type == ContractType.INVERSE or not contract_type):
+            elif realized and (contract_type == ContractType.INVERSE or not contract_type):
                 price = get_multiple(ticker_prices, f'{coin}USD', f'{coin}USDT')
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {coin}:\n{ticker_prices}')

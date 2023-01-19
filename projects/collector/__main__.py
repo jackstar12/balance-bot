@@ -15,6 +15,7 @@ from collector.services.balanceservice import ExtendedBalanceService, BasicBalan
 from common.messenger import Messenger, BALANCE, CLIENT, EVENT, TRADE
 from core.utils import setup_logger
 from collector.services.baseservice import BaseService
+from database.utils import run_migrations
 
 
 async def run_service(service: BaseService):
@@ -24,7 +25,10 @@ async def run_service(service: BaseService):
 
 
 async def run(session: aiohttp.ClientSession):
+    run_migrations()
+
     setup_logger(debug=True)
+
 
     scheduler = AsyncIOScheduler(
         executors={

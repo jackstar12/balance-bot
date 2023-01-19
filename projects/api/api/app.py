@@ -28,6 +28,10 @@ from database.dbmodels import Event, Client, EventEntry
 from core.utils import setup_logger
 from database.dbmodels.action import Action
 from database.dbmodels.authgrant import AuthGrant
+from alembic.config import Config
+from alembic import command
+
+from database.utils import run_migrations
 
 VERSION = 1
 # PREFIX = f'/api/v{VERSION}'
@@ -112,8 +116,10 @@ for module in (
 
 @app.on_event("startup")
 async def on_start():
+    run_migrations()
     setup_logger()
     set_http_session(aiohttp.ClientSession())
+
     messenger.listen_class_all(Event)
     messenger.listen_class_all(Client)
     messenger.listen_class_all(Action)
@@ -121,7 +127,8 @@ async def on_start():
 
 
 @app.on_event("shutdown")
-async def on_start():
+async def on_stop():
+
     await (get_http_session().close())
 
 

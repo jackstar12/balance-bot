@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Optional, List, Type, TypeVar
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import JSON, delete, update
 from sqlalchemy import select, Column, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +32,12 @@ if TYPE_CHECKING:
 
 
 TTable = TypeVar('TTable', bound=BaseMixin)
+
+
+def run_migrations():
+    alembic_cfg = Config("../../lib/database/alembic.ini")
+    alembic_cfg.set_main_option('script_location', '../../lib/database/alembic')
+    command.upgrade(alembic_cfg, "head")
 
 
 async def query_table(*eager,

@@ -11,11 +11,11 @@ dotenv.load_dotenv()
 
 class EnvBase(BaseSettings):
     class Config:
-        env_file = ".env"
+        env_file = "../../.env"
 
 
 class Environment(EnvBase):
-    TESTING: bool
+    TESTING: bool = False
     LOG_OUTPUT_DIR: str = "/LOGS/"
     DATA_PATH: str = "/data/"
 
