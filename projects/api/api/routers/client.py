@@ -69,7 +69,7 @@ async def new_client(body: ClientCreateBody,
 
                 try:
                     worker = exchange_cls(client, http_session, db_maker=async_maker)
-                    init_balance = await worker.get_balance(date=datetime.now(pytz.utc))
+                    init_balance = await worker.get_balance()
                 except InvalidClientError:
                     raise BadRequest('Invalid API credentials')
                 except ResponseError:

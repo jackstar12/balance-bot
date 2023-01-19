@@ -19,6 +19,7 @@ import api.routers.user as user
 import api.routers.authgrant as authgrant
 import api.routers.chapter as chapter
 from api.dependencies import messenger, set_http_session, get_http_session
+from api.env import ENV
 from api.models.user import UserRead, UserCreate
 from api.routers import labelgroup
 from api.users import fastapi_users, auth_backend
@@ -54,21 +55,13 @@ app = FastAPI(
 # app.add_middleware(CSRFMiddleware, secret='SECRET', sensitive_cookies=[settings.session_cookie_name])
 # app.add_midleware(DbSessionMiddleware)
 
-OAUTH2_CLIENT_ID = os.environ.get('OAUTH2_CLIENT_ID')
-OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET')
-OAUTH2_REDIRECT_URI = os.environ.get('REDIRECT_BASE_URI')
-
-assert OAUTH2_CLIENT_SECRET
-assert OAUTH2_CLIENT_ID
-assert OAUTH2_REDIRECT_URI
-
 app.include_router(fastapi_users.get_verify_router(UserRead), prefix=PREFIX)
 app.include_router(fastapi_users.get_reset_password_router(), prefix=PREFIX)
 app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix=PREFIX)
 app.include_router(fastapi_users.get_auth_router(backend=auth_backend), prefix=PREFIX)
 
 discord_oauth = DiscordOAuth2(
-    OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, scopes=['identify', 'email', 'guilds']
+    ENV.OAUTH2_CLIENT_ID, ENV.OAUTH2_CLIENT_SECRET, scopes=['identify', 'email', 'guilds']
 )
 
 OAUTH_PREFIX = '/oauth/discord'
@@ -79,7 +72,7 @@ app.include_router(
         user_schema=UserRead,
         backend=auth_backend,
         state_secret="SECRET",
-        redirect_url=OAUTH2_REDIRECT_URI + OAUTH_PREFIX + '/callback'
+        redirect_url=ENV.OAUTH2_REDIRECT_URI + OAUTH_PREFIX + '/callback'
     ),
     prefix=PREFIX + OAUTH_PREFIX
 )
@@ -91,7 +84,7 @@ app.include_router(
         discord_oauth,
         user_schema=UserRead,
         state_secret="SECRET",
-        redirect_url=OAUTH2_REDIRECT_URI + ASSOC_PREFIX + '/callback'
+        redirect_url=ENV.OAUTH2_REDIRECT_URI + ASSOC_PREFIX + '/callback'
     ),
     prefix=PREFIX + ASSOC_PREFIX
 )

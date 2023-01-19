@@ -11,7 +11,7 @@ dotenv.load_dotenv()
 
 class EnvBase(BaseSettings):
     class Config:
-        env_file = ".env.prod.local"
+        env_file = ".env"
 
 
 class Environment(EnvBase):

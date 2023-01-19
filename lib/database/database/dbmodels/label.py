@@ -21,8 +21,7 @@ class LabelGroup(Group, Base, Serializer, BaseMixin):
     labels = relationship('Label',
                           back_populates='group',
                           passive_deletes=True,
-                          cascade="all, delete",
-                          lazy='raise')
+                          cascade="all, delete")
 
 
 class Label(Base, Serializer, BaseMixin):

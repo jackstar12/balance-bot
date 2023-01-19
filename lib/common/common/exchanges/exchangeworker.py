@@ -41,7 +41,7 @@ from common.messenger import TableNames, Category, Messenger
 from database.models.miscincome import MiscIncome
 from database.models.ohlc import OHLC
 from database.models.market import Market
-from core.utils import combine_time_series, MINUTE, groupby_unique
+from core.utils import combine_time_series, MINUTE, groupby_unique, utc_now
 
 if TYPE_CHECKING:
     from database.dbmodels.balance import Balance
@@ -174,7 +174,6 @@ class ExchangeWorker:
         self.db_lock = asyncio.Lock()
         self.db_maker = db_maker
 
-        # Client information has to be stored locally because SQL Objects aren't allowed to live in multiple threads
         self._api_key = client.api_key
         self._api_secret = client.api_secret
         self._subaccount = client.subaccount
@@ -206,22 +205,22 @@ class ExchangeWorker:
 
     async def get_balance(self,
                           priority: Priority = Priority.MEDIUM,
-                          date: datetime = None,
-                          force=False,
                           upnl=True) -> Optional[Balance]:
-        if not date:
-            date = datetime.now(tz=pytz.UTC)
-        if True or force or (
-                self._last_fetch and date - self._last_fetch.time > timedelta(seconds=PRIORITY_INTERVALS[priority])):
+        now = utc_now()
+        if (
+                priority == Priority.FORCE
+                or
+                self._last_fetch and now - self._last_fetch.time > timedelta(seconds=PRIORITY_INTERVALS[priority])
+        ):
             try:
-                balance = await self._get_balance(date, upnl=upnl)
+                balance = await self._get_balance(now, upnl=upnl)
             except ResponseError as e:
                 return db_balance.Balance(
-                    time=date,
+                    time=now,
                     error=e.human
                 )
             if not balance.time:
-                balance.time = date
+                balance.time = now
             self._last_fetch = balance
             balance.client_id = self.client_id
             return balance
@@ -253,8 +252,7 @@ class ExchangeWorker:
         execs.sort(key=lambda e: e.time)
         return transfers, execs, misc
 
-    async def intelligent_get_balance(self,
-                                      date: datetime = None) -> Optional["Balance"]:
+    async def intelligent_get_balance(self) -> Optional["Balance"]:
         """
         Fetch the clients balance, only saving if it makes sense to do so.
         database session to ues
@@ -265,8 +263,7 @@ class ExchangeWorker:
         async with self.db_maker() as db:
             client = await self.get_client(db, options=(selectinload(Client.recent_history),))
             self.client = client
-            date = date or datetime.now(pytz.utc)
-            result = await self.get_balance(date=date)
+            result = await self.get_balance()
 
             if result:
                 history = client.recent_history
@@ -600,7 +597,6 @@ class ExchangeWorker:
     async def _update_realized_balance(self, db: AsyncSession):
         balance = await self.get_balance(
             Priority.FORCE,
-            datetime.now(pytz.utc),
             upnl=False
         )
 

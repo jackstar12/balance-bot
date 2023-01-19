@@ -389,7 +389,7 @@ class ExtendedBalanceService(_BalanceServiceBase):
                 async with self._worker_lock, self._db_lock:
                     await self._refresh()
                     for worker in self._workers_by_id.values():
-                        client = self._db.identity_map.get(
+                        client: Client = self._db.identity_map.get(
                             self._db.identity_key(Client, worker.client_id)
                         )
                         if not client:
