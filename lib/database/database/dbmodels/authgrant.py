@@ -74,7 +74,7 @@ class AssociationType(Enum):
             return TemplateGrant
 
 
-class AuthGrant(Base, BaseMixin):
+class AuthGrant(Base, BaseMixin, Serializer):
     __tablename__ = 'authgrant'
     id = sa.Column(sa.Integer, primary_key=True)
     name = sa.Column(sa.String, nullable=True)
