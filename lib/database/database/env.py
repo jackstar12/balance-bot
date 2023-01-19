@@ -7,7 +7,7 @@ from core.env import EnvBase
 class Environment(EnvBase):
     PG_URL: str
     REDIS_URL: str
-    encryption: SecretStr
+    ENCRYPTION: SecretStr
 
 
 ENV = Environment()
