@@ -108,10 +108,6 @@ def get_redis_strategy():
     return RedisStrategy(redis=redis, lifetime_seconds=48 * 60 * 60)
 
 
-OAUTH2_REDIRECT_URI = os.environ.get('REDIRECT_BASE_URI')
-
-assert OAUTH2_REDIRECT_URI
-
 
 # class CustomTransport(CookieTransport):
 #     def get_login_response(self, token: str, response: Response) -> Any:
