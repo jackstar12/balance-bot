@@ -23,6 +23,7 @@ from api.env import ENV
 from api.models.user import UserRead, UserCreate
 from api.routers import labelgroup
 from api.users import fastapi_users, auth_backend
+from api.utils.responses import OK
 from database.dbmodels import Event, Client, EventEntry
 from core.utils import setup_logger
 from database.dbmodels.action import Action
@@ -108,28 +109,6 @@ for module in (
 ):
     app.include_router(module.router)
 
-db_permission_flag = False
-
-
-def enforce_enabled():
-    if not db_permission_flag:
-        raise HTTPException(status_code=400, detail='Route is not enabled')
-
-
-protected_router = APIRouter(
-    dependencies=[Depends(enforce_enabled)]
-)
-
-
-@protected_router.get('/has-to-be-enabled')
-async def some_route():
-    pass
-
-
-@protected_router.get('/also-to-be-enabled')
-async def some_other_route():
-    pass
-
 
 @app.on_event("startup")
 async def on_start():
@@ -144,6 +123,11 @@ async def on_start():
 @app.on_event("shutdown")
 async def on_start():
     await (get_http_session().close())
+
+
+@app.get('/status')
+def status():
+    return OK()
 
 
 def run():
