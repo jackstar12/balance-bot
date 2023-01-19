@@ -210,7 +210,9 @@ class ExchangeWorker:
         if (
                 priority == Priority.FORCE
                 or
-                (self._last_fetch and now - self._last_fetch.time > timedelta(seconds=PRIORITY_INTERVALS[priority]))
+                not self._last_fetch
+                or
+                now - self._last_fetch.time > timedelta(seconds=PRIORITY_INTERVALS[priority])
         ):
             try:
                 balance = await self._get_balance(now, upnl=upnl)
