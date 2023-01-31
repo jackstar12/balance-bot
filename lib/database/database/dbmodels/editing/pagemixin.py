@@ -56,7 +56,7 @@ class PageMixin:
 
     @title.expression
     def title(self):
-        return self.doc['content'][0]['content'][0]['text']
+        return self.doc['content'][0]['content'][0]['text'].astext
 
     @hybrid_property
     def body(self):

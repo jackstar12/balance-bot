@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm, select, func, literal
 from sqlalchemy.ext.hybrid import hybrid_property
 
-from database.dbmodels.editing._base import PageMixin
+from database.dbmodels.editing.pagemixin import PageMixin
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbsync import Base
 from database.models import BaseModel

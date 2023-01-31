@@ -29,7 +29,6 @@ class ExchangeTicker:
         # Initialize Channels
         self._callbacks: Dict[Subscription, Observable] = {}
 
-
     async def subscribe(self, sub: Subscription, observer: Observer):
         observable = self._callbacks.get(sub)
         if not observable:
