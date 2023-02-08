@@ -40,7 +40,7 @@ def OK(detail: str = None, code: int = None, **kwargs):
 
 
 def Response(detail: str, code: int, status: int, result: Any = None, **kwargs):
-    return CustomJSONResponse(jsonable_encoder(result), **kwargs, status_code=status)
+    return CustomJSONResponse(jsonable_encoder(result, **kwargs), status_code=status)
     return CustomJSONResponse(
         {'detail': detail, 'code': code, 'result': jsonable_encoder(result), **kwargs},
         status_code=status

@@ -41,6 +41,7 @@ from database.dbmodels.user import User
 from database.models import BaseModel, InputID
 from database.models.balance import Balance as BalanceModel, Amount
 from database.dbsync import Base, BaseMixin
+from database.models.eventinfo import EventState
 from database.redis import TableNames
 from database.dbmodels.trade import Trade
 from database.redis.client import ClientSpace
@@ -530,7 +531,7 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
 
     def get_event_string(self):
         return ', '.join(
-            event.name for event in self.events if event.is_active or event.is_free_for_registration()
+            event.name for event in self.events if event.is_(EventState.ACTIVE) or event.is_(EventState.REGISTRATION)
         )
 
     def __hash__(self):

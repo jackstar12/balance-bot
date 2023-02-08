@@ -185,7 +185,7 @@ async def update_journal(journal_id: InputID,
         journal.default_template_id = body.default_template_id
 
     await db.commit()
-    return JournalDetailedInfo.from_orm(journal)
+    return OK()
 
 
 @router.delete('/{journal_id}')

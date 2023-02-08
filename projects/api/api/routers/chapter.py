@@ -35,7 +35,7 @@ async def query_chapter(chapter_id: int,
                         user_id: UUID,
                         *eager,
                         session: AsyncSession,
-                        **filters):
+                        **filters) -> Optional[DbChapter]:
     chapter = await db_unique(
         select(DbChapter).filter(
             DbChapter.id == chapter_id,
@@ -61,6 +61,7 @@ async def get_chapter(chapter_id: InputID,
         chapter_id,
         grant.user_id,
         grant.is_root_for(AssociationType.CHAPTER) and DbChapter.grants,
+        DbChapter.template,
         # DbChapter.trades,
         session=db
     )

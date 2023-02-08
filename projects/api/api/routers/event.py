@@ -273,6 +273,8 @@ async def join_event(body: EventJoinBody,
         ),
         session=db
     )
+    if not event.is_(EventState.REGISTRATION):
+        raise BadRequest('Registration is already over')
     if client_id:
         try:
             result = await db.execute(

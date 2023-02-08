@@ -12,6 +12,7 @@ class OAuthInfo(schemas.BaseOAuthAccount):
 
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
+    id: uuid.UUID
     oauth_accounts: list[OAuthInfo]
 
 

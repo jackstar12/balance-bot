@@ -5,6 +5,8 @@ from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
 
+from core import json
+
 if TYPE_CHECKING:
     from database.dbmodels import User
     from database.dbsync import BaseMixin
@@ -14,6 +16,10 @@ OutputID = str
 
 
 class BaseModel(PydanticBaseModel):
+
+    class Config:
+        json_dumps = json.dumps
+
     @classmethod
     def deep_construct(cls, _fields_set=None, **values):
         m = cls.__new__(cls)

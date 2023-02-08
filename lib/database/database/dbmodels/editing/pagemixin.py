@@ -12,6 +12,7 @@ from sqlalchemy.orm import aliased, declared_attr
 
 from core import safe_cmp, map_list
 from database.dbasync import db_all, safe_op
+from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbmodels.types import Document
 from database.models.document import DocumentModel
 
@@ -26,7 +27,7 @@ def cmp_dates(col, val):
     )
 
 
-class PageMixin:
+class PageMixin(EditsMixin):
     # Identifiers
     id = sa.Column(sa.Integer, primary_key=True)
 

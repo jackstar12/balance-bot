@@ -34,14 +34,16 @@ class ChapterData(BaseModel):
     #     return self.start_date + interval
 
 
-class Chapter(Base, EditsMixin, PageMixin):
+class Chapter(Base, PageMixin):
     __tablename__ = 'chapter'
 
     # Identifiers
     journal_id = sa.Column(sa.ForeignKey('journal.id', ondelete="CASCADE"), nullable=False)
+    template_id = sa.Column(sa.ForeignKey('template.id', ondelete="SET NULL"), nullable=True)
     data: Optional[ChapterData] = sa.Column(ChapterData.get_sa_type(validate=True), nullable=True)
 
     journal = orm.relationship('Journal', lazy='noload')
+    template = orm.relationship('Template', lazy='noload')
 
     @hybrid_property
     def start_date(self):

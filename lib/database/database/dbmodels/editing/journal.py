@@ -137,6 +137,7 @@ class Journal(Base, BaseMixin):
                 #    )
                 # ]
             )
+            new_chapter.template = template
         else:
             new_chapter.doc = DocumentModel(
                 content=[

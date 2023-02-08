@@ -47,7 +47,7 @@ user_info_dep = get_current_user(
 )
 
 
-class UserInfo(UserRead, UserPublicInfo):
+class UserInfo(UserPublicInfo, UserRead):
     all_clients: list[ClientInfo]
     alerts: list[Alert]
 
@@ -79,7 +79,7 @@ async def info(background: BackgroundTasks,
     await db.commit()
 
     return OK(
-        result=UserInfo.from_orm(user)
+        result=UserInfo.from_orm(user),
     )
 
 

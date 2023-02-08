@@ -4,7 +4,7 @@ from typing import List, Optional, NamedTuple, Set
 
 from api.routers.authgrant import AuthGrantInfo
 from database.models import BaseModel, OutputID, InputID
-from api.models.template import TemplateInfo
+from api.models.template import TemplateInfo, TemplateDetailed
 from database.dbmodels.editing.journal import IntervalType, JournalType
 from database.models.document import DocumentModel
 
@@ -18,7 +18,7 @@ class ChapterInfo(BaseModel):
     id: OutputID
     title: Optional[str]
     parent_id: Optional[OutputID]
-    data: dict
+    data: Optional[dict]
 
     #balances: List[Balance]
     #performance: Optional[Gain]
@@ -31,7 +31,6 @@ class ChapterInfo(BaseModel):
 
 class JournalInfo(BaseModel):
     id: OutputID
-    client_ids: List[OutputID]
     title: Optional[str]
     type: JournalType
     chapter_interval: Optional[IntervalType]
@@ -41,9 +40,10 @@ class JournalInfo(BaseModel):
 
 
 class JournalDetailedInfo(JournalInfo):
+    client_ids: List[OutputID]
     overview: Optional[dict]
     default_template_id: Optional[OutputID]
-    default_template: Optional[TemplateInfo]
+    default_template: Optional[TemplateDetailed]
     chapters_info: list[ChapterInfo]
     grants: Optional[list[AuthGrantInfo]]
 
@@ -72,6 +72,7 @@ class DetailedChapter(ChapterInfo):
     data: Optional[dict]
     doc: Optional[DocumentModel]
     grants: Optional[list[AuthGrantInfo]]
+    template: Optional[TemplateInfo]
 
 
 class ChapterUpdate(BaseModel):
@@ -81,7 +82,7 @@ class ChapterUpdate(BaseModel):
 
 
 class ChapterCreate(BaseModel):
-    journal_id: int
+    journal_id: InputID
     start_date: Optional[date]
     parent_id: Optional[InputID]
     template_id: Optional[InputID]

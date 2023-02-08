@@ -14,7 +14,7 @@ class TemplateType(Enum):
     TRADE = "trade"
 
 
-class Template(Base, EditsMixin, PageMixin):
+class Template(Base, PageMixin):
     __tablename__ = 'template'
 
     user_id = sa.Column(sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)

@@ -17,6 +17,7 @@ from database.dbmodels.authgrant import TemplateGrant, AuthGrant, AssociationTyp
 from database.dbmodels.editing import Journal
 from database.dbmodels.editing.template import Template as DbTemplate, TemplateType
 from database.dbmodels.user import User
+from database.models import InputID
 
 router = APIRouter(
     tags=["template"],
@@ -92,7 +93,7 @@ auth = get_auth_grant_dependency(TemplateGrant)
 
 
 @router.get('/template/{template_id}', response_model=TemplateDetailed)
-async def get_template(template_id: int,
+async def get_template(template_id: InputID,
                        template_type: TemplateType = Query(default=None),
                        grant: AuthGrant = Depends(auth),
                        db: AsyncSession = Depends(get_db)):
@@ -126,7 +127,7 @@ def get_templates(template_type: TemplateType = Query(default=None),
 
 
 @router.patch('/template/{template_id}')
-async def update_template(template_id: int,
+async def update_template(template_id: InputID,
                           body: TemplateUpdate,
                           user: User = Depends(CurrentUser),
                           db: AsyncSession = Depends(get_db)):
@@ -147,7 +148,7 @@ async def update_template(template_id: int,
 
 
 @router.delete('/template/{template_id}')
-async def delete_template(template_id: int,
+async def delete_template(template_id: InputID,
                           user: User = Depends(CurrentUser),
                           db: AsyncSession = Depends(get_db)):
     result = await db_del_filter(

@@ -68,6 +68,20 @@ class DocumentModel(BaseModel):
             return self.content.__len__()
         return 0
 
+    def json(
+        self,
+        **kwargs
+    ) -> str:
+        return super().json(**kwargs, exclude_none=True)
+
+    def dict(
+        self,
+        **kwargs
+    ) -> dict:
+        kwargs['exclude_none'] = True
+        return super().dict(**kwargs)
+
+
     @property
     def all_data(self):
         results = []
