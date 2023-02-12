@@ -1,18 +1,21 @@
+from __future__ import annotations
 import uuid
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from fastapi import Depends, Request
 from fastapi_users import BaseUserManager, UUIDIDMixin, models, exceptions
 
 from api.authenticator import Authenticator
-from api.models.user import UserCreate
 from database.dbmodels.user import User
 
+if TYPE_CHECKING:
+    from api.users import UserDatabase
 
 SECRET = "SECRET"
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
+
     reset_password_token_secret = SECRET
     verification_token_secret = SECRET
 
@@ -122,19 +125,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         is triggered.
 
         :param oauth_name: Name of the OAuth client.
-        :param access_token: Valid access token for the service provider.
-        :param account_id: models.ID of the user on the service provider.
-        :param account_email: E-mail of the user on the service provider.
-        :param expires_at: Optional timestamp at which the access token expires.
-        :param refresh_token: Optional refresh token to get a
-        fresh access token from the service provider.
-        :param request: Optional FastAPI request that
-        triggered the operation, defaults to None
         :return: A user.
         """
         try:
-            # self.user_db: UserDatabase
+            self.user_db: UserDatabase
             await self.user_db.delete_oauth_account(user, oauth_name)
+            if user.info == oauth_name:
+                user.info = None
         except exceptions.UserNotExists:
             pass
         return user

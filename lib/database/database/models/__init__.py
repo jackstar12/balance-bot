@@ -17,9 +17,6 @@ OutputID = str
 
 class BaseModel(PydanticBaseModel):
 
-    class Config:
-        json_dumps = json.dumps
-
     @classmethod
     def deep_construct(cls, _fields_set=None, **values):
         m = cls.__new__(cls)

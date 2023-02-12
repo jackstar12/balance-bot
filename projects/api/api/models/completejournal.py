@@ -1,13 +1,15 @@
 from datetime import date
 from decimal import Decimal
-from typing import List, Optional, NamedTuple, Set
+from typing import List, Optional, NamedTuple, Set, Any
 
 from api.routers.authgrant import AuthGrantInfo
 from database.models import BaseModel, OutputID, InputID
 from api.models.template import TemplateInfo, TemplateDetailed
 from database.dbmodels.editing.journal import IntervalType, JournalType
 from database.models.document import DocumentModel
+from pydantic import NoneStr
 
+MISSING = object()
 
 class Gain(NamedTuple):
     relative: Decimal
@@ -18,7 +20,7 @@ class ChapterInfo(BaseModel):
     id: OutputID
     title: Optional[str]
     parent_id: Optional[OutputID]
-    data: Optional[dict]
+    data: Optional[dict[str, Any]]
 
     #balances: List[Balance]
     #performance: Optional[Gain]
@@ -78,6 +80,7 @@ class DetailedChapter(ChapterInfo):
 class ChapterUpdate(BaseModel):
     doc: Optional[DocumentModel]
     data: Optional[dict]
+    parent_id: Optional[InputID]
     #trades: Optional[Set[str]]
 
 

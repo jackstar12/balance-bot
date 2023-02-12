@@ -14,7 +14,7 @@ from api.dependencies import get_messenger, get_db
 from api.users import CurrentUser, get_current_user, get_token_backend, get_auth_grant_dependency, OptionalUser
 from api.models.completejournal import (
     JournalCreate, JournalInfo, DetailedChapter, JournalUpdate,
-    ChapterCreate, ChapterUpdate, JournalDetailedInfo
+    ChapterCreate, ChapterUpdate, JournalDetailedInfo, MISSING
 )
 from api.utils.responses import BadRequest, OK, CustomJSONResponse
 from database.dbasync import db_unique, db_all, db_select, db_select_all, wrap_greenlet
@@ -104,6 +104,8 @@ async def update_chapter(chapter_id: InputID,
         chapter.doc = body.doc
     if body.data:
         chapter.data = body.data
+    if body.parent_id is not MISSING:
+        chapter.parent_id = body.parent_id
     await db.commit()
     return OK('OK')
 

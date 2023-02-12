@@ -68,7 +68,7 @@ app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), pref
 app.include_router(fastapi_users.get_auth_router(backend=auth_backend), prefix=PREFIX)
 
 discord_oauth = DiscordOAuth2(
-    ENV.OAUTH2_CLIENT_ID, ENV.OAUTH2_CLIENT_SECRET, scopes=['identify', 'email', 'guilds']
+    ENV.OAUTH2_CLIENT_ID, ENV.OAUTH2_CLIENT_SECRET.get_secret_value(), scopes=['identify', 'email', 'guilds']
 )
 
 OAUTH_PREFIX = '/oauth/discord'

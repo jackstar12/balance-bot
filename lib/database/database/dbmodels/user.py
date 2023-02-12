@@ -94,8 +94,12 @@ class User(Base, Serializer, BaseMixin, SQLAlchemyBaseUserTableUUID, EditsMixin)
     def profile(self) -> UserProfile:
         src = None
         if isinstance(self.info, str):
-            data = self.get_oauth(self.info).data
-            src = self.info
+            account = self.get_oauth(self.info)
+            if account:
+                data = account.data
+                src = self.info
+            else:
+                data = None
         else:
             data = self.info
         if not data:

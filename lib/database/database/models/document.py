@@ -47,7 +47,7 @@ class DocumentModel(BaseModel):
     content: 'Optional[list[DocumentModel]]'
     type: 'Optional[str]'
     text: 'Optional[str]'
-    attrs: 'Optional[dict]'
+    attrs: 'Optional[dict[str, Any]]'
     marks: 'Optional[list[Mark]]'
 
     @property
