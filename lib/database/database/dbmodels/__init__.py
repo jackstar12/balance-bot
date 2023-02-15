@@ -21,6 +21,7 @@ import database.dbmodels.action
 import database.dbmodels.editing.chapter as chapter
 import database.dbmodels.editing.template as template
 import database.dbmodels.editing.journal as journal
+import database.dbmodels.editing.preset as preset
 
 import database.dbmodels.discord.discorduser
 import database.dbmodels.discord.guild as guild

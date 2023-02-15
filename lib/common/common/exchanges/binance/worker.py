@@ -108,7 +108,7 @@ class _BinanceBaseClient(ExchangeWorker, ABC):
                         continue
                     date = self.parse_ms_dt(row['timestamp'])
                     results.append(
-                        RawTransfer(amount, date, row["asset"], fee=None)
+                        RawTransfer(amount=amount, time=date, coin=row["asset"])
                     )
         return results
 
@@ -355,7 +355,8 @@ class BinanceFutures(_BinanceBaseClient):
                 Decimal(asset['marginBalance']) - Decimal(asset['walletBalance'])
                 for asset in usd_assets
             ),
-            time=time if time else datetime.now(pytz.utc)
+            time=time if time else datetime.now(pytz.utc),
+            extra_currencies=[]
         )
 
     async def startup(self):

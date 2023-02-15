@@ -19,6 +19,7 @@ import api.routers.user as user
 import api.routers.authgrant as authgrant
 import api.routers.chapter as chapter
 import api.routers.page as page
+import api.routers.preset as preset
 
 from api.dependencies import messenger, set_http_session, get_http_session
 from api.env import ENV
@@ -112,7 +113,8 @@ for module in (
         trade,
         action,
         client,
-        page
+        page,
+        preset
 ):
     app.include_router(module.router)
 

@@ -11,4 +11,4 @@ router = APIRouter(
 add_crud_routes(router,
                 table=Preset,
                 read_schema=PresetInfo,
-                create_schema=PresetCreate,)
+                create_schema=PresetCreate)
