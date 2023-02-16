@@ -340,6 +340,25 @@ async def get_client_performance(interval: IntervalType = Query(default=None),
     )
 
 
+@router.get('/client/symbols', response_model=ResponseModel[list[str]])
+async def get_client_symbols(query_params: ClientQueryParams = Depends(get_query_params),
+                             user: User = Depends(CurrentUser),
+                             db: AsyncSession = Depends(get_db)):
+    stmt = add_client_filters(
+        select(TradeDB.symbol).join(
+            TradeDB.client
+        ).distinct(),
+        user_id=user.id,
+        client_ids=query_params.client_ids
+    )
+
+    results = await db_all(stmt, session=db)
+
+    return OK(
+        result=jsonable_encoder(results)
+    )
+
+
 @router.get('/client/balance')
 async def get_client_balance(balance_id: list[int] = Query(None, alias='balance-id'),
                              query_params: ClientQueryParams = Depends(get_query_params),
