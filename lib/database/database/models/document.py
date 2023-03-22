@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Literal, Any
@@ -69,18 +68,43 @@ class DocumentModel(BaseModel):
         return 0
 
     def json(
-        self,
-        **kwargs
+            self,
+            **kwargs
     ) -> str:
         return super().json(**kwargs, exclude_none=True)
 
     def dict(
-        self,
-        **kwargs
+            self,
+            **kwargs
     ) -> dict:
         kwargs['exclude_none'] = True
         return super().dict(**kwargs)
 
+    def get_from_heading(self, heading_id: str) -> Optional[DocumentModel]:
+        result: Optional[DocumentModel] = None
+
+        def recursive(current: DocumentModel):
+            nonlocal result
+
+            if current.content:
+                for node in current.content:
+
+                    if node.type == "heading":
+                        if result is None:
+                            if node.attrs.get('id') == heading_id:
+                                result = DocumentModel(type='doc', content=[])
+                        elif node.attrs['level'] >= result[0].attrs['level']:
+                            return True
+
+                    if result is None:
+                        if recursive(node):
+                            return True
+                    else:
+                        result.content.append(node)
+
+        recursive(self)
+
+        return result
 
     @property
     def all_data(self):

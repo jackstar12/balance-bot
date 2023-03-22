@@ -80,7 +80,7 @@ async def db_all(stmt: Select, *eager, session=None) -> list[Any]:
     return (await (session or async_session).scalars(stmt)).unique().all()
 
 
-async def db_unique(stmt: Select, *eager: object, session: AsyncSession = None) -> object:
+async def db_unique(stmt: Select, *eager: object, session: AsyncSession = None) -> Any:
     if eager:
         stmt = db_eager(stmt, *eager)
     return (await (session or async_session).scalars(stmt.limit(1))).unique().first()

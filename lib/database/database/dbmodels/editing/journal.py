@@ -14,6 +14,7 @@ from sqlalchemy.orm import relationship, aliased
 from database import dbmodels
 from database.dbmodels.editing.template import Template
 import core
+from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbsync import Base, BaseMixin
 from database.dbmodels.types import Document
 from database.models.document import DocumentModel
@@ -46,7 +47,7 @@ class IntervalType(Enum):
     MONTH = "month"
 
 
-class Journal(Base, BaseMixin):
+class Journal(BaseMixin, Base, EditsMixin):
     __tablename__ = 'journal'
 
     id = sa.Column(sa.Integer, primary_key=True)

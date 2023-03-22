@@ -27,6 +27,7 @@ class BasicTrade(OrmBaseModel):
     size: Decimal
     realized_pnl: Decimal
     net_pnl: Decimal
+    net_gain: Decimal
     open_time: datetime
     settle: str
     weekday: int

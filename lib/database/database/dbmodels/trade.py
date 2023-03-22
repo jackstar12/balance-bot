@@ -214,7 +214,11 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
 
     @hybrid_property
     def account_gain(self):
-        return self.realized_pnl / self.init_balance.get_realized(ccy=self.settle)
+        return self.net_pnl / self.init_balance.get_realized(ccy=self.settle)
+
+    @hybrid_property
+    def net_gain(self):
+        return self.net_pnl / self.size
 
     @hybrid_property
     def account_size_init(self):

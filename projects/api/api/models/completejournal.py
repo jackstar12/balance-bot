@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, NamedTuple, Set, Any
 
@@ -21,7 +21,7 @@ class ChapterInfo(BaseModel):
     title: Optional[str]
     parent_id: Optional[OutputID]
     data: Optional[dict[str, Any]]
-
+    created_at: datetime
     #balances: List[Balance]
     #performance: Optional[Gain]
     #start_balance: FullBalance
@@ -36,6 +36,8 @@ class JournalInfo(BaseModel):
     title: Optional[str]
     type: JournalType
     chapter_interval: Optional[IntervalType]
+    created_at: datetime
+    chapter_count: Optional[int]
 
     class Config:
         orm_mode = True

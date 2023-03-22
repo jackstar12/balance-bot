@@ -1,5 +1,5 @@
 import operator
-from typing import Literal
+from typing import Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -20,7 +20,7 @@ from database.dbmodels.editing.pagemixin import PageMixin
 from database.dbmodels.editing.template import Template as DbTemplate, TemplateType, ChapterTemplate
 from database.dbmodels.user import User
 from database.models import InputID
-from database.models.page import PageInfo
+from database.models.page import PageInfo, FullPage
 
 router = APIRouter(
     tags=["page"],
@@ -84,9 +84,10 @@ async def create_template(page_type: Literal['template', 'chapter'],
     return OK(result=[PageInfo.from_orm(result) for result in results])
 
 
-@router.get('/{page_id}', response_model=PageInfo)
+@router.get('/{page_id}', response_model=FullPage)
 async def get_page(page_type: Literal['template', 'chapter'],
                    page_id: InputID,
+                   heading_id: Optional[str] = None,
                    user: User = Depends(CurrentUser),
                    db: AsyncSession = Depends(get_db)):
     table: type[PageMixin]
@@ -102,14 +103,20 @@ async def get_page(page_type: Literal['template', 'chapter'],
             Journal.user_id == user.id
         ).join(Chapter.journal)
 
-    result = await db_unique(
+    result: Chapter | DbTemplate = await db_unique(
         base.where(table.id == page_id),
         Chapter.journal,
         session=db
     )
 
     if result:
-        return OK(result=PageInfo.from_orm(result))
+        return OK(result=FullPage(
+            id=result.id,
+            title=result.title,
+            data=result.data,
+            created_at=result.created_at,
+            journal=result.journal,
+            doc=result.doc.get_from_heading(heading_id) if heading_id else result.doc
+        ))
     else:
         return NotFound()
-

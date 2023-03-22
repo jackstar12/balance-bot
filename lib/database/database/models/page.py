@@ -12,8 +12,8 @@ class PageInfo(OrmBaseModel):
     #group: Optional[str]
     data: Optional[dict]
     created_at: datetime
-    last_edited: datetime
     journal: Optional[JournalInfo]
+
 
     #balances: List[Balance]
     #performance: Optional[Gain]

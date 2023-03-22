@@ -74,6 +74,7 @@ async def create_journal(body: JournalCreate,
                          user: User = Depends(CurrentUser),
                          db: AsyncSession = Depends(get_db)):
     clients = await query_clients(body.client_ids, user, db)
+
     if len(clients) != len(body.client_ids):
         raise BadRequest(detail='Invalid client IDs')
     journal = Journal(
@@ -118,7 +119,8 @@ chapter_select = select(
     DbChapter.id,
     DbChapter.parent_id,
     DbChapter.title,
-    DbChapter.data
+    DbChapter.data,
+    DbChapter.created_at
 )
 
 
