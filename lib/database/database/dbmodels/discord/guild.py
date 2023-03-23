@@ -2,7 +2,7 @@ from database.dbmodels.mixins.serializer import Serializer
 
 from database.dbsync import Base, BaseMixin
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import Column, String, BigInteger, Enum
+from sqlalchemy importString, BigInteger, Enum
 
 from database.enums import Tier
 
@@ -10,10 +10,10 @@ from database.enums import Tier
 class Guild(Base, Serializer, BaseMixin):
     __tablename__ = 'guild'
 
-    id = Column(BigInteger, primary_key=True, nullable=False)
-    name = Column(String, nullable=True)
-    tier = Column(Enum(Tier), default=Tier.BASE, nullable=False)
-    avatar = Column(String, nullable=True)
+    id = mapped_column(BigInteger, primary_key=True, nullable=False)
+    name = mapped_column(String, nullable=True)
+    tier = mapped_column(Enum(Tier), default=Tier.BASE, nullable=False)
+    avatar = mapped_column(String, nullable=True)
 
     events = relationship('Event',
                           lazy='raise',

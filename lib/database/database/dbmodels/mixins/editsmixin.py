@@ -10,5 +10,5 @@ def now():
 
 
 class EditsMixin:
-    created_at = sa.Column(sa.DateTime(timezone=True), server_default=func.now(), default=now)
-    last_edited = sa.Column(sa.DateTime(timezone=True), onupdate=now)
+    created_at = mapped_column(sa.DateTime(timezone=True), server_default=func.now(), default=now)
+    last_edited = mapped_column(sa.DateTime(timezone=True), onupdate=now)

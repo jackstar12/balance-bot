@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import NamedTuple, Optional
 
-from sqlalchemy import Column, Integer, ForeignKey, String, BigInteger, Numeric
+from sqlalchemy import Integer, ForeignKey, String, BigInteger, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 
@@ -29,16 +29,16 @@ class RawTransfer(BaseModel):
 class Transfer(Base):
     __tablename__ = 'transfer'
 
-    id = Column(Integer, primary_key=True)
-    client_id = Column(
+    id = mapped_column(Integer, primary_key=True)
+    client_id = mapped_column(
         Integer,
         ForeignKey('client.id', ondelete="CASCADE"),
         nullable=False
     )
-    execution_id = Column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=False)
+    execution_id = mapped_column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=False)
 
-    note = Column(String, nullable=True)
-    coin = Column(String, nullable=True)
+    note = mapped_column(String, nullable=True)
+    coin = mapped_column(String, nullable=True)
 
     client = relationship('Client')
     execution = relationship(

@@ -7,7 +7,7 @@ authors = ["jacksn"]
 
 [tool.poetry.dependencies]
 python = "3.10.3"
-SQLAlchemy = { extras=["asyncio"], version="1.4.40" }
+SQLAlchemy = { extras=["asyncio"], version=">=2.0.0" }
 asyncpg = "0.25.0"
 sqlalchemy_utils = "0.38.2"
 psycopg2-binary = "2.9.3"

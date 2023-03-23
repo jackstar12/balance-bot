@@ -11,8 +11,8 @@ numpy = "1.22.4"
 scipy = "1.8.1"
 prettytable = "3.1.0"
 discord-py-slash-command = "3.0.1"
-common = {path = "../../lib/common", develop = true }
-core = {path = "../../lib/core", develop = true }
+common = { path = "../../lib/common", develop = true }
+core = { path = "../../lib/core", develop = true }
 
 [tool.poetry.dev-dependencies]
 pytest = "7.1.2"

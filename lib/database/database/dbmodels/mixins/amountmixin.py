@@ -1,14 +1,14 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Column, DateTime, Numeric
+from sqlalchemy importDateTime, Numeric
 from sqlalchemy.dialects.postgresql import JSONB
 
 
 class AmountMixin:
-    amount: Decimal = Column(Numeric, nullable=False)
-    time: datetime = Column(DateTime(timezone=True), nullable=False, index=True)
-    extra_currencies: dict = Column(JSONB, nullable=True)
+    amount: Decimal = mapped_column(Numeric, nullable=False)
+    time: datetime = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    extra_currencies: dict = mapped_column(JSONB, nullable=True)
 
     #@orm.reconstructor
     #def init_on_load(self):

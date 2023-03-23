@@ -4,7 +4,7 @@ import sqlalchemy as sa
 import enum
 
 from database.dbsync import Base, BaseMixin
-from sqlalchemy import Column, Integer, DateTime
+from sqlalchemy import Integer, DateTime
 from database.dbmodels.mixins.serializer import Serializer
 
 
@@ -27,9 +27,9 @@ class Expression:
 # Winrate > 50% && Kelly Optimization = True
 
 class Rule(Base, Serializer, BaseMixin):
-    id: int = Column(Integer, primary_key=True)
-    creation_date: datetime = Column(DateTime(timezone=True))
-    finish_date: datetime = Column(DateTime(timezone=True))
-    conditions = Column(sa.JSON, nullable=False)
-    expression = Column(sa.JSON, nullable=False)
+    id: int = mapped_column(Integer, primary_key=True)
+    creation_date: datetime = mapped_column(DateTime(timezone=True))
+    finish_date: datetime = mapped_column(DateTime(timezone=True))
+    conditions = mapped_column(sa.JSON, nullable=False)
+    expression = mapped_column(sa.JSON, nullable=False)
     expressions: list[Expression]

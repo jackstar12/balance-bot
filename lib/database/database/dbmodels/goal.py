@@ -4,7 +4,7 @@ from datetime import datetime
 import enum
 
 from database.dbsync import Base, BaseMixin
-from sqlalchemy import Column, Integer, DateTime
+from sqlalchemy import Integer, DateTime
 from database.dbmodels.mixins.serializer import Serializer
 
 
@@ -27,9 +27,9 @@ class Expression:
 # Winrate > 50% && Kelly Optimization = True
 
 class Goal(Base, Serializer, BaseMixin):
-    id: int = Column(Integer, primary_key=True)
-    creation_date: datetime = Column(DateTime(timezone=True))
-    finish_date: datetime = Column(DateTime(timezone=True))
+    id: int = mapped_column(Integer, primary_key=True)
+    creation_date: datetime = mapped_column(DateTime(timezone=True))
+    finish_date: datetime = mapped_column(DateTime(timezone=True))
 
     expressions: list[Expression]
 

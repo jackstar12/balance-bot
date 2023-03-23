@@ -7,7 +7,7 @@ authors = ["jacksn"]
 
 [tool.poetry.dependencies]
 python = "3.10.3"
-SQLAlchemy = { extras=["asyncio"], version="1.4.40" }
+SQLAlchemy = { extras=["asyncio"], version=">=2.0.0" }
 database = { path = "../database", develop = true }
 core = { path = "../core", develop = true}
 ccxt = "1.57.1"

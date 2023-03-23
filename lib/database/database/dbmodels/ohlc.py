@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from operator import and_
 
-from sqlalchemy import Column, Integer, Float, String, Enum, ForeignKey, DateTime, Numeric, select
+from sqlalchemy import Integer, Float, String, Enum, ForeignKey, DateTime, Numeric, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm.dynamic import AppenderQuery
@@ -16,19 +16,19 @@ from database.models.market import Market
 class Currency(Base):
     __tablename__ = 'currency'
 
-    id = Column(Integer, nullable=False, primary_key=True)
-    name: str = Column(String, nullable=False)
-    exchange: str = Column(String, nullable=True)
+    id = mapped_column(Integer, nullable=False, primary_key=True)
+    name: str = mapped_column(String, nullable=False)
+    exchange: str = mapped_column(String, nullable=True)
 
 
 class WithSymbol(Base):
-    base_ccy_id = Column(ForeignKey('currency.id', ondelete='CASCADE'), primary_key=True)
+    base_ccy_id = mapped_column(ForeignKey('currency.id', ondelete='CASCADE'), primary_key=True)
     base_ccy = relationship('Currency', foreign_keys=base_ccy_id)
 
-    quote_ccy_id = Column(ForeignKey('currency.id', ondelete='CASCADE'), primary_key=True)
+    quote_ccy_id = mapped_column(ForeignKey('currency.id', ondelete='CASCADE'), primary_key=True)
     quote_ccy = relationship('Currency', foreign_keys=quote_ccy_id)
 
-    time = Column(DateTime(timezone=True), nullable=False, primary_key=True)
+    time = mapped_column(DateTime(timezone=True), nullable=False, primary_key=True)
 
     @classmethod
     def at_dt(cls,
@@ -52,15 +52,15 @@ class WithSymbol(Base):
                 safe_op(Currency.exchange, exchange)
             ))
         )
-    #tf = Column(Enum(TimeFrame), nullable=True)
+    #tf = mapped_column(Enum(TimeFrame), nullable=True)
 
 
 class OHLC(WithSymbol):
     __tablename__ = 'ohlc'
-    open = Column(Numeric, nullable=True)
-    high = Column(Numeric, nullable=True)
-    low = Column(Numeric, nullable=True)
-    close = Column(Numeric, nullable=True)
-    tf = Column(Enum(TimeFrame), nullable=True)
+    open = mapped_column(Numeric, nullable=True)
+    high = mapped_column(Numeric, nullable=True)
+    low = mapped_column(Numeric, nullable=True)
+    close = mapped_column(Numeric, nullable=True)
+    tf = mapped_column(Enum(TimeFrame), nullable=True)
 
 

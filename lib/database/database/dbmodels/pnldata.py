@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Column, Integer, ForeignKey, BigInteger, DateTime, Numeric
+from sqlalchemy import Integer, ForeignKey, BigInteger, DateTime, Numeric
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
@@ -20,15 +20,15 @@ class PNLType(PyEnum):
 class PnlData(Base, Serializer, BaseMixin):
     __tablename__ = 'pnldata'
 
-    id = Column(BigInteger, primary_key=True)
-    trade_id = Column(Integer, ForeignKey('trade.id', ondelete="CASCADE"), nullable=False)
+    id = mapped_column(BigInteger, primary_key=True)
+    trade_id = mapped_column(Integer, ForeignKey('trade.id', ondelete="CASCADE"), nullable=False)
     trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
 
-    realized: Decimal = Column(Numeric, nullable=False)
-    unrealized: Decimal = Column(Numeric, nullable=False)
+    realized: Decimal = mapped_column(Numeric, nullable=False)
+    unrealized: Decimal = mapped_column(Numeric, nullable=False)
 
-    time = Column(DateTime(timezone=True), nullable=False, index=True)
-    extra_currencies = Column(JSONB, nullable=True)
+    time = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    extra_currencies = mapped_column(JSONB, nullable=True)
 
     @property
     def _trade(self):
@@ -59,4 +59,4 @@ class PnlData(Base, Serializer, BaseMixin):
             unrealized=self.unrealized
         )
 
-    # type = Column(Enum(PNLType), nullable=False)
+    # type = mapped_column(Enum(PNLType), nullable=False)

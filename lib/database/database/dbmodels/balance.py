@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import Column, Integer, ForeignKey, Numeric, DateTime, orm
+from sqlalchemy import Integer, ForeignKey, Numeric, DateTime, orm
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, object_session, Session
 
@@ -19,17 +19,17 @@ if TYPE_CHECKING:
 
 
 class _Common:
-    realized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
-    unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
+    realized: Decimal = mapped_column(Numeric, nullable=False, default=Decimal(0))
+    unrealized: Decimal = mapped_column(Numeric, nullable=False, default=Decimal(0))
 
 
 class Amount(Base, ClientQueryMixin, Serializer, BaseMixin, _Common):
     __tablename__ = 'amount'
 
-    balance_id = Column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
+    balance_id = mapped_column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
     balance = relationship('Balance', lazy='raise')
-    currency: str = Column(sa.String, primary_key=True)
-    rate = Column(Numeric, nullable=True)
+    currency: str = mapped_column(sa.String, primary_key=True)
+    rate = mapped_column(Numeric, nullable=True)
 
 
 class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
@@ -46,9 +46,9 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
     __model__ = BalanceModel
     __serializer_forbidden__ = ['id', 'error', 'client']
 
-    id = Column(Integer, primary_key=True)
-    client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
-    time = Column(DateTime(timezone=True), nullable=False, index=True)
+    id = mapped_column(Integer, primary_key=True)
+    client_id = mapped_column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=True)
+    time = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
     client: 'Client' = relationship('Client', lazy='raise', foreign_keys=client_id)
     extra_currencies: list[Amount] = relationship('Amount', lazy='joined', back_populates='balance')

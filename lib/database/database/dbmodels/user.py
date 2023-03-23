@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from typing import Optional, TypedDict, TYPE_CHECKING
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID, SQLAlchemyBaseOAuthAccountTableUUID
-from sqlalchemy import Column, orm
+from sqlalchemy importorm
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -26,8 +26,8 @@ class Subscription(enum.Enum):
 
 
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
-    account_id: str = Column(sa.String(length=320), index=True, nullable=False, unique=True)
-    data: Optional[ProfileData] = Column(JSONB, nullable=True)
+    account_id: str = mapped_column(sa.String(length=320), index=True, nullable=False, unique=True)
+    data: Optional[ProfileData] = mapped_column(JSONB, nullable=True)
 
     __mapper_args__ = {
         "polymorphic_on": "oauth_name",
@@ -44,16 +44,16 @@ class User(Base, Serializer, BaseMixin, SQLAlchemyBaseUserTableUUID, EditsMixin)
     oauth_accounts: list[OAuthAccount] = relationship("OAuthAccount", lazy="joined")
 
     # Identity
-    # discord_user_id = Column(BigInteger, ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
+    # discord_user_id = mapped_column(BigInteger, ForeignKey('discorduser.id', ondelete='SET NULL'), nullable=True)
     # discord_user = relationship('DiscordUser',
     #                             lazy='noload',
     #                             backref=backref('user', lazy='noload', uselist=False),
     #                             uselist=False, foreign_keys=discord_user_id)
 
-    subscription = Column(sa.Enum(Subscription), default=Subscription.BASIC, nullable=False)
+    subscription = mapped_column(sa.Enum(Subscription), default=Subscription.BASIC, nullable=False)
 
-    info: str | ProfileData | None = Column(JSONB, nullable=True)
-    about_me = Column(Document, nullable=True)
+    info: str | ProfileData | None = mapped_column(JSONB, nullable=True)
+    about_me = mapped_column(Document, nullable=True)
     events = relationship('Event',
                           back_populates='owner')
 

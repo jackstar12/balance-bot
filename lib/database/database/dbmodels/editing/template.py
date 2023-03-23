@@ -17,9 +17,9 @@ class TemplateType(Enum):
 class Template(Base, PageMixin):
     __tablename__ = 'template'
 
-    user_id = sa.Column(sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
-    data = sa.Column(Data, nullable=True)
-    type = sa.Column(sa.Enum(TemplateType), nullable=False)
+    user_id = mapped_column(sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    data = mapped_column(Data, nullable=True)
+    type = mapped_column(sa.Enum(TemplateType), nullable=False)
 
     user = orm.relationship('User', lazy='noload')
     journals = orm.relationship('Journal',

@@ -35,7 +35,7 @@ from database.models.eventinfo import EventState
 from database.models.platform import PlatformModel
 from database.dbmodels.types import Platform
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
+from sqlalchemy import Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
     select, insert, literal, and_, update, Numeric, BigInteger
 
 from core.utils import safe_cmp
@@ -51,23 +51,23 @@ SummaryType = eventmodels.Summary.get_sa_type(validate=True)
 class Event(Base, Serializer, BaseMixin):
     __tablename__ = 'event'
 
-    id = Column(Integer, primary_key=True)
-    owner_id = Column(ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    id = mapped_column(Integer, primary_key=True)
+    owner_id = mapped_column(ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
 
-    registration_start = Column(DateTime(timezone=True), nullable=False)
-    registration_end = Column(DateTime(timezone=True), nullable=False)
-    start = Column(DateTime(timezone=True), nullable=False)
-    end = Column(DateTime(timezone=True), nullable=False)
+    registration_start = mapped_column(DateTime(timezone=True), nullable=False)
+    registration_end = mapped_column(DateTime(timezone=True), nullable=False)
+    start = mapped_column(DateTime(timezone=True), nullable=False)
+    end = mapped_column(DateTime(timezone=True), nullable=False)
 
-    max_registrations = Column(Integer, nullable=False, default=100)
-    allow_transfers = Column(Boolean, default=False)
+    max_registrations = mapped_column(Integer, nullable=False, default=100)
+    allow_transfers = mapped_column(Boolean, default=False)
 
-    name = Column(String, nullable=False)
-    description = Column(Document, nullable=False)
-    location = Column(Platform, nullable=False)
-    currency = Column(String(10), nullable=False, server_default='USD')
-    rekt_threshold = Column(Numeric, nullable=False, server_default='-99')
-    final_summary = Column(SummaryType, nullable=True)
+    name = mapped_column(String, nullable=False)
+    description = mapped_column(Document, nullable=False)
+    location = mapped_column(Platform, nullable=False)
+    currency = mapped_column(String(10), nullable=False, server_default='USD')
+    rekt_threshold = mapped_column(Numeric, nullable=False, server_default='-99')
+    final_summary = mapped_column(SummaryType, nullable=True)
 
     owner: User = relationship('User', lazy='noload')
 

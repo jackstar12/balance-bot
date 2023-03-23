@@ -1,5 +1,5 @@
 import discord
-from sqlalchemy import Column, Integer, ForeignKey, String, Enum, Numeric
+from sqlalchemy import Integer, ForeignKey, String, Enum, Numeric
 from sqlalchemy.dialects.postgresql import UUID
 
 from database.dbmodels.mixins.serializer import Serializer
@@ -11,15 +11,15 @@ class Alert(Base, Serializer, BaseMixin):
     __tablename__ = "alert"
     __serializer_data_forbidden__ = ["user", "discord_user"]
 
-    id: int = Column(Integer, primary_key=True)
-    user_id: UUID = Column(ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
-    discord_user_id: int = Column(ForeignKey('oauth_account.account_id', ondelete='SET NULL'), nullable=True)
+    id: int = mapped_column(Integer, primary_key=True)
+    user_id: UUID = mapped_column(ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    discord_user_id: int = mapped_column(ForeignKey('oauth_account.account_id', ondelete='SET NULL'), nullable=True)
 
-    symbol: str = Column(String, nullable=False)
-    price: float = Column(Numeric, nullable=False)
-    exchange: str = Column(String, nullable=False)
-    side: str = Column(Enum(Side), nullable=True)
-    note: str = Column(String, nullable=True)
+    symbol: str = mapped_column(String, nullable=False)
+    price: float = mapped_column(Numeric, nullable=False)
+    exchange: str = mapped_column(String, nullable=False)
+    side: str = mapped_column(Enum(Side), nullable=True)
+    note: str = mapped_column(String, nullable=True)
 
     def get_discord_embed(self):
         embed = discord.Embed(

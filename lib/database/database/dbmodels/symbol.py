@@ -2,9 +2,9 @@ import sqlalchemy as sa
 
 
 class CurrencyMixin:
-    #raw = sa.Column(sa.String(10), nullable=False)
-    settle = sa.Column(sa.String(5), nullable=False)
-    inverse = sa.Column(sa.Boolean, default=False, nullable=False)
+    #raw = mapped_column(sa.String(10), nullable=False)
+    settle = mapped_column(sa.String(5), nullable=False)
+    inverse = mapped_column(sa.Boolean, default=False, nullable=False)
 
     #@hybrid_property
     #def symbol(self):

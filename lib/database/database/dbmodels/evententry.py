@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytz
-from sqlalchemy import Column, ForeignKey, Numeric, Integer, DateTime, and_, asc, ForeignKeyConstraint, UniqueConstraint
+from sqlalchemy importForeignKey, Numeric, Integer, DateTime, and_, asc, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, foreign
 
@@ -23,11 +23,11 @@ from database.dbsync import Base, BaseMixin
 class EventScore(Base, Serializer, BaseMixin):
     __tablename__ = 'eventscore'
 
-    entry_id = Column(ForeignKey('evententry.id', name=fkey_name('eventscore', 'entry_id'), ondelete='CASCADE'), primary_key=True)
-    time = Column(DateTime(timezone=True), primary_key=True, default=lambda: datetime.now(pytz.utc))
-    rank = Column(Integer)
-    abs_value = Column(Numeric, nullable=True)
-    rel_value = Column(Numeric, nullable=True)
+    entry_id = mapped_column(ForeignKey('evententry.id', name=fkey_name('eventscore', 'entry_id'), ondelete='CASCADE'), primary_key=True)
+    time = mapped_column(DateTime(timezone=True), primary_key=True, default=lambda: datetime.now(pytz.utc))
+    rank = mapped_column(Integer)
+    abs_value = mapped_column(Numeric, nullable=True)
+    rel_value = mapped_column(Numeric, nullable=True)
 
     entry = relationship('EventEntry')
 
@@ -51,18 +51,18 @@ class EventScore(Base, Serializer, BaseMixin):
 class EventEntry(Base, Serializer, BaseMixin):
     __tablename__ = 'evententry'
 
-    id = Column(Integer, primary_key=True, unique=True)
-    user_id = Column(ForeignKey('user.id', name=fkey_name('evententry', 'user_id'), ondelete='CASCADE'),
+    id = mapped_column(Integer, primary_key=True, unique=True)
+    user_id = mapped_column(ForeignKey('user.id', name=fkey_name('evententry', 'user_id'), ondelete='CASCADE'),
                      nullable=False)
-    client_id = Column(ForeignKey('client.id', name=fkey_name('evententry', 'client_id'), ondelete='SET NULL'),
+    client_id = mapped_column(ForeignKey('client.id', name=fkey_name('evententry', 'client_id'), ondelete='SET NULL'),
                        nullable=True)
-    event_id = Column(ForeignKey('event.id', name=fkey_name('evententry', 'event_id'), ondelete='CASCADE'),
+    event_id = mapped_column(ForeignKey('event.id', name=fkey_name('evententry', 'event_id'), ondelete='CASCADE'),
                       nullable=False)
-    init_balance_id = Column(ForeignKey('balance.id', name=fkey_name('evententry', 'init_balance_id'), ondelete='CASCADE'),
+    init_balance_id = mapped_column(ForeignKey('balance.id', name=fkey_name('evententry', 'init_balance_id'), ondelete='CASCADE'),
                              nullable=True)
-    joined_at = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), nullable=False)
+    joined_at = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), nullable=False)
 
-    rekt_on = Column(DateTime(timezone=True), nullable=True)
+    rekt_on = mapped_column(DateTime(timezone=True), nullable=True)
 
     init_balance: BalanceDB = relationship('Balance', lazy='noload')
     client = relationship('Client', lazy='noload')

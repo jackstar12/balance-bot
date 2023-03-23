@@ -10,7 +10,7 @@ import sqlalchemy as sa
 import pytz
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy import Column, Integer, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
+from sqlalchemy import Integer, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
     Date, UniqueConstraint, orm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, reconstructor, RelationshipProperty, declared_attr, backref
@@ -76,13 +76,13 @@ class AssociationType(Enum):
 
 class AuthGrant(Base, BaseMixin, Serializer):
     __tablename__ = 'authgrant'
-    id = sa.Column(sa.Integer, primary_key=True)
-    name = sa.Column(sa.String, nullable=True)
-    user_id = sa.Column(FKey('user.id', ondelete='CASCADE'), nullable=False)
-    expires = sa.Column(sa.DateTime(timezone=True), nullable=True)
-    wildcards = sa.Column(sa.ARRAY(sa.Enum(AssociationType)), nullable=True)
-    data = sa.Column(sa.JSON, nullable=True)
-    token = sa.Column(sa.String, nullable=True)
+    id = mapped_column(sa.Integer, primary_key=True)
+    name = mapped_column(sa.String, nullable=True)
+    user_id = mapped_column(FKey('user.id', ondelete='CASCADE'), nullable=False)
+    expires = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    wildcards = mapped_column(sa.ARRAY(sa.Enum(AssociationType)), nullable=True)
+    data = mapped_column(sa.JSON, nullable=True)
+    token = mapped_column(sa.String, nullable=True)
 
     user = relationship('User')
 
@@ -175,7 +175,7 @@ class GrantAssociaton(BaseMixin):
 
     @declared_attr
     def grant_id(self):
-        return sa.Column(FKey('authgrant.id', ondelete='CASCADE'), primary_key=True)
+        return mapped_column(FKey('authgrant.id', ondelete='CASCADE'), primary_key=True)
 
     @declared_attr
     def grant(self):
@@ -193,8 +193,8 @@ class GrantAssociaton(BaseMixin):
 class EventGrant(Base, GrantAssociaton):
     __tablename__ = 'eventgrant'
 
-    event_id = sa.Column(FKey('event.id', ondelete='CASCADE'), primary_key=True)
-    registrations_left = sa.Column(sa.Integer, nullable=True)
+    event_id = mapped_column(FKey('event.id', ondelete='CASCADE'), primary_key=True)
+    registrations_left = mapped_column(sa.Integer, nullable=True)
 
     @hybrid_property
     def identity(cls):
@@ -207,7 +207,7 @@ class EventGrant(Base, GrantAssociaton):
 
 class JournalGrant(Base, GrantAssociaton):
     __tablename__ = 'journalgrant'
-    journal_id = sa.Column(FKey('journal.id', ondelete='CASCADE'), primary_key=True)
+    journal_id = mapped_column(FKey('journal.id', ondelete='CASCADE'), primary_key=True)
 
     alias = 'journalId'
 
@@ -225,7 +225,7 @@ class ChapterGrant(Base, GrantAssociaton):
 
     alias = 'chapterId'
 
-    chapter_id = sa.Column(FKey('chapter.id', ondelete='CASCADE'), primary_key=True)
+    chapter_id = mapped_column(FKey('chapter.id', ondelete='CASCADE'), primary_key=True)
 
     @hybrid_property
     def identity(cls):
@@ -238,7 +238,7 @@ class ChapterGrant(Base, GrantAssociaton):
 
 class TradeGrant(Base, GrantAssociaton):
     __tablename__ = 'tradegrant'
-    trade_id = sa.Column(FKey('trade.id', ondelete='CASCADE'), primary_key=True)
+    trade_id = mapped_column(FKey('trade.id', ondelete='CASCADE'), primary_key=True)
 
     @hybrid_property
     def identity(cls):
@@ -251,7 +251,7 @@ class TradeGrant(Base, GrantAssociaton):
 
 class TemplateGrant(Base, GrantAssociaton):
     __tablename__ = 'templategrant'
-    template_id = sa.Column(FKey('template.id', ondelete='CASCADE'), primary_key=True)
+    template_id = mapped_column(FKey('template.id', ondelete='CASCADE'), primary_key=True)
 
     @hybrid_property
     def identity(cls):

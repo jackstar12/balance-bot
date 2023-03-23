@@ -8,7 +8,7 @@ from typing import Optional, TYPE_CHECKING
 import pytz
 import sqlalchemy.exc
 from aioredis import Redis
-from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case, extract, \
+from sqlalchemy import Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case, extract, \
     or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -47,24 +47,24 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
     __tablename__ = 'trade'
     __serializer_forbidden__ = ['client', 'initial']
 
-    id = Column(Integer, primary_key=True)
-    client_id = Column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
+    id = mapped_column(Integer, primary_key=True)
+    client_id = mapped_column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
     client = relationship('Client', lazy='noload')
     labels = relationship('Label', lazy='noload', secondary=trade_association, backref='trades')
 
-    symbol = Column(String, nullable=False)
+    symbol = mapped_column(String, nullable=False)
 
-    entry: Decimal = Column(Numeric, nullable=False)
-    qty: Decimal = Column(Numeric, nullable=False)
-    open_qty: Decimal = Column(Numeric, nullable=False)
-    transferred_qty: Decimal = Column(Numeric, nullable=True)
-    open_time: datetime = Column(DateTime(timezone=True), nullable=False)
+    entry: Decimal = mapped_column(Numeric, nullable=False)
+    qty: Decimal = mapped_column(Numeric, nullable=False)
+    open_qty: Decimal = mapped_column(Numeric, nullable=False)
+    transferred_qty: Decimal = mapped_column(Numeric, nullable=True)
+    open_time: datetime = mapped_column(DateTime(timezone=True), nullable=False)
 
-    exit: Decimal = Column(Numeric, nullable=True)
-    realized_pnl: Decimal = Column(Numeric, nullable=True, default=Decimal(0))
-    total_commissions: Decimal = Column(Numeric, nullable=True, default=Decimal(0))
+    exit: Decimal = mapped_column(Numeric, nullable=True)
+    realized_pnl: Decimal = mapped_column(Numeric, nullable=True, default=Decimal(0))
+    total_commissions: Decimal = mapped_column(Numeric, nullable=True, default=Decimal(0))
 
-    init_balance_id = Column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=False)
+    init_balance_id = mapped_column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=False)
     init_balance = relationship(
         'Balance',
         lazy='raise',
@@ -73,7 +73,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
         uselist=False
     )
 
-    max_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
+    max_pnl_id = mapped_column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
     max_pnl: Optional[PnlData] = relationship(
         'PnlData',
         lazy='raise',
@@ -82,7 +82,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
         post_update=True
     )
 
-    min_pnl_id = Column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
+    min_pnl_id = mapped_column(Integer, ForeignKey('pnldata.id', ondelete='SET NULL'), nullable=True)
     min_pnl: Optional[PnlData] = relationship(
         'PnlData',
         lazy='raise',
@@ -91,10 +91,10 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
         post_update=True
     )
 
-    tp: Decimal = Column(Numeric, nullable=True)
-    sl: Decimal = Column(Numeric, nullable=True)
+    tp: Decimal = mapped_column(Numeric, nullable=True)
+    sl: Decimal = mapped_column(Numeric, nullable=True)
 
-    order_count = Column(Integer, nullable=True)
+    order_count = mapped_column(Integer, nullable=True)
 
     executions: list[Execution] = relationship('Execution',
                                                foreign_keys='[Execution.trade_id]',
@@ -110,7 +110,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
                                            passive_deletes=True,
                                            order_by="PnlData.time")
 
-    initial_execution_id = Column(Integer, ForeignKey('execution.id', ondelete='SET NULL'), nullable=True)
+    initial_execution_id = mapped_column(Integer, ForeignKey('execution.id', ondelete='SET NULL'), nullable=True)
     initial: Execution = relationship(
         'Execution',
         lazy='joined',
@@ -120,7 +120,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
         primaryjoin='Execution.id == Trade.initial_execution_id'
     )
 
-    notes = Column(Document, nullable=True)
+    notes = mapped_column(Document, nullable=True)
 
     @hybrid_property
     def count(self):

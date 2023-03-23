@@ -3,7 +3,7 @@ from enum import Enum
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, mapped_column
 
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from database.dbmodels.mixins.serializer import Serializer
@@ -27,16 +27,16 @@ class ActionTrigger(Enum):
 class Action(Base, BaseMixin, EditsMixin, Serializer):
     __tablename__ = 'action'
 
-    id = sa.Column(sa.Integer, primary_key=True)
-    user_id = sa.Column(sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    id = mapped_column(sa.Integer, primary_key=True)
+    user_id = mapped_column(sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
     user = relationship('User', lazy='raise')
 
-    name = sa.Column(sa.String, nullable=True)
-    type = sa.Column(sa.Enum(ActionType), nullable=False)
-    topic = sa.Column(sa.String, nullable=False)
-    platform = sa.Column(Platform, nullable=False)
-    trigger_type = sa.Column(sa.Enum(ActionTrigger), nullable=False)
-    _trigger_ids = sa.Column('trigger_ids', JSONB, nullable=True)
+    name = mapped_column(sa.String, nullable=True)
+    type = mapped_column(sa.Enum(ActionType), nullable=False)
+    topic = mapped_column(sa.String, nullable=False)
+    platform = mapped_column(Platform, nullable=False)
+    trigger_type = mapped_column(sa.Enum(ActionTrigger), nullable=False)
+    _trigger_ids = mapped_column('trigger_ids', JSONB, nullable=True)
 
     @hybrid_property
     def trigger_ids(self):

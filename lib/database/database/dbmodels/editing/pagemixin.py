@@ -29,17 +29,17 @@ def cmp_dates(col, val):
 
 class PageMixin(EditsMixin):
     # Identifiers
-    id = sa.Column(sa.Integer, primary_key=True)
+    id = mapped_column(sa.Integer, primary_key=True)
 
     @declared_attr
     def parent_id(self):
-        return sa.Column(sa.ForeignKey(self.id, ondelete="CASCADE"),
+        return mapped_column(sa.ForeignKey(self.id, ondelete="CASCADE"),
                          nullable=True)
 
     if TYPE_CHECKING:
         doc: DocumentModel
     else:
-        doc = sa.Column(Document, nullable=True)
+        doc = mapped_column(Document, nullable=True)
 
     @declared_attr
     def children(self):

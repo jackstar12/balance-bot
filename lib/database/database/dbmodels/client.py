@@ -9,7 +9,7 @@ import sqlalchemy as sa
 import pytz
 from aioredis import Redis
 from fastapi_users_db_sqlalchemy import GUID
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
+from sqlalchemy import Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
     Date, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import relationship, reconstructor, RelationshipProperty
@@ -197,30 +197,30 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
     __serializer_data_forbidden__ = ['api_secret', 'discorduser']
 
     # Identification
-    id = Column(Integer, primary_key=True)
+    id = mapped_column(Integer, primary_key=True)
 
-    user_id = Column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
+    user_id = mapped_column(GUID, ForeignKey('user.id', ondelete="CASCADE"), nullable=True)
     user = relationship('User', lazy='raise')
 
-    oauth_account_id = Column(ForeignKey('oauth_account.account_id', ondelete='SET NULL'), nullable=True)
+    oauth_account_id = mapped_column(ForeignKey('oauth_account.account_id', ondelete='SET NULL'), nullable=True)
     oauth_account = relationship('OAuthAccount', lazy='raise')
 
     # Properties
-    api_key = Column(String(), nullable=False)
-    api_secret = Column(
+    api_key = mapped_column(String(), nullable=False)
+    api_secret = mapped_column(
         StringEncryptedType(String(), ENV.ENCRYPTION.get_secret_value().encode('utf-8'), FernetEngine),
         nullable=False
     )
-    exchange = Column(String, nullable=False)
-    subaccount = Column(String, nullable=True)
-    extra_kwargs = Column(PickleType, nullable=True)
-    currency = Column(String(10), default='USD')
-    sandbox = Column(Boolean, default=False)
+    exchange = mapped_column(String, nullable=False)
+    subaccount = mapped_column(String, nullable=True)
+    extra_kwargs = mapped_column(PickleType, nullable=True)
+    currency = mapped_column(String(10), default='USD')
+    sandbox = mapped_column(Boolean, default=False)
 
     # Data
-    name = Column(String, nullable=True)
-    type = Column(sa.Enum(ClientType), nullable=False, default=ClientType.BASIC)
-    state = Column(sa.Enum(ClientState), nullable=False, default=ClientState.OK)
+    name = mapped_column(String, nullable=True)
+    type = mapped_column(sa.Enum(ClientType), nullable=False, default=ClientType.BASIC)
+    state = mapped_column(sa.Enum(ClientState), nullable=False, default=ClientState.OK)
 
     trades: list[Trade] = relationship('Trade', lazy='raise',
                                        back_populates='client',
@@ -239,17 +239,17 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
 
     transfers: list = relationship('Transfer', back_populates='client', lazy='raise')
 
-    currently_realized_id = Column(ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
+    currently_realized_id = mapped_column(ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
     currently_realized = relationship('Balance',
                                       lazy='joined',
                                       foreign_keys=currently_realized_id,
                                       post_update=True)
 
-    trade_template_id = Column(ForeignKey('template.id', ondelete='SET NULL'), nullable=True)
+    trade_template_id = mapped_column(ForeignKey('template.id', ondelete='SET NULL'), nullable=True)
     trade_template = relationship('Template', lazy='raise', foreign_keys=trade_template_id)
 
-    last_transfer_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
-    last_execution_sync: Optional[datetime] = Column(DateTime(timezone=True), nullable=True)
+    last_transfer_sync: Optional[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_execution_sync: Optional[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __tableargs__ = (
         UniqueConstraint(user_id, exchange, api_key),

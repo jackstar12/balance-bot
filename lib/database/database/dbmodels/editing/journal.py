@@ -27,8 +27,8 @@ if TYPE_CHECKING:
 
 journal_association = sa.Table(
     'journal_association', Base.metadata,
-    sa.Column('journal_id', sa.ForeignKey('journal.id', ondelete="CASCADE"), primary_key=True),
-    sa.Column('client_id', sa.ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
+    mapped_column('journal_id', sa.ForeignKey('journal.id', ondelete="CASCADE"), primary_key=True),
+    mapped_column('client_id', sa.ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
 )
 
 
@@ -50,15 +50,15 @@ class IntervalType(Enum):
 class Journal(BaseMixin, Base, EditsMixin):
     __tablename__ = 'journal'
 
-    id = sa.Column(sa.Integer, primary_key=True)
-    user_id = sa.Column(GUID, sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    id = mapped_column(sa.Integer, primary_key=True)
+    user_id = mapped_column(GUID, sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
     user = orm.relationship('User', lazy='noload', foreign_keys=user_id)
 
-    title = sa.Column(sa.Text, nullable=False)
-    chapter_interval = sa.Column(sa.Enum(IntervalType), nullable=True)
-    type = sa.Column(sa.Enum(JournalType), default=JournalType.MANUAL)
+    title = mapped_column(sa.Text, nullable=False)
+    chapter_interval = mapped_column(sa.Enum(IntervalType), nullable=True)
+    type = mapped_column(sa.Enum(JournalType), default=JournalType.MANUAL)
 
-    # data: JournalData = sa.Column(Data, nullable=True)
+    # data: JournalData = mapped_column(Data, nullable=True)
 
     clients = orm.relationship(
         'Client',
@@ -85,9 +85,9 @@ class Journal(BaseMixin, Base, EditsMixin):
                                                   uselist=False
                                                   )
 
-    overview = sa.Column(Document, nullable=True)
+    overview = mapped_column(Document, nullable=True)
 
-    default_template_id = sa.Column(sa.ForeignKey('template.id', ondelete="SET NULL"), nullable=True)
+    default_template_id = mapped_column(sa.ForeignKey('template.id', ondelete="SET NULL"), nullable=True)
     default_template = orm.relationship('Template',
                                         lazy='noload',
                                         foreign_keys=default_template_id,

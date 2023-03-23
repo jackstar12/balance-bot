@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import Column, Integer, ForeignKey, String
+from sqlalchemy import Integer, ForeignKey, String
 from sqlalchemy.orm import relationship, declared_attr
 
 from database.dbmodels.mixins.serializer import Serializer
@@ -8,8 +8,8 @@ from database.dbsync import Base, BaseMixin
 
 
 class Group:
-    id = Column(Integer, primary_key=True)
-    name: str = Column(String, nullable=False)
+    id = mapped_column(Integer, primary_key=True)
+    name: str = mapped_column(String, nullable=False)
 
     @declared_attr
     def user_id(self):
@@ -26,11 +26,11 @@ class LabelGroup(Group, Base, Serializer, BaseMixin):
 
 class Label(Base, Serializer, BaseMixin):
     __tablename__ = 'label'
-    id: Any = Column(Integer, primary_key=True)
-    group_id = Column(ForeignKey(LabelGroup.id, ondelete="CASCADE"), nullable=False)
+    id: Any = mapped_column(Integer, primary_key=True)
+    group_id = mapped_column(ForeignKey(LabelGroup.id, ondelete="CASCADE"), nullable=False)
 
-    name: str = Column(String, nullable=False)
-    color: str = Column(String, nullable=False)
+    name: str = mapped_column(String, nullable=False)
+    color: str = mapped_column(String, nullable=False)
 
     group = relationship(LabelGroup,
                          lazy='raise',
