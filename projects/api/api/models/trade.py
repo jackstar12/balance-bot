@@ -36,7 +36,6 @@ class BasicTrade(OrmBaseModel):
 class Trade(BasicTrade):
     qty: Decimal
     open_qty: Decimal
-    executions: List[Execution]
     label_ids: List[str]
     close_time: Optional[datetime]
     duration: timedelta
@@ -68,6 +67,8 @@ class DetailledTrade(Trade):
     account_size_init: Optional[Decimal]
     account_gain: Optional[Decimal]
     notes: Optional[DocumentModel]
+
+    executions: List[Execution]
 
     class Config:
         orm_mode = True

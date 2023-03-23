@@ -143,7 +143,7 @@ class AuthGrant(Base, BaseMixin, Serializer):
     def is_root_for(self, assoc_type: AssociationType):
         return self.root or (self.wildcards and assoc_type in self.wildcards)
 
-    async def check_ids(self, asooc_type: AssociationType, ids: Iterable[int] = None):
+    async def check_ids(self, asooc_type: AssociationType, ids: Optional[Iterable[int]] = None):
         impl = asooc_type.get_impl()
         return await db_all(
             select(impl.identity).where(

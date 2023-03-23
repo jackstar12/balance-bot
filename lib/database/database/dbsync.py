@@ -10,9 +10,10 @@ from database.env import ENV
 from database.models import BaseModel
 
 engine = create_engine(
-    f'postgresql://{ENV.PG_URL}'
+    f'postgresql://{ENV.PG_URL}',
+    future=True
 )
-maker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+maker = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
 session: Session = scoped_session(maker)
 
 Base = declarative_base()

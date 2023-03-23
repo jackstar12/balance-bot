@@ -15,6 +15,7 @@ from starlette.background import BackgroundTasks
 
 import core
 import api.utils.client as client_utils
+from api.models.execution import Execution
 from database.dbmodels.mixins.filtermixin import FilterParam
 from api.routers.template import query_templates
 from core import join_args, json, groupby
@@ -28,7 +29,7 @@ from api.models.trade import Trade, BasicTrade, DetailledTrade, UpdateTrade, Upd
 from api.users import CurrentUser, get_auth_grant_dependency, DefaultGrant
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, ResponseModel, Unauthorized
 from database.dbasync import db_first, db_all, redis_bulk, redis
-from database.dbmodels import TradeDB as TradeDB, Chapter, Balance
+from database.dbmodels import TradeDB as TradeDB, Chapter, Balance, Execution as ExecutionDB
 from database.dbmodels.client import add_client_filters, QueryParams
 from database.dbmodels.label import Label as LabelDB
 from database.dbmodels.client import ClientQueryParams
@@ -37,6 +38,7 @@ from database.dbmodels.trade import trade_association
 from database.dbmodels.user import User
 from database.models import BaseModel, OrmBaseModel, OutputID, InputID
 from database.redis.client import ClientCacheKeys
+from database.utils import query_table
 
 router = APIRouter(
     tags=["trade"],
@@ -117,7 +119,7 @@ class TradeQueryParams(ClientQueryParams):
 
 
 def get_trade_params(client_id: set[InputID] = Query(default=[]),
-                     trade_id: set[InputID] = Query(default=[], alias='id'),
+                     trade_id: set[InputID] = Query(default=[]),
                      currency: str = Query(default=None),
                      since: datetime = Query(default=None),
                      to: datetime = Query(default=None),
@@ -219,18 +221,17 @@ def create_trade_endpoint(path: str,
 create_trade_endpoint(
     'trade-overview',
     BasicTrade,
-    TradeDB.executions
 )
 create_trade_endpoint(
     'trade',
     Trade,
-    TradeDB.executions,
     TradeDB.labels,
 )
 create_trade_endpoint(
     'trade-detailled',
     DetailledTrade,
     TradeDB.executions,
+    TradeDB.pnl_data,
     TradeDB.initial,
     TradeDB.max_pnl,
     TradeDB.min_pnl,
@@ -280,3 +281,27 @@ async def get_pnl_data(trade_id: list[InputID] = Query(default=[]),
         result.setdefault(str(pnl_data.trade_id), []).append(pnl_data.compact)
 
     return CustomJSONResponse(content={'by_trade': jsonable_encoder(result)})
+
+
+@router.get('/trades/executions', response_model=list[Execution])
+async def get_executions(trade_id: list[InputID] = Query(default=None),
+                         query_params: TradeQueryParams = Depends(get_trade_params),
+                         grant: AuthGrant = Depends(auth),
+                         db: AsyncSession = Depends(get_db)):
+    if not grant.is_root_for(AssociationType.TRADE):
+        trade_id = await grant.check_ids(AssociationType.TRADE, trade_id)
+        if not trade_id:
+            return OK(result=[])
+
+    data = await query_table(
+        table=ExecutionDB,
+        stmt=select(ExecutionDB).join(ExecutionDB.trade),
+        user_id=grant.user.id,
+        query_params=query_params,
+        db=db,
+        client_col=TradeDB.client,
+    )
+
+    return CustomJSONResponse(
+        content=[Execution.from_orm(raw) for raw in data]
+    )

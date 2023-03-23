@@ -11,6 +11,7 @@ from alembic.config import Config
 from sqlalchemy import JSON, delete, update
 from sqlalchemy import select, Column, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import Select
 
 import database.dbmodels.event as db_event
 from database import dbmodels
@@ -42,17 +43,23 @@ def run_migrations():
 
 async def query_table(*eager,
                       table: Type[TTable],
-                      time_col: Column,
                       user_id: UUID,
-                      ids: List[int],
                       query_params: ClientQueryParams,
                       db: AsyncSession,
-                      filters: list[FilterParam] = None) -> list[TTable]:
-    stmt = select(table if eager else table.id).where(
+                      stmt: Optional[Select] = None,
+                      ids: set[int] = None,
+                      filters: list[FilterParam] = None,
+                      time_col: Optional[Column] = None,
+                      client_col: Optional[Column] = None) -> list[TTable]:
+    if not time_col:
+        time_col = table.time
+    if stmt is None:
+        stmt = select(table)
+    stmt = stmt.where(
         table.id.in_(ids) if ids else True,
         time_range(time_col, query_params.since, query_params.to)
     ).join(
-        table.client
+        client_col or table.client
     ).order_by(
         desc(time_col) if query_params.order == 'desc' else asc(time_col)
     ).limit(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
@@ -9,7 +9,7 @@ import pytz
 import sqlalchemy.exc
 from aioredis import Redis
 from sqlalchemy import Column, Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case, extract, \
-    or_, and_
+    or_, and_, event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, object_session, aliased
@@ -59,6 +59,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
     open_qty: Decimal = Column(Numeric, nullable=False)
     transferred_qty: Decimal = Column(Numeric, nullable=True)
     open_time: datetime = Column(DateTime(timezone=True), nullable=False)
+    close_time: datetime = Column(DateTime(timezone=True), nullable=True)
 
     exit: Decimal = Column(Numeric, nullable=True)
     realized_pnl: Decimal = Column(Numeric, nullable=True, default=Decimal(0))
@@ -241,10 +242,6 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
         return True
 
     @hybrid_property
-    def close_time(self):
-        return core.list_last(self.executions).time
-
-    @hybrid_property
     def is_open(self):
         return self.open_qty > Decimal(0)
 
@@ -289,6 +286,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
 
     @hybrid_property
     def duration(self):
+        return timedelta(days=1)
         return self.close_time - self.open_time
 
     @classmethod
@@ -550,3 +548,9 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
             time=execution.time
         )
         return trade
+
+
+@event.listens_for(Trade, 'before_update')
+def before_commit(mapper, connection, trade: Trade):
+    if not trade.is_open and not trade.close_time:
+        trade.close_time = trade.executions[-1].time
