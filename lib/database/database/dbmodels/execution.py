@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, mapped_column, Mapped
 
 from database.dbsync import Base, BaseMixin
 from sqlalchemy import Integer, ForeignKey, String, DateTime, Numeric, Enum, UniqueConstraint, Boolean
@@ -22,11 +22,11 @@ class Execution(Base, Serializer, BaseMixin, CurrencyMixin):
     time = mapped_column(DateTime(timezone=True), nullable=False)
     type = mapped_column(Enum(ExecType), nullable=False, default=ExecType.TRADE)
 
-    realized_pnl: Decimal = mapped_column(Numeric, nullable=True)
-    price: Decimal = mapped_column(Numeric, nullable=True)
-    qty: Decimal = mapped_column(Numeric, nullable=True)
+    realized_pnl: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
+    price: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
+    qty: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
     side = mapped_column(Enum(Side), nullable=True)
-    commission: Decimal = mapped_column(Numeric, nullable=True)
+    commission: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
 
     # If true, the execution will first lower the size of the current trade, otherwise open a new one
     reduce: bool = mapped_column(Boolean, server_default='True')

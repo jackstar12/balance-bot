@@ -2,6 +2,7 @@ from enum import Enum
 
 import sqlalchemy as sa
 from sqlalchemy import orm
+from sqlalchemy.orm import mapped_column
 
 from database.dbmodels.editing.pagemixin import PageMixin
 from database.dbmodels.mixins.editsmixin import EditsMixin

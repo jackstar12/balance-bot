@@ -47,7 +47,6 @@ class Trade(BasicTrade):
             return get_timedelta(v)
         return v
 
-
     #initial: Execution
     #initial_execution_id: int
 

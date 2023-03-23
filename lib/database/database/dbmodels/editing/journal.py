@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 from fastapi_users_db_sqlalchemy import GUID
 
 import sqlalchemy as sa
-from sqlalchemy import orm, select
+from sqlalchemy import orm, select, Column
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, aliased
+from sqlalchemy.orm import relationship, aliased, mapped_column
 
 from database import dbmodels
 from database.dbmodels.editing.template import Template
@@ -27,8 +27,8 @@ if TYPE_CHECKING:
 
 journal_association = sa.Table(
     'journal_association', Base.metadata,
-    mapped_column('journal_id', sa.ForeignKey('journal.id', ondelete="CASCADE"), primary_key=True),
-    mapped_column('client_id', sa.ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
+    Column('journal_id', sa.ForeignKey('journal.id', ondelete="CASCADE"), primary_key=True),
+    Column('client_id', sa.ForeignKey('client.id', ondelete="CASCADE"), primary_key=True)
 )
 
 
@@ -67,7 +67,7 @@ class Journal(BaseMixin, Base, EditsMixin):
         backref=orm.backref('journals', lazy='noload')
     )
 
-    chapters: 'list[Chapter]' = orm.relationship(
+    chapters: list['Chapter'] = orm.relationship(
         'Chapter',
         lazy='noload',
         cascade="all, delete",

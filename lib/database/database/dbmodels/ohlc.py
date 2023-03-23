@@ -17,8 +17,8 @@ class Currency(Base):
     __tablename__ = 'currency'
 
     id = mapped_column(Integer, nullable=False, primary_key=True)
-    name: str = mapped_column(String, nullable=False)
-    exchange: str = mapped_column(String, nullable=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    exchange: Mapped[str] = mapped_column(String, nullable=True)
 
 
 class WithSymbol(Base):

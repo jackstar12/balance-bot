@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import NamedTuple, Optional
 
 from sqlalchemy import Integer, ForeignKey, String, BigInteger, Numeric
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, mapped_column
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from database.dbsync import Base

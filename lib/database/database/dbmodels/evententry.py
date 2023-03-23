@@ -5,9 +5,9 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytz
-from sqlalchemy importForeignKey, Numeric, Integer, DateTime, and_, asc, ForeignKeyConstraint, UniqueConstraint
+from sqlalchemy import ForeignKey, Numeric, Integer, DateTime, and_, asc, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, foreign
+from sqlalchemy.orm import relationship, mapped_column
 
 from database.dbmodels.mixins.serializer import Serializer
 from database.models.gain import Gain

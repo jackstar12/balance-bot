@@ -3,7 +3,7 @@ from typing import Optional, Any
 from sqlalchemy import create_engine, MetaData
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker, scoped_session, Session, object_session, DeclarativeBase
+from sqlalchemy.orm import sessionmaker, scoped_session, Session, object_session, DeclarativeBase, declarative_base
 import sqlalchemy.orm as orm
 
 from database.env import ENV
@@ -18,8 +18,11 @@ session: Session = scoped_session(maker)
 Meta = MetaData()
 
 
-class Base(DeclarativeBase):
+class Base:
     __allow_unmapped__ = True
+
+
+Base = declarative_base(cls=Base)
 
 
 def FKey(column: str,

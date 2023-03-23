@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy import orm, select, func, text, or_, Date, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import aliased, declared_attr
+from sqlalchemy.orm import aliased, declared_attr, mapped_column
 
 from core import safe_cmp, map_list
 from database.dbasync import db_all, safe_op

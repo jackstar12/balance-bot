@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 
 
 class _Common:
-    realized: Decimal = mapped_column(Numeric, nullable=False, default=Decimal(0))
-    unrealized: Decimal = mapped_column(Numeric, nullable=False, default=Decimal(0))
+    realized: Mapped[Decimal] = mapped_column(Numeric, nullable=False, default=Decimal(0))
+    unrealized: Mapped[Decimal] = mapped_column(Numeric, nullable=False, default=Decimal(0))
 
 
 class Amount(Base, ClientQueryMixin, Serializer, BaseMixin, _Common):
@@ -28,7 +28,7 @@ class Amount(Base, ClientQueryMixin, Serializer, BaseMixin, _Common):
 
     balance_id = mapped_column(ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True)
     balance = relationship('Balance', lazy='raise')
-    currency: str = mapped_column(sa.String, primary_key=True)
+    currency: Mapped[str] = mapped_column(sa.String, primary_key=True)
     rate = mapped_column(Numeric, nullable=True)
 
 

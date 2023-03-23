@@ -12,7 +12,7 @@ from fastapi_users_db_sqlalchemy import GUID
 from sqlalchemy import Integer, ForeignKey, String, DateTime, PickleType, or_, desc, Boolean, select, func, \
     Date, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship, reconstructor, RelationshipProperty
+from sqlalchemy.orm import relationship, reconstructor, RelationshipProperty, mapped_column
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.dynamic import AppenderQuery

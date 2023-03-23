@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 
 class AmountMixin:
-    amount: Decimal = mapped_column(Numeric, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     time: datetime = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     extra_currencies: dict = mapped_column(JSONB, nullable=True)
 

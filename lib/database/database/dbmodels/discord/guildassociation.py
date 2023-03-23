@@ -1,5 +1,5 @@
-from sqlalchemy importForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship, mapped_column
 
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbsync import Base, BaseMixin

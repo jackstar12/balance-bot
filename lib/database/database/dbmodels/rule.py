@@ -27,7 +27,7 @@ class Expression:
 # Winrate > 50% && Kelly Optimization = True
 
 class Rule(Base, Serializer, BaseMixin):
-    id: int = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     creation_date: datetime = mapped_column(DateTime(timezone=True))
     finish_date: datetime = mapped_column(DateTime(timezone=True))
     conditions = mapped_column(sa.JSON, nullable=False)

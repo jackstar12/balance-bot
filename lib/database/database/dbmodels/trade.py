@@ -54,15 +54,15 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
 
     symbol = mapped_column(String, nullable=False)
 
-    entry: Decimal = mapped_column(Numeric, nullable=False)
-    qty: Decimal = mapped_column(Numeric, nullable=False)
-    open_qty: Decimal = mapped_column(Numeric, nullable=False)
-    transferred_qty: Decimal = mapped_column(Numeric, nullable=True)
+    entry: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    qty: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    open_qty: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    transferred_qty: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
     open_time: datetime = mapped_column(DateTime(timezone=True), nullable=False)
 
-    exit: Decimal = mapped_column(Numeric, nullable=True)
-    realized_pnl: Decimal = mapped_column(Numeric, nullable=True, default=Decimal(0))
-    total_commissions: Decimal = mapped_column(Numeric, nullable=True, default=Decimal(0))
+    exit: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
+    realized_pnl: Mapped[Decimal] = mapped_column(Numeric, nullable=True, default=Decimal(0))
+    total_commissions: Mapped[Decimal] = mapped_column(Numeric, nullable=True, default=Decimal(0))
 
     init_balance_id = mapped_column(Integer, ForeignKey('balance.id', ondelete='SET NULL'), nullable=False)
     init_balance = relationship(
@@ -91,8 +91,8 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
         post_update=True
     )
 
-    tp: Decimal = mapped_column(Numeric, nullable=True)
-    sl: Decimal = mapped_column(Numeric, nullable=True)
+    tp: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
+    sl: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
 
     order_count = mapped_column(Integer, nullable=True)
 

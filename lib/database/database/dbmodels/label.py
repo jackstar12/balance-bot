@@ -9,7 +9,7 @@ from database.dbsync import Base, BaseMixin
 
 class Group:
     id = mapped_column(Integer, primary_key=True)
-    name: str = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
 
     @declared_attr
     def user_id(self):
@@ -29,8 +29,8 @@ class Label(Base, Serializer, BaseMixin):
     id: Any = mapped_column(Integer, primary_key=True)
     group_id = mapped_column(ForeignKey(LabelGroup.id, ondelete="CASCADE"), nullable=False)
 
-    name: str = mapped_column(String, nullable=False)
-    color: str = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    color: Mapped[str] = mapped_column(String, nullable=False)
 
     group = relationship(LabelGroup,
                          lazy='raise',

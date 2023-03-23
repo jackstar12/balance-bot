@@ -1,4 +1,5 @@
 import sqlalchemy as sa
+from sqlalchemy.orm import mapped_column
 
 
 class CurrencyMixin:

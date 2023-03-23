@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlalchemy import Integer, ForeignKey, BigInteger, DateTime, Numeric
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, mapped_column, Mapped
 
 from database.dbsync import Base, BaseMixin
 from enum import Enum as PyEnum
@@ -21,11 +21,11 @@ class PnlData(Base, Serializer, BaseMixin):
     __tablename__ = 'pnldata'
 
     id = mapped_column(BigInteger, primary_key=True)
-    trade_id = mapped_column(Integer, ForeignKey('trade.id', ondelete="CASCADE"), nullable=False)
+    trade_id: Mapped[int] = mapped_column(ForeignKey('trade.id', ondelete="CASCADE"), nullable=False)
     trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
 
-    realized: Decimal = mapped_column(Numeric, nullable=False)
-    unrealized: Decimal = mapped_column(Numeric, nullable=False)
+    realized: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    unrealized: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
 
     time = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     extra_currencies = mapped_column(JSONB, nullable=True)

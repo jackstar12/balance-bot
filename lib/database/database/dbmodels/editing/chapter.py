@@ -4,8 +4,9 @@ from datetime import date
 from typing import Optional
 
 import sqlalchemy as sa
-from sqlalchemy import orm, select, func, literal
+from sqlalchemy import orm, select, func, literal, Column, ForeignKey
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import mapped_column
 
 from database.dbmodels.editing.pagemixin import PageMixin
 from database.dbmodels.mixins.editsmixin import EditsMixin
@@ -15,14 +16,14 @@ from database.models.document import DocumentModel, TradeData
 
 balance_association = sa.Table(
     'balance_association', Base.metadata,
-    mapped_column('balance_id', sa.ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True),
-    mapped_column('chapter_id', sa.ForeignKey('chapter.id', ondelete="CASCADE"), primary_key=True)
+    Column('balance_id', sa.ForeignKey('balance.id', ondelete="CASCADE"), primary_key=True),
+    Column('chapter_id', sa.ForeignKey('chapter.id', ondelete="CASCADE"), primary_key=True)
 )
 
 chapter_trade_association = sa.Table(
     'chapter_trade_association', Base.metadata,
-    mapped_column('trade_id', sa.ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
-    mapped_column('chapter_id', sa.ForeignKey('chapter.id', ondelete="CASCADE"), primary_key=True)
+    Column('trade_id', sa.ForeignKey('trade.id', ondelete="CASCADE"), primary_key=True),
+    Column('chapter_id', sa.ForeignKey('chapter.id', ondelete="CASCADE"), primary_key=True)
 )
 
 
@@ -38,9 +39,9 @@ class Chapter(Base, PageMixin):
     __tablename__ = 'chapter'
 
     # Identifiers
-    journal_id = mapped_column(sa.ForeignKey('journal.id', ondelete="CASCADE"), nullable=False)
-    template_id = mapped_column(sa.ForeignKey('template.id', ondelete="SET NULL"), nullable=True)
-    data: Optional[ChapterData] = mapped_column(ChapterData.get_sa_type(validate=True), nullable=True)
+    journal_id = Column(ForeignKey('journal.id', ondelete="CASCADE"), nullable=False)
+    template_id = Column(sa.ForeignKey('template.id', ondelete="SET NULL"), nullable=True)
+    data: Optional[ChapterData] = Column(ChapterData.get_sa_type(validate=True), nullable=True)
 
     journal = orm.relationship('Journal', lazy='noload')
     template = orm.relationship('Template', lazy='noload')
