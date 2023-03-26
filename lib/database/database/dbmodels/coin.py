@@ -36,8 +36,8 @@ class Coin(Base):
     __tablename__ = 'coin'
 
     id = mapped_column(Integer, nullable=False, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    exchange: Mapped[str] = mapped_column(String, nullable=True)
+    name: Mapped[str]
+    exchange: Mapped[Optional[str]]
 
     volume_history: AppenderQuery = relationship(
         'Volume', lazy='dynamic', cascade='all, delete', backref='coin',

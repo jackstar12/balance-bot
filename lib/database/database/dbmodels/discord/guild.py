@@ -11,9 +11,9 @@ class Guild(Base, Serializer, BaseMixin):
     __tablename__ = 'guild'
 
     id = mapped_column(BigInteger, primary_key=True, nullable=False)
-    name = mapped_column(String, nullable=True)
+    name: Mapped[Optional[str]]
     tier = mapped_column(Enum(Tier), default=Tier.BASE, nullable=False)
-    avatar = mapped_column(String, nullable=True)
+    avatar: Mapped[Optional[str]]
 
     events = relationship('Event',
                           lazy='raise',

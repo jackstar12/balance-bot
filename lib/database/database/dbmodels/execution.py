@@ -1,10 +1,11 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 
-from database.dbsync import Base, BaseMixin
+from database.dbsync import Base, BaseMixin, intpk
 from sqlalchemy import Integer, ForeignKey, String, DateTime, Numeric, Enum, UniqueConstraint, Boolean
 from database.dbmodels.mixins.serializer import Serializer
 from database.enums import ExecType, Side, MarketType
@@ -14,25 +15,25 @@ from database.dbmodels.symbol import CurrencyMixin
 class Execution(Base, Serializer, BaseMixin, CurrencyMixin):
     __tablename__ = 'execution'
 
-    id = mapped_column(Integer, primary_key=True)
-    trade_id = mapped_column(ForeignKey('trade.id', ondelete='CASCADE'))
-    transfer_id = mapped_column(ForeignKey('transfer.id', ondelete='CASCADE'))
+    id: Mapped[intpk]
+    trade_id: Mapped[int] = mapped_column(ForeignKey('trade.id', ondelete='CASCADE'))
+    transfer_id: Mapped[int] = mapped_column(ForeignKey('transfer.id', ondelete='CASCADE'))
 
-    symbol = mapped_column(String, nullable=False)
-    time = mapped_column(DateTime(timezone=True), nullable=False)
-    type = mapped_column(Enum(ExecType), nullable=False, default=ExecType.TRADE)
+    symbol: Mapped[str]
+    time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    type: Mapped[ExecType] = mapped_column(Enum(ExecType), nullable=False, default=ExecType.TRADE)
 
-    realized_pnl: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
-    price: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
-    qty: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
-    side = mapped_column(Enum(Side), nullable=True)
-    commission: Mapped[Decimal] = mapped_column(Numeric, nullable=True)
+    realized_pnl: Mapped[Optional[Decimal]]
+    price: Mapped[Optional[Decimal]]
+    qty: Mapped[Optional[Decimal]]
+    side: Mapped[Side] = mapped_column(Enum(Side), nullable=True)
+    commission: Mapped[Optional[Decimal]]
 
     # If true, the execution will first lower the size of the current trade, otherwise open a new one
-    reduce: bool = mapped_column(Boolean, server_default='True')
-    market_type = mapped_column(Enum(MarketType), nullable=False, server_default='DERIVATIVES')
+    reduce: Mapped[bool] = mapped_column(Boolean, server_default='True')
+    market_type: Mapped[MarketType] = mapped_column(Enum(MarketType), nullable=False, server_default='DERIVATIVES')
 
-    trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
+    trade: Mapped['Trade'] = relationship(lazy='noload', foreign_keys=trade_id)
 
     __table_args__ = (
         UniqueConstraint(trade_id, transfer_id),

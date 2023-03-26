@@ -3,16 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, TypeVar, Generic, overload
 
 import pytz
 import sqlalchemy.exc
 from aioredis import Redis
 from sqlalchemy import Integer, ForeignKey, String, Table, orm, Numeric, delete, DateTime, func, case, extract, \
-    or_, and_
+    or_, and_, Column
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, object_session, aliased
+from sqlalchemy.orm import relationship, object_session, aliased, mapped_column
 
 from database.dbmodels.mixins.filtermixin import FilterMixin, FilterParam
 from core.utils import weighted_avg, join_args
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from database.dbmodels import Balance
 
 from database.dbmodels.pnldata import PnlData
-from database.dbsync import Base, BaseMixin
+from database.dbsync import Base, BaseMixin, intpk
 from database.dbmodels.mixins.serializer import Serializer
 from database.dbmodels.execution import Execution
 from database.enums import Side, ExecType, Status, TradeSession, MarketType
@@ -42,18 +42,35 @@ trade_association = Table('trade_association', Base.metadata,
 #     FUTURES = "futures"
 #     TRANSFER = "transfer"
 
+if TYPE_CHECKING:
+    T = TypeVar('T')
+
+
+    class Mapped(Generic[T]):
+        def __set_name__(self, owner: type[Base], name: str) -> None:
+            self.name = name
+
+        @overload
+        def __get__(self, obj: None, objtype: None) -> 'Mapped':
+            ...
+
+        def __get__(self, obj: Base, objtype: type[Base]) -> T:
+            ...
+
+        def __set__(self, obj: Base, value: T) -> None:
+            ...
+
 
 class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
     __tablename__ = 'trade'
     __serializer_forbidden__ = ['client', 'initial']
 
-    id = mapped_column(Integer, primary_key=True)
+    id: Mapped[intpk]
     client_id = mapped_column(Integer, ForeignKey('client.id', ondelete="CASCADE"), nullable=False)
     client = relationship('Client', lazy='noload')
     labels = relationship('Label', lazy='noload', secondary=trade_association, backref='trades')
 
-    symbol = mapped_column(String, nullable=False)
-
+    symbol: Mapped[str]
     entry: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     qty: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     open_qty: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
@@ -440,6 +457,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
                     execution.qty = self.open_qty
 
                     new = Trade.from_execution(new_exec, self.client_id, current_balance)
+                    new.symbol
 
                 if self.exit is None:
                     self.exit = execution.price

@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import NamedTuple, Optional
 
 from sqlalchemy import Integer, ForeignKey, String, BigInteger, Numeric
-from sqlalchemy.orm import relationship, mapped_column
+from sqlalchemy.orm import relationship, mapped_column, Mapped
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from database.dbsync import Base
@@ -37,8 +37,8 @@ class Transfer(Base):
     )
     execution_id = mapped_column(Integer, ForeignKey('execution.id', ondelete="CASCADE"), nullable=False)
 
-    note = mapped_column(String, nullable=True)
-    coin = mapped_column(String, nullable=True)
+    note: Mapped[Optional[str]]
+    coin: Mapped[Optional[str]]
 
     client = relationship('Client')
     execution = relationship(

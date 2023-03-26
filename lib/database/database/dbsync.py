@@ -1,9 +1,11 @@
-from typing import Optional, Any
+from typing import Optional, Any, Annotated
 
-from sqlalchemy import create_engine, MetaData
+from _decimal import Decimal
+from sqlalchemy import create_engine, MetaData, Numeric
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker, scoped_session, Session, object_session, DeclarativeBase, declarative_base
+from sqlalchemy.orm import sessionmaker, scoped_session, Session, object_session, DeclarativeBase, declarative_base, \
+    mapped_column
 import sqlalchemy.orm as orm
 
 from database.env import ENV
@@ -24,6 +26,10 @@ class Base:
 
 Base = declarative_base(cls=Base)
 
+# set up mapped_column() overrides, using whole column styles that are
+# expected to be used in multiple places
+intpk = Annotated[int, mapped_column(primary_key=True)]
+numeric = Annotated[Decimal, mapped_column(Numeric)]
 
 def FKey(column: str,
          onupdate=None,

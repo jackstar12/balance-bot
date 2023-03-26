@@ -211,14 +211,14 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
         StringEncryptedType(String(), ENV.ENCRYPTION.get_secret_value().encode('utf-8'), FernetEngine),
         nullable=False
     )
-    exchange = mapped_column(String, nullable=False)
-    subaccount = mapped_column(String, nullable=True)
+    exchange
+    subaccount: Mapped[Optional[str]]
     extra_kwargs = mapped_column(PickleType, nullable=True)
     currency = mapped_column(String(10), default='USD')
     sandbox = mapped_column(Boolean, default=False)
 
     # Data
-    name = mapped_column(String, nullable=True)
+    name: Mapped[Optional[str]]
     type = mapped_column(sa.Enum(ClientType), nullable=False, default=ClientType.BASIC)
     state = mapped_column(sa.Enum(ClientState), nullable=False, default=ClientState.OK)
 

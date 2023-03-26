@@ -34,7 +34,7 @@ from database.dbsync import Base, BaseMixin
 from database.models.eventinfo import EventState
 from database.models.platform import PlatformModel
 from database.dbmodels.types import Platform
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship, backref, Mapped, mapped_column
 from sqlalchemy import Integer, ForeignKey, String, DateTime, inspect, Boolean, func, desc, \
     select, insert, literal, and_, update, Numeric, BigInteger
 
@@ -62,7 +62,7 @@ class Event(Base, Serializer, BaseMixin):
     max_registrations = mapped_column(Integer, nullable=False, default=100)
     allow_transfers = mapped_column(Boolean, default=False)
 
-    name = mapped_column(String, nullable=False)
+    name: Mapped[str]
     description = mapped_column(Document, nullable=False)
     location = mapped_column(Platform, nullable=False)
     currency = mapped_column(String(10), nullable=False, server_default='USD')

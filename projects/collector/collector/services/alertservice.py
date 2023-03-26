@@ -52,6 +52,9 @@ class AlertService(BaseService, Observer):
             alerts.remove(alert)
 
     async def _update(self, data: Dict):
+        t = await self._db.execute(select(Alert))
+        r = t.scalars().all()
+
         new: Alert = await self._db.get(Alert, data['id'])
         symbol = (new.symbol, new.exchange)
         ticker = self._tickers.get(symbol)
