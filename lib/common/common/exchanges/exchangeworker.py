@@ -516,22 +516,13 @@ class ExchangeWorker:
                     current_balance.add_amount(execution.settle, realized=-execution.net_pnl)
 
                 if current_balance.extra_currencies:
-                    current_balance.realized = 0
                     for amount in current_balance.extra_currencies:
-                        if amount.currency:
-
-                            rate = await self._conversion_rate(
-                                Market(base=amount.currency, quote=client.currency),
-                                execution.time,
-                                resolution_s=5 * MINUTE
-                            )
-                            if rate:
-                                amount.rate = rate
-                                current_balance.realized += amount.realized * rate
-                        else:
-                            pass
-
-                current_balance.unrealized = 0
+                        amount.rate = await self._conversion_rate(
+                            Market(base=amount.currency, quote=client.currency),
+                            execution.time,
+                            resolution_s=5 * MINUTE
+                        )
+                    current_balance.evaluate()
 
                 # base = sum(
                 #    # Note that when upnl of the current execution is included the rpnl that was realized
@@ -743,16 +734,17 @@ class ExchangeWorker:
 
             if realtime:
                 # Updating LAST_EXEC is siginificant for caching
-                asyncio.create_task(
-                    self.client.as_redis().set_last_exec(executions[-1].time)
-                )
+                # asyncio.create_task(
+                #     self.client.as_redis().set_last_exec(executions[-1].time)
+                # )
+                await self.client.as_redis().invalidate_cache()
 
                 await self._update_realized_balance(db)
 
             return active_trade
 
     async def _conversion_rate(self, market: Market, date: datetime, resolution_s: int = None):
-        if self._usd_like(market.base):
+        if self.usd_like(market.base):
             return 1
 
         # conversion = await db_unique(
@@ -775,7 +767,7 @@ class ExchangeWorker:
             return (ticker[0].open + ticker[0].close) / 2
 
     async def _convert_to_usd(self, amount: Decimal, coin: str, date: datetime):
-        if self._usd_like(coin):
+        if self.usd_like(coin):
             return amount
         # return await self._convert()
 
@@ -902,6 +894,10 @@ class ExchangeWorker:
     @classmethod
     def get_symbol(cls, market: Market) -> str:
         raise NotImplementedError
+
+    @classmethod
+    def is_equal(cls, market: Market) -> bool:
+        return market.quote == market.base or (cls.usd_like(market.quote) and cls.usd_like(market.base))
 
     @classmethod
     def set_weights(cls, weight: int, response: ClientResponse):
@@ -1033,7 +1029,7 @@ class ExchangeWorker:
         return self._request('PUT', path, **kwargs)
 
     @classmethod
-    def _usd_like(cls, coin: str):
+    def usd_like(cls, coin: str):
         return coin in ('USD', 'USDT', 'USDC', 'BUSD')
 
     @classmethod

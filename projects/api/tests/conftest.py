@@ -25,7 +25,7 @@ def api_client() -> TestClient:
 @pytest.fixture
 def api_client_logged_in(api_client):
     api_client.post(
-        "/api/v1/register",
+        "/register",
         json={
             "email": "test@gmail.com",
             "password": "strongpassword123",
@@ -33,7 +33,7 @@ def api_client_logged_in(api_client):
     )
 
     resp = api_client.post(
-        "/api/v1/login",
+        "/login",
         data={
             "username": "test@gmail.com",
             "password": "strongpassword123"
@@ -45,14 +45,14 @@ def api_client_logged_in(api_client):
 
     yield api_client
 
-    resp = api_client.delete('/api/v1/user')
+    resp = api_client.delete('user')
     assert resp.ok
 
 
 @pytest.fixture  #
 def create_client(api_client_logged_in):
     def _register(data: ClientCreate):
-        return api_client_logged_in.post("/api/v1/client",
+        return api_client_logged_in.post("client",
                                          json=jsonable_encoder(data))
 
     return _register
@@ -71,7 +71,7 @@ def confirm_clients(api_client, create_client, messenger):
                     Channel('client', 'new'),
                     messenger=messenger
             ) as messages:
-                resp = api_client.post('/api/v1/client/confirm', json={**resp.json()})
+                resp = api_client.post('client/confirm', json={**resp.json()})
                 assert resp.status_code == 200
                 await messages.wait(.5)
 
@@ -84,17 +84,11 @@ def confirm_clients(api_client, create_client, messenger):
                     Channel('client', 'delete'),
                     messenger=messenger
             ) as messages:
-                resp = api_client.delete(f'/api/v1/client/{result.id}')
+                resp = api_client.delete(f'client/{result.id}')
                 assert resp.status_code == 200
                 await messages.wait(.5)
 
     return _confirm_clients
-
-
-@pytest.fixture
-async def confirmed_clients(api_client, create_client, request, confirm_clients):
-    async with confirm_clients(request.param) as clients:
-        yield clients
 
 
 @pytest.fixture

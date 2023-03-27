@@ -14,7 +14,6 @@ def event_mock(now: datetime = None, interval: timedelta = timedelta(seconds=2))
         start=now + 2 * interval,
         registration_end=now + 3 * interval,
         end=now + 4 * interval,
-        public=True,
         location=WebPlatform(name='web', data={}),
         max_registrations=100,
     )

@@ -25,7 +25,7 @@ class Subscription(enum.Enum):
     PREMIUM = 3
 
 
-class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
+class OAuthAccount(Base, SQLAlchemyBaseOAuthAccountTableUUID):
     account_id: str = Column(sa.String(length=320), index=True, nullable=False, unique=True)
     data: Optional[ProfileData] = Column(JSONB, nullable=True)
 

@@ -6,9 +6,10 @@ from decimal import Decimal
 from typing import List, Type, Union, Literal
 from uuid import UUID
 
+import pydantic
 from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
-from pydantic import conlist
+from pydantic import conlist, create_model
 from sqlalchemy import select, delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
@@ -112,7 +113,7 @@ auth = get_auth_grant_dependency(ChapterGrant)
 
 
 class TradeQueryParams(ClientQueryParams):
-    trade_ids: set[int]
+    trade_ids: set[InputID]
 
     def within(self, other: 'TradeQueryParams'):
         return other and super().within(other) and self.trade_ids.issubset(other.trade_ids)
@@ -138,7 +139,6 @@ def create_trade_endpoint(path: str,
                           model: Type[BasicTrade],
                           *eager,
                           **kwargs):
-
     class Trades(BaseModel):
         data: list[model]
 
@@ -156,7 +156,7 @@ def create_trade_endpoint(path: str,
                          chapter_id: InputID = Query(default=None),
                          cache: client_utils.ClientCache = Depends(TradeCache),
                          query_params: TradeQueryParams = Depends(get_trade_params),
-                         filter_params: FilterQueryParams = Depends(FilterQueryParams),
+                         filters: list[FilterParam] = Depends(FilterQueryParams),
                          grant: AuthGrant = Depends(auth),
                          db: AsyncSession = Depends(get_db)):
         ts1 = time.perf_counter()
@@ -171,17 +171,25 @@ def create_trade_endpoint(path: str,
                 if not trade_id:
                     return OK(result=[])
 
+        trades_db = await client_utils.query_trades(
+            *eager,
+            user_id=grant.user_id,
+            query_params=query_params,
+            trade_ids=query_params.trade_ids,
+            filters=filters,
+            db=db
+        )
+        results = []
+        for trade in trades_db:
+            parsed = model.from_orm(trade)
+            results.append(parsed)
+            continue
+            if all(f.check(trade) for f in filters):
+                results.append(parsed)
+
+        return OK(result=results)
         hits, misses = await cache.read(db)
 
-        if query_params.trade_ids:
-            filter_params.append(
-                FilterParam.construct(field='id', values=list(map(str, query_params.trade_ids)), op=Operator.EQ)
-            )
-
-        if query_params.currency:
-            filter_params.append(
-                FilterParam.construct(field='settle', values=[query_params.currency], op=Operator.EQ)
-            )
 
         if misses:
             query_params.client_ids = misses
@@ -213,7 +221,7 @@ def create_trade_endpoint(path: str,
         return OK(
             result=[
                 trade for trades in hits for trade in trades.data
-                if all(f.check(trade) for f in filter_params)
+                if all(f.check(trade) for f in filters)
             ]
         )
 

@@ -1,13 +1,16 @@
 import asyncio
-from typing import Dict, NamedTuple
+from typing import Dict, NamedTuple, overload
+
+from decimal import Decimal
 
 from collector.errors import InvalidExchangeError
 from collector.services.baseservice import BaseService
 import core
-from common.exchanges import EXCHANGE_TICKERS
+from common.exchanges import EXCHANGE_TICKERS, EXCHANGES
 from common.exchanges.exchangeticker import ExchangeTicker, Channel, Subscription
 from common.messenger import TableNames
 from database.dbmodels.client import ExchangeInfo
+from database.models.market import Market
 from database.models.observer import Observer
 from database.models.ticker import Ticker
 
@@ -42,7 +45,6 @@ class DataService(BaseService, Observer):
         :param exchange: which exchange?
         :param observer: [Optional] will be notified whenever updates arrive
         """
-        self._logger.info(f'Subscribe: {exchange=} {sub=}')
         ticker = self._exchanges.get(exchange)
         if not ticker:
             self._logger.info(f'Creating ticker for {exchange}')
@@ -66,15 +68,23 @@ class DataService(BaseService, Observer):
         ticker = self._exchanges.get(exchange)
         if ticker:
             observer = observer or self
-            await ticker.unsubscribe(channel, observer, **kwargs)
+            await ticker.unsubscribe(Subscription(channel=channel, kwargs=kwargs), observer)
 
     async def update(self, ticker: Ticker):
         #ticker: Ticker = new_state[0]
         self._logger.debug(ticker)
         self._tickers[(ticker.src, ticker.symbol)] = ticker
 
+    async def get_ticker_market(self, market: Market, exchange: ExchangeInfo):
+        worker = EXCHANGES[exchange.name]
+        if worker.is_equal(market):
+            return Ticker(symbol=worker.get_symbol(market), src=exchange, price=Decimal(1))
+        else:
+            return await self.get_ticker(worker.get_symbol(market), exchange)
+
     async def get_ticker(self, symbol: str, exchange: ExchangeInfo):
         ticker = self._tickers.get((exchange, symbol))
+
         if not ticker:
             try:
                 await self.subscribe(

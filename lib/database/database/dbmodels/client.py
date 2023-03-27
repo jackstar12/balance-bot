@@ -61,14 +61,14 @@ class ClientRedis:
 
     def __init__(self, user_id: UUID, client_id: int, redis_instance: Redis = None):
         self.user_id = user_id
-        self.client_id = client_id
+        self.id = client_id
         self.redis = redis_instance or redis
 
     async def redis_set(self, keys: dict[RedisKey, Any], space: Literal['cache', 'normal']):
         client_hash = self.cache_hash if space == 'cache' else self.normal_hash
         if space == 'cache':
             asyncio.ensure_future(self.redis.expire(client_hash, 5 * 60))
-        #keys[RedisKey(client_hash, self.user_id)] = str(self.user_id)
+        # keys[RedisKey(client_hash, self.user_id)] = str(self.user_id)
 
         mapping = {
             k.key: customjson.dumps(v.dict()) if isinstance(v, PydanticBaseModel) else v
@@ -102,6 +102,9 @@ class ClientRedis:
             self.cache_hash, *keys, redis_instance=self.redis
         )
 
+    async def invalidate_cache(self):
+        return await self.redis.delete(self.cache_hash)
+
     async def set_last_exec(self, dt: datetime):
         await self.redis_set(
             keys={RedisKey(ClientSpace.LAST_EXEC): dt.timestamp()},
@@ -116,15 +119,15 @@ class ClientRedis:
 
     @property
     def normal_hash(self):
-        return core.join_args(TableNames.USER, self.user_id, TableNames.CLIENT, self.client_id or '*')
+        return core.join_args(TableNames.USER, self.user_id, TableNames.CLIENT, self.id or '*')
 
     @property
     def cache_hash(self):
         return core.join_args(TableNames.USER, self.user_id, TableNames.CLIENT, TableNames.CACHE,
-                              self.client_id or '*')
+                              self.id or '*')
 
     def __repr__(self):
-        return f'<ClientRedis {self.client_id=} {self.user_id=}>'
+        return f'<ClientRedis {self.id=} {self.user_id=}>'
 
 
 class ClientType(Enum):
@@ -155,7 +158,7 @@ class QueryParams(BaseModel):
 
 
 class ClientQueryParams(QueryParams):
-    client_ids: set[InputID]
+    client_ids: Optional[set[InputID]]
     currency: Optional[str]
 
     def within(self, other: ClientQueryParams):
@@ -240,10 +243,10 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
     transfers: list = relationship('Transfer', back_populates='client', lazy='raise')
 
     currently_realized_id = Column(ForeignKey('balance.id', ondelete='SET NULL'), nullable=True)
-    currently_realized = relationship('Balance',
-                                      lazy='joined',
-                                      foreign_keys=currently_realized_id,
-                                      post_update=True)
+    currently_realized: Balance = relationship('Balance',
+                                               lazy='joined',
+                                               foreign_keys=currently_realized_id,
+                                               post_update=True)
 
     trade_template_id = Column(ForeignKey('template.id', ondelete='SET NULL'), nullable=True)
     trade_template = relationship('Template', lazy='raise', foreign_keys=trade_template_id)
@@ -373,26 +376,12 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
 
         result = self.currently_realized.clone()
         result.time = utc_now()
-        realized = self.currently_realized.realized
 
         for trade in self.open_trades:
-            if trade.initial.market_type == MarketType.DERIVATIVES:
-                result.add_amount(trade.settle, trade.live_pnl.unrealized)
+            if trade.initial.market_type == MarketType.DERIVATIVES and trade.live_pnl:
+                result.add_amount(trade.settle, unrealized=trade.live_pnl.unrealized)
 
-        upnl = sum(
-            trade.live_pnl.unrealized for trade in self.open_trades
-            if trade.live_pnl if trade.initial.market_type == MarketType.DERIVATIVES
-        )
-
-        new = self.currently_realized.clone()
-        new.time = utc_now()
-
-        return dbmodels.Balance(
-            realized=realized,
-            unrealized=upnl,
-            time=datetime.now(pytz.utc),
-            client=self
-        )
+        return result
 
     async def update_journals(self, current_balance: dbmodels.Balance, today: date, db_session: AsyncSession):
         today = today or date.today()
@@ -465,10 +454,10 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
             balance = await self.initial()
         return balance
 
-    async def get_exact_balance_at_time(self, time: datetime, currency: str = None) -> BalanceModel:
+    async def get_exact_balance_at_time(self, time: datetime, currency: str = None) -> Balance:
         balance = await self.get_balance_at_time(time)
 
-        if self.type == ClientType.FULL and balance and time:
+        if self.type == ClientType.FULL and balance and time and False:
             # Probably the most beautiful query I've ever written
             subq = select(
                 PnlData.id.label('pnl_id'),
@@ -502,7 +491,7 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
                     Amount(
                         currency=amount.currency,
                         realized=amount.realized,
-                        unrealized=amount.realized + sum(pnl.unrealized_ccy(amount.currency) for pnl in pnl_data),
+                        # unrealized=amount.realized + sum(pnl.unrealized_ccy(amount.currency) for pnl in pnl_data),
                         time=time
                     )
                     for amount in balance.extra_currencies

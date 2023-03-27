@@ -52,7 +52,7 @@ class BitmexWorker(ExchangeWorker):
             realized_raw = currency['walletBalance']
             unrealized_raw = currency['marginBalance'] - realized_raw
             price = 0
-            if self._usd_like(symbol):
+            if self.usd_like(symbol):
                 price = 1
             elif realized_raw > 0:
                 response_price = await self.get(

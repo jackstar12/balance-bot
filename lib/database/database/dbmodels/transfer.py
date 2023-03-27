@@ -63,7 +63,7 @@ class Transfer(Base):
 
     @hybrid_property
     def amount(self):
-        return self.execution.qty
+        return self.execution.effective_qty
 
 
     #balance = relationship(

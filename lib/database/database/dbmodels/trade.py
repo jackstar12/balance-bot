@@ -475,7 +475,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
         :param db: database session
         :return:
         """
-        if not self.executions or self.close_time > date:
+        if self.executions[-1].time > date:
             self.__realtime__ = False
             await db.delete(self)
 
@@ -483,7 +483,6 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
                 # First, create a new copy based on the same initial execution
                 new_trade = Trade.from_execution(self.initial, self.client_id, self.init_balance)
                 new_trade.__realtime__ = False
-                self.async_session.add(new_trade)
 
                 # Then reapply the executions that are not due for deletion
                 # (important that initial is excluded in this case)

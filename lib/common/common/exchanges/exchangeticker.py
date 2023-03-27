@@ -1,3 +1,4 @@
+import logging
 import aiohttp
 from typing import Dict, NamedTuple
 
@@ -28,10 +29,12 @@ class ExchangeTicker:
         self.info = ExchangeInfo(name=self.NAME, sandbox=sandbox)
         # Initialize Channels
         self._callbacks: Dict[Subscription, Observable] = {}
+        self._logger = logging.getLogger(f'ExchangeTicker - {self.NAME}')
 
     async def subscribe(self, sub: Subscription, observer: Observer):
         observable = self._callbacks.get(sub)
         if not observable:
+            self._logger.info(f'Subscribe: {sub=}')
             observable = Observable()
             observable.attach(observer)
             self._callbacks[sub] = observable

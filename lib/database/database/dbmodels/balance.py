@@ -13,6 +13,7 @@ from database.dbmodels.mixins.serializer import Serializer
 from database.dbsync import Base, BaseMixin
 from database.models.balance import Amount as AmountModel, Balance as BalanceModel
 from core.utils import round_ccy
+from database.models.market import Market
 
 if TYPE_CHECKING:
     from database.dbmodels import Client
@@ -22,6 +23,10 @@ class _Common:
     realized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
     unrealized: Decimal = Column(Numeric, nullable=False, default=Decimal(0))
 
+    @hybrid_property
+    def total(self):
+        return self.realized + self.unrealized
+
 
 class Amount(Base, ClientQueryMixin, Serializer, BaseMixin, _Common):
     __tablename__ = 'amount'
@@ -30,6 +35,9 @@ class Amount(Base, ClientQueryMixin, Serializer, BaseMixin, _Common):
     balance = relationship('Balance', lazy='raise')
     currency: str = Column(sa.String, primary_key=True)
     rate = Column(Numeric, nullable=True)
+
+    def __repr__(self):
+        return f'{self.total}{self.currency}'
 
 
 class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
@@ -63,10 +71,6 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
         return self.client
 
     @hybrid_property
-    def total(self):
-        return self.realized + self.unrealized
-
-    @hybrid_property
     def total_transfers_corrected(self):
         return self.unrealized
 
@@ -75,7 +79,7 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
         client = self.client_save
         return client.currency if client else None
 
-    #def serialize(self, full=False, data=True, include_none=True, *args, **kwargs):
+    # def serialize(self, full=False, data=True, include_none=True, *args, **kwargs):
     #    d = BalanceModel.from_orm(self).dict()
     #    d['client_id'] = self.client_id
     #    return d
@@ -88,7 +92,7 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
         self.extra_currencies.append(amt)
         return amt
 
-    def add_amount(self, ccy: str, realized = 0, unrealized = 0):
+    def add_amount(self, ccy: str, realized=0, unrealized=0):
         if ccy != self.currency or self.extra_currencies:
             amt = self.get_amount(ccy)
             amt.realized += realized
@@ -97,19 +101,28 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
             self.realized += realized
             self.unrealized += unrealized
 
-    def get_currency(self, ccy: str = None) -> AmountModel:
+    def evaluate(self):
+        self.realized = 0
+        self.unrealized = 0
         for amount in self.extra_currencies:
-            if amount.currency == ccy:
-                return AmountModel(
-                    realized=amount.realized,
-                    unrealized=amount.unrealized,
-                    currency=ccy,
-                    time=self.time
-                )
+            if amount.rate:
+                self.realized += amount.realized * amount.rate
+                self.unrealized += amount.unrealized * amount.rate
+
+    def get_currency(self, ccy: str = None) -> AmountModel:
+        if ccy:
+            realized, unrealized = 0, 0
+            for amount in self.extra_currencies:
+                if amount.currency == ccy:
+                    realized, unrealized = amount.realized, amount.unrealized
+                    break
+        else:
+            realized, unrealized = self.realized, self.unrealized
+            ccy = self.currency
         return AmountModel(
-            realized=self.realized,
-            unrealized=self.unrealized,
-            currency=self.client_save.currency,
+            realized=realized,
+            unrealized=unrealized,
+            currency=ccy,
             time=self.time
         )
 
@@ -123,7 +136,7 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
 
     def __eq__(self, other):
         if isinstance(other, Balance):
-            return self.realized == self.realized and self.unrealized == self.unrealized
+            return self.realized == other.realized and self.unrealized == other.unrealized and self.currency == other.currency
         return False
 
     def __init__(self, error=None, *args, **kwargs):
@@ -140,7 +153,7 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
 
         if self.extra_currencies and display_extras:
             currencies = " / ".join(
-                f'{amount.unrealized}{amount.currency}'
+                f'{amount.total}{amount.currency}'
                 for amount in self.extra_currencies
             )
             string += f'({currencies})'
@@ -154,7 +167,7 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
     def is_data(cls):
         return True
 
-    def clone(self):
+    def clone(self) -> Balance:
         return Balance(
             realized=self.realized,
             unrealized=Decimal(0),

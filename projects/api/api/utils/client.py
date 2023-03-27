@@ -5,7 +5,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, Dict, List, Mapping, Any, Type, TypeVar, Generic, Awaitable
+from typing import Optional, Dict, List, Mapping, Any, Type, TypeVar, Generic, Awaitable, Sequence, Iterable
 from uuid import UUID
 
 import pytz
@@ -21,7 +21,7 @@ from api.models.websocket import ClientConfig
 from api.users import DefaultGrant
 from core import json as customjson
 from database.calc import calc_daily
-from database.dbasync import redis, db_all, redis_bulk, RedisKey, db_first, time_range
+from database.dbasync import redis, db_all, redis_bulk, RedisKey, db_first, time_range, redis_bulk_hashes
 from database.dbmodels import TradeDB
 from database.dbmodels.authgrant import AuthGrant
 from database.dbmodels.balance import Balance
@@ -30,7 +30,7 @@ from database.dbmodels.client import ClientQueryParams
 from database.dbmodels.user import User
 from database.dbsync import BaseMixin
 from database.models import BaseModel
-from database.models.document import FilterInput, FilterOptions
+from database.models.document import FilterInput, FilterOptions, Operator
 from database.redis.client import ClientSpace, ClientCacheKeys
 from database.utils import query_table
 
@@ -227,55 +227,48 @@ class ClientCache(Generic[T]):
                 session=db
             )
 
+        clients = [ClientRedis(self.user_id, client_id) for client_id in self.query_params.client_ids]
+
         for client_id in self.query_params.client_ids:
             client = ClientRedis(self.user_id, client_id)
-            pairs[client.normal_hash] = [
-                RedisKey(ClientSpace.LAST_EXEC, parse=_parse_date)
-            ]
+            # pairs[client.normal_hash] = [
+            #    RedisKey(ClientSpace.LAST_EXEC, parse=_parse_date)
+            # ]
             pairs[client.cache_hash] = [
-                RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC, parse=_parse_date),
                 RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS, model=self.query_params.__class__)
             ]
 
-        data = await redis_bulk(pairs, redis_instance=redis)
+        key = RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS, model=self.query_params.__class__)
+        data = await redis_bulk({
+            client.cache_hash: [key]
+            for client in clients
+        })
 
         hits = []
         misses = []
 
-        for client_id in self.query_params.client_ids:
-            client = ClientRedis(self.user_id, client_id)
+        for client in clients:
+            cached_query_params: ClientQueryParams = data[client.cache_hash][0]
 
-            last_exec = data[client.normal_hash][0]
-            cached_last_exec = data[client.cache_hash][0]
-            cached_query_params: ClientQueryParams = data[client.cache_hash][1]
+            if cached_query_params and self.query_params.within(cached_query_params):
+                ts1 = time.perf_counter()
+                raw_overview, = await client.read_cache(
+                    RedisKey(self.cache_data_key, model=self.data_model),
+                )
+                ts2 = time.perf_counter()
+                print('Reading Cache', ts2 - ts1)
+                if raw_overview:
+                    hits.append(raw_overview)
+                    continue
 
-            if last_exec and False:
-                self.client_last_exec[client_id] = last_exec
-                if (
-                        cached_last_exec and cached_last_exec >= last_exec
-                        and
-                        self.query_params.within(cached_query_params)
-                ):
-                    ts1 = time.perf_counter()
-                    raw_overview, = await client.read_cache(
-                        RedisKey(self.cache_data_key, model=self.data_model),
-                    )
-                    ts2 = time.perf_counter()
-                    print('Reading Cache', ts2 - ts1)
-                    if raw_overview:
-                        hits.append(raw_overview)
-                        continue
-
-            misses.append(client_id)
+            misses.append(client.id)
 
         return hits, misses
 
     async def write(self, client_id: int, data: T):
-        last_exec = self.client_last_exec.get(client_id) or 0
         return await ClientRedis(self.user_id, client_id).redis_set(
             keys={
                 RedisKey(self.cache_data_key): data,
-                RedisKey(self.cache_data_key, ClientSpace.LAST_EXEC): last_exec.timestamp() if last_exec else 0,
                 RedisKey(self.cache_data_key, ClientSpace.QUERY_PARAMS): self.query_params
             },
             space='cache'
@@ -304,9 +297,17 @@ TTable = TypeVar('TTable', bound=BaseMixin)
 def query_trades(*eager,
                  user_id: UUID,
                  query_params: ClientQueryParams,
-                 trade_ids: list[int] = None,
+                 trade_ids: Iterable[int] = None,
                  db: AsyncSession,
                  filters: list[FilterParam] = None):
+    if not filters:
+        filters = []
+
+    if query_params.currency:
+        filters.append(
+            FilterParam.construct(field='settle', values=[query_params.currency], op=Operator.EQ)
+        )
+
     return query_table(
         *eager,
         table=TradeDB,

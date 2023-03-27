@@ -33,7 +33,7 @@ class AmountBase(OrmBaseModel):
         return self.realized + self.unrealized
 
     def __repr__(self):
-        return f'{self.realized}{self.currency}'
+        return f'{self.total}{self.currency}'
 
     def __add__(self, other: 'AmountBase'):
         self._assert_equal(other)
@@ -83,21 +83,19 @@ class Balance(Amount):
 
         return string
 
-    def get_currency(self, currency: str):
-        if currency == self.currency:
-            return self
-        realized = 0
-        unrealized = 0
-        for amount in self.extra_currencies:
-            if amount.currency == currency:
-                realized = amount.realized
-                unrealized = amount.unrealized
-                break
-
+    def get_currency(self, currency: Optional[str]):
+        if currency:
+            realized, unrealized = 0, 0
+            for amount in self.extra_currencies:
+                if amount.currency == currency:
+                    realized, unrealized = amount.realized, amount.unrealized
+                    break
+        else:
+            realized, unrealized = self.realized, self.unrealized
+            currency = self.currency
         return Amount(
-            currency=currency,
             realized=realized,
             unrealized=unrealized,
-            time=self.time,
-            client_id=self.client_id
+            currency=currency,
+            time=self.time
         )

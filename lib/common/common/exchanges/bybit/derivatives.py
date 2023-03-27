@@ -8,10 +8,10 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Tuple, Optional, Type, Callable
+from typing import Dict, List, Tuple, Optional, Type, Callable, Iterable
 from sqlalchemy import select, func
 
-from common.exchanges.bybit._base import ContractType, _BybitBaseClient, all_intervals, interval_map, Account
+from common.exchanges.bybit._base import Category, _BybitBaseClient, all_intervals, interval_map, Account
 from core import json, map_list, utc_now, groupby
 from aiohttp import ClientResponseError, ClientResponse
 
@@ -35,9 +35,9 @@ logger = logging.getLogger()
 
 def get_contract_type(contract: str):
     if contract.endswith('USDT'):
-        return ContractType.LINEAR
+        return Category.LINEAR
     else:
-        return ContractType.INVERSE
+        return Category.INVERSE
 
 
 class BybitDerivativesWorker(_BybitBaseClient):
@@ -102,7 +102,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
                 results.extend(result)
         return results
 
-    async def get_instruments(self, contract: ContractType) -> list[dict]:
+    async def get_instruments(self, contract: Category) -> list[dict]:
         resp = await self.get(
             '/derivatives/v3/public/instruments-info',
             params={'contract': contract.value},
@@ -111,7 +111,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
         )
         return resp['list']
 
-    async def get_tickers(self, contract: ContractType) -> list[dict]:
+    async def get_tickers(self, contract: Category) -> list[dict]:
         resp = await self.get(
             '/derivatives/v3/public/tickers',
             params={'contract': contract.value},
@@ -121,12 +121,17 @@ class BybitDerivativesWorker(_BybitBaseClient):
         return resp['list']
 
     async def _get_internal_executions_v3(self,
-                                          contract_type: ContractType,
-                                          since: datetime) -> List[Execution]:
-
-        coins_to_fetch = set()
+                                          category: Category,
+                                          since: datetime) -> list[Execution]:
 
         since_ts = self._parse_date(since) if since else None
+
+        params = {'limit': 50, 'category': category.value, 'orderStatus': 'Filled'}
+        raw_orders = await self._get_paginated_v3(path='/v5/order/history',
+                                                  valid=lambda r: int(r['createdTime']) > since_ts,
+                                                  params=params)
+
+        return [self._parse_order_v3(raw) for raw in raw_orders]
 
         pnlParams = {
             'limit': 50
@@ -137,7 +142,8 @@ class BybitDerivativesWorker(_BybitBaseClient):
                 coins_to_fetch.add(transfer.coin)
 
         if since:
-            pnlParams['startTime'] = self._parse_date(since.replace(hour=0, minute=0, second=0, microsecond=0))
+            #pnlParams['startTime'] = self._parse_date(since.replace(hour=0, minute=0, second=0, microsecond=0))
+            pnlParams['startTime'] = self._parse_date(since - timedelta(days=7))
 
         # https://bybit-exchange.github.io/docs/derivativesV3/contract/#t-dv_walletrecords
         asset_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
@@ -148,6 +154,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
         # https://bybit-exchange.github.io/docs/derivativesV3/contract/#t-dv_walletrecords
         usd_records = await self._get_paginated_v3(path='/contract/v3/private/account/wallet/fund-records',
                                                    params=pnlParams)
+
 
         balance = await self.get_balance()
         balance.client = self.client
@@ -195,7 +202,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
             symbols_to_fetch = []
 
             if coin == 'USDT':
-                instruments = await self.get_tickers(ContractType.LINEAR)
+                instruments = await self.get_tickers(Category.LINEAR)
                 instruments.sort(
                     # When sorting the priority of fetching, the size of prior trades will be considered too
                     key=lambda i: Decimal(i['turnover24h']) + 100 * existing_symbols.get(i['symbol'], 0),
@@ -242,7 +249,7 @@ class BybitDerivativesWorker(_BybitBaseClient):
         return list(execs)
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
-    async def _internal_get_balance(self, contract_type: ContractType, time: datetime, upnl=True):
+    async def _internal_get_balance(self, contract_type: Category, time: datetime, upnl=True):
 
         balances, tickers = await asyncio.gather(
             self.get('/v2/private/wallet/balance'),
@@ -261,14 +268,14 @@ class BybitDerivativesWorker(_BybitBaseClient):
             unrealized = Decimal(balance['equity'])
             price = 0
             if currency == 'USDT':
-                if contract_type == ContractType.LINEAR:
+                if contract_type == Category.LINEAR:
                     price = Decimal(1)
-            elif unrealized > 0 and contract_type == ContractType.INVERSE:
+            elif unrealized > 0 and contract_type == Category.INVERSE:
                 price = get_multiple(ticker_prices, f'{currency}USD', f'{currency}USDT')
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {currency}:\n{ticker_prices}')
                     continue
-            if contract_type != ContractType.LINEAR and realized:
+            if contract_type != Category.LINEAR and realized:
                 extra_currencies.append(
                     Amount(currency=currency, realized=realized, unrealized=unrealized)
                 )
@@ -282,11 +289,11 @@ class BybitDerivativesWorker(_BybitBaseClient):
             error=err_msg
         )
 
-    async def _internal_get_balance_v3(self, contract_type: ContractType = None):
+    async def _internal_get_balance_v3(self, category: Category = None):
 
         params = {}
-        if contract_type:
-            params['category'] = contract_type.value
+        if category:
+            params['category'] = category.value
 
         balances, tickers = await asyncio.gather(
             self.get('/contract/v3/private/account/wallet/balance'),
@@ -305,16 +312,16 @@ class BybitDerivativesWorker(_BybitBaseClient):
             unrealized = Decimal(balance['equity']) - realized
             coin = balance["coin"]
             price = 0
+
             if coin == 'USDT':
-                if contract_type == ContractType.LINEAR or not contract_type:
-                    price = Decimal(1)
-            elif realized and (contract_type == ContractType.INVERSE or not contract_type):
+                price = Decimal(1)
+            elif realized and (category == Category.INVERSE or not category):
                 price = get_multiple(ticker_prices, f'{coin}USD', f'{coin}USDT')
                 if not price:
                     logging.error(f'Bybit Bug: ticker prices do not contain info about {coin}:\n{ticker_prices}')
                     continue
 
-            if contract_type != ContractType.LINEAR and realized:
+            if realized:
                 extra_currencies.append(
                     Amount(currency=coin, realized=realized, unrealized=unrealized, rate=price)
                 )
@@ -351,10 +358,10 @@ class BybitDerivativesWorker(_BybitBaseClient):
 
         contract_type = get_contract_type(symbol)
         # Different endpoints, but they both use the exact same repsonse
-        if contract_type == ContractType.INVERSE:
+        if contract_type == Category.INVERSE:
             # https://bybit-exchange.github.io/docs/futuresV2/inverse/#t-markpricekline
             url = '/v2/public/mark-price-kline'
-        elif contract_type == ContractType.LINEAR:
+        elif contract_type == Category.LINEAR:
             # https://bybit-exchange.github.io/docs/futuresV2/linear/#t-markpricekline
             url = '/public/linear/mark-price-kline'
         else:
@@ -395,11 +402,14 @@ class BybitDerivativesWorker(_BybitBaseClient):
                               since: datetime,
                               init=False):
         since = since or utc_now() - timedelta(days=365)
-        return await self._get_internal_executions_v3(ContractType.LINEAR, since), []
+        results = []
+        results.extend(await self._get_internal_executions_v3(Category.LINEAR, since))
+        results.extend(await self._get_internal_executions_v3(Category.INVERSE, since))
+        return results, []
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-balance
     async def _get_balance(self, time: datetime, upnl=True):
-        # return await self._internal_get_balance_v3(ContractType.LINEAR)
+        #return await self._internal_get_balance_v5(Account.CONTRACT)
         return await self._internal_get_balance_v3()
 
 

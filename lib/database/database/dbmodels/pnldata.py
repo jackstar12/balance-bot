@@ -22,7 +22,7 @@ class PnlData(Base, Serializer, BaseMixin):
 
     id = Column(BigInteger, primary_key=True)
     trade_id = Column(Integer, ForeignKey('trade.id', ondelete="CASCADE"), nullable=False)
-    trade = relationship('Trade', lazy='noload', foreign_keys=trade_id)
+    trade = relationship('Trade', lazy='noload', uselist=False, foreign_keys=trade_id)
 
     realized: Decimal = Column(Numeric, nullable=False)
     unrealized: Decimal = Column(Numeric, nullable=False)

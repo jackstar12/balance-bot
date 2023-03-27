@@ -36,6 +36,7 @@ TTable = TypeVar('TTable', bound=BaseMixin)
 
 
 def run_migrations():
+    return
     alembic_cfg = Config("../../lib/database/alembic.ini")
     alembic_cfg.set_main_option('script_location', '../../lib/database/alembic')
     command.upgrade(alembic_cfg, "head")

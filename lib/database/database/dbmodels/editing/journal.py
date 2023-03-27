@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import date, timedelta
 from enum import Enum
 from operator import and_
@@ -49,6 +50,7 @@ class IntervalType(Enum):
 
 class Journal(BaseMixin, Base, EditsMixin):
     __tablename__ = 'journal'
+    __allow_unmapped = True
 
     id = sa.Column(sa.Integer, primary_key=True)
     user_id = sa.Column(GUID, sa.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)

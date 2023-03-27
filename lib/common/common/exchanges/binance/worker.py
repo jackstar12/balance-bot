@@ -476,7 +476,7 @@ class BinanceSpot(_BinanceBaseClient):
     @classmethod
     def _exclude_from_trade(cls, execution: Execution):
         market = cls.get_market(execution.symbol)
-        return market.base == market.quote or cls._usd_like(market.base)
+        return market.base == market.quote or cls.usd_like(market.base)
 
     # https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
     async def _get_balance(self, time: datetime, upnl=True):

@@ -24,7 +24,6 @@ from database.dbsync import Base
 from database.env import ENV
 from database.models import BaseModel
 
-
 engine = create_async_engine(
     f'postgresql+asyncpg://{ENV.PG_URL}',
     json_serializer=customjson.dumps_no_bytes,
@@ -34,7 +33,6 @@ engine = create_async_engine(
 )
 async_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False, future=True)
 async_session: AsyncSession = async_scoped_session(async_maker, scopefunc=asyncio.current_task)
-
 
 redis = aioredis.from_url(ENV.REDIS_URL)
 
@@ -101,6 +99,10 @@ def safe_op(col: Any, value: Any, op: operator = operator.eq):
     return op(col, value) if value is not None else True
 
 
+def safe_eq(col: Any, value: Any):
+    return safe_op(col, value, operator.eq)
+
+
 def time_range(col: Column, since: datetime = None, to: datetime = None):
     return and_(
         safe_op(col, since, operator.gt),
@@ -108,11 +110,9 @@ def time_range(col: Column, since: datetime = None, to: datetime = None):
     )
 
 
-
-
 def apply_option(stmt: Select, col: Union[Column, str], root=None, joined=False):
     if isinstance(col.prop, RelationshipProperty):
-        joined = col.prop.direction == symbol("ONETOONE")
+        joined = col.prop.direction in (symbol("ONETOONE"), symbol("MANYTOONE"))
     if root:
         if joined:
             stmt = stmt.options(root.joinedload(col))
@@ -179,7 +179,7 @@ async def redis_bulk_keys(h: str, *keys: list[RedisKey], redis_instance=None):
 async def redis_bulk_hashes(key: RedisKey, *hashes, redis_instance=None):
     # if len(hashes):
     #     return await (redis_instance or redis).hget(hashes[0], key)
-    result = await redis_bulk({h: key for h in hashes}, redis_instance=redis_instance)
+    result = await redis_bulk({h: [key] for h in hashes}, redis_instance=redis_instance)
     return result.values()
 
 

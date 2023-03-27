@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Dict
 
-from common.exchanges.bybit.derivatives import get_contract_type, ContractType
+from common.exchanges.bybit.derivatives import get_contract_type, Category
 from common.exchanges.exchangeticker import ExchangeTicker, Channel, Subscription
 from common.exchanges.bybit.websocket import BybitWebsocketClient
 from core import json
@@ -32,9 +32,9 @@ class BybitDerivativesTicker(ExchangeTicker):
 
     def get_ws(self, symbol: str):
         contract = get_contract_type(symbol)
-        if contract == ContractType.LINEAR:
+        if contract == Category.LINEAR:
             return self._linear
-        elif contract == ContractType.INVERSE:
+        elif contract == Category.INVERSE:
             return self._inverse
 
     def _subscribe(self, sub: Subscription):
@@ -43,10 +43,11 @@ class BybitDerivativesTicker(ExchangeTicker):
             symbol = sub.kwargs["symbol"]
             return self.get_ws(symbol).subscribe("tickers", symbol)
 
-    def _unsubscribe(self, channel: Channel, **kwargs):
-        if channel == Channel.TICKER:
-            symbol = kwargs["symbol"]
-            return self.get_ws(symbol).unsubscribe("tickers", symbol)
+    async def _unsubscribe(self, sub: Subscription):
+        if sub.channel == Channel.TICKER:
+            symbol = sub.kwargs["symbol"]
+            ws = self.get_ws(symbol)
+            return await ws.unsubscribe("tickers", symbol)
 
     async def connect(self):
         await self._inverse.connect()

@@ -114,7 +114,6 @@ async def test_realtime(pnl_service, time, db_client, session_maker, messenger, 
     indirect=True
 )
 async def test_exchange(db_client, db, session_maker, http_session, ccxt_client, messenger, redis):
-    return
     db_client: Client
     exchange_cls = EXCHANGES.get(db_client.exchange)
 

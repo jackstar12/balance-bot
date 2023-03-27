@@ -23,8 +23,6 @@ class Interval(BaseModel):
 
     @classmethod
     def create(cls, prev: Amount, current: Amount, offset: Decimal, length: IntervalType = None) -> Interval:
-        if not current or not current.time:
-            pass
         return cls(
             day=current.time.date(),
             gain=current.gain_since(prev, offset),

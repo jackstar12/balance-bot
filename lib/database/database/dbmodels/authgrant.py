@@ -91,7 +91,6 @@ class AuthGrant(Base, BaseMixin, Serializer):
     granted_events = relationship('Event', secondary='eventgrant', backref=backref('grants', lazy='noload'))
     templates = relationship('Template', secondary='templategrant', backref=backref('grants', lazy='noload'))
 
-
     def __init__(self, *args, root=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.root = root

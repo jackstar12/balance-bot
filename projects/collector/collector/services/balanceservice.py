@@ -12,11 +12,12 @@ from common.exchanges import EXCHANGES
 from collector.services.baseservice import BaseService
 from collector.services.dataservice import DataService, Channel, ExchangeInfo
 from common.exchanges.exchangeticker import Subscription
+from core import utc_now
 from database.dbasync import db_all, db_unique, db_eager
 from database.dbmodels import Balance
 from database.dbmodels.client import Client, ClientState, ClientType
-from database.dbmodels.editing import Journal
 from database.dbmodels.trade import Trade
+from database.enums import MarketType
 from database.errors import InvalidClientError
 from common.exchanges.exchangeworker import ExchangeWorker
 from common.messenger import CLIENT, TRADE, BALANCE
@@ -39,7 +40,6 @@ class Lock:
 
 
 class _BalanceServiceBase(BaseService):
-
     client_type: ClientType
 
     def __init__(self,
@@ -239,16 +239,16 @@ class BasicBalanceService(_BalanceServiceBase):
             )
             self._exchange_jobs[exchange] = ExchangeJob(exchange, job, exchange_queue)
         clients = await db_all(
-                self._all_client_stmt.filter(
-                    or_(
-                        Client.type == ClientType.BASIC,
-                        Client.exchange.in_([
-                            ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
-                            if not ExchangeCls.supports_extended_data
-                        ])
-                    )
-                ),
-                session=self._db
+            self._all_client_stmt.filter(
+                or_(
+                    Client.type == ClientType.BASIC,
+                    Client.exchange.in_([
+                        ExchangeCls.exchange for ExchangeCls in self._exchanges.values()
+                        if not ExchangeCls.supports_extended_data
+                    ])
+                )
+            ),
+            session=self._db
         )
         for client in clients:
             try:
@@ -407,29 +407,37 @@ class ExtendedBalanceService(_BalanceServiceBase):
                         if client and client.open_trades:
                             for trade in client.open_trades:
                                 ticker = await self.data_service.get_ticker(trade.symbol, client.exchange_info)
-                                extra_ticker = ticker
-                                try:
-                                    market = worker.get_market(trade.symbol)
-                                    if market.quote != client.currency:
-                                        extra_ticker = await self.data_service.get_ticker(
-                                            worker.get_symbol(
-                                                Market(base=market.base, quote=client.currency)
-                                            ),
-                                            client.exchange_info
-                                        )
-                                except NotImplementedError:
-                                    pass
+                                extra = await self.data_service.get_ticker_market(
+                                    Market(base=trade.settle, quote=client.currency),
+                                    client.exchange_info
+                                )
 
-                                if ticker and extra_ticker:
+                                if ticker:
                                     trade.update_pnl(
                                         trade.calc_upnl(ticker.price),
-                                        extra_currencies={client.currency: extra_ticker.price},
+                                        extra_currencies={client.currency: extra.price} if extra else None,
                                     )
                                     await trade.set_live_pnl(pipe)
-                            balance = client.evaluate_balance()
-                            if balance != client.live_balance:
-                                balances.append(balance)
-                            client.live_balance = balance
+                            if client.currently_realized:
+                                balance = client.currently_realized.clone()
+                                balance.time = utc_now()
+
+                                for trade in client.open_trades:
+                                    if trade.initial.market_type == MarketType.DERIVATIVES and trade.live_pnl:
+                                        balance.add_amount(trade.settle, unrealized=trade.live_pnl.unrealized)
+
+                                if balance.extra_currencies:
+                                    for amount in balance.extra_currencies:
+                                        ticker = await self.data_service.get_ticker_market(
+                                            Market(base=amount.currency, quote=client.currency),
+                                            client.exchange_info
+                                        )
+                                        amount.rate = ticker.price if ticker else 0
+                                    balance.evaluate()
+
+                                if balance != client.live_balance:
+                                    balances.append(balance)
+                                client.live_balance = balance
 
                     await self._db.commit()
                 if balances:

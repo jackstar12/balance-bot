@@ -22,17 +22,14 @@ from database.env import ENV
 pytestmark = pytest.mark.anyio
 
 
-SA_DATABASE_TESTING_URI = os.environ.get('DATABASE_TESTING_URI')
-assert SA_DATABASE_TESTING_URI
-
-
 EXCHANGES['mock'] = MockExchange
 EXCHANGE_TICKERS['mock'] = MockTicker
+
 
 @pytest.fixture(scope='session')
 def engine():
     return create_async_engine(
-        f'postgresql+asyncpg://{ENV.DATABASE_TESTING_URI}',
+        f'postgresql+asyncpg://{ENV.PG_URL}',
         json_serializer=customjson.dumps_no_bytes,
         json_deserializer=customjson.loads,
     )
@@ -41,7 +38,7 @@ def engine():
 @pytest.fixture(scope='session')
 async def tables(engine):
     async with engine.begin() as conn:
-        #await conn.run_sync(Base.metadata.drop_all)
+        # await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
 
@@ -87,7 +84,8 @@ class Messages:
             result = await asyncio.wait_for(waiter, timeout)
             return result
         except asyncio.exceptions.TimeoutError:
-            pytest.fail(f'Missed following messages:' + '\n\t'.join(name for name, fut in self.results.values() if fut.cancelled()))
+            pytest.fail(f'Missed following messages:' + '\n\t'.join(
+                name for name, fut in self.results.values() if fut.cancelled()))
 
     @classmethod
     def create(cls, *channels: Channel, messenger: Messenger):

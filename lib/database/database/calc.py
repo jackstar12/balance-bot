@@ -37,7 +37,7 @@ def is_same(a: datetime, b: datetime, length: IntervalType):
 
 def create_daily(history: list[Balance],
                  transfers: list[Transfer],
-                 ccy: str):
+                 ccy: str = None):
     results: dict[IntervalType, list[Interval]] = {}
     recent: dict[IntervalType, Balance] = {}
     offsets: dict[IntervalType, Decimal] = {}
@@ -131,7 +131,7 @@ TOffset = Decimal
 
 
 def transfer_gen(transfers: list[Transfer],
-                 ccy: str,
+                 ccy: str = None,
                  reset=False) -> Generator[TOffset, datetime, None]:
     # transfers = await db_select_all(
     #     Transfer,
@@ -144,12 +144,12 @@ def transfer_gen(transfers: list[Transfer],
 
     next_time: datetime = yield
     for transfer in transfers:
-        if transfer.coin == ccy:
+        if not ccy or transfer.coin == ccy:
             while next_time < transfer.time:
                 next_time = yield offsets
                 if reset:
                     offsets = Decimal(0)
-            offsets += transfer.amount
+            offsets += transfer.amount if ccy else transfer.size
         #offsets += transfer.amount if ccy == transfer.coin else transfer.size
         # _add_safe(offsets, ccy, transfer.size)
         #if transfer.extra_currencies:

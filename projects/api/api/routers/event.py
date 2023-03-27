@@ -65,13 +65,7 @@ default_event = event_dep()
 async def create_event(body: EventCreate,
                        user: User = Depends(CurrentUser),
                        db: AsyncSession = Depends(get_db)):
-    event = EventDB(
-        **body.__dict__,
-        owner=user,
-        # actions=[
-        #     Action(**action.dict()) for action in body.actions
-        # ] if body.actions else None
-    )
+    event = body.get(user)
 
     try:
         event.validate()

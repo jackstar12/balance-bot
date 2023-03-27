@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import Field, condecimal
 
+from database.dbmodels.authgrant import EventGrant, AuthGrant
 from database.models.platform import DiscordPlatform, WebPlatform
 from database.models.user import UserPublicInfo
 from core import safe_cmp_default, safe_cmp
@@ -37,7 +38,7 @@ class _Common(BaseModel):
     end: datetime
     name: str
     description: DocumentModel
-    public: Optional[bool]
+    #public: Optional[bool]
     location: Union[DiscordPlatform, WebPlatform]
     max_registrations: int
     currency: Optional[str] = Field(default='USD')
@@ -45,7 +46,7 @@ class _Common(BaseModel):
 
 
 class EventCreate(_Common, CreateableModel):
-    def get(self, user: User):
+    def get(self, user: User) -> dbmodels.Event:
         return dbmodels.Event(**self.__dict__, owner=user)
 
     # actions: Optional[list[ActionCreate]]

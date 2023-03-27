@@ -40,5 +40,5 @@ async def test_valid_client(confirmed_client):
     indirect=True
 )
 async def test_overview(confirmed_client, api_client):
-    resp = api_client.get(f'/api/v1/client/{confirmed_client.id}')
+    resp = api_client.get(f'client/{confirmed_client.id}')
     assert resp.status_code == 200

@@ -11,7 +11,7 @@ from common.exchanges.channel import Channel
 from common.exchanges.exchangeticker import ExchangeTicker, Subscription
 from core import utc_now
 from database.dbmodels import Execution, Balance
-from database.dbmodels.client import ClientType
+from database.dbmodels.client import ClientType, ExchangeInfo
 from database.dbmodels.transfer import RawTransfer
 from database.enums import Side, ExecType
 from common.exchanges.exchangeworker import ExchangeWorker
@@ -40,18 +40,18 @@ class RawExec(BaseModel):
 class MockTicker(ExchangeTicker):
     NAME = 'mock'
 
-    async def _unsubscribe(self, channel: Channel, **kwargs):
+    async def _unsubscribe(self, sub: Subscription):
         pass
 
     async def disconnect(self):
         pass
 
-    async def generate_ticker(self, symbol: str):
+    async def generate_ticker(self, sub: Subscription):
         while True:
-            await self._callbacks[Channel.TICKER].notify(
+            await self._callbacks[sub].notify(
                 Ticker(
-                    symbol=symbol,
-                    exchange='mock',
+                    symbol=sub.kwargs['symbol'],
+                    src=ExchangeInfo(name='mock', sandbox=True),
                     price=Decimal(10000 + random.randint(-100, 100))
                 )
             )
@@ -60,7 +60,7 @@ class MockTicker(ExchangeTicker):
     async def _subscribe(self, sub: Subscription):
         if sub.channel == Channel.TICKER:
             asyncio.create_task(
-                self.generate_ticker(sub.kwargs['symbol'])
+                self.generate_ticker(sub)
             )
 
     async def connect(self):

@@ -1,6 +1,8 @@
+import asyncio
 import hmac
 import hmac
 import itertools
+import logging
 import time
 import urllib.parse
 from abc import ABC
@@ -16,6 +18,7 @@ from common.exchanges.bybit.websocket import BybitWebsocketClient
 from common.exchanges.exchangeworker import ExchangeWorker
 from core import map_list
 from core import utils, get_multiple, parse_isoformat
+from database.dbmodels.balance import Amount, Balance
 from database.dbmodels.execution import Execution
 from database.dbmodels.transfer import RawTransfer
 from database.enums import ExecType, Side, MarketType
@@ -36,11 +39,14 @@ class Account(Enum):
     UNIFIED = "UNIFIED"
     INVESTMENT = "INVESTMENT"
     OPTION = "OPTION"
+    CONTRACT = "CONTRACT"
 
 
-class ContractType(Enum):
+class Category(Enum):
     INVERSE = "inverse"
     LINEAR = "linear"
+    SPOT = "spot"
+    OPTION = "option"
 
 
 class Direction(Enum):
@@ -97,7 +103,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
         if resp['success']:
             await self._ws.subscribe("user.order.contractAccount")
-            await self._ws.subscribe("user.execution.contractAccount")
+            #await self._ws.subscribe("user.execution.contractAccount")
             self._logger.info('Authed')
         else:
             return WebsocketError(reason='Could not authenticate')
@@ -154,9 +160,9 @@ class _BybitBaseClient(ExchangeWorker, ABC):
             time=cls.parse_ms_dt(int(raw["execTime"])),
             side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
             type=exec_type,
-            inverse=contract_type == ContractType.INVERSE,
-            settle='USD' if contract_type == ContractType.LINEAR else symbol[:-3],
-            market_type = MarketType.DERIVATIVES
+            inverse=contract_type == Category.INVERSE,
+            settle='USDT' if contract_type == Category.LINEAR else symbol[:-3],
+            market_type=MarketType.DERIVATIVES
         )
 
     @classmethod
@@ -198,7 +204,7 @@ class _BybitBaseClient(ExchangeWorker, ABC):
             commission = Decimal(raw["cumExecFee"])
             qty = Decimal(raw["cumExecQty"])
             value = Decimal(raw["cumExecValue"])
-            price = value / qty if contract_type == ContractType.LINEAR else qty / value
+            price = value / qty if contract_type == Category.LINEAR else qty / value
 
             # Unify Inverse and Linear
             return Execution(
@@ -210,8 +216,8 @@ class _BybitBaseClient(ExchangeWorker, ABC):
                 time=cls.parse_ms_dt(int(raw["createdTime"])),
                 side=Side.BUY if raw["side"] == "Buy" else Side.SELL,
                 type=ExecType.TRADE,
-                inverse=contract_type == ContractType.INVERSE,
-                settle='USDT' if contract_type == ContractType.LINEAR else symbol[:-3],
+                inverse=contract_type == Category.INVERSE,
+                settle='USDT' if contract_type == Category.LINEAR else symbol[:-3],
                 market_type=MarketType.DERIVATIVES
             )
 
@@ -219,28 +225,28 @@ class _BybitBaseClient(ExchangeWorker, ABC):
         # https://bybit-exchange.github.io/docs/inverse/#t-websocketexecution
         print(message)
         topic = message.get('topic')
-        if topic == "user.execution.contractAccount":
+        if topic == "user.order.contractAccount":
             await self._on_execution(
-                map_list(self._parse_exec_v3, message["data"])
+                [self._parse_order_v3(raw) for raw in message["data"]]
+            )
+        elif topic == "user.execution.contractAccount":
+            await self._on_execution(
+                [self._parse_exec_v3(raw) for raw in message["data"]]
             )
 
     # https://bybit-exchange.github.io/docs/inverse/?console#t-authentication
     def _sign_request(self, method: str, path: str, headers=None, params: OrderedDict = None, data=None, **kwargs):
-        ts = int(time.time() * 1000)
-        params['api_key'] = self._api_key
-        params['timestamp'] = str(ts)
-
-        copy = params.copy()
-        params.clear()
-        for key, val in sorted(copy.items()):
-            params[key] = val
-
-        query_string = urllib.parse.urlencode(sorted(params.items()))
+        ts = str(int(time.time() * 1000))
+        headers['X-BAPI-API-KEY'] = self._api_key
+        headers['X-BAPI-TIMESTAMP'] = ts
+        query_string = urllib.parse.urlencode(params)
+        sign_str = ts + self._api_key + query_string
         sign = hmac.new(
             self._api_secret.encode('utf-8'),
-            query_string.encode('utf-8'), 'sha256'
+            sign_str.encode('utf-8'),
+            'sha256'
         ).hexdigest()
-        params['sign'] = sign
+        headers['X-BAPI-SIGN'] = sign
 
     @classmethod
     def _check_for_error(cls, response_json: Dict, response: ClientResponse):
@@ -352,6 +358,52 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
         return results
 
+    async def _internal_get_balance_v5(self, account_type: Account, category: Category = None):
+
+        if not category:
+            category = Category.LINEAR
+
+        wallet, tickers = await asyncio.gather(
+            self.get('/v5/account/wallet-balance', params={'accountType': account_type.value}),
+            self.get('/v5/market/tickers', params={'category': category.value}, sign=False, cache=True)
+        )
+
+        total_realized = total_unrealized = Decimal(0)
+        extra_currencies: list[Amount] = []
+
+        ticker_prices = {
+            ticker['symbol']: Decimal(ticker['lastPrice']) for ticker in tickers['list']
+        }
+        err_msg = None
+        for account in wallet['list']:
+            for balance in account['coin']:
+                realized = Decimal(balance['walletBalance'])
+                unrealized = Decimal(balance['equity']) - realized
+                coin = balance["coin"]
+                price = 0
+                if coin == 'USDT':
+                    if category == Category.LINEAR or not category:
+                        price = Decimal(1)
+                elif realized and (category == Category.INVERSE or not category):
+                    price = get_multiple(ticker_prices, f'{coin}USD', f'{coin}USDT')
+                    if not price:
+                        logging.error(f'Bybit Bug: ticker prices do not contain info about {coin}:\n{ticker_prices}')
+                        continue
+
+                if category != Category.LINEAR and realized:
+                    extra_currencies.append(
+                        Amount(currency=coin, realized=realized, unrealized=unrealized, rate=price)
+                    )
+                total_realized += realized * price
+                total_unrealized += unrealized * price
+
+        return Balance(
+            realized=total_realized,
+            unrealized=total_unrealized,
+            extra_currencies=extra_currencies,
+            error=err_msg
+        )
+
     async def _get_internal_transfers_v3(self, since: datetime, account: Account) -> List[RawTransfer]:
         results = []
 
@@ -415,6 +467,6 @@ class _BybitBaseClient(ExchangeWorker, ABC):
 
 def get_contract_type(contract: str):
     if contract.endswith('USDT'):
-        return ContractType.LINEAR
+        return Category.LINEAR
     else:
-        return ContractType.INVERSE
+        return Category.INVERSE

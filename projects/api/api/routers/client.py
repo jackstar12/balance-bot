@@ -32,7 +32,7 @@ from api.users import CurrentUser
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, NotFound, ResponseModel, InternalError
 import core
 from database.calc import create_daily
-from database.dbasync import db_first, redis, async_maker, time_range, db_all, db_select_all
+from database.dbasync import db_first, redis, async_maker, time_range, db_all, db_select_all, safe_op, safe_eq
 from database.dbmodels import TradeDB, BalanceDB, Execution
 from database.dbmodels.client import Client, add_client_filters
 from database.dbmodels.client import ClientQueryParams
@@ -150,9 +150,6 @@ async def get_client_overview(background_tasks: BackgroundTasks,
         # query_params.client_ids = [None]
         any_client = True
 
-    if not query_params.currency:
-        query_params.currency = 'USD'
-
     raw_overviews, non_cached = await cache.read(db)
 
     if non_cached:
@@ -172,26 +169,30 @@ async def get_client_overview(background_tasks: BackgroundTasks,
             )
             transfers = await db_all(
                 select(TransferDB).where(
-                    time_range(Execution.time, query_params.since, query_params.to),
                     TransferDB.client_id == client.id,
-                    TransferDB.coin == query_params.currency
+                    time_range(Execution.time, query_params.since, query_params.to),
+                    safe_eq(TransferDB.coin, query_params.currency)
                 ).join(TransferDB.execution),
                 session=db
             )
 
-            start_balance = await client.get_exact_balance_at_time(query_params.since)
+            start = await client.get_exact_balance_at_time(query_params.since)
             latest = await client.get_latest_balance(redis=redis)
 
             overview = ClientOverviewCache(
                 id=client.id,
                 total=Interval.create(
-                    prev=start_balance.get_currency(query_params.currency),
+                    prev=start.get_currency(query_params.currency),
                     current=latest.get_currency(query_params.currency),
-                    offset=sum(transfer.size for transfer in transfers)
+                    offset=sum(
+                        transfer.amount if query_params.currency else transfer.size
+                        for transfer in transfers
+                    )
                 ),
                 daily_balance=daily,
                 transfers=transfers,
             )
+
             background_tasks.add_task(
                 cache.write,
                 client.id,
@@ -240,6 +241,7 @@ async def get_client_overview(background_tasks: BackgroundTasks,
 
         query_params.limit = 5
         query_params.order = 'desc'
+
         recent_trades = await client_utils.query_trades(TradeDB.initial,
                                                         user_id=user.id,
                                                         query_params=query_params,
