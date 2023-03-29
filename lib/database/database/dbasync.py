@@ -95,7 +95,7 @@ async def db_del_filter(cls, session=None, **kwargs):
     return await db_exec(delete(cls).filter_by(**kwargs), session)
 
 
-def safe_op(col: Any, value: Any, op: operator = operator.eq):
+def safe_op(col: Any, value: Any, op=operator.eq):
     return op(col, value) if value is not None else True
 
 
@@ -103,7 +103,7 @@ def safe_eq(col: Any, value: Any):
     return safe_op(col, value, operator.eq)
 
 
-def time_range(col: Column, since: datetime = None, to: datetime = None):
+def time_range(col, since: datetime = None, to: datetime = None):
     return and_(
         safe_op(col, since, operator.gt),
         safe_op(col, to, operator.lt),

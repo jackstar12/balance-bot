@@ -32,7 +32,7 @@ from database.dbmodels.transfer import Transfer
 from database.dbmodels.mixins.editsmixin import EditsMixin
 from core import json as customjson, safe_cmp, utc_now
 from database.dbasync import db_first, db_all, db_select_all, redis, redis_bulk_keys, RedisKey, db_unique, \
-    time_range, safe_op
+    time_range, safe_op, safe_eq
 from database.dbmodels.editing.chapter import Chapter
 from database.dbmodels.discord.guildassociation import GuildAssociation
 from database.dbmodels.pnldata import PnlData
@@ -345,20 +345,27 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
             dbmodels.Balance.time
         )
 
-    async def get_total_transfered(self,
+    @classmethod
+    async def get_total_transfered(cls,
+                                   client_ids: list[int],
+                                   user_id: UUID,
                                    ccy=None,
                                    since: datetime = None,
-                                   to: datetime = None):
-
-        stmt = select(
-            func.sum(
-                dbmodels.Execution.size if not ccy or ccy == self.currency else Transfer.extra_currencies[ccy]
-            ).over(order_by=Transfer.id).label('total_transfered')
-        ).join(Transfer.execution).where(
-            Transfer.client_id == self.id,
-            time_range(dbmodels.Execution.time, since, to)
+                                   to: datetime = None,
+                                   db: AsyncSession = None):
+        stmt = add_client_checks(
+            select(
+                func.sum(
+                    dbmodels.Execution.effective_size if not ccy else dbmodels.Execution.effective_qty
+                ).label('total_transfered')
+            ).join(Transfer.execution).where(
+                time_range(dbmodels.Execution.time, since, to),
+                safe_eq(Transfer.coin, ccy)
+            ),
+            user_id,
+            client_ids,
         )
-        return await db_unique(stmt, session=self.async_session)
+        return await db_unique(stmt, session=db)
 
     async def get_latest_balance(self, redis: Redis, currency=None) -> BalanceModel | None:
         live = await self.as_redis(redis).get_balance()
@@ -546,5 +553,5 @@ def add_client_checks(stmt: Union[Select, Delete, Update], user_id: UUID,
         Client.user_id == user_id,
         safe_op(Client.currency, currency)
         # Client.type == ClientType.FULL,
-        #Client.state.not_in((ClientState.INVALID, ClientState.SYNCHRONIZING)),
+        # Client.state.not_in((ClientState.INVALID, ClientState.SYNCHRONIZING)),
     )

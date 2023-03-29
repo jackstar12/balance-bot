@@ -5,7 +5,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
 from database.dbsync import Base, BaseMixin
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Numeric, Enum, UniqueConstraint, Boolean
+from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Numeric, Enum, UniqueConstraint, Boolean, case
 from database.dbmodels.mixins.serializer import Serializer
 from database.enums import ExecType, Side, MarketType
 from database.dbmodels.symbol import CurrencyMixin
@@ -53,6 +53,11 @@ class Execution(Base, Serializer, BaseMixin, CurrencyMixin):
     @hybrid_property
     def effective_qty(self):
         return self.qty * -1 if self.side == Side.SELL else self.qty
+
+    @effective_qty.expression
+    def effective_qty(cls):
+        return case((cls.side == Side.SELL, cls.qty * -1), else_=cls.qty)
+
 
     def __repr__(self):
         return f'<{self.__class__.__name__} {self.side} {self.symbol}@{self.price} {self.qty}'

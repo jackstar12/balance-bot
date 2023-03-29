@@ -192,7 +192,6 @@ async def get_client_overview(background_tasks: BackgroundTasks,
                 daily_balance=daily,
                 transfers=transfers,
             )
-
             background_tasks.add_task(
                 cache.write,
                 client.id,
@@ -401,18 +400,14 @@ async def get_client_balance(at: Optional[datetime] = Query(None),
     if gain_since or True:
         gain_balance = await get_balance(gain_since, client_id, user, db, latest=False)
 
-        transfers = await db_all(
-            add_client_checks(
-                select(TransferDB).where(
-                    time_range(Execution.time, gain_since, at),
-                    # safe_eq(TransferDB.coin, query_params.currency)
-                ).join(TransferDB.execution),
-                user_id=user.id,
-                client_ids=client_id
-            ),
-            session=db
+        offset = await Client.get_total_transfered(
+            client_id,
+            user.id,
+            since=gain_since,
+            to=at,
+            db=db
         )
-        balance.set_gain(gain_balance, sum(transfer.size for transfer in transfers))
+        balance.set_gain(gain_balance, offset)
 
     return balance
 
