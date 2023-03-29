@@ -22,7 +22,7 @@ from api.utils.responses import BadRequest, OK, CustomJSONResponse
 from database.dbasync import db_unique, db_all, db_select, db_select_all, wrap_greenlet
 from database.dbmodels.authgrant import JournalGrant, AuthGrant, ChapterGrant, AssociationType
 from database.dbmodels.editing.chapter import Chapter as DbChapter
-from database.dbmodels.client import add_client_filters, Client
+from database.dbmodels.client import add_client_checks, Client
 from database.dbmodels.editing.journal import Journal, JournalType
 from database.dbmodels.user import User
 from database.models import InputID
@@ -56,7 +56,7 @@ async def query_journal(journal_id: InputID, user_id: UUID, *eager, session: Asy
 
 async def query_clients(client_ids: list[int] | set[int], user: User, db_session: AsyncSession):
     clients = await db_all(
-        add_client_filters(
+        add_client_checks(
             select(Client).filter(
                 Client.id.in_(client_ids)
             ),

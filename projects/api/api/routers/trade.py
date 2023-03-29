@@ -31,7 +31,7 @@ from api.users import CurrentUser, get_auth_grant_dependency, DefaultGrant
 from api.utils.responses import BadRequest, OK, CustomJSONResponse, ResponseModel, Unauthorized
 from database.dbasync import db_first, db_all, redis_bulk, redis
 from database.dbmodels import TradeDB as TradeDB, Chapter, Balance, Execution as ExecutionDB
-from database.dbmodels.client import add_client_filters, QueryParams
+from database.dbmodels.client import add_client_checks, QueryParams
 from database.dbmodels.label import Label as LabelDB
 from database.dbmodels.client import ClientQueryParams
 from database.dbmodels.pnldata import PnlData
@@ -52,7 +52,7 @@ router = APIRouter(
 
 
 def add_trade_filters(stmt, user_id: UUID, trade_id: int):
-    return add_client_filters(
+    return add_client_checks(
         stmt.filter(
             TradeDB.id == trade_id,
         ).join(TradeDB.client),
@@ -273,7 +273,7 @@ async def get_pnl_data(trade_id: list[InputID] = Query(default=[]),
                 return OK(result=[])
 
     data: List[PnlData] = await db_all(
-        add_client_filters(
+        add_client_checks(
             select(PnlData)
             .where(PnlData.trade_id.in_(trade_id) if trade_id else True)
             .join(PnlData.trade)

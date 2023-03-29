@@ -21,7 +21,7 @@ from database.dbmodels.authgrant import AuthGrant, EventGrant
 from database.dbmodels.event import Event as EventDB, EventState, EventEntry
 from database.dbmodels.evententry import EventEntry as EventEntryDB, EventScore as EventScoreDB
 from database.dbmodels.user import User
-from database.dbmodels.client import add_client_filters
+from database.dbmodels.client import add_client_checks
 from database.models import BaseModel, InputID, OutputID, OrmBaseModel
 from database.models.document import DocumentModel
 from database.models.eventinfo import EventInfo, EventDetailed, EventCreate, Leaderboard, Summary, \
@@ -262,7 +262,7 @@ async def join_event(body: EventJoinBody,
                      db: AsyncSession = Depends(get_db),
                      grant: AuthGrant = Depends(EventAuth)):
     client_id = await db_first(
-        add_client_filters(
+        add_client_checks(
             select(Client.id), user_id=grant.user_id, client_ids=[body.client_id]
         ),
         session=db

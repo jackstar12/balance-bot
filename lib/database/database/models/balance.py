@@ -1,8 +1,9 @@
+from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from database.models import OrmBaseModel, OutputID
+from database.models import OrmBaseModel, OutputID, BaseModel
 from database.models.gain import Gain
 from core.utils import calc_percentage_diff, safe_cmp_default, round_ccy
 
@@ -12,6 +13,7 @@ class AmountBase(OrmBaseModel):
     realized: Decimal
     unrealized: Decimal
     client_id: Optional[OutputID]
+    rate: Optional[Decimal]
 
     def _assert_equal(self, other: 'AmountBase'):
         assert self.currency == other.currency
@@ -37,7 +39,7 @@ class AmountBase(OrmBaseModel):
 
     def __add__(self, other: 'AmountBase'):
         self._assert_equal(other)
-        return AmountBase(
+        return AmountBase.construct(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
             currency=self.currency
@@ -57,17 +59,30 @@ class Amount(AmountBase):
         )
 
 
+class BalanceGain(BaseModel):
+    other: Optional[Balance]
+    total: Optional[Gain]
+    extra: Optional[list[Gain]]
+
+
 class Balance(Amount):
     extra_currencies: Optional[list[AmountBase]]
+    gain: Optional[BalanceGain]
 
-    def __add__(self, other: 'Balance'):
+    def __add__(self, other: Balance):
         self._assert_equal(other)
-        return Balance(
+        return Balance.construct(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
             time=safe_cmp_default(max, self.time, other.time),
             extra_currencies=(self.extra_currencies or []) + (other.extra_currencies or []),
             currency=self.currency
+        )
+
+    def set_gain(self, other: Balance, offset: Decimal):
+        self.gain = BalanceGain(
+            other=other,
+            total=self.gain_since(other, offset),
         )
 
     def to_string(self, display_extras=False):
@@ -88,14 +103,14 @@ class Balance(Amount):
             realized, unrealized = 0, 0
             for amount in self.extra_currencies:
                 if amount.currency == currency:
-                    realized, unrealized = amount.realized, amount.unrealized
-                    break
+                    return Amount(
+                        realized=realized,
+                        unrealized=unrealized,
+                        currency=currency,
+                        time=self.time
+                    )
         else:
-            realized, unrealized = self.realized, self.unrealized
-            currency = self.currency
-        return Amount(
-            realized=realized,
-            unrealized=unrealized,
-            currency=currency,
-            time=self.time
-        )
+            return self
+
+
+BalanceGain.update_forward_refs()

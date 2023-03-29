@@ -12,7 +12,7 @@ import jwt
 import pytz
 from fastapi import APIRouter, Depends, Request, Query
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import delete, select, asc, func, text
+from sqlalchemy import delete, select, asc, func, text, desc
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTasks
@@ -21,7 +21,7 @@ import api.utils.client as client_utils
 from database.dbmodels.transfer import Transfer as TransferDB
 from api.models.trade import Trade, BasicTrade
 from database.errors import InvalidClientError, ResponseError
-from database.models.interval import Interval
+from database.models.interval import Interval, FullInterval
 from api.authenticator import Authenticator
 from api.dependencies import get_authenticator, get_messenger, get_db, get_http_session
 from api.models.client import ClientConfirm, ClientEdit, \
@@ -34,7 +34,7 @@ import core
 from database.calc import create_daily
 from database.dbasync import db_first, redis, async_maker, time_range, db_all, db_select_all, safe_op, safe_eq
 from database.dbmodels import TradeDB, BalanceDB, Execution
-from database.dbmodels.client import Client, add_client_filters
+from database.dbmodels.client import Client, add_client_checks
 from database.dbmodels.client import ClientQueryParams
 from database.dbmodels.user import User
 from database.enums import IntervalType
@@ -43,7 +43,7 @@ from common.exchanges.exchangeworker import ExchangeWorker
 from database.models import OrmBaseModel, BaseModel, OutputID, InputID
 from database.models.balance import Balance
 from database.redis.client import ClientCacheKeys
-from core.utils import validate_kwargs, groupby, date_string, sum_iter
+from core.utils import validate_kwargs, groupby, date_string, sum_iter, utc_now
 
 router = APIRouter(
     tags=["client"],
@@ -181,7 +181,7 @@ async def get_client_overview(background_tasks: BackgroundTasks,
 
             overview = ClientOverviewCache(
                 id=client.id,
-                total=Interval.create(
+                total=FullInterval.create(
                     prev=start.get_currency(query_params.currency),
                     current=latest.get_currency(query_params.currency),
                     offset=sum(
@@ -302,7 +302,7 @@ async def get_client_performance(interval: IntervalType = Query(default=None),
     else:
         stmt = performance_base_select
 
-    stmt = add_client_filters(
+    stmt = add_client_checks(
         stmt.where(
             time_range(TradeDB.open_time, query_params.since, query_params.to),
             TradeDB.id.in_(trade_id) if trade_id else True
@@ -346,7 +346,7 @@ async def get_client_performance(interval: IntervalType = Query(default=None),
 async def get_client_symbols(query_params: ClientQueryParams = Depends(get_query_params),
                              user: User = Depends(CurrentUser),
                              db: AsyncSession = Depends(get_db)):
-    stmt = add_client_filters(
+    stmt = add_client_checks(
         select(TradeDB.symbol).join(
             TradeDB.client
         ).distinct(),
@@ -361,19 +361,75 @@ async def get_client_symbols(query_params: ClientQueryParams = Depends(get_query
     )
 
 
-@router.get('/client/balance')
-async def get_client_balance(balance_id: list[int] = Query(None, alias='balance-id'),
+async def get_balance(at: Optional[datetime],
+                      client_ids: Optional[set[InputID]],
+                      user: User,
+                      db: AsyncSession,
+                      latest=True) -> Balance:
+    balances = await db_all(
+        add_client_checks(
+            select(BalanceDB).distinct(
+                BalanceDB.client_id
+            ).where(
+                (BalanceDB.time < at if latest else BalanceDB.time > at) if at else True
+            ).join(
+                BalanceDB.client
+            ).order_by(
+                BalanceDB.client_id, desc(BalanceDB.time) if latest else asc(BalanceDB.time)
+            ),
+            user_id=user.id,
+            client_ids=client_ids
+        ),
+        BalanceDB.client,
+        session=db
+    )
+    balances = [Balance.from_orm(balance) for balance in balances]
+    if balances:
+        return sum(balances[1:], balances[0])
+    else:
+        raise NotFound('No matching balance')
+
+
+@router.get('/client/balance', response_model=Balance)
+async def get_client_balance(at: Optional[datetime] = Query(None),
+                             gain_since: Optional[datetime] = Query(default=None),
+                             client_id: Optional[set[InputID]] = Query(None),
+                             user: User = Depends(CurrentUser),
+                             db: AsyncSession = Depends(get_db)):
+    balance = await get_balance(at, client_id, user, db, latest=True)
+
+    if gain_since or True:
+        gain_balance = await get_balance(gain_since, client_id, user, db, latest=False)
+
+        transfers = await db_all(
+            add_client_checks(
+                select(TransferDB).where(
+                    time_range(Execution.time, gain_since, at),
+                    # safe_eq(TransferDB.coin, query_params.currency)
+                ).join(TransferDB.execution),
+                user_id=user.id,
+                client_ids=client_id
+            ),
+            session=db
+        )
+        balance.set_gain(gain_balance, sum(transfer.size for transfer in transfers))
+
+    return balance
+
+
+@router.get('/client/balance/history')
+async def get_client_balance(balance_id: Optional[set[int]] = Query(None),
                              query_params: ClientQueryParams = Depends(get_query_params),
                              user: User = Depends(CurrentUser),
                              db: AsyncSession = Depends(get_db)):
-    balance = await BalanceDB.query(
+    balances = await BalanceDB.query(
         time_col=BalanceDB.time,
         user_id=user.id,
         ids=balance_id,
         params=query_params,
         db=db
     )
-    return Balance.from_orm(balance)
+    return [Balance.from_orm(balance) for balance in balances]
 
 
 @router.get('/client/{client_id}', response_model=ClientDetailed)
@@ -397,7 +453,7 @@ async def delete_client(client_id: InputID,
                         user: User = Depends(CurrentUser),
                         db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        add_client_filters(delete(Client), user.id, {client_id}),
+        add_client_checks(delete(Client), user.id, {client_id}),
     )
     await db.commit()
     if result.rowcount == 1:

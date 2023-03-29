@@ -175,9 +175,9 @@ class ClientQueryMixin:
                     user_id: UUID,
                     ids: list[int] | None,
                     params: ClientQueryParams,
-                    db: AsyncSession) -> list:
+                    db: AsyncSession) -> list[Self]:
         return await db_all(
-            add_client_filters(
+            add_client_checks(
                 select(cls).filter(
                     cls.id.in_(ids) if ids else True,
                     time_range(time_col, params.since, params.to)
@@ -527,9 +527,9 @@ class Client(Base, Serializer, BaseMixin, EditsMixin, ClientQueryMixin):
         return self.id.__hash__()
 
 
-def add_client_filters(stmt: Union[Select, Delete, Update], user_id: UUID,
-                       client_ids: set[int] | list[int] = None,
-                       currency: str = None) -> Union[Select, Delete, Update]:
+def add_client_checks(stmt: Union[Select, Delete, Update], user_id: UUID,
+                      client_ids: set[int] | list[int] = None,
+                      currency: str = None) -> Union[Select, Delete, Update]:
     """
     Commonly used utility to add filters that ensure authorized client access
     :param currency:
@@ -541,13 +541,10 @@ def add_client_filters(stmt: Union[Select, Delete, Update], user_id: UUID,
     # user_checks = [Client.user_id == user.id]
     # if user.discord_user_id:
     #    user_checks.append(Client.discord_user_id == user.discord_user_id)
-    return stmt.filter(
+    return stmt.where(
         Client.id.in_(client_ids) if client_ids else True,
-        or_(
-            Client.user_id == user_id,
-            # Client.oauth_account_id == user.discord_user_id if user.discord_user_id else False
-        ),
-        # Client.type == ClientType.FULL,
-        Client.state.not_in((ClientState.INVALID, ClientState.SYNCHRONIZING)),
+        Client.user_id == user_id,
         safe_op(Client.currency, currency)
+        # Client.type == ClientType.FULL,
+        #Client.state.not_in((ClientState.INVALID, ClientState.SYNCHRONIZING)),
     )

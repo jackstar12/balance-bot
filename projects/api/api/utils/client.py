@@ -25,7 +25,7 @@ from database.dbasync import redis, db_all, redis_bulk, RedisKey, db_first, time
 from database.dbmodels import TradeDB
 from database.dbmodels.authgrant import AuthGrant
 from database.dbmodels.balance import Balance
-from database.dbmodels.client import Client, add_client_filters, ClientRedis
+from database.dbmodels.client import Client, add_client_checks, ClientRedis
 from database.dbmodels.client import ClientQueryParams
 from database.dbmodels.user import User
 from database.dbsync import BaseMixin
@@ -367,7 +367,7 @@ def query_balance(*eager,
 
 def get_user_client(user: User, client_id: int, *eager, db: AsyncSession = None) -> Awaitable[Optional[Client]]:
     return db_first(
-        add_client_filters(select(Client), user.id, {client_id}),
+        add_client_checks(select(Client), user.id, {client_id}),
         *eager,
         session=db
     )
@@ -375,5 +375,5 @@ def get_user_client(user: User, client_id: int, *eager, db: AsyncSession = None)
 
 def get_user_clients(user: User, ids: List[int] = None, *eager, db: AsyncSession = None) -> Awaitable[list[Client]]:
     return db_all(
-        add_client_filters(select(Client), user.id, ids), *eager, session=db
+        add_client_checks(select(Client), user.id, ids), *eager, session=db
     )

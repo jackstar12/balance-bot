@@ -194,7 +194,7 @@ class BalanceCog(CogBase):
 
         for interval in daily_gains:
             results.add_row([
-                date_string(interval.day), interval.start_balance.realized, interval.gain.absolute, interval.gain.relative
+                date_string(interval.start), interval.start_balance.realized, interval.gain.absolute, interval.gain.relative
             ])
 
         await ctx.send(embed=discord.Embed(

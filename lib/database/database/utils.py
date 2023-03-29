@@ -19,7 +19,7 @@ from database.dbasync import db_all, db_first, time_range
 from database.dbasync import db_select, async_session
 from database.dbmodels.balance import Balance
 from database.dbmodels.client import ClientQueryParams
-from database.dbmodels.client import add_client_filters
+from database.dbmodels.client import add_client_checks
 from database.dbmodels.discord.discorduser import DiscordUser
 from database.dbmodels.mixins.filtermixin import FilterParam
 from database.dbmodels.trade import Trade
@@ -71,7 +71,7 @@ async def query_table(*eager,
             stmt = f.apply(stmt, table)
 
     return await db_all(
-        add_client_filters(
+        add_client_checks(
             stmt,
             user_id=user_id,
             client_ids=query_params.client_ids,

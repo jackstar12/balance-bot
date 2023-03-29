@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import NamedTuple, Optional, TYPE_CHECKING
 
@@ -13,9 +14,11 @@ if TYPE_CHECKING:
 class Gain(BaseModel):
     relative: Decimal
     absolute: Decimal
+    currency: Optional[str]
 
     def to_string(self, ccy: str):
         return f'{round_ccy(self.relative, "%")}% ({round_ccy(self.absolute, ccy)}{ccy})'
+
 
 
 class ClientGain(NamedTuple):

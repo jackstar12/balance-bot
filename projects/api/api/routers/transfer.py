@@ -7,7 +7,7 @@ from api.users import CurrentUser
 from api.models.transfer import Transfer
 from api.utils.responses import OK, NotFound
 from database.dbasync import db_exec, db_first
-from database.dbmodels.client import Client, add_client_filters
+from database.dbmodels.client import Client, add_client_checks
 from database.dbmodels.transfer import Transfer as TransferDB
 from database.dbmodels.user import User
 
@@ -25,7 +25,7 @@ router = APIRouter(
 async def update_transfer(transfer_id: int,
                           user: User = Depends(CurrentUser)):
     transfer = await db_first(
-        add_client_filters(
+        add_client_checks(
             select(TransferDB).filter_by(
                 id=transfer_id
             ).join(

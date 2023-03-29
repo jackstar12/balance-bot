@@ -18,11 +18,3 @@ class Balance(typing.Protocol):
     @property
     def total(self):
         return self.realized + self.unrealized
-
-    def __add__(self, other: 'Balance'):
-        return Balance.construct(
-            realized=self.realized + other.realized,
-            unrealized=self.unrealized + other.unrealized,
-            time=min(self.time, other.time) if self.time else None,
-            extra_currencies=self.extra_currencies + other.extra_currencies
-        )

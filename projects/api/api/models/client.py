@@ -14,7 +14,7 @@ from api.models.transfer import Transfer
 from database.dbmodels.client import ClientType, ClientState
 from database.models.balance import Balance
 from database.models.client import ClientCreate
-from database.models.interval import Interval
+from database.models.interval import Interval, FullInterval
 
 
 def get_query_params(id: set[InputID] = Query(default=[]),
@@ -85,7 +85,7 @@ class ClientDetailed(ClientInfo):
 
 
 class _Common(BaseModel):
-    total: Interval
+    total: FullInterval
     transfers: list[Transfer]
 
 
