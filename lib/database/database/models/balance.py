@@ -39,7 +39,7 @@ class AmountBase(OrmBaseModel):
 
     def __add__(self, other: 'AmountBase'):
         self._assert_equal(other)
-        return AmountBase.construct(
+        return AmountBase(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
             currency=self.currency
@@ -71,7 +71,7 @@ class Balance(Amount):
 
     def __add__(self, other: Balance):
         self._assert_equal(other)
-        return Balance.construct(
+        return Balance(
             realized=self.realized + other.realized,
             unrealized=self.unrealized + other.unrealized,
             time=safe_cmp_default(max, self.time, other.time),
@@ -98,14 +98,13 @@ class Balance(Amount):
 
         return string
 
-    def get_currency(self, currency: Optional[str]):
+    def get_currency(self, currency: Optional[str]) -> Balance:
         if currency:
-            realized, unrealized = 0, 0
             for amount in self.extra_currencies:
                 if amount.currency == currency:
-                    return Amount(
-                        realized=realized,
-                        unrealized=unrealized,
+                    return Balance(
+                        realized=amount.realized,
+                        unrealized=amount.unrealized,
                         currency=currency,
                         time=self.time
                     )
