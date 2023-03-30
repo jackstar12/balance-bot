@@ -1059,3 +1059,9 @@ class ExchangeWorker:
 
     def __repr__(self):
         return f'<Worker exchange={self.exchange} client_id={self.client_id}>'
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.cleanup()

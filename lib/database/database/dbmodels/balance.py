@@ -125,11 +125,11 @@ class Balance(Base, _Common, Serializer, BaseMixin, ClientQueryMixin):
 
     def get_realized(self, ccy: str = None) -> Decimal:
         amount = self.get_currency(ccy)
-        return amount.realized if amount else (self.realized if ccy is None else 0)
+        return amount.realized
 
     def get_unrealized(self, ccy: str) -> Decimal:
         amount = self.get_currency(ccy)
-        return amount.unrealized if amount else self.unrealized
+        return amount.unrealized
 
     def __eq__(self, other):
         if isinstance(other, Balance):

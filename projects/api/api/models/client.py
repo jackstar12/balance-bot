@@ -13,7 +13,7 @@ from database.models import BaseModel, OutputID, InputID
 from api.models.transfer import Transfer
 from database.dbmodels.client import ClientType, ClientState
 from database.models.balance import Balance
-from database.models.client import ClientCreate
+from database.models.client import ClientCreate, ClientApiInfo
 from database.models.interval import Interval, FullInterval
 
 
@@ -49,6 +49,7 @@ class ClientEdit(BaseModel):
     state: Optional[ClientState]
     type: Optional[ClientType]
     trade_template_id: Optional[InputID]
+    api: Optional[ClientApiInfo]
 
 
 class ClientInfo(BaseModel):

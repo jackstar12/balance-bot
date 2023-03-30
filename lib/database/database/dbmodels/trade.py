@@ -215,7 +215,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
 
     @hybrid_property
     def account_gain(self):
-        return self.net_pnl / self.init_balance.get_realized(ccy=self.settle)
+        return self.net_pnl / self.init_amount.realized
 
     @hybrid_property
     def net_gain(self):
@@ -223,7 +223,7 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
 
     @hybrid_property
     def account_size_init(self):
-        return self.size / self.init_balance.get_realized(ccy=self.settle)
+        return self.size / self.init_amount.realized
 
     @hybrid_property
     def net_pnl(self):
@@ -241,6 +241,10 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
     def is_data(cls):
         return True
 
+    @property
+    def init_amount(self):
+        return self.init_balance.get_currency(ccy=self.settle)
+
     @hybrid_property
     def is_open(self):
         return self.open_qty > Decimal(0)
@@ -254,6 +258,10 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
     def realized_r(self):
         if self.sl:
             return (self.exit - self.entry) / (self.entry - self.sl)
+
+    @property
+    def commission_ratio(self):
+        return self.realized_pnl / self.total_commissions
 
     @hybrid_property
     def fomo_ratio(self):
@@ -286,7 +294,6 @@ class Trade(Base, Serializer, BaseMixin, CurrencyMixin, FilterMixin):
 
     @hybrid_property
     def duration(self):
-        return timedelta(days=1)
         return self.close_time - self.open_time
 
     @classmethod

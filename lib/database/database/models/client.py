@@ -9,16 +9,12 @@ from database.dbmodels.client import ClientType
 from database.dbmodels.user import User
 
 
-class ClientCreate(BaseModel):
-    name: Optional[str]
-    exchange: str
+class ClientApiInfo(BaseModel):
     api_key: str
     api_secret: str
-    type: ClientType = ClientType.FULL
+    extra_kwargs: Optional[Dict]
     subaccount: Optional[str]
     sandbox: Optional[bool]
-    extra_kwargs: Optional[Dict]
-    import_since: Optional[datetime]
 
     @pydantic.root_validator(pre=True)
     def build_extra(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -32,6 +28,12 @@ class ClientCreate(BaseModel):
                 extra[field_name] = values.pop(field_name)
         values['extra'] = extra
         return values
+
+
+class ClientCreate(ClientApiInfo):
+    name: Optional[str]
+    exchange: str
+    type: ClientType = ClientType.FULL
 
     def get(self, user: User = None) -> Client:
         client = Client(user=user, **self.dict(exclude={'import_since'}))

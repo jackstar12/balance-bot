@@ -42,6 +42,7 @@ from common.exchanges import EXCHANGES
 from common.exchanges.exchangeworker import ExchangeWorker
 from database.models import OrmBaseModel, BaseModel, OutputID, InputID
 from database.models.balance import Balance
+from database.models.client import ClientApiInfo
 from database.redis.client import ClientCacheKeys
 from core.utils import validate_kwargs, groupby, date_string, sum_iter, utc_now
 
@@ -458,8 +459,10 @@ async def delete_client(client_id: InputID,
 
 
 @router.patch('/client/{client_id}', response_model=ClientDetailed)
-async def update_client(client_id: InputID, body: ClientEdit,
+async def update_client(client_id: InputID,
+                        body: ClientEdit,
                         user: User = Depends(CurrentUser),
+                        http_session: aiohttp.ClientSession = Depends(get_http_session),
                         db: AsyncSession = Depends(get_db)):
     client = await client_utils.get_user_client(user,
                                                 client_id,
@@ -468,8 +471,21 @@ async def update_client(client_id: InputID, body: ClientEdit,
                                                 db=db)
 
     if client:
-        for k, v in body.dict(exclude_none=True).items():
+        for k, v in body.dict(exclude_none=True, exclude={'api'}).items():
             setattr(client, k, v)
+
+        if body.api:
+            for k, v in body.api.dict().items():
+                setattr(client, k, v)
+
+            exchange_cls = EXCHANGES[client.exchange]
+            async with exchange_cls(client, http_session, db_maker=async_maker) as worker:
+                try:
+                    await worker.get_balance()
+                except InvalidClientError:
+                    raise BadRequest('Invalid API credentials')
+                except ResponseError:
+                    raise InternalError()
 
         client.validate()
     else:
